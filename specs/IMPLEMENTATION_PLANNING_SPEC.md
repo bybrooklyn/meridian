@@ -184,17 +184,16 @@ invalid, visible capture cannot distinguish surface outcomes, source/caches are
 conflated, recovery mutates authority, diagnostics cannot correlate the
 failure, or a required backend type leaks into a public engine/data API.
 
-### 8.6 Local implementation record and open qualification
+### 8.6 Closed qualification record
 
-MS-01 implementation passes locally. `WP-PEN-008`, `WP-RUN-002`, `WP-RUN-003`,
-`WP-RUN-004`, `WP-DAT-002`, `WP-DAT-003`, and `WP-DAT-004` are closed as
-`ImplementedFoundation`; `WP-REL-002` remains `Partial` and MS-01 remains
-`Active`. The native surface was
-occluded or unavailable, so the qualification preserves that surface outcome
-and uses a separately labeled offscreen-visible PNG. Remote macOS/Linux/Windows
-Actions remains `NotRun` without an authorized commit/push; required Linux and
-Windows headless rows therefore prevent Pass. `WP-REL-002` is the closure
-candidate and `WP-UI-001` follows it; no later package is implicitly active.
+`WP-PEN-008`, `WP-RUN-002`, `WP-RUN-003`, `WP-RUN-004`, `WP-DAT-002`,
+`WP-DAT-003`, and `WP-DAT-004` are closed as `ImplementedFoundation`.
+`WP-REL-002` is `Implemented` and MS-01 is `Pass`: GitHub Actions run
+`29452928922` passed governance and the macOS, Linux, and Windows workspace /
+headless-smoke rows for `010db80`. The native surface was occluded or
+unavailable, so the qualification preserves that surface outcome and uses a
+separately labeled offscreen-visible PNG. `WP-UI-001` is next but is not active
+until its Definition of Ready is recorded; no later package is implicitly active.
 
 ## 9. Milestone execution map
 

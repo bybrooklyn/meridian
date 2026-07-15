@@ -702,7 +702,7 @@ Acceptance evidence for Penumbra baseline:
 
 | Gate | Penumbra result |
 |---|---|
-| MS-01 | Penumbra rows pass locally: observable current RHI/render graph, correlated `WP-PEN-007` pass timing, and explicit offscreen-visible `WP-PEN-008` capture with an occluded/unavailable surface result. Overall milestone qualification remains `Active` pending cross-platform headless evidence. |
+| MS-01 | `MS-01` passed qualification on GitHub Actions run `29452928922`: observable current RHI/render graph, correlated `WP-PEN-007` pass timing, explicit offscreen-visible `WP-PEN-008` capture with an occluded/unavailable surface result, and passing Linux/Windows/macOS headless smoke. The capture is not presented-surface or production-quality evidence. |
 | MS-04 | GPU-driven clustered Forward+ foundation, shared scene/material/light/environment/temporal systems, debugging, and profiling. |
 | MS-05 | Representative measured forest renderer; opens `RG-PEN-001`. |
 | MS-06 | Private Project Meridian prototype consumes published contracts after Editor Alpha and forest gates. |

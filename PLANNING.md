@@ -2,11 +2,11 @@
 
 version 0.5 · 2026-07-15
 
-Status: MS-01 implementation passes locally, but milestone status remains
-`Active`. `WP-REL-002` is `Partial` because required Linux and Windows headless
-smokes are `NotRun`; this task forbids the commit/push needed to run remote CI.
-All other named MS-01 implementation packages are closed with fresh evidence.
-`WP-UI-001` follows only after qualification completes.
+Status: `MS-01` and `WP-REL-002` passed qualification on GitHub Actions run
+`29452928922` for source checkpoint `010db80`: governance plus Linux, Windows,
+and macOS workspace/headless-smoke rows passed. All named MS-01 implementation
+packages are closed with fresh evidence. No later package is active;
+`WP-UI-001` is next after its Definition of Ready is recorded here.
 
 ## 1. Authority and stop rule
 
@@ -197,7 +197,7 @@ lifetime while CPU timing continues. Future render-graph execution must reuse
 this contract for every claimed production pass; this package does not claim
 complete production-pass coverage.
 
-## 9. MS-01 local implementation complete — qualification open
+## 9. Closed package — WP-REL-002 / MS-01 qualification
 
 | Wave | Packages | Convergence rule |
 |---|---|---|
@@ -205,7 +205,7 @@ complete production-pass coverage.
 | Surface and runtime | `WP-PEN-008`, `WP-RUN-002`, `WP-RUN-003` closed `ImplementedFoundation` | asynchronous visible/offscreen capture, typed surface outcomes, lifecycle epochs, device rebuild action, and correlated diagnostics |
 | Source data | `WP-DAT-002` -> `WP-DAT-003` -> `WP-DAT-004` closed `ImplementedFoundation` | provisional source import, independent facets, package mount, worker load, bounded activation, save and recovery preserve authority |
 | Integration | `WP-RUN-004` closed `ImplementedFoundation` | one `meridian` executable runs native, native-smoke, and headless-smoke paths |
-| Qualification | `WP-REL-002` remains `Partial` | local evidence reviewed; required Linux/Windows headless rows remain `NotRun` until CI is authorized |
+| Qualification | `WP-REL-002` closed `Implemented` | GitHub Actions run `29452928922` passed governance and Linux, Windows, and macOS workspace/headless-smoke rows for `010db80` |
 
 User-visible result: Meridian imports the public generic MS-01 fixture, writes
 and reopens a provisional `.meridian` package, streams and activates one cell,
@@ -214,9 +214,10 @@ writes a hashed RGBA8 PNG plus metadata, exercises save replacement/backup/
 journal/migration recovery, and emits one correlated JSON evidence timeline.
 
 Passing implementation evidence: `EV-PEN-20260715-003`, `EV-RUN-20260715-002` through
-`EV-RUN-20260715-004`, `EV-DAT-20260715-002` through
-`EV-DAT-20260715-004`. Qualification review `EV-REL-20260715-001` is
-`Inconclusive` until Linux/Windows headless evidence runs.
+`EV-RUN-20260715-004`, and `EV-DAT-20260715-002` through
+`EV-DAT-20260715-004`. Qualification review `EV-REL-20260715-001` is `Pass`:
+GitHub Actions run `29452928922` passed the governance and all three platform
+rows, including the required Linux and Windows headless smokes.
 
 Limits: the native surface was occluded or unavailable in the qualification run,
 so the visible image is explicitly offscreen and makes no presentation or visual-
@@ -225,15 +226,54 @@ encoding remain provisional. Compression, signing, patches, encryption,
 Forward+, specular IBL, Meridian UI, Creator Editor workflows, and game content
 remain outside MS-01.
 
-`WP-REL-002` is the immediate closure candidate. `WP-UI-001` follows after
-MS-01 qualification. Penumbra Stage 1 then proceeds through `WP-PEN-003` and
+`MS-01` is closed. `WP-UI-001` is the next candidate and cannot activate until
+its Definition of Ready is recorded. Penumbra Stage 1 then proceeds through `WP-PEN-003` and
 `WP-PEN-010`, with `WP-PEN-009` as bounded parallel image-quality work and
 `WP-PEN-011` as the later executable/calibrated forest corpus. `RG-PEN-001`
 cannot open before MS-05.
 
 Alluvium begins only through a separately activated package. `WP-PRC-001`
-through `WP-PRC-004` are required for MS-05, but their presence in the roadmap
-does not reorder or activate the current `WP-REL-002` closure candidate.
+through `WP-PRC-004` are required for MS-05; no Alluvium package is active.
+
+Work package: `WP-REL-002`
+User-visible result: the source-derived Meridian foundation is qualified on the
+governance, Linux, Windows, and macOS CI matrix without converting its
+offscreen capture or foundation formats into broader product claims.
+Status: `Implemented`; `MS-01` `Pass`
+Source checkpoint and BuildId: `010db80` / GitHub Actions run `29452928922`
+Requirements: `REQ-REL-001`, `REQ-GOV-003`
+Milestone contribution: MS-01 observable runtime and source foundations
+Entry conditions and dependencies: MS-00 `Pass`; `WP-RUN-004`
+`ImplementedFoundation`
+Files/crates/formats changed: qualification registries and current-evidence
+documents only; no runtime crate or durable format changed
+Deliverables and public contracts: reproducible cross-platform CI qualification
+for the existing `meridian --headless-smoke --frames 4` public executable path
+Explicit non-goals: presented-surface evidence, visual-quality claims, stable
+source/package/save formats, Meridian UI, and Creator Editor workflows
+Tests: CI governance validation, format, workspace check/test/clippy, and
+headless smoke all passed on Linux, Windows, and macOS
+Benchmarks and hardware: no benchmark calibration; CI hardware remains a
+virtualized qualification environment
+Captures/traces/recovery evidence: `EV-PEN-20260715-003`,
+`EV-RUN-20260715-002` through `004`, `EV-DAT-20260715-002` through `004`, and
+`EV-REL-20260715-001`
+Accessibility: headless qualification is non-visual; MS-02 owns native UI
+keyboard, semantic, scaling, and motion evidence
+Security/provenance: public generic fixture only; no private-game content or
+new dependencies
+Migration/compatibility: no format or API migration
+Documentation: AGENTS, delivery, planning, testing, rendering, and typed
+evidence/review registries reconciled to the completed CI run
+Integration checkpoint: minimal observable source-derived application
+Stop/rollback rule: no MS-01 stop condition was observed; a failed matrix row
+would have retained `Partial`/`Active` status
+Known limits and unsupported rows: native presentation was occluded or
+unavailable, so the capture remains explicitly Offscreen; no production visual
+quality or calibrated benchmark claim
+Reviewers/sign-offs: GitHub Actions completed all required automated rows;
+separate human release approval is not recorded
+Next unblocked package: `WP-UI-001`, after its Definition of Ready
 
 ## 10. Evidence policy
 

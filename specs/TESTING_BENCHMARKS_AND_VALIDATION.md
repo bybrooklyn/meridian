@@ -18,9 +18,10 @@ tests and 10 pass-timing/diagnostics tests. The v0.5 documentation closure
 passed 165 workspace tests, including 26 governance-tool tests. The MS-01 local
 implementation checkpoint passed 191 workspace tests with focused capture, lifecycle, diagnostics,
 source import, package, streaming, save recovery, and application integration
-coverage. Overall qualification remains `Inconclusive` until required Linux and
-Windows headless CI rows run. This count is evidence for that source checkpoint,
-not a frozen completion percentage. Any passing count proves only its covered runtime/code
+coverage. GitHub Actions run `29452928922` then passed governance plus the
+Linux, Windows, and macOS workspace/headless-smoke rows for `010db80`, closing
+MS-01 qualification. This count is evidence for that source checkpoint, not a
+frozen completion percentage. Any passing count proves only its covered runtime/code
 boundaries and does not convert a scaffold, planned domain, validation-project
 definition, or post-1.0 program into implementation.
 

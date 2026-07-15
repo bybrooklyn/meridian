@@ -3,7 +3,7 @@
   "version":"0.5",
   "records":[
     {"id":"MS-00","status":"Pass","title":"v0.5 governance closure"},
-    {"id":"MS-01","status":"Active","title":"Observable runtime and source foundations"},
+    {"id":"MS-01","status":"Pass","title":"Observable runtime and source foundations"},
     {"id":"MS-02","status":"Planned","title":"Meridian UI core proof"},
     {"id":"MS-03","status":"Planned","title":"Creator Editor Alpha"},
     {"id":"MS-04","status":"Planned","title":"Penumbra Forward+ foundation"},

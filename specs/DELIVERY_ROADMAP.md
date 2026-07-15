@@ -114,17 +114,16 @@ for implementing those prerequisites.
 
 The current renderer structural smoke is evidence only for construction/submission. It cannot satisfy the visible-capture gate.
 
-Current result: MS-01 implementation passes locally, while milestone status
-remains `Active` and `WP-REL-002` remains `Partial` pending required Linux and
-Windows headless CI evidence. The `meridian` executable
+Current result: `MS-01` and `WP-REL-002` are `Pass`/`Implemented` after GitHub
+Actions run `29452928922` passed governance plus Linux, Windows, and macOS
+workspace/headless-smoke rows for `010db80`. The `meridian` executable
 imports and packages the public generic fixture, worker-streams and atomically
 activates one compiled cell, advances semantic-input/fixed-runtime foundations,
 renders package-derived geometry, writes a hashed offscreen-visible PNG when the
 native surface is occluded/unavailable, proves save recovery and fresh-disk
 reconstruction, and emits one correlated JSON timeline. This closes the named
-implementation packages as foundations, not the qualification package or
-milestone; it does not claim presented pixels, production image quality, stable
-final formats, UI/editor workflows, or cross-platform qualification.
+implementation packages and MS-01 qualification; it does not claim presented
+pixels, production image quality, stable final formats, or UI/editor workflows.
 
 ## 7. MS-02 — Meridian UI core proof
 

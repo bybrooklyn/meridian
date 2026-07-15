@@ -12,9 +12,9 @@ Documentation maturity, implementation maturity, and evidence status are indepen
 
 ## 2. Current scope
 
-`MS-00` has passed. MS-01 implementation packages pass locally, but MS-01 and
-`WP-REL-002` remain open because required Linux/Windows headless evidence is
-`NotRun` until an authorized commit and push permits CI. The repository has runtime, RHI,
+`MS-00` and `MS-01` have passed. `WP-REL-002` passed qualification on GitHub
+Actions run `29452928922`: governance plus the Linux, Windows, and macOS
+workspace/headless-smoke rows all passed for `010db80`. The repository has runtime, RHI,
 render-graph, direct PBR, cascaded-shadow, diffuse-irradiance IBL,
 extraction/upload, asynchronous capture, transactional source import, package,
 streaming, save-recovery, and physics-wrapper foundations. The production
@@ -24,10 +24,10 @@ first-class 2D, Meridian Shader Language, Wavefront runtime, Collective,
 Isobar, Basalt, Torsant, native backends, game prototype, and post-1.0 programs
 remain incomplete.
 
-The current closure candidate is `WP-REL-002`; `WP-UI-001` follows only after
-MS-01 qualifies. Alluvium architecture is adopted but implementation remains
-`Planned`; do not activate a PRC package unless PLANNING records its Definition
-of Ready.
+`WP-UI-001` is the next candidate; it may activate only after PLANNING records
+its Definition of Ready. Alluvium architecture is adopted but implementation
+remains `Planned`; do not activate a PRC package unless PLANNING records its
+Definition of Ready.
 
 ## 3. Repository and private-game boundary
 
