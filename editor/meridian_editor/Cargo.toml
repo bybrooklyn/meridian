@@ -23,6 +23,7 @@ meridian-rt = { path = "../../engine/meridian_rt" }
 meridian-save = { path = "../../engine/meridian_save" }
 meridian-streaming = { path = "../../engine/meridian_streaming" }
 meridian-tasks = { path = "../../engine/meridian_tasks" }
+meridian-ui = { path = "../../engine/meridian_ui" }
 meridian-world = { path = "../../engine/meridian_world" }
 meridian-world-tools = { path = "../meridian_world_tools" }
 serde.workspace = true

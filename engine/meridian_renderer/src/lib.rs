@@ -12,6 +12,7 @@ mod lighting;
 mod mesh;
 mod resources;
 mod snapshot;
+mod ui_overlay;
 mod upload;
 
 pub use camera::{Camera, CameraError, Matrix4, PerspectiveProjection};
@@ -37,6 +38,7 @@ pub use snapshot::{
     MaterialHandle, MeshHandle, RenderFlags, RenderInstance, RenderInstanceId, RenderSnapshot,
     RenderSnapshotBuilder, SnapshotError, TextureHandle, Transform,
 };
+pub use ui_overlay::{UiOverlayRenderReport, UiOverlayRenderer, UiOverlayRendererError};
 pub use upload::{
     RenderUploadBatch, RenderUploadError, RenderUploadOperation, RenderUploadTracker,
 };

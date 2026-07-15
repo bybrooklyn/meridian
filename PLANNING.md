@@ -5,8 +5,8 @@ version 0.5 · 2026-07-15
 Status: `MS-01` and `WP-REL-002` passed qualification on GitHub Actions run
 `29452928922` for source checkpoint `010db80`: governance plus Linux, Windows,
 and macOS workspace/headless-smoke rows passed. All named MS-01 implementation
-packages are closed with fresh evidence. No later package is active;
-`WP-UI-001` is next after its Definition of Ready is recorded here.
+packages are closed with fresh evidence. `WP-UI-001` is the sole active package;
+its execution readiness and partial implementation status are recorded below.
 
 ## 1. Authority and stop rule
 
@@ -273,15 +273,94 @@ unavailable, so the capture remains explicitly Offscreen; no production visual
 quality or calibrated benchmark claim
 Reviewers/sign-offs: GitHub Actions completed all required automated rows;
 separate human release approval is not recorded
-Next unblocked package: `WP-UI-001`, after its Definition of Ready
+Next unblocked package: `WP-UI-001`, now active
 
-## 10. Evidence policy
+## 10. Active package — WP-UI-001 / MS-02 Meridian UI core proof
+
+Execution status: `Active`. Implementation maturity: `Partial`; retained UI
+contracts, deterministic fixtures, system-font glyph rasterization, and a
+bounded temporary native recovery-panel raster bridge are implemented. The
+runtime overlay is deterministic/headless only so far; no production renderer
+selection or qualifying milestone evidence has landed.
+
+User-visible result: Meridian gains one native, keyboard-operable recovery
+panel and one runtime overlay from an immutable Meridian-owned display list,
+with a deterministic headless fixture and a semantic-tree snapshot. This is the
+MS-02 core proof, not Creator Editor Alpha, docking, Ponder, a final renderer,
+or a visual-quality claim.
+
+Requirements and milestone contribution: `REQ-UI-001`; MS-02 accessible
+native panel and runtime overlay integration checkpoint.
+
+Entry evidence and dependencies: MS-01 is `Pass`; `WP-RUN-004` is
+`ImplementedFoundation` with `EV-RUN-20260715-004` `Pass`. The existing
+platform/input/renderer seams and the UI/accessibility specifications have been
+inspected. `DEP-UI-001` records the text-shaping boundary; `RG-UI-001` remains
+closed until after MS-02 and does not select a production display-list renderer.
+
+Owned files/crates: `engine/meridian_ui`, `engine/meridian_renderer`,
+`editor/meridian_editor`, and only the Meridian-owned RHI bridge required to
+present the immutable overlay;
+`Cargo.toml`, `Cargo.lock`, the UI/accessibility authority, registries, and
+this plan change only when evidence requires them.
+
+Public contracts: stable `UiNodeId`; retained node/document tree; bounded
+`UiEvent` and semantic command requests; focus/event-route result; immutable
+display-list primitives; owned semantic tree/delta and diagnostics; a text
+layout result without exposed `cosmic_text` or backend types. Runtime and
+editor widget surfaces remain separate.
+
+Implementation slices and failure cases:
+
+- replace the marker with retained tree, stack/overlay layout, focus, capture /
+  target / bubble routing, deterministic display-list emission, semantic-node
+  validation, and diagnostics; reject duplicate IDs, missing nodes, unnamed
+  focusable nodes, invalid actions, and focus traps before rendering;
+- add the `cosmic-text` adapter for shaping, fallback, line layout, bounded
+  glyph rasterization, and IME composition state without allowing its types
+  past the Meridian boundary; grapheme navigation remains unfinished;
+- render the recovery panel and runtime overlay through an immutable raster /
+  RHI bridge, with device-loss rebuild from the logical document and explicit
+  occluded/unavailable outcomes; only the recovery-panel native bridge has
+  landed, and the runtime-overlay native result remains required;
+- add keyboard-only and semantic golden fixtures, DPI/contrast/reduced-motion
+  layout fixtures, a headless no-UI-cost trace, and a native smoke where the
+  surface supports it.
+
+Tests and commands: start with `cargo test -p meridian-ui` and
+`cargo test -p meridian-editor`; add `meridian --ui-headless-smoke` for the
+deterministic fixture and `meridian --ui-smoke` for native presentation where
+available. Then run the proportional workspace ladder, `meridian-spec check`,
+and privacy, dependency, and diff audits.
+
+Security, accessibility, and recovery: no rich-text execution, external links,
+network content, secrets, or agent context enter this package. Keyboard focus,
+visible focus, semantic names/actions, text scaling, high contrast, and reduced
+motion are verified from the same retained tree. A malformed document opens as
+an accessible recovery/error panel; UI GPU resources rebuild from logical state.
+
+Explicit non-goals: Creator Editor documents/undo/play, docking, source UI
+document persistence, Ponder, platform AccessKit adapters, visual graph editing,
+renderer-path selection, benchmark calibration, and any private-game input.
+
+Stop/rollback rule: stop and redesign if any public UI contract exposes wgpu,
+cosmic-text, or platform types; events mutate state during traversal; semantic
+validation cannot report a remediation; a headless profile allocates UI work; or
+the overlay cannot rebuild after device loss. In that case retain the logical
+contracts and revert only the failed renderer adapter path.
+
+Next review: close only after the MS-02 keyboard/semantic/layout/disabled-cost
+evidence is registered and the native panel/overlay result is separately labeled
+for any unsupported or occluded surface. `WP-BLD-001` is the next MS-03 critical
+path candidate after MS-02 `Pass`.
+
+## 11. Evidence policy
 
 Every run records source checkpoint, BuildId when available, corpus/build hashes, hardware, OS, backend, driver, capability profile, settings, cache/warmup state, distributions rather than averages alone, memory, artifacts, and missing features. Occluded structural evidence cannot satisfy visual quality. Unavailable hardware or capabilities are `NotRun`, `UnsupportedPlatform`, or `UnsupportedCapability`, never Pass.
 
 No benchmark report may generalize beyond its measured workload/profile. No uncalibrated number becomes a release gate.
 
-## 11. Mandatory package sign-off
+## 12. Mandatory package sign-off
 
 ~~~text
 Work package:

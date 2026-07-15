@@ -10,6 +10,7 @@ meridian-core = { path = "../meridian_core" }
 meridian-diagnostics = { path = "../meridian_diagnostics" }
 meridian-platform = { path = "../meridian_platform" }
 meridian-rhi = { path = "../meridian_rhi" }
+meridian-ui = { path = "../meridian_ui" }
 
 [lints]
 workspace = true

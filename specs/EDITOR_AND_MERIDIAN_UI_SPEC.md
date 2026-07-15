@@ -5,7 +5,7 @@
 version 0.5 · 2026-07-15 · Normative · Meridian UI Planned, egui shell Transitional
 
 Documentation maturity: `ImplementationReady`. Implementation maturity:
-`Scaffold`. Governing IDs: `REQ-UI-001`, `REQ-EDT-001`, `WP-UI-001`,
+`Partial`. Governing IDs: `REQ-UI-001`, `REQ-EDT-001`, `WP-UI-001`,
 `WP-EDT-001`, `RG-UI-001`.
 
 Research anchors: [AccessKit](https://accesskit.dev/) and [AccessKit Rust API](https://docs.rs/accesskit) inform accessibility adapter boundaries; [OpenXR 1.1](https://registry.khronos.org/OpenXR/specs/1.1/html/xrspec.html) informs later XR panel timing and composition boundaries. Meridian owns UI IR, semantics, layout, commands, and persistence.
@@ -29,7 +29,7 @@ Non-goals: embedding egui as permanent architecture, duplicating a game UI engin
 - meridian-editor-core: document sessions, selection, commands, undo, play mode.
 - meridian-editor-egui-bootstrap: current temporary shell and migration adapters.
 
-No egui type enters ui-core, editor-core, source documents, commands, or plugins. AccessKit is consumed only by a platform adapter from Meridian semantics.
+No egui type enters ui-core, editor-core, source documents, commands, or plugins. AccessKit is consumed only by a platform adapter from Meridian semantics. `WP-UI-001` adopts `cosmic-text` under `DEP-UI-001` only as the text shaping, fallback, layout, and rasterization adapter; Meridian-owned text, display-list, semantic, and diagnostic types remain the public boundary. Platform accessibility adapters are a separately scoped MS-03 spike, and `RG-UI-001` selects no production display-list renderer before its MS-02 entry gate.
 
 ## 3. Data model
 
@@ -194,7 +194,7 @@ Thresholds are calibrated on the UI corpus, not invented globally.
 
 ## 17. Delivery mapping
 
-- MS-03: UI core spike, text/layout/semantics, first runtime overlay.
+- MS-02: UI core proof, text/layout/semantics, first runtime overlay.
 - MS-01/MS-03/MS-04: editor core and bootstrap bridge.
 - MS-02/MS-03: first Meridian-native inspector/diagnostics panels.
 - MS-03/MS-05: Alluvium textual recipe and basic inspector foundation.

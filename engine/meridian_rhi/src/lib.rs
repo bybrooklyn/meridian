@@ -2732,6 +2732,134 @@ impl Rhi {
         Ok(())
     }
 
+    /// Submits an indexed pipeline with no bind groups to a small unreadable
+    /// offscreen target for structural validation.
+    ///
+    /// This boundary is intended for renderer-owned simple passes such as
+    /// temporary UI geometry. It cannot establish presentation or visual
+    /// quality evidence.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::InvalidDraw`] for invalid buffer/index ranges or
+    /// [`RhiErrorKind::DeviceLost`] after device loss.
+    #[doc(hidden)]
+    pub fn submit_unbound_indexed_mesh_structural_validation(
+        &mut self,
+        pipeline: &GpuRenderPipeline,
+        vertex_buffer: &GpuBuffer,
+        index_buffer: &GpuBuffer,
+        index_count: u32,
+        color: ClearColor,
+    ) -> Result<(), RhiError> {
+        let draw = IndexedDraw {
+            pipeline,
+            vertex_buffer,
+            index_buffer,
+            index_count,
+            texture_bind_group: None,
+            material_texture_bind_group: None,
+            uniform_bind_group: None,
+            material_parameter_bind_group: None,
+            lighting_bind_group: None,
+        };
+        validate_indexed_draw(draw.vertex_buffer, draw.index_buffer, draw.index_count)?;
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        let size = WindowSize::new(64, 64);
+        let color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Meridian unbound indexed structural validation color"),
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.surface_config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let depth = create_depth_buffer_for_device(
+            &self.device,
+            size,
+            DepthFormat::Depth32Float,
+            "Meridian unbound indexed structural validation depth",
+        );
+        self.encode_indexed_mesh(&color_view, Some(&depth.view), draw, color, None, None);
+        Ok(())
+    }
+
+    /// Submits an indexed textured pipeline to a small unreadable offscreen
+    /// target for structural validation.
+    ///
+    /// This boundary is for renderer-owned simple passes such as the temporary
+    /// UI raster bridge. It cannot establish presentation or visual quality.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::InvalidDraw`] for invalid buffer/index ranges or
+    /// [`RhiErrorKind::DeviceLost`] after device loss.
+    #[doc(hidden)]
+    pub fn submit_textured_indexed_mesh_structural_validation(
+        &mut self,
+        pipeline: &GpuRenderPipeline,
+        vertex_buffer: &GpuBuffer,
+        index_buffer: &GpuBuffer,
+        index_count: u32,
+        texture_bind_group: &GpuTextureBindGroup,
+        color: ClearColor,
+    ) -> Result<(), RhiError> {
+        let draw = IndexedDraw {
+            pipeline,
+            vertex_buffer,
+            index_buffer,
+            index_count,
+            texture_bind_group: Some(texture_bind_group),
+            material_texture_bind_group: None,
+            uniform_bind_group: None,
+            material_parameter_bind_group: None,
+            lighting_bind_group: None,
+        };
+        validate_indexed_draw(draw.vertex_buffer, draw.index_buffer, draw.index_count)?;
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        let size = WindowSize::new(64, 64);
+        let color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Meridian textured indexed structural validation color"),
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.surface_config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let depth = create_depth_buffer_for_device(
+            &self.device,
+            size,
+            DepthFormat::Depth32Float,
+            "Meridian textured indexed structural validation depth",
+        );
+        self.encode_indexed_mesh(&color_view, Some(&depth.view), draw, color, None, None);
+        Ok(())
+    }
+
     /// Draws the indexed material path into an offscreen capture target.
     /// This uses the same pipeline and bindings but makes no presentation claim.
     ///

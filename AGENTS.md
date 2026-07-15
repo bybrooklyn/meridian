@@ -24,8 +24,9 @@ first-class 2D, Meridian Shader Language, Wavefront runtime, Collective,
 Isobar, Basalt, Torsant, native backends, game prototype, and post-1.0 programs
 remain incomplete.
 
-`WP-UI-001` is the next candidate; it may activate only after PLANNING records
-its Definition of Ready. Alluvium architecture is adopted but implementation
+`WP-UI-001` is the sole active package. Its execution plan is recorded in
+PLANNING; its implementation maturity is `Partial`, without MS-02 completion
+or qualifying evidence. Alluvium architecture is adopted but implementation
 remains `Planned`; do not activate a PRC package unless PLANNING records its
 Definition of Ready.
 

@@ -30,7 +30,7 @@ use meridian_platform::{
 };
 use meridian_renderer::{
     FoundationMeshDescriptor, MaterialHandle, MeshHandle, PenumbraFoundationRenderer,
-    RenderInstanceId, RenderInstanceSource, Transform,
+    RenderInstanceId, RenderInstanceSource, Transform, UiOverlayRenderer,
 };
 use meridian_rhi::{
     CaptureFailure, CaptureOutcome, CaptureRequest, CaptureSource, CapturedFrame, ClearColor,
@@ -46,6 +46,10 @@ use meridian_streaming::{
     StreamingScheduler,
 };
 use meridian_tasks::{TaskClass, TaskContext};
+use meridian_ui::{
+    recovery_panel_document, runtime_overlay_document, DisplayList, SemanticDelta, UiDiagnostic,
+    UiEvent, UiFrameInput, UiRuntime, UiSize,
+};
 use meridian_world::{CompiledWorldCell, SpatialDatabase};
 use meridian_world_tools::compile_world_source;
 use serde::Serialize;
@@ -68,6 +72,8 @@ pub enum RunMode {
     Interactive,
     Smoke,
     HeadlessSmoke,
+    UiHeadlessSmoke,
+    UiSmoke,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -109,6 +115,8 @@ impl MeridianOptions {
             match argument.as_str() {
                 "--smoke" => options.set_mode(RunMode::Smoke)?,
                 "--headless-smoke" => options.set_mode(RunMode::HeadlessSmoke)?,
+                "--ui-headless-smoke" => options.set_mode(RunMode::UiHeadlessSmoke)?,
+                "--ui-smoke" => options.set_mode(RunMode::UiSmoke)?,
                 "--project" => options.project = Some(next_path(&mut arguments, "--project")?),
                 "--capture" => options.capture = Some(next_path(&mut arguments, "--capture")?),
                 "--evidence" => options.evidence = Some(next_path(&mut arguments, "--evidence")?),
@@ -178,7 +186,7 @@ impl Error for MeridianArgumentError {}
 
 #[must_use]
 pub const fn usage() -> &'static str {
-    "Meridian\n\nUsage: meridian [--smoke | --headless-smoke] [--project PATH] [--capture PATH] [--evidence PATH] [--frames N]"
+    "Meridian\n\nUsage: meridian [--smoke | --headless-smoke | --ui-headless-smoke | --ui-smoke] [--project PATH] [--capture PATH] [--evidence PATH] [--frames N]"
 }
 
 /// Runs the requested Meridian application mode.
@@ -188,6 +196,12 @@ pub const fn usage() -> &'static str {
 /// Returns source, package, streaming, save, platform, rendering, capture, or
 /// evidence IO failures without claiming milestone completion.
 pub fn run(options: &MeridianOptions) -> AppResult<()> {
+    if options.mode == RunMode::UiHeadlessSmoke {
+        return run_ui_headless_smoke();
+    }
+    if options.mode == RunMode::UiSmoke {
+        return run_ui_native_smoke();
+    }
     let project_root = resolve_project_root(options.project.as_deref())?;
     let evidence_root = resolve_output_path(
         &project_root,
@@ -220,6 +234,65 @@ pub fn run(options: &MeridianOptions) -> AppResult<()> {
             event_loop_mode: EventLoopMode::Poll,
         },
         app,
+    )?;
+    Ok(())
+}
+
+fn run_ui_headless_smoke() -> AppResult<()> {
+    let recovery_document = recovery_panel_document()
+        .map_err(|error| io::Error::other(format!("recovery UI fixture invalid: {error:?}")))?;
+    let mut recovery = UiRuntime::new(recovery_document);
+    let mut recovery_input = UiFrameInput::new(UiSize::new(960.0, 540.0));
+    recovery_input.high_contrast = true;
+    recovery_input.reduced_motion = true;
+    recovery_input.events = vec![UiEvent::FocusNext, UiEvent::Activate];
+    let recovery_output = recovery.reconcile(recovery_input);
+    let semantic_node_count = match &recovery_output.semantic_delta {
+        SemanticDelta::Replace(tree) => tree.nodes.len(),
+        SemanticDelta::Unchanged => 0,
+    };
+    if recovery_output.commands.len() != 1
+        || recovery_output.commands[0].action != "project.retry_open"
+        || semantic_node_count != 3
+        || recovery_output.focused.is_none()
+    {
+        return Err(io::Error::other(
+            "recovery UI fixture did not produce its typed command and semantic snapshot",
+        )
+        .into());
+    }
+
+    let overlay_document = runtime_overlay_document()
+        .map_err(|error| io::Error::other(format!("runtime UI fixture invalid: {error:?}")))?;
+    let mut overlay = UiRuntime::new(overlay_document);
+    let mut overlay_input = UiFrameInput::new(UiSize::new(960.0, 540.0));
+    overlay_input.events = vec![UiEvent::FocusNext];
+    let overlay_output = overlay.reconcile(overlay_input);
+    if overlay_output.focused.is_some()
+        || !overlay_output
+            .diagnostics
+            .contains(&UiDiagnostic::NoFocusableNode)
+    {
+        return Err(
+            io::Error::other("runtime overlay unexpectedly created a focusable UI path").into(),
+        );
+    }
+    println!(
+        "Meridian UI headless smoke passed: recovery command, high-contrast semantic snapshot, and disabled-input runtime overlay verified"
+    );
+    Ok(())
+}
+
+fn run_ui_native_smoke() -> AppResult<()> {
+    run_platform(
+        PlatformConfig {
+            title: "Meridian UI recovery panel smoke".to_owned(),
+            initial_size: WindowSize::new(960, 540),
+            resizable: true,
+            visible: true,
+            event_loop_mode: EventLoopMode::Poll,
+        },
+        UiNativeSmokeApplication::new()?,
     )?;
     Ok(())
 }
@@ -1036,6 +1109,160 @@ fn suffixed_path(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(value)
 }
 
+struct UiNativeSmokeApplication {
+    runtime: UiRuntime,
+    display_list: DisplayList,
+    logical_viewport: UiSize,
+    scale_factor: f32,
+    rhi: Option<Rhi>,
+    renderer: Option<UiOverlayRenderer>,
+    structural_fallback_submitted: bool,
+}
+
+impl UiNativeSmokeApplication {
+    fn new() -> AppResult<Self> {
+        let document = recovery_panel_document()
+            .map_err(|error| io::Error::other(format!("recovery UI fixture invalid: {error:?}")))?;
+        let mut application = Self {
+            runtime: UiRuntime::new(document),
+            display_list: DisplayList::default(),
+            logical_viewport: UiSize::new(960.0, 540.0),
+            scale_factor: 1.0,
+            rhi: None,
+            renderer: None,
+            structural_fallback_submitted: false,
+        };
+        application.refresh_display(WindowSize::new(960, 540), 1.0);
+        Ok(application)
+    }
+
+    fn refresh_display(&mut self, physical_size: WindowSize, scale_factor: f64) {
+        self.scale_factor = f64_to_f32(scale_factor).clamp(0.5, 4.0);
+        self.logical_viewport = UiSize::new(
+            f64_to_f32(f64::from(physical_size.width) / f64::from(self.scale_factor)),
+            f64_to_f32(f64::from(physical_size.height) / f64::from(self.scale_factor)),
+        );
+        let mut input = UiFrameInput::new(self.logical_viewport);
+        input.scale_factor = self.scale_factor;
+        input.high_contrast = true;
+        if self.display_list.primitives.is_empty() {
+            input.events.push(UiEvent::FocusNext);
+        }
+        self.display_list = self.runtime.reconcile(input).display_list;
+    }
+
+    fn build_renderer(&self, rhi: &mut Rhi) -> AppResult<UiOverlayRenderer> {
+        UiOverlayRenderer::new(
+            rhi,
+            &self.display_list,
+            self.logical_viewport,
+            self.scale_factor,
+        )
+        .map_err(Into::into)
+    }
+
+    fn initialize_gpu(&mut self, window: meridian_platform::PlatformWindow) -> AppResult<()> {
+        self.refresh_display(window.size(), window.scale_factor());
+        let mut rhi = Rhi::new(window, RhiConfig::default())?;
+        let renderer = self.build_renderer(&mut rhi)?;
+        self.rhi = Some(rhi);
+        self.renderer = Some(renderer);
+        Ok(())
+    }
+
+    fn rebuild_for_size(&mut self, size: WindowSize, scale_factor: f64) -> AppResult<()> {
+        self.refresh_display(size, scale_factor);
+        let Some(mut rhi) = self.rhi.take() else {
+            return Ok(());
+        };
+        rhi.resize(size);
+        let renderer = self.build_renderer(&mut rhi)?;
+        self.rhi = Some(rhi);
+        self.renderer = Some(renderer);
+        Ok(())
+    }
+
+    fn render(&mut self, context: &mut PlatformContext<'_>) -> AppResult<()> {
+        let outcome = match (self.rhi.as_mut(), self.renderer.as_ref()) {
+            (Some(rhi), Some(renderer)) => renderer.render_frame(rhi, ClearColor::default())?,
+            _ => return Err(io::Error::other("UI smoke has no initialized renderer").into()),
+        };
+        if outcome.visible() {
+            let report = self
+                .renderer
+                .as_ref()
+                .map(UiOverlayRenderer::report)
+                .ok_or_else(|| io::Error::other("UI smoke renderer disappeared"))?;
+            println!(
+                "Meridian UI native smoke submitted {} solid primitives and {} rasterized glyphs; {} text primitive(s) were incomplete",
+                report.solid_primitives,
+                report.rasterized_glyphs,
+                report.incomplete_text_primitives
+            );
+            context.exit();
+        } else if outcome.recoverable() {
+            context.request_redraw();
+        } else {
+            self.submit_structural_fallback(context)?;
+        }
+        Ok(())
+    }
+
+    fn submit_structural_fallback(&mut self, context: &mut PlatformContext<'_>) -> AppResult<()> {
+        if self.structural_fallback_submitted {
+            context.exit();
+            return Ok(());
+        }
+        let (Some(rhi), Some(renderer)) = (self.rhi.as_mut(), self.renderer.as_ref()) else {
+            return Err(io::Error::other("UI structural fallback has no renderer").into());
+        };
+        renderer.submit_structural_validation(rhi, ClearColor::default())?;
+        self.structural_fallback_submitted = true;
+        println!(
+            "Meridian UI native smoke surface unavailable; raster bridge submitted offscreen structural validation only"
+        );
+        context.exit();
+        Ok(())
+    }
+
+    fn handle_event(&mut self, event: PlatformEvent, context: &mut PlatformContext<'_>) {
+        let result: AppResult<()> = match event {
+            PlatformEvent::WindowCreated { .. } => match context.window().cloned() {
+                Some(window) => self
+                    .initialize_gpu(window)
+                    .map(|()| context.request_redraw()),
+                None => Err(io::Error::other("UI smoke window creation omitted its window").into()),
+            },
+            PlatformEvent::Resized(size) => self
+                .rebuild_for_size(size, f64::from(self.scale_factor))
+                .map(|()| context.request_redraw()),
+            PlatformEvent::ScaleFactorChanged { scale_factor, size } => self
+                .rebuild_for_size(size, scale_factor)
+                .map(|()| context.request_redraw()),
+            PlatformEvent::RedrawRequested => self.render(context),
+            PlatformEvent::CloseRequested | PlatformEvent::Exiting => {
+                context.exit();
+                Ok(())
+            }
+            PlatformEvent::Resumed
+            | PlatformEvent::Suspended
+            | PlatformEvent::Focused(_)
+            | PlatformEvent::Input(_)
+            | PlatformEvent::MemoryWarning => Ok(()),
+        };
+        if let Err(error) = result {
+            eprintln!("Meridian UI native smoke failed: {error}");
+            context.exit();
+        }
+    }
+}
+
+impl PlatformApplication for UiNativeSmokeApplication {
+    fn on_event(&mut self, event: PlatformEvent, context: &mut PlatformContext<'_>) {
+        self.handle_event(event, context);
+    }
+}
+
 struct MeridianApplication {
     prepared: PreparedMs01,
     evidence_root: PathBuf,
@@ -1715,6 +1942,25 @@ mod tests {
             MeridianOptions::parse(["--frames", "0"]),
             Err(MeridianArgumentError::FrameCountOutOfRange(0))
         ));
+        assert!(matches!(
+            MeridianOptions::parse(["--ui-headless-smoke"]),
+            Ok(MeridianOptions {
+                mode: RunMode::UiHeadlessSmoke,
+                ..
+            })
+        ));
+        assert!(matches!(
+            MeridianOptions::parse(["--ui-smoke"]),
+            Ok(MeridianOptions {
+                mode: RunMode::UiSmoke,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn ui_headless_smoke_verifies_recovery_and_disabled_overlay() {
+        run_ui_headless_smoke().expect("UI fixture passes");
     }
 
     #[test]

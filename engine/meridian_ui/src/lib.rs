@@ -1,6 +1,7 @@
-//! meridian-ui scaffold boundary.
+//! Meridian-owned retained UI core for runtime overlays and creator panels.
+//!
+//! This crate intentionally exposes no backend, platform, or text-adapter types.
 
-#![allow(dead_code)]
+mod core;
 
-/// Marker proving this crate is intentionally present before its first system lands.
-pub const SCAFFOLD_STATUS: &str = "Milestone 0 scaffold";
+pub use core::*;
