@@ -1,0 +1,4 @@
+interface:
+  display_name: "Meridian Engine"
+  short_description: "Work safely across Meridian engine and game repos"
+  default_prompt: "Use $meridian-engine to inspect the current Meridian plan and complete the next bounded work package."
