@@ -7,11 +7,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
-use std::fs::File;
-use std::io::Read;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Arc;
 use std::thread;
@@ -37,6 +37,8 @@ const MAX_CARGO_PACKAGES: usize = 4_096;
 const MAX_CARGO_TARGETS: usize = 256;
 const MAX_CARGO_TARGET_KINDS: usize = 64;
 const MAX_OPERATIONS: usize = 1_024;
+const MAX_SNAPSHOT_TEMPORARY_ATTEMPTS: usize = 16;
+static NEXT_SNAPSHOT_TEMPORARY_ID: AtomicU64 = AtomicU64::new(0);
 
 const ENVIRONMENT_ALLOWLIST: &[&str] = &[
     "CARGO_HOME",
@@ -354,7 +356,7 @@ pub struct BuildEvent {
 }
 
 /// In-memory operation registry rejecting stale or invalid event flows.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct BuildService {
     operations: BTreeMap<OperationId, BuildOperation>,
 }
@@ -545,6 +547,307 @@ pub struct BuildServiceRecovery {
     pub recovery_events: Vec<BuildEvent>,
 }
 
+/// Project-hosted, local durable storage for one build-service operation snapshot.
+///
+/// The host selects this file beneath a project-owned state directory. Publication
+/// writes and syncs a unique sibling temporary file before a same-directory rename;
+/// callers must still report any platform/filesystem durability limitation rather
+/// than treating this portable foundation as a remote or signing-grade store.
+pub struct BuildServiceStore {
+    path: PathBuf,
+}
+
+impl BuildServiceStore {
+    /// Creates a store rooted at one concrete state-file path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `path` is empty or does not name a file.
+    pub fn new(path: impl Into<PathBuf>) -> Result<Self, BuildError> {
+        let path = path.into();
+        if path.as_os_str().is_empty() || path.file_name().is_none() {
+            return Err(BuildError::InvalidSnapshotPath);
+        }
+        Ok(Self { path })
+    }
+
+    /// Returns the host-selected state-file path.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Returns whether a regular, non-symlinked state file exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the configured path is not a regular file or cannot
+    /// be inspected safely.
+    pub fn exists(&self) -> Result<bool, BuildError> {
+        match fs::symlink_metadata(&self.path) {
+            Ok(metadata) => {
+                validate_regular_snapshot_metadata(&metadata)?;
+                Ok(true)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(BuildError::SnapshotIo {
+                operation: "inspect state file",
+                message: error.to_string(),
+            }),
+        }
+    }
+
+    /// Writes a bounded service snapshot through a synced temporary file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error without intentionally retaining a partial primary state
+    /// file when directory creation, temporary creation, writing, syncing, or
+    /// replacement fails.
+    pub fn save(&self, service: &BuildService) -> Result<(), BuildError> {
+        let snapshot = service.snapshot_json()?;
+        self.ensure_parent_directory()?;
+        let _ = self.exists()?;
+        let (temporary_path, mut temporary_file) = self.create_temporary_file()?;
+        let write_result = temporary_file
+            .write_all(snapshot.as_bytes())
+            .and_then(|()| temporary_file.sync_all());
+        drop(temporary_file);
+        if let Err(error) = write_result {
+            let _ = fs::remove_file(&temporary_path);
+            return Err(BuildError::SnapshotIo {
+                operation: "write state file",
+                message: error.to_string(),
+            });
+        }
+        if let Err(error) = fs::rename(&temporary_path, &self.path) {
+            let _ = fs::remove_file(&temporary_path);
+            return Err(BuildError::SnapshotIo {
+                operation: "replace state file",
+                message: error.to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Loads one bounded snapshot and marks interrupted operations `WorkerLost`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a missing, non-regular, oversized, non-UTF-8, or
+    /// invalid versioned snapshot.
+    pub fn load(&self) -> Result<BuildServiceRecovery, BuildError> {
+        if !self.exists()? {
+            return Err(BuildError::SnapshotMissing);
+        }
+        let file = File::open(&self.path).map_err(|error| BuildError::SnapshotIo {
+            operation: "open state file",
+            message: error.to_string(),
+        })?;
+        let length = file
+            .metadata()
+            .map_err(|error| BuildError::SnapshotIo {
+                operation: "inspect opened state file",
+                message: error.to_string(),
+            })?
+            .len();
+        if length > MAX_BUILD_SNAPSHOT_BYTES as u64 {
+            return Err(BuildError::SnapshotTooLarge(
+                usize::try_from(length).unwrap_or(usize::MAX),
+            ));
+        }
+        let mut bytes = Vec::with_capacity(usize::try_from(length).unwrap_or(0));
+        file.take(MAX_BUILD_SNAPSHOT_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|error| BuildError::SnapshotIo {
+                operation: "read state file",
+                message: error.to_string(),
+            })?;
+        if bytes.len() > MAX_BUILD_SNAPSHOT_BYTES {
+            return Err(BuildError::SnapshotTooLarge(bytes.len()));
+        }
+        let snapshot = String::from_utf8(bytes).map_err(|_| BuildError::SnapshotNotUtf8)?;
+        BuildService::restore_json(&snapshot)
+    }
+
+    fn ensure_parent_directory(&self) -> Result<(), BuildError> {
+        let parent = self.parent_directory();
+        fs::create_dir_all(parent).map_err(|error| BuildError::SnapshotIo {
+            operation: "create state directory",
+            message: error.to_string(),
+        })?;
+        let metadata = fs::symlink_metadata(parent).map_err(|error| BuildError::SnapshotIo {
+            operation: "inspect state directory",
+            message: error.to_string(),
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(BuildError::SnapshotPathSymlink);
+        }
+        if !metadata.is_dir() {
+            return Err(BuildError::SnapshotParentNotDirectory);
+        }
+        Ok(())
+    }
+
+    fn create_temporary_file(&self) -> Result<(PathBuf, File), BuildError> {
+        let file_name = self
+            .path
+            .file_name()
+            .ok_or(BuildError::InvalidSnapshotPath)?;
+        for _ in 0..MAX_SNAPSHOT_TEMPORARY_ATTEMPTS {
+            let temporary_id = NEXT_SNAPSHOT_TEMPORARY_ID.fetch_add(1, Ordering::Relaxed);
+            let mut temporary_name = file_name.to_os_string();
+            temporary_name.push(format!(".{}-{temporary_id}.tmp", std::process::id()));
+            let temporary_path = self.parent_directory().join(temporary_name);
+            match OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&temporary_path)
+            {
+                Ok(file) => return Ok((temporary_path, file)),
+                Err(error) => {
+                    if error.kind() != std::io::ErrorKind::AlreadyExists {
+                        return Err(BuildError::SnapshotIo {
+                            operation: "create temporary state file",
+                            message: error.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+        Err(BuildError::SnapshotTemporaryExhausted)
+    }
+
+    fn parent_directory(&self) -> &Path {
+        self.path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."))
+    }
+}
+
+/// Automatically persistent local build service for a project-owned state file.
+///
+/// Every accepted mutation is persisted before it is reported to the caller.
+/// A failed state write restores the pre-mutation in-memory service, so a caller
+/// cannot observe an event that is absent from the durable snapshot.
+pub struct DurableBuildService {
+    store: BuildServiceStore,
+    service: BuildService,
+}
+
+impl DurableBuildService {
+    /// Opens existing state or initializes and persists an empty service.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the local store cannot be read, recovered, or
+    /// atomically updated.
+    pub fn open(store: BuildServiceStore) -> Result<DurableBuildServiceRecovery, BuildError> {
+        if store.exists()? {
+            let recovered = store.load()?;
+            store.save(&recovered.service)?;
+            Ok(DurableBuildServiceRecovery {
+                service: Self {
+                    store,
+                    service: recovered.service,
+                },
+                recovery_events: recovered.recovery_events,
+            })
+        } else {
+            let service = BuildService::default();
+            store.save(&service)?;
+            Ok(DurableBuildServiceRecovery {
+                service: Self { store, service },
+                recovery_events: Vec::new(),
+            })
+        }
+    }
+
+    /// Exposes current service state for read-only inspection.
+    #[must_use]
+    pub fn service(&self) -> &BuildService {
+        &self.service
+    }
+
+    /// Submits and durably records a queued operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the request is invalid, duplicate, or cannot be
+    /// persisted without losing the previous durable state.
+    pub fn submit(&mut self, request: BuildRequest) -> Result<BuildEvent, BuildError> {
+        self.persist(|service| service.submit(request))
+    }
+
+    /// Applies and durably records one lifecycle transition.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the transition is invalid or its resulting state
+    /// cannot be persisted without losing the previous durable state.
+    pub fn transition(
+        &mut self,
+        operation_id: OperationId,
+        phase: BuildPhase,
+        progress: u8,
+    ) -> Result<BuildEvent, BuildError> {
+        self.persist(|service| service.transition(operation_id, phase, progress))
+    }
+
+    /// Records and durably stores one Cargo message from a running operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the operation is not running or its resulting state
+    /// cannot be persisted without losing the previous durable state.
+    pub fn record_cargo_message(
+        &mut self,
+        operation_id: OperationId,
+        message: CargoMessage,
+    ) -> Result<BuildEvent, BuildError> {
+        self.persist(|service| service.record_cargo_message(operation_id, message))
+    }
+
+    /// Validates and durably records one external worker event.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the event is stale or mismatched, or its resulting
+    /// state cannot be persisted without losing the previous durable state.
+    pub fn accept_external_event(&mut self, event: &BuildEvent) -> Result<(), BuildError> {
+        self.persist(|service| service.accept_external_event(event))
+    }
+
+    fn persist<T>(
+        &mut self,
+        mutation: impl FnOnce(&mut BuildService) -> Result<T, BuildError>,
+    ) -> Result<T, BuildError> {
+        let previous = self.service.clone();
+        match mutation(&mut self.service) {
+            Ok(value) => match self.store.save(&self.service) {
+                Ok(()) => Ok(value),
+                Err(error) => {
+                    self.service = previous;
+                    Err(error)
+                }
+            },
+            Err(error) => {
+                self.service = previous;
+                Err(error)
+            }
+        }
+    }
+}
+
+/// Result of opening a durable service, including explicit crash-recovery events.
+pub struct DurableBuildServiceRecovery {
+    /// The recovered service, ready to accept only valid next operations.
+    pub service: DurableBuildService,
+    /// `WorkerLost` events emitted for interrupted persisted operations.
+    pub recovery_events: Vec<BuildEvent>,
+}
+
 #[derive(Deserialize, Serialize)]
 struct PersistedBuildService {
     version: u16,
@@ -568,6 +871,7 @@ impl From<&BuildOperation> for PersistedBuildOperation {
     }
 }
 
+#[derive(Clone)]
 struct BuildOperation {
     request: BuildRequest,
     phase: BuildPhase,
@@ -635,6 +939,16 @@ fn validate_persisted_operation(operation: &PersistedBuildOperation) -> Result<(
     }
     for dependency in &operation.request.root_node.dependencies {
         validate_text("build node dependency", dependency.as_str())?;
+    }
+    Ok(())
+}
+
+fn validate_regular_snapshot_metadata(metadata: &fs::Metadata) -> Result<(), BuildError> {
+    if metadata.file_type().is_symlink() {
+        return Err(BuildError::SnapshotPathSymlink);
+    }
+    if !metadata.is_file() {
+        return Err(BuildError::SnapshotPathNotRegular);
     }
     Ok(())
 }
@@ -1550,6 +1864,27 @@ pub enum BuildError {
     DuplicateSnapshotOperation(OperationId),
     /// Service snapshot contained a malformed build identity.
     InvalidBuildId(String),
+    /// A durable state path was empty or did not name a file.
+    InvalidSnapshotPath,
+    /// A durable state snapshot was requested before it exists.
+    SnapshotMissing,
+    /// A durable state path or its direct parent resolves through a symlink.
+    SnapshotPathSymlink,
+    /// A durable state path exists but is not a regular file.
+    SnapshotPathNotRegular,
+    /// A durable state parent exists but is not a directory.
+    SnapshotParentNotDirectory,
+    /// A durable state operation exhausted unique temporary-file attempts.
+    SnapshotTemporaryExhausted,
+    /// A durable state file was not valid UTF-8 JSON text.
+    SnapshotNotUtf8,
+    /// A durable state-file operation failed.
+    SnapshotIo {
+        /// Bounded operation label suitable for user-facing diagnostics.
+        operation: &'static str,
+        /// Platform error detail, treated as untrusted diagnostic text by callers.
+        message: String,
+    },
 }
 
 impl Display for BuildError {
@@ -1695,6 +2030,28 @@ impl Display for BuildError {
             }
             Self::InvalidBuildId(build_id) => {
                 write!(formatter, "snapshot build ID {build_id} is malformed")
+            }
+            Self::InvalidSnapshotPath => {
+                formatter.write_str("build-service state path must name a file")
+            }
+            Self::SnapshotMissing => formatter.write_str("build-service state file is missing"),
+            Self::SnapshotPathSymlink => {
+                formatter.write_str("build-service state path must not resolve through a symlink")
+            }
+            Self::SnapshotPathNotRegular => {
+                formatter.write_str("build-service state path is not a regular file")
+            }
+            Self::SnapshotParentNotDirectory => {
+                formatter.write_str("build-service state parent is not a directory")
+            }
+            Self::SnapshotTemporaryExhausted => {
+                formatter.write_str("build-service state could not allocate a temporary file")
+            }
+            Self::SnapshotNotUtf8 => {
+                formatter.write_str("build-service state file is not valid UTF-8")
+            }
+            Self::SnapshotIo { operation, message } => {
+                write!(formatter, "failed to {operation}: {message}")
             }
         }
     }
@@ -1965,5 +2322,107 @@ mod tests {
         cancellation.cancel();
         let result = run_cargo_json(&invocation, &cancellation).expect("cancelled outcome");
         assert_eq!(result.status, CargoRunStatus::Cancelled);
+    }
+
+    struct TemporaryDirectory {
+        path: PathBuf,
+    }
+
+    impl TemporaryDirectory {
+        fn new() -> Self {
+            static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+            let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir()
+                .join(format!("meridian-build-test-{}-{id}", std::process::id()));
+            fs::create_dir_all(&path).expect("temporary directory creates");
+            Self { path }
+        }
+
+        fn state_path(&self) -> PathBuf {
+            self.path.join("build-service-state.json")
+        }
+    }
+
+    impl Drop for TemporaryDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn durable_service_persists_recovery_before_exposing_worker_lost() {
+        let directory = TemporaryDirectory::new();
+        let state_path = directory.state_path();
+        let mut service =
+            DurableBuildService::open(BuildServiceStore::new(&state_path).expect("state path"))
+                .expect("empty durable service")
+                .service;
+        service.submit(request(1)).expect("queued");
+        service
+            .transition(OperationId::new(1), BuildPhase::Resolving, 5)
+            .expect("resolving");
+        service
+            .transition(OperationId::new(1), BuildPhase::Ready, 10)
+            .expect("ready");
+        service
+            .transition(OperationId::new(1), BuildPhase::Running, 20)
+            .expect("running");
+        drop(service);
+
+        let recovered =
+            DurableBuildService::open(BuildServiceStore::new(&state_path).expect("state path"))
+                .expect("recovery");
+        assert_eq!(recovered.recovery_events.len(), 1);
+        assert_eq!(recovered.recovery_events[0].phase, BuildPhase::WorkerLost);
+        assert_eq!(
+            recovered
+                .service
+                .service()
+                .phase(OperationId::new(1))
+                .expect("recovered phase"),
+            BuildPhase::WorkerLost
+        );
+        drop(recovered);
+
+        let reopened =
+            DurableBuildService::open(BuildServiceStore::new(&state_path).expect("state path"))
+                .expect("reopen");
+        assert!(reopened.recovery_events.is_empty());
+        assert!(fs::read_dir(&directory.path)
+            .expect("state directory reads")
+            .all(|entry| !entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .ends_with(".tmp")));
+    }
+
+    #[test]
+    fn durable_store_rejects_missing_malformed_oversized_and_non_regular_state() {
+        let directory = TemporaryDirectory::new();
+        let state_path = directory.state_path();
+        let store = BuildServiceStore::new(&state_path).expect("state path");
+        assert!(matches!(store.load(), Err(BuildError::SnapshotMissing)));
+
+        fs::write(&state_path, "not-json").expect("malformed state writes");
+        assert!(matches!(
+            store.load(),
+            Err(BuildError::MalformedSnapshot(_))
+        ));
+
+        fs::write(
+            &state_path,
+            "x".repeat(MAX_BUILD_SNAPSHOT_BYTES.saturating_add(1)),
+        )
+        .expect("oversized state writes");
+        assert!(matches!(store.load(), Err(BuildError::SnapshotTooLarge(_))));
+
+        let directory_path = directory.path.join("state-directory");
+        fs::create_dir(&directory_path).expect("state directory creates");
+        let directory_store = BuildServiceStore::new(directory_path).expect("directory path");
+        assert!(matches!(
+            directory_store.exists(),
+            Err(BuildError::SnapshotPathNotRegular)
+        ));
     }
 }

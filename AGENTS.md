@@ -18,7 +18,7 @@ workspace/headless-smoke rows all passed for `010db80`. The repository has runti
 render-graph, direct PBR, cascaded-shadow, diffuse-irradiance IBL,
 extraction/upload, asynchronous capture, transactional source import, package,
 streaming, save-recovery, physics-wrapper, and bounded Cargo metadata/JSON
-build-service foundations. The production
+build-service foundations with local durable worker-loss recovery. The production
 Penumbra Forward+ path, Creator Editor, Alluvium, native modeler,
 Rust gameplay modules, optional Luau, animation, navigation, frameworks,
 first-class 2D, Meridian Shader Language, Wavefront runtime, Collective,

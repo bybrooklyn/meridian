@@ -106,8 +106,9 @@ wgpu, Rapier, egui, and AccessKit types MUST stop at their adapter crates. Exist
 - meridian-editor-egui-bootstrap: temporary shell only; deletable when Meridian UI migration gates pass.
 - meridian-build: editor-only build-service foundation with Meridian-owned
   BuildId/request/event contracts, bounded Cargo JSON mapping, structured Cargo
-  checks, and a helper CLI; long-lived scheduling, durable cache/provenance,
-  and broad DAG adapters remain planned.
+  checks, helper CLI, and host-selected local durable worker-loss recovery;
+  long-lived scheduling, durable cache/provenance, and broad DAG adapters remain
+  planned.
 - meridian-vcs and meridian-sync.
 - meridian-agent-api and provider adapters.
 - meridian-ponder.

@@ -403,18 +403,20 @@ No private-game input, remote worker, signing key, or named hardware is needed
 for this first bounded slice.
 
 Files/crates/formats changed: new editor-only `meridian-build` crate; workspace
-membership; optional editor composition and documentation/registry records. No
-runtime crate, project manifest, persistent game format, or `game/` path may
-change.
+membership; optional host-selected, versioned local build-state JSON; and
+documentation/registry records. No runtime crate, project manifest, persistent
+game format, or `game/` path may change.
 
 Deliverables and public contracts: the editor-only `meridian-build` crate now
 provides Meridian-owned `BuildId`, `BuildRequest`, `BuildNode`, lifecycle/event/
 diagnostic types, cooperative cancellation, bounded file hashing, a structured
 Cargo metadata and JSON adapter, and the `meridian-build --cargo-check` helper
 CLI. Cargo and rustc types remain internal; arguments remain arrays and Cargo
-JSON remains the diagnostic protocol. A bounded versioned in-memory service
-snapshot rejects malformed state and emits `WorkerLost` for interrupted work;
-host-owned atomic persistence, scheduling, durable cache/provenance, non-Cargo
+JSON remains the diagnostic protocol. A bounded versioned, host-selected local
+state store publishes a synced temporary snapshot through a same-directory
+rename; `DurableBuildService` persists each accepted mutation, restores
+interrupted work as `WorkerLost`, and rejects malformed, oversized, symlinked,
+or non-regular state files. Scheduling, durable cache/provenance, non-Cargo
 nodes, and cross-checkout metadata normalization remain unimplemented.
 
 Explicit non-goals: a lossless TOML editor, rust-analyzer session, remote
@@ -424,8 +426,9 @@ visualization, or Creator Editor Alpha completion.
 Tests: deterministic identity; invalid lifecycle transitions; stale BuildId or
 sequence rejection; cancellation before process spawn; malformed Cargo JSON;
 compiler diagnostic/artifact mapping; typed full Cargo metadata parsing;
-secret-like diagnostic redaction; and a structured local Cargo smoke and
-helper-CLI check that never invoke a shell.
+secret-like diagnostic redaction; durable snapshot publication/reopen and
+`WorkerLost` recovery; and a structured local Cargo smoke and helper-CLI check
+that never invoke a shell.
 
 Benchmarks and hardware: no performance claim in the first slice; local Cargo
 toolchain only. Remote, sandbox, and named-hardware profiles are explicitly not
@@ -433,9 +436,10 @@ run.
 
 Captures/traces/recovery evidence: local deterministic event timelines cover
 queued through terminal states; cancellation-before-spawn and malformed-event
-tests pass. Snapshot recovery marks interrupted work `WorkerLost` and rejects
-late success. Process-loss, host-owned durable recovery, and atomic artifact
-publication remain required before package completion.
+tests pass. The durable local store reopens interrupted work as `WorkerLost`,
+persists that recovery before exposing it, and rejects late success. Process
+supervision, child-process-group termination, durable artifact provenance, and
+atomic artifact publication remain required before package completion.
 
 Accessibility: the service emits named stages, actionable typed diagnostics,
 and cancellation/retry states for later Meridian UI consumption; no visible
@@ -464,15 +468,17 @@ or an engine/runtime crate gains a build-service dependency.
 
 Known limits and unsupported rows: only local Cargo JSON metadata/check flows
 are in scope initially. The metadata hash is a local Cargo payload hash rather
-than a cross-checkout-normalized reproducibility identity. Full build DAG
-scheduling, long-lived worker restart, lossless manifest editing, rust-analyzer,
-remote execution, signing, and deployment remain planned.
+than a cross-checkout-normalized reproducibility identity. The portable state
+store is project-host-selected local recovery, not a remote, signing, artifact,
+or provider store. Full build DAG scheduling, long-lived worker restart,
+lossless manifest editing, rust-analyzer, remote execution, signing, and
+deployment remain planned.
 
 Reviewers/sign-offs: Definition of Ready was reviewed against the current
-workspace and MS-02 evidence. The first local implementation slice passes its
-focused tests, warning-denied lint, structured Cargo smoke, and helper-CLI
-Cargo check. Completion requires fresh registered evidence and the mandatory
-package sign-off before this package may close.
+workspace and MS-02 evidence. The current local implementation slice passes its
+focused tests, durable-recovery tests, warning-denied lint, structured Cargo
+smoke, and helper-CLI Cargo check. Completion requires fresh registered evidence
+and the mandatory package sign-off before this package may close.
 
 Next unblocked package: `WP-BLD-001` remains active until it closes; only then
 may `WP-EDT-001` activate.
