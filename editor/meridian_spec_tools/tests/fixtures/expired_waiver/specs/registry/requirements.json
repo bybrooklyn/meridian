@@ -1,0 +1,15 @@
+[
+  {
+    "id": "REQ-003",
+    "status": "Planned",
+    "waivers": [
+      {
+        "reason": "temporary unavailable hardware",
+        "risk": "claim blocked",
+        "mitigation": "keep unsupported",
+        "owner": "validator-test",
+        "expiry": "2026-01-01"
+      }
+    ]
+  }
+]

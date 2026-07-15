@@ -1,0 +1,15 @@
+{
+  "schema": "meridian.world-cell-source/v1",
+  "version": 1,
+  "cell": [0, 0, 0],
+  "entities": [
+    {
+      "stable_id": "00000000000000000000000000000001",
+      "visual_source": "fixtures/ms01/public-triangle",
+      "position": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "fixture_role": "visible-source-derived-content"
+    }
+  ],
+  "fixture_note": "Public generic MS-01 cell."
+}

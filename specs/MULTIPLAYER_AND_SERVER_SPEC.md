@@ -1,14 +1,17 @@
 # Multiplayer and Server Specification
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Gameplay](GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md) · [Packages/security](SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Collective](COLLECTIVE_ONLINE_SERVICES_SPEC.md) · [Distributed worlds](DISTRIBUTED_WORLDS_AND_MMO_SPEC.md) · [Gameplay](GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md) · [Packages/security](SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md)
 
-Version 0.2 · 2026-07-14 · Normative architecture · Deferred to Phases 22–23
+version 0.5 · 2026-07-15 · Normative architecture · Deferred to MS-09
+
+Documentation maturity: `ResearchReady`. Implementation maturity: `Deferred`.
+Governing IDs: `REQ-NET-001`, `WP-NET-001`.
 
 ## 1. Scope
 
-Meridian supports transport-neutral client/server games, dedicated and listen servers, replication, prediction/reconciliation, rollback where selected, interest management, package/mod negotiation, and optional Steamworks/EOS adapters.
+Meridian supports transport-neutral client/server games, dedicated and listen servers, replication, prediction/reconciliation, rollback where selected, interest management, package/mod negotiation, and optional transport/relay adapters. [Collective](COLLECTIVE_ONLINE_SERVICES_SPEC.md) separately owns identity, accounts, sessions, lobbies, parties, matchmaking, presence, social, voice-room policy, analytics, and moderation services.
 
-Project Meridian is single-player. Networking is not a Phase 8 dependency. This spec exists now so persistent IDs, clocks, gameplay schemas, saves, world streaming, Cairn, packages, and optional features keep compatible seams.
+Project Meridian is single-player. Networking is not a MS-06/MS-07 dependency. This spec exists now so persistent IDs, clocks, gameplay schemas, saves, world streaming, Cairn, packages, and optional features keep compatible seams.
 
 ## 2. Non-goals
 
@@ -27,9 +30,10 @@ Project Meridian is single-player. Networking is not a Phase 8 dependency. This 
 - meridian-replication: schema-derived snapshots/deltas/interest.
 - meridian-prediction: input history, reconciliation, rollback policies.
 - meridian-server: headless world host, admission, persistence, operations.
-- provider adapters: Steamworks/EOS auth, lobbies, relay, trust/safety.
+- transport/provider adapters: sockets, QUIC or other selected transports, NAT/relay capability, and platform connection bootstrap.
+- Collective adapters: optional authentication, lobby/session, matchmaking, social, voice-policy, analytics, and moderation services outside NET.
 
-Game modules declare replicated schemas and authority policy. Providers do not own simulation, replication, entity identity, or package formats.
+Game modules declare replicated schemas and authority policy. NET providers and Collective providers do not own simulation, replication, entity identity, or package formats.
 
 ## 4. Connection lifecycle
 
@@ -40,7 +44,7 @@ Disconnected -> Resolving -> TransportConnected -> Authenticating
 any -> Rejected | TimedOut | Banned | Migrating
 ~~~
 
-Each transition has deadline, retry policy, user-facing diagnostic, and redacted audit record. Authentication, session discovery, transport encryption, and game authorization are separate capabilities.
+Each transition has deadline, retry policy, user-facing diagnostic, and redacted audit record. Authentication and session discovery may come from Collective, while transport encryption and game authorization remain separate capabilities. Offline/direct/LAN projects can use local identities and discovery without Collective.
 
 ## 5. Protocol
 
@@ -75,7 +79,7 @@ Rollback is opt-in per system with declared state, side-effect suppression/compe
 
 Physics replication uses Cairn-native IDs/state/events, never Rapier internals. Genres choose snapshot interpolation, local character prediction, rollback islands, or server-only physics. Contacts are not universally replicated; gameplay events are schema-defined.
 
-Luau/Rust gameplay receive the same authority-safe API. Client script cannot invoke server-only commands or inspect hidden replicated fields.
+Rust and optional Luau gameplay receive the same authority-safe API. Client code cannot invoke server-only commands or inspect hidden replicated fields.
 
 ## 9. Dedicated server
 
@@ -83,11 +87,11 @@ Headless server profile excludes renderer, graphics assets, runtime UI, local au
 
 Operations: config validation, immutable BuildId/package set, graceful drain, health/readiness, admin capabilities, logs/metrics/traces, backups/checkpoints, crash restart, rolling compatibility policy, rate/ban controls.
 
-## 10. Providers
+## 10. Transport Providers and Collective Seam
 
-Steamworks and EOS adapters map authentication, sessions/lobbies, relay/NAT, invites, and trust/safety into core contracts. Provider identities are namespaced and linked to game accounts only by game policy.
+NET adapters map transport, relay/NAT, connection bootstrap, and platform packet capabilities into core contracts. Collective adapters map authentication, sessions/lobbies, invites, matchmaking, social, voice policy, analytics, and trust/safety into Collective contracts. A vendor SDK may implement both adapter families, but the engine boundaries remain separate and game code sees neither vendor handle.
 
-Provider outage yields explicit offline/direct/other-provider behavior. Credentials/tickets are secrets and never stored in project/save/log/trace. SDK availability and redistribution remain gated by current agreements.
+Provider outage yields explicit offline/direct/other-provider behavior per selected module. Credentials/tickets are secrets and never stored in project/save/log/trace. SDK availability, redistribution, data location, and service operation remain gated by current agreements and project policy. Meridian does not promise to operate hosted services.
 
 ## 11. Content and mods
 
@@ -105,7 +109,7 @@ Per-connection memory, bandwidth, queued messages, history, decompression, and e
 
 Expose state transitions, RTT/jitter/loss/reorder, bytes/messages/channel, queue age, snapshot/delta size, interest counts, prediction error, rollback cost, content negotiation, rate limits, and server tick timing.
 
-Threats: malformed/flooded packets, replay, amplification, auth theft, hidden-field leaks, command spoofing, decompression bombs, mod mismatch, admin abuse, and dependency compromise. Protocol and parser fuzzing plus least-privilege admin are mandatory.
+Threats: malformed/flooded packets, replay, amplification, auth theft, hidden-field leaks, command spoofing, decompression bombs, mod mismatch, admin abuse, provider/Collective compromise, and dependency compromise. Protocol and parser fuzzing plus least-privilege admin are mandatory.
 
 ## 14. Editor/CLI workflow
 
@@ -114,6 +118,11 @@ Beginner: choose local host/join template, run two simulated clients, see connec
 Expert: inspect schema, authority, per-field bits, interest reason, prediction history, packet capture with redaction, server tick trace, and transport/provider capability.
 
 Planned commands cover server validate/run/drain, net simulate/replay/inspect, schema compatibility, package/mod negotiation, and soak.
+
+Connection, invite, mismatch, moderation, and recovery flows must support
+keyboard/controller navigation, screen readers, text scaling, non-color-only
+status, and configurable communication/cue presentation. Network authority may
+not force inaccessible timing or input assumptions into gameplay contracts.
 
 ## 15. Tests and benchmarks
 
@@ -129,9 +138,9 @@ Planned commands cover server validate/run/drain, net simulate/replay/inspect, s
 
 Thresholds are genre/corpus/tier calibrated.
 
-## 16. Phases
+## 16. Delivery mapping
 
-Phase 22 delivers core transports/server/replication/reference sample. Phase 23 adds provider adapters and modded multiplayer. Phase 24 publishes mod policy. Phase 29 certifies selected transport/provider/server profiles.
+MS-09 delivers selected core transports/server/replication/reference samples. `WP-COL-001` may add independently selected provider-neutral Collective modules after NET, Wavefront, and security seams stabilize. MS-09 may add modded multiplayer and publishes mod policy. MS-10 certifies only declared transport/provider/server profiles. `PRG-WRL-001` distributed worlds is post-1.0 and cannot be inferred from NET completion.
 
 ## 17. Examples
 

@@ -1,12 +1,21 @@
 # Core Runtime, Tasks, and Platform Specification
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Architecture](REPOSITORY_AND_CRATE_ARCHITECTURE.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Architecture](REPOSITORY_AND_CRATE_ARCHITECTURE.md) · [Frameworks](OFFICIAL_GAMEPLAY_FRAMEWORKS_SPEC.md) · [First-class 2D](TWO_DIMENSIONAL_ENGINE_SPEC.md) · [Collective](COLLECTIVE_ONLINE_SERVICES_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md)
 
-Version 0.2 · 2026-07-14 · Normative
+version 0.5 · 2026-07-15 · Normative
+
+Documentation maturity: `ImplementationReady`. Implementation maturity:
+`ImplementedFoundation` / `Partial`. Governing IDs: `REQ-RUN-001`,
+`REQ-CORE-001`, `REQ-CORE-002`, `REQ-CORE-003`, `WP-RUN-001`.
 
 ## 1. Context and current state
 
-The repository already contains a fixed-step core loop, diagnostics, task foundations, winit platform integration, ECS scheduling foundations, renderer extraction, and native smoke paths. These are Implemented foundations, not complete cross-platform or production runtime evidence.
+The repository already contains a fixed-step core loop, diagnostics, task
+foundations, winit platform integration, ECS scheduling foundations, renderer
+extraction, shared frame/epoch/operation/trace IDs, lifecycle invalidation,
+correlated worker tasks, bounded redacting JSON diagnostics, typed surface/device
+recovery actions, and native/headless MS-01 smoke paths. These are `ImplementedFoundation`
+boundaries, not complete cross-platform or production runtime evidence.
 
 Goals are deterministic ordering where promised, explicit clocks, bounded work, cancellation, generation-safe references, platform isolation, recoverable failures, and traceable frame ownership.
 
@@ -134,6 +143,20 @@ Raw events are timestamped, device-scoped, and normalized without erasing source
 
 Input snapshots consumed by fixed simulation are immutable and tick-tagged. Replay captures normalized semantic inputs plus configuration hash. VR poses use predicted display timing and never masquerade as fixed-tick input.
 
+Local multiplayer is explicit:
+
+```text
+InputDeviceId -> DeviceAssignment -> LocalPlayerId -> PlayerContext
+PlayerContext {
+  device_set, action_maps, context_stack, viewport,
+  UI focus scope, audio listener, authority, accessibility profile
+}
+```
+
+Devices join, leave, reconnect, or move between local players only through a typed assignment transaction with visible conflict resolution. Keyboard/mouse sharing, paired devices, hot-plug, controller identity ambiguity, and profile persistence use declared policy. One raw event is routed once according to the committed assignment and context stack; it cannot silently drive multiple players.
+
+CORE owns device identity, normalization, assignment, action contexts, and immutable snapshots. [Official frameworks](OFFICIAL_GAMEPLAY_FRAMEWORKS_SPEC.md) own optional player/camera/movement policy. Meridian UI owns focus and semantic actions. Collective may associate a local player with an online subject but does not own local device routing. Dedicated/headless profiles create synthetic or network inputs without loading local device backends.
+
 ## 11. Diagnostics
 
 The runtime emits structured events:
@@ -177,20 +200,21 @@ Disabled domains register no recurring work.
 - stale-handle generation and epoch tests;
 - allocator-free audio callback assertion;
 - platform lifecycle and DPI/input fixtures;
+- multi-device join/leave/reconnect, assignment conflicts, split-screen contexts, UI focus isolation, replay, and accessibility-profile fixtures;
 - worker crash/restart and malformed IPC;
 - minimal/headless no-window/no-GPU startup;
 - frame/task/memory overhead calibrated on named tiers.
 
 Acceptance evidence includes trace files and machine-readable summaries, not screenshots alone.
 
-## 16. Phases
+## 16. Delivery mapping
 
-- Phase 1 completes platform/task/clock contracts on macOS and establishes Linux/Windows harnesses.
-- Phase 2 adds render-domain pass timing and extraction/upload ownership evidence.
-- Phases 3–8 add asset/world/input/audio/UI/save workloads without violating budgets.
-- Phase 15 hardens deterministic modes and large-world scheduling.
-- Phase 22 adds network clock/snapshot lanes.
-- Phase 25 validates headless/minimal/optional builds.
+- MS-01 completes platform/task/clock contracts on macOS and establishes Linux/Windows harnesses.
+- MS-01/MS-04/MS-05 adds render-domain pass timing and extraction/upload ownership evidence.
+- MS-01 through MS-07 add asset/world/input/Wavefront/UI/save workloads without violating budgets. `WP-FWK-001` later consumes stable local-player contexts; it does not redefine CORE device authority.
+- MS-08 hardens deterministic modes and large-world scheduling.
+- MS-09 adds network clock/snapshot lanes.
+- MS-08/MS-09 validates headless/minimal/optional builds.
 
 ## 17. Examples
 

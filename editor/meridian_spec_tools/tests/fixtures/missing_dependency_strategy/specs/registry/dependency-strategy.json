@@ -1,0 +1,10 @@
+{
+  "version": "0.5",
+  "records": [
+    {"id":"DEP-RHI-001","category":"WrapIndefinitelyUnlessNecessary"},
+    {"id":"DEP-SHD-001","category":"WrapIndefinitelyUnlessNecessary"},
+    {"id":"DEP-RUN-001","category":"WrapIndefinitelyUnlessNecessary"},
+    {"id":"DEP-RUN-002","category":"WrapIndefinitelyUnlessNecessary"},
+    {"id":"DEP-PHY-001","category":"InternalizeEventually"}
+  ]
+}

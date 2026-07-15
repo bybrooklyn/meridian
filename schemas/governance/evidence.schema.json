@@ -1,0 +1,4 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","title":"Meridian evidence registry","type":"object","additionalProperties":false,
+  "required":["version","records"],"properties":{"$schema":{"type":"string"},"version":{"const":"0.5"},"records":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","domain","kind","status","source","visual","limits"],"properties":{"id":{"type":"string","pattern":"^EV-[A-Z]+-[0-9]{8}-[0-9]{3}$"},"domain":{"type":"string"},"kind":{"enum":["test","trace","capture","benchmark","audit","document","structural-smoke","native-smoke","review","recovery"]},"status":{"enum":["Pass","Fail","NotRun","UnsupportedCapability","UnsupportedPlatform","Occluded","Redacted","Waived","Stale","Inconclusive"]},"source":{"type":"string","minLength":1},"visual":{"type":"boolean"},"limits":{"type":"array","items":{"type":"string"}}}}}}
+}

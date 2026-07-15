@@ -1,0 +1,3 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","title":"Meridian milestones","type":"object","additionalProperties":false,"required":["version","records"],"properties":{"$schema":{"type":"string"},"version":{"const":"0.5"},"records":{"type":"array","minItems":11,"maxItems":11,"items":{"type":"object","additionalProperties":false,"required":["id","status","title"],"properties":{"id":{"type":"string","pattern":"^MS-(0[0-9]|10)$"},"status":{"enum":["Active","Planned","Pass","Fail","Blocked"]},"title":{"type":"string","minLength":1}}}}}
+}

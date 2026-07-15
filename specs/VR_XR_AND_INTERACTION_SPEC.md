@@ -2,7 +2,10 @@
 
 [Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Rendering](RENDERING_AND_GRAPHICS_SPEC.md) · [Cairn](CAIRN_PHYSICS_SPEC.md)
 
-Version 0.2 · 2026-07-14 · Normative architecture · Deferred implementation
+version 0.5 · 2026-07-15 · Normative architecture · Deferred implementation
+
+Documentation maturity: `ResearchReady`. Implementation maturity: `Deferred`.
+Governing IDs: `REQ-XR-001`, `WP-XR-001`.
 
 Research anchors: [OpenXR 1.1 specification](https://registry.khronos.org/OpenXR/specs/1.1/html/xrspec.html) and [Khronos OpenXR frame submission guide](https://github.com/KhronosGroup/OpenXR-Guide/blob/main/chapters/frame_submission.md). These sources support lifecycle, spaces, actions, predicted display time, and frame-submission requirements; Meridian owns engine boundaries and capability policy.
 
@@ -131,10 +134,10 @@ Pose, room, hand, eye, camera/passthrough, microphone, and spatial-anchor data a
 - frame timing under resolution/quality transitions;
 - disabled-pack no-loader/no-task/no-resource proof.
 
-## 12. Phases and research
+## 12. Delivery mapping and research
 
-- Phases 1–8 preserve timing, input, render, physics, UI, and save seams.
-- Phase 19 implements OpenXR lifecycle, stereo rendering, actions, basic interactions, and one reference application.
+- MS-01 through MS-07 preserve timing, input, render, physics, UI, and save seams.
+- MS-09 implements OpenXR lifecycle, stereo rendering, actions, basic interactions, and one reference application.
 - Later gates evaluate hand/eye tracking, passthrough, anchors, foveation, and store SDKs.
 
 The current official OpenXR registry is tracked in [research decisions](RESEARCH_AND_ALGORITHM_DECISIONS.md); extensions are selected only against tested runtimes.
@@ -146,3 +149,6 @@ End-to-end: pressing controller grab maps to Grab intent, gameplay validates obj
 Failure/recovery: the runtime enters LOSS_PENDING during play. Meridian suspends XR submission, checkpoints game state, shows desktop recovery, destroys session resources, then recreates and restores interaction bindings without stale handles.
 
 Performance debug: missed frames correlate view acquisition, visibility, shadow, UI, and submit spans against predicted display deadline; the trace identifies whether dynamic resolution or a feature pack caused the miss.
+Non-goals are making XR mandatory, assuming one headset or vendor runtime,
+requiring biometric tracking, replacing desktop recovery UI, or allowing XR
+types to leak into portable gameplay and simulation contracts.

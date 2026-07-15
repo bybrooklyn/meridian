@@ -1,0 +1,6 @@
+{
+  "version": "0.4",
+  "report_contract": "penumbra-benchmark-report-v0.5",
+  "required_report_fields": ["hardware", "raw_evidence"],
+  "records": []
+}

@@ -1,0 +1,19 @@
+{
+  "version": "0.4",
+  "records": [
+    {
+      "milestone": "MS-00",
+      "entry_conditions": ["fixture"],
+      "critical_path": ["WP-GOV-001", "WP-GOV-003"],
+      "parallel_lanes": [
+        {
+          "name": "fixture lane",
+          "packages": ["WP-GOV-999"]
+        }
+      ],
+      "integration_checkpoint": "fixture checkpoint",
+      "exit_evidence": ["fixture evidence"],
+      "stop_conditions": ["fixture stop"]
+    }
+  ]
+}

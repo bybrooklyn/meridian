@@ -12,7 +12,8 @@ use std::num::NonZeroUsize;
 use meridian_assets::{
     AssetDecoder, AssetLoadError, AssetLoadRequest, AssetLoadResult, PackReader,
 };
-use meridian_tasks::{Task, TaskError, TaskPool};
+use meridian_core::{OperationId, RuntimeEpoch, TraceId};
+use meridian_tasks::{Task, TaskClass, TaskContext, TaskError, TaskPool};
 pub use meridian_world::WorldCell;
 
 /// Residency stages for one world cell, from metadata discovery to activation.
@@ -273,6 +274,8 @@ impl Error for CellLoadError {
 pub struct CellLoadCompletion {
     cell: WorldCell,
     priority: i32,
+    task_id: u64,
+    context: TaskContext,
     result: Result<AssetLoadResult, CellLoadError>,
 }
 
@@ -287,6 +290,16 @@ impl CellLoadCompletion {
         self.priority
     }
 
+    #[must_use]
+    pub const fn task_id(&self) -> u64 {
+        self.task_id
+    }
+
+    #[must_use]
+    pub const fn context(&self) -> TaskContext {
+        self.context
+    }
+
     /// Returns the completed asset result, transferring ownership to the caller.
     ///
     /// # Errors
@@ -299,6 +312,7 @@ impl CellLoadCompletion {
 
 struct PendingCellLoad {
     priority: i32,
+    context: TaskContext,
     cancellation: meridian_assets::CancellationToken,
     task: Task<Result<AssetLoadResult, AssetLoadError>>,
 }
@@ -356,18 +370,52 @@ impl CellLoadCoordinator {
         R: PackReader + Send + 'static,
         D: AssetDecoder + Send + 'static,
     {
+        self.submit_correlated(
+            cell,
+            priority,
+            TaskContext::new(
+                TaskClass::Streaming,
+                OperationId::default(),
+                TraceId::default(),
+                RuntimeEpoch::default(),
+            ),
+            request,
+            reader,
+            decoder,
+        )
+    }
+
+    /// Submits one cell load carrying operation, trace, and lifecycle epoch.
+    ///
+    /// # Errors
+    ///
+    /// Returns duplicate/pool errors without changing existing work.
+    pub fn submit_correlated<R, D>(
+        &mut self,
+        cell: WorldCell,
+        priority: i32,
+        context: TaskContext,
+        request: AssetLoadRequest,
+        reader: R,
+        decoder: D,
+    ) -> Result<(), CellLoadSubmitError>
+    where
+        R: PackReader + Send + 'static,
+        D: AssetDecoder + Send + 'static,
+    {
         if self.pending.contains_key(&cell) {
             return Err(CellLoadSubmitError::DuplicateCell(cell));
         }
         let cancellation = request.cancellation();
         let task = self
             .pool
-            .submit(request.into_job(reader, decoder))
+            .submit_correlated(context, request.into_job(reader, decoder))
             .map_err(|_| CellLoadSubmitError::PoolClosed)?;
         self.pending.insert(
             cell,
             PendingCellLoad {
                 priority,
+                context,
                 cancellation,
                 task,
             },
@@ -401,13 +449,18 @@ impl CellLoadCoordinator {
         });
         let ready = cells.into_iter().find_map(|cell| {
             self.pending.get_mut(&cell).and_then(|pending| {
-                pending
-                    .task
-                    .poll()
-                    .map(|result| (cell, pending.priority, result))
+                pending.task.poll().map(|result| {
+                    (
+                        cell,
+                        pending.priority,
+                        pending.task.id(),
+                        pending.context,
+                        result,
+                    )
+                })
             })
         });
-        let (cell, priority, result) = ready?;
+        let (cell, priority, task_id, context, result) = ready?;
         self.pending.remove(&cell);
         let result = match result {
             Ok(Ok(asset)) => Ok(asset),
@@ -417,6 +470,8 @@ impl CellLoadCoordinator {
         Some(CellLoadCompletion {
             cell,
             priority,
+            task_id,
+            context,
             result,
         })
     }
@@ -858,6 +913,7 @@ mod tests {
         };
         assert_eq!(completion.cell(), cell(1));
         assert_eq!(completion.priority(), 10);
+        assert_eq!(completion.task_id(), 0);
         let result = completion.into_result().expect("cell load succeeds");
         assert_eq!(result.bytes, b"first");
         assert_ne!(
@@ -867,6 +923,43 @@ mod tests {
             Some(main_thread)
         );
         assert_eq!(coordinator.pending_len(), 0);
+    }
+
+    #[test]
+    fn correlated_cell_load_preserves_operation_trace_and_epoch() {
+        let context = TaskContext::new(
+            TaskClass::Streaming,
+            OperationId::new(17),
+            TraceId::new(23),
+            RuntimeEpoch::new(4),
+        );
+        let mut coordinator =
+            CellLoadCoordinator::new(NonZeroUsize::new(1).expect("one worker is non-zero"));
+        coordinator
+            .submit_correlated(
+                cell(7),
+                5,
+                context,
+                request("cell-seven", CancellationToken::new()),
+                TestReader {
+                    bytes: b"trace".to_vec(),
+                    worker_thread: Arc::new(Mutex::new(None)),
+                },
+                UncompressedDecoder,
+            )
+            .expect("correlated cell load submits");
+
+        let completion = loop {
+            if let Some(completion) = coordinator.poll() {
+                break completion;
+            }
+            thread::yield_now();
+        };
+        assert_eq!(completion.context(), context);
+        assert_eq!(
+            completion.into_result().expect("load succeeds").bytes,
+            b"trace"
+        );
     }
 
     #[test]

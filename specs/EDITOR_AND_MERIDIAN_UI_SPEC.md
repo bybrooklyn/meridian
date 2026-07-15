@@ -1,14 +1,18 @@
 # Editor and Meridian UI Specification
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Accessibility](ACCESSIBILITY_DOCUMENTATION_AND_PONDER_SPEC.md) · [Commands](AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [ADR-0018](../docs/architecture/decisions/ADR-0018-general-purpose-single-application.md) · [Accessibility](ACCESSIBILITY_DOCUMENTATION_AND_PONDER_SPEC.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Shader language](MERIDIAN_SHADER_LANGUAGE_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Commands](AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md)
 
-Version 0.2 · 2026-07-14 · Normative · Meridian UI Planned, egui shell Transitional
+version 0.5 · 2026-07-15 · Normative · Meridian UI Planned, egui shell Transitional
+
+Documentation maturity: `ImplementationReady`. Implementation maturity:
+`Scaffold`. Governing IDs: `REQ-UI-001`, `REQ-EDT-001`, `WP-UI-001`,
+`WP-EDT-001`, `RG-UI-001`.
 
 Research anchors: [AccessKit](https://accesskit.dev/) and [AccessKit Rust API](https://docs.rs/accesskit) inform accessibility adapter boundaries; [OpenXR 1.1](https://registry.khronos.org/OpenXR/specs/1.1/html/xrspec.html) informs later XR panel timing and composition boundaries. Meridian owns UI IR, semantics, layout, commands, and persistence.
 
 ## 1. Goals and non-goals
 
-Meridian UI is the in-tree retained application framework shared by the editor, runtime game UI, and Meridian-native tools. Shared means layout, text, rendering, input routing, focus, semantics, styling, animation, document binding, and diagnostics. Editor and runtime widget libraries remain separable so shipping games do not pull editor code.
+Meridian UI is the in-tree retained application framework shared by the editor, runtime game UI, and Meridian-native tools. The single user-facing creator application is named **Meridian**. Project management, IDE, world editor, native modeler, material/shader, animation, Alluvium, profiler, debugger, build, and VCS surfaces are Meridian workspaces and panels, not separate Studio/IDE applications. Shared UI means layout, text, rendering, input routing, focus, semantics, styling, animation, document binding, and diagnostics. Editor and runtime widget libraries remain separable so shipping games do not pull editor code.
 
 Goals: responsive native desktop UI, deterministic document operations, accessible semantics, high-DPI text, virtualized large views, docking, command integration, theming, testability, and minimal runtime builds.
 
@@ -85,12 +89,22 @@ Core panels:
 - world viewport and hierarchy;
 - inspector and property history;
 - asset browser/import/build;
-- logic/material/procedural/UI editors;
+- logic/material/Alluvium/UI editors;
+- native modeler, UV/material-region, collision/LOD, animation/rig, navigation, and 2D scene tools;
+- Rust IDE/debug/test/profile surfaces and later optional Luau language tools;
 - diagnostics, profiler, build output, tests;
 - source/VCS/collaboration;
 - Ponder documentation.
 
 Panels declare ID, commands, query dependencies, layout hints, permissions, serialization version, and unavailable-state view. Workspace layout is user state, separate from project source. A corrupted layout can reset without changing project data.
+
+Alluvium sequencing is explicit: `WP-PRC-001` first provides textual recipe
+editing, typed parameter controls, preview, diagnostics, field/object/dependency/
+cache/override/provenance/license inspection, and headless parity. The full
+visual graph editor belongs to `WP-PRC-007`. It may not become the only source,
+migration, validation, bake, recovery, or accessibility path.
+
+The native modeler follows [its owning specification](NATIVE_MODELING_AND_DCC_SPEC.md). Meridian UI owns accessible interaction, commands, layout, and workspaces; `MDL` owns editable mesh semantics and topology lineage. Shader/material text and graphs follow [the ShaderIr authority](MERIDIAN_SHADER_LANGUAGE_SPEC.md). Animation, navigation, and 2D panels likewise edit typed source owned by their domains. UI state cannot become their hidden source authority.
 
 ## 8. Documents, commands, and undo
 
@@ -178,14 +192,17 @@ Thresholds are calibrated on the UI corpus, not invented globally.
 | Renderer bridge | retained display list consumed by renderer | immediate GPU widget callbacks | Raw GPU callbacks require trusted capability and measured need. |
 | Editor migration | panel-by-panel egui replacement | big-bang rewrite | Big-bang migration is rejected unless bootstrap panel state can be preserved and tested. |
 
-## 17. Migration phases
+## 17. Delivery mapping
 
-- Phase 4: UI core spike, text/layout/semantics, first runtime overlay.
-- Phase 5: editor core and bootstrap bridge.
-- Phase 6: first Meridian-native inspector/diagnostics panels.
-- Phase 8: accessible pause/settings/interaction UI for the opening slice.
-- Phase 11: migrate remaining core editor panels and remove their egui paths.
-- Phase 14: delete bootstrap crate after parity, accessibility, recovery, and performance evidence.
+- MS-03: UI core spike, text/layout/semantics, first runtime overlay.
+- MS-01/MS-03/MS-04: editor core and bootstrap bridge.
+- MS-02/MS-03: first Meridian-native inspector/diagnostics panels.
+- MS-03/MS-05: Alluvium textual recipe and basic inspector foundation.
+- MS-03/MS-05: native editable-model foundation required before the Project Meridian prototype.
+- MS-06/MS-07: accessible pause/settings/interaction UI for the opening slice.
+- MS-04/MS-05/MS-08: migrate remaining core editor panels and remove their egui paths.
+- MS-08: selected modeler, animation, navigation, 2D, ShaderIr, Rust IDE, and Alluvium visual-authoring panels after their source/headless foundations;
+  delete bootstrap crate after parity, accessibility, recovery, and performance evidence.
 
 ## 18. Examples
 

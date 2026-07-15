@@ -2,7 +2,10 @@
 
 [Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Gameplay](GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md) · [Security](SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md)
 
-Version 0.2 · 2026-07-14 · Normative architecture · Optional and deferred to Phase 24
+version 0.5 · 2026-07-15 · Normative architecture · Optional and deferred to MS-09
+
+Documentation maturity: `ArchitectureComplete`. Implementation maturity:
+`Deferred`. Governing IDs: `REQ-MOD-001`, `WP-MOD-001`.
 
 ## 1. Principles
 
@@ -66,6 +69,11 @@ Games publish templates, document types, properties, commands, validation, previ
 
 Beginner path uses install/create template, guided capability selection, test, package, local share. Expert path exposes manifest/schema/API compatibility, dependency solver, performance, provenance, and network policy.
 
+Install, trust, conflict, capability, and recovery flows must be keyboard and
+screen-reader operable, support text scaling, and avoid color-only warnings.
+Mods declare accessibility effects and cannot remove a game's required recovery
+or settings surfaces.
+
 ## 8. Community library
 
 The library protocol is provider-neutral. It supports metadata/search, immutable versions, hashes/signatures, dependency information, moderation/trust labels, report/takedown references, and resumable chunk delivery. Local folder/direct link/self-hosted indexes remain valid.
@@ -76,11 +84,16 @@ The engine does not imply endorsement or safety from discoverability. Offline in
 
 Servers declare exact allowed/required mod set, signatures, API/content hashes, capabilities, and distribution sources. Clients do not auto-install native or excessive-capability mods. Mod network messages use allocated schema namespaces and normal rate/size limits.
 
-## 10. Diagnostics and recovery
+## 10. Diagnostics, security, provenance, and recovery
 
 Report resolution graph, mount order, capability grants/denials, API mismatch, source/provenance, validation, startup/runtime cost, package size, network compatibility, and save dependencies.
 
 Safe mode disables mods without deleting data. A crashing script mod is stopped/isolated under game policy; last stable save and mod set remain recoverable.
+
+Signatures identify publishers but do not prove safety. Every package retains
+source, license, build, dependency, moderation, and trust provenance. Parsers,
+scripts, native extensions, downloads, and community metadata remain untrusted
+at their declared boundaries.
 
 ## 11. Tests and benchmarks
 
@@ -94,12 +107,15 @@ Safe mode disables mods without deleting data. A crashing script mod is stopped/
 - startup, memory, package, script, and network overhead attribution;
 - disabled-modding no dependency/task/panel/chunk proof.
 
-## 12. Phases and examples
+## 12. Delivery mapping and examples
 
-Phase 24 implements the SDK, restricted editor, and provider-neutral library after gameplay/UI/VCS/network seams stabilize. Phase 29 certifies only the profiles a shipping game selects.
+MS-09 implements the SDK, restricted editor, and provider-neutral library after gameplay/UI/VCS/network seams stabilize. MS-10 certifies only the profiles a shipping game selects.
 
 End-to-end: user installs a signed Luau content mod, previews world/UI capabilities, resolves one dependency, tests in a forked save, packages the selected set, and joins a server requiring identical hashes.
 
 Failure/recovery: a mod update removes a saved component without migration. Compatibility validation blocks activation, preserves old package/save, and offers keep-old, disable-with-archive, or developer migration.
 
 Performance debug: startup regression is grouped by mod import, script compile, world data, and package reads; disabling the identified mod removes its tasks/chunks and confirms attribution.
+Non-goals are arbitrary native-code safety claims, guaranteed compatibility for
+private engine internals, mandatory hosted services, silent capability grants,
+or treating discoverability as endorsement.

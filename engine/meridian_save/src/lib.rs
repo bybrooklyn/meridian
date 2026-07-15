@@ -11,6 +11,10 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
+use meridian_core::StableId;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
 const MAGIC: &[u8; 4] = b"MSAV";
 const HEADER_SIZE: usize = 4 + 4 + 8 + 8;
 const DEFAULT_MAX_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
@@ -18,6 +22,162 @@ const JOURNAL_MAGIC: &[u8; 4] = b"MJNL";
 const JOURNAL_FORMAT_VERSION: u32 = 1;
 const JOURNAL_HEADER_SIZE: usize = 4 + 4 + 8 + 8 + 8;
 const DEFAULT_MAX_JOURNAL_ENTRY_BYTES: usize = 64 * 1024;
+const MAX_TRANSACTION_DELTAS: usize = 16_384;
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ComponentDelta {
+    pub entity_id: StableId,
+    pub component: String,
+    pub schema_version: u32,
+    pub value: Value,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SaveTransaction {
+    pub schema: String,
+    pub version: u32,
+    pub deltas: Vec<ComponentDelta>,
+}
+
+impl SaveTransaction {
+    #[must_use]
+    pub fn new(deltas: Vec<ComponentDelta>) -> Self {
+        Self {
+            schema: "meridian.save-transaction/v1".to_owned(),
+            version: 1,
+            deltas,
+        }
+    }
+
+    /// Validates and emits deterministic JSON sorted by entity/component identity.
+    ///
+    /// # Errors
+    ///
+    /// Rejects unsupported schemas, invalid or duplicate component keys, excessive
+    /// delta counts, or JSON serialization failure.
+    pub fn encode(&self) -> Result<Vec<u8>, SaveTransactionError> {
+        validate_transaction(self)?;
+        let mut canonical = self.clone();
+        canonical.deltas.sort_unstable_by(|left, right| {
+            (left.entity_id, left.component.as_str())
+                .cmp(&(right.entity_id, right.component.as_str()))
+        });
+        serde_json::to_vec(&canonical)
+            .map_err(|error| SaveTransactionError::InvalidJson(error.to_string()))
+    }
+
+    /// Decodes and validates one schema-aware transaction.
+    ///
+    /// # Errors
+    ///
+    /// Rejects malformed JSON or any transaction that fails contract validation.
+    pub fn decode(bytes: &[u8]) -> Result<Self, SaveTransactionError> {
+        let transaction = serde_json::from_slice(bytes)
+            .map_err(|error| SaveTransactionError::InvalidJson(error.to_string()))?;
+        validate_transaction(&transaction)?;
+        Ok(transaction)
+    }
+
+    /// Applies all deltas atomically to a staged state copy.
+    ///
+    /// # Errors
+    ///
+    /// Rejects an invalid transaction without changing `state`.
+    pub fn apply(&self, state: &mut SaveState) -> Result<(), SaveTransactionError> {
+        validate_transaction(self)?;
+        let mut staged = state.clone();
+        for delta in &self.deltas {
+            staged.components.insert(
+                (delta.entity_id, delta.component.clone()),
+                (delta.schema_version, delta.value.clone()),
+            );
+        }
+        *state = staged;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SaveState {
+    components: BTreeMap<(StableId, String), (u32, Value)>,
+}
+
+impl SaveState {
+    #[must_use]
+    pub fn component(&self, entity: StableId, component: &str) -> Option<(u32, &Value)> {
+        self.components
+            .get(&(entity, component.to_owned()))
+            .map(|(version, value)| (*version, value))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SaveTransactionError {
+    InvalidJson(String),
+    UnsupportedSchema,
+    TooManyDeltas {
+        count: usize,
+        max: usize,
+    },
+    InvalidComponentName,
+    DuplicateComponent {
+        entity_id: StableId,
+        component: String,
+    },
+}
+
+impl Display for SaveTransactionError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidJson(message) => {
+                write!(formatter, "invalid save transaction JSON: {message}")
+            }
+            Self::UnsupportedSchema => formatter.write_str("unsupported save transaction schema"),
+            Self::TooManyDeltas { count, max } => write!(
+                formatter,
+                "save transaction has {count} deltas; maximum is {max}"
+            ),
+            Self::InvalidComponentName => {
+                formatter.write_str("save component name is empty or too long")
+            }
+            Self::DuplicateComponent {
+                entity_id,
+                component,
+            } => write!(
+                formatter,
+                "duplicate save delta for {entity_id}/{component}"
+            ),
+        }
+    }
+}
+
+impl Error for SaveTransactionError {}
+
+fn validate_transaction(transaction: &SaveTransaction) -> Result<(), SaveTransactionError> {
+    if transaction.schema != "meridian.save-transaction/v1" || transaction.version != 1 {
+        return Err(SaveTransactionError::UnsupportedSchema);
+    }
+    if transaction.deltas.len() > MAX_TRANSACTION_DELTAS {
+        return Err(SaveTransactionError::TooManyDeltas {
+            count: transaction.deltas.len(),
+            max: MAX_TRANSACTION_DELTAS,
+        });
+    }
+    let mut keys = std::collections::BTreeSet::new();
+    for delta in &transaction.deltas {
+        if delta.component.is_empty() || delta.component.len() > 128 {
+            return Err(SaveTransactionError::InvalidComponentName);
+        }
+        let key = (delta.entity_id, delta.component.clone());
+        if !keys.insert(key.clone()) {
+            return Err(SaveTransactionError::DuplicateComponent {
+                entity_id: key.0,
+                component: key.1,
+            });
+        }
+    }
+    Ok(())
+}
 
 /// Configuration for one save slot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -817,6 +977,46 @@ impl Error for SaveError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn schema_aware_transaction_round_trips_and_applies_stable_component_delta() {
+        let transaction = SaveTransaction::new(vec![ComponentDelta {
+            entity_id: StableId::new(7),
+            component: "meridian.transform".to_owned(),
+            schema_version: 1,
+            value: json!({"position":[1,2,3]}),
+        }]);
+        let bytes = transaction.encode().expect("transaction encodes");
+        let decoded = SaveTransaction::decode(&bytes).expect("transaction decodes");
+        let mut state = SaveState::default();
+        decoded.apply(&mut state).expect("transaction applies");
+
+        assert_eq!(decoded, transaction);
+        assert_eq!(
+            state.component(StableId::new(7), "meridian.transform"),
+            Some((1, &json!({"position":[1,2,3]})))
+        );
+    }
+
+    #[test]
+    fn duplicate_component_delta_is_rejected_without_mutating_state() {
+        let delta = ComponentDelta {
+            entity_id: StableId::new(9),
+            component: "state".to_owned(),
+            schema_version: 1,
+            value: json!(true),
+        };
+        let transaction = SaveTransaction::new(vec![delta.clone(), delta]);
+        let mut state = SaveState::default();
+        let original = state.clone();
+
+        assert!(matches!(
+            transaction.apply(&mut state),
+            Err(SaveTransactionError::DuplicateComponent { .. })
+        ));
+        assert_eq!(state, original);
+    }
     use std::sync::atomic::{AtomicU64, Ordering};
 
     struct TemporaryDirectory {

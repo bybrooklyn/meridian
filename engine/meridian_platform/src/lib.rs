@@ -3,7 +3,9 @@
 use std::error::Error;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::sync::Arc;
+use std::time::Instant;
 
+use meridian_core::{MonotonicNs, RuntimeEpoch};
 use meridian_input::{winit_adapter, NativeInputEvent};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -125,6 +127,176 @@ pub enum PlatformEvent {
     Exiting,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PlatformEventMetadata {
+    pub sequence: u64,
+    pub monotonic_ns: MonotonicNs,
+    pub runtime_epoch: RuntimeEpoch,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PlatformEventEnvelope {
+    pub metadata: PlatformEventMetadata,
+    pub event: PlatformEvent,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LifecycleState {
+    #[default]
+    Suspended,
+    Ready,
+    ZeroExtent,
+    Occluded,
+    RecoveringSurface,
+    DeviceLost,
+    Exiting,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RuntimeRebuildAction {
+    None,
+    ReconfigureSurface,
+    RecreateSurface,
+    RebuildDevice,
+    Exit,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SurfaceSignal {
+    Presented,
+    Timeout,
+    Occluded,
+    Outdated,
+    Lost,
+    DeviceLost,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LifecycleTransition {
+    pub previous: LifecycleState,
+    pub current: LifecycleState,
+    pub epoch: RuntimeEpoch,
+    pub rebuild: RuntimeRebuildAction,
+}
+
+/// Renderer-neutral lifecycle owner. Epoch changes invalidate queued domain work.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeLifecycle {
+    state: LifecycleState,
+    epoch: RuntimeEpoch,
+    last_non_zero_size: Option<WindowSize>,
+}
+
+impl RuntimeLifecycle {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            state: LifecycleState::Suspended,
+            epoch: RuntimeEpoch::new(1),
+            last_non_zero_size: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn state(self) -> LifecycleState {
+        self.state
+    }
+
+    #[must_use]
+    pub const fn epoch(self) -> RuntimeEpoch {
+        self.epoch
+    }
+
+    #[must_use]
+    pub const fn last_non_zero_size(self) -> Option<WindowSize> {
+        self.last_non_zero_size
+    }
+
+    pub fn observe_platform(&mut self, event: PlatformEvent) -> LifecycleTransition {
+        let (next, rebuild, invalidates) = match event {
+            PlatformEvent::Resumed => (LifecycleState::Ready, RuntimeRebuildAction::None, false),
+            PlatformEvent::WindowCreated { size, .. }
+            | PlatformEvent::Resized(size)
+            | PlatformEvent::ScaleFactorChanged { size, .. } => {
+                if size.is_zero() {
+                    (LifecycleState::ZeroExtent, RuntimeRebuildAction::None, true)
+                } else {
+                    self.last_non_zero_size = Some(size);
+                    (
+                        LifecycleState::Ready,
+                        RuntimeRebuildAction::ReconfigureSurface,
+                        self.state == LifecycleState::ZeroExtent,
+                    )
+                }
+            }
+            PlatformEvent::Suspended => {
+                (LifecycleState::Suspended, RuntimeRebuildAction::None, true)
+            }
+            PlatformEvent::CloseRequested | PlatformEvent::Exiting => {
+                (LifecycleState::Exiting, RuntimeRebuildAction::Exit, true)
+            }
+            PlatformEvent::Focused(_)
+            | PlatformEvent::Input(_)
+            | PlatformEvent::RedrawRequested
+            | PlatformEvent::MemoryWarning => {
+                return self.transition(self.state, RuntimeRebuildAction::None, false);
+            }
+        };
+        self.transition(next, rebuild, invalidates)
+    }
+
+    pub fn observe_surface(&mut self, signal: SurfaceSignal) -> LifecycleTransition {
+        let (next, rebuild, invalidates) = match signal {
+            SurfaceSignal::Presented => (LifecycleState::Ready, RuntimeRebuildAction::None, false),
+            SurfaceSignal::Timeout => (self.state, RuntimeRebuildAction::None, false),
+            SurfaceSignal::Occluded => {
+                (LifecycleState::Occluded, RuntimeRebuildAction::None, false)
+            }
+            SurfaceSignal::Outdated => (
+                LifecycleState::RecoveringSurface,
+                RuntimeRebuildAction::ReconfigureSurface,
+                true,
+            ),
+            SurfaceSignal::Lost => (
+                LifecycleState::RecoveringSurface,
+                RuntimeRebuildAction::RecreateSurface,
+                true,
+            ),
+            SurfaceSignal::DeviceLost => (
+                LifecycleState::DeviceLost,
+                RuntimeRebuildAction::RebuildDevice,
+                true,
+            ),
+        };
+        self.transition(next, rebuild, invalidates)
+    }
+
+    fn transition(
+        &mut self,
+        next: LifecycleState,
+        rebuild: RuntimeRebuildAction,
+        invalidates: bool,
+    ) -> LifecycleTransition {
+        let previous = self.state;
+        self.state = next;
+        if invalidates {
+            self.epoch = self.epoch.next();
+        }
+        LifecycleTransition {
+            previous,
+            current: next,
+            epoch: self.epoch,
+            rebuild,
+        }
+    }
+}
+
+impl Default for RuntimeLifecycle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Default)]
 struct PlatformControl {
     exit_requested: bool,
@@ -154,6 +326,14 @@ impl PlatformContext<'_> {
 
 pub trait PlatformApplication {
     fn on_event(&mut self, event: PlatformEvent, context: &mut PlatformContext<'_>);
+
+    fn on_event_envelope(
+        &mut self,
+        envelope: PlatformEventEnvelope,
+        context: &mut PlatformContext<'_>,
+    ) {
+        self.on_event(envelope.event, context);
+    }
 }
 
 /// Starts the native event loop and runs `application` until it requests exit.
@@ -192,6 +372,9 @@ struct WinitApplication<A> {
     window: Option<PlatformWindow>,
     native_window_id: Option<WindowId>,
     startup_error: Option<PlatformError>,
+    started_at: Instant,
+    next_event_sequence: u64,
+    lifecycle: RuntimeLifecycle,
 }
 
 impl<A: PlatformApplication> WinitApplication<A> {
@@ -202,16 +385,33 @@ impl<A: PlatformApplication> WinitApplication<A> {
             window: None,
             native_window_id: None,
             startup_error: None,
+            started_at: Instant::now(),
+            next_event_sequence: 1,
+            lifecycle: RuntimeLifecycle::new(),
         }
     }
 
     fn dispatch(&mut self, event: PlatformEvent, event_loop: &ActiveEventLoop) {
+        let transition = self.lifecycle.observe_platform(event);
+        let sequence = self.next_event_sequence;
+        self.next_event_sequence = self.next_event_sequence.wrapping_add(1).max(1);
+        let monotonic_ns = u64::try_from(self.started_at.elapsed().as_nanos()).unwrap_or(u64::MAX);
         let mut control = PlatformControl::default();
         let mut context = PlatformContext {
             window: self.window.as_ref(),
             control: &mut control,
         };
-        self.application.on_event(event, &mut context);
+        self.application.on_event_envelope(
+            PlatformEventEnvelope {
+                metadata: PlatformEventMetadata {
+                    sequence,
+                    monotonic_ns: MonotonicNs::new(monotonic_ns),
+                    runtime_epoch: transition.epoch,
+                },
+                event,
+            },
+            &mut context,
+        );
 
         if control.redraw_requested {
             if let Some(window) = &self.window {
@@ -393,5 +593,60 @@ mod tests {
 
         assert!(control.redraw_requested);
         assert!(control.exit_requested);
+    }
+
+    #[test]
+    fn lifecycle_covers_resize_suspend_surface_recovery_and_device_loss() {
+        let mut lifecycle = RuntimeLifecycle::new();
+        let initial_epoch = lifecycle.epoch();
+        lifecycle.observe_platform(PlatformEvent::Resumed);
+        lifecycle.observe_platform(PlatformEvent::Resized(WindowSize::new(1280, 720)));
+        assert_eq!(lifecycle.state(), LifecycleState::Ready);
+        assert_eq!(
+            lifecycle.last_non_zero_size(),
+            Some(WindowSize::new(1280, 720))
+        );
+        let focused_epoch = lifecycle.epoch();
+        lifecycle.observe_platform(PlatformEvent::Focused(false));
+        assert_eq!(lifecycle.state(), LifecycleState::Ready);
+        assert_eq!(lifecycle.epoch(), focused_epoch);
+
+        let timeout = lifecycle.observe_surface(SurfaceSignal::Timeout);
+        assert_eq!(timeout.current, LifecycleState::Ready);
+        assert_eq!(timeout.epoch, focused_epoch);
+        assert_eq!(
+            lifecycle.observe_surface(SurfaceSignal::Occluded).current,
+            LifecycleState::Occluded
+        );
+        lifecycle.observe_platform(PlatformEvent::Suspended);
+        assert_eq!(lifecycle.state(), LifecycleState::Suspended);
+        lifecycle.observe_platform(PlatformEvent::Resumed);
+        assert_eq!(lifecycle.state(), LifecycleState::Ready);
+
+        let minimized = lifecycle.observe_platform(PlatformEvent::Resized(WindowSize::new(0, 0)));
+        assert_eq!(minimized.current, LifecycleState::ZeroExtent);
+        assert!(minimized.epoch > initial_epoch);
+        let restored =
+            lifecycle.observe_platform(PlatformEvent::Resized(WindowSize::new(800, 600)));
+        assert_eq!(restored.rebuild, RuntimeRebuildAction::ReconfigureSurface);
+        assert_eq!(restored.current, LifecycleState::Ready);
+
+        assert_eq!(
+            lifecycle.observe_surface(SurfaceSignal::Outdated).rebuild,
+            RuntimeRebuildAction::ReconfigureSurface
+        );
+        assert_eq!(
+            lifecycle.observe_surface(SurfaceSignal::Lost).rebuild,
+            RuntimeRebuildAction::RecreateSurface
+        );
+        assert_eq!(
+            lifecycle.observe_surface(SurfaceSignal::DeviceLost).rebuild,
+            RuntimeRebuildAction::RebuildDevice
+        );
+        assert_eq!(lifecycle.state(), LifecycleState::DeviceLost);
+
+        let exiting = lifecycle.observe_platform(PlatformEvent::Exiting);
+        assert_eq!(exiting.current, LifecycleState::Exiting);
+        assert_eq!(exiting.rebuild, RuntimeRebuildAction::Exit);
     }
 }

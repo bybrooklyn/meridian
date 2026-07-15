@@ -4,5 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+meridian-assets = { path = "../../engine/meridian_assets" }
+meridian-core = { path = "../../engine/meridian_core" }
+meridian-rhi = { path = "../../engine/meridian_rhi" }
+png.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
 [lints]
 workspace = true

@@ -1,0 +1,7 @@
+[
+  {
+    "id": "REQ-005",
+    "status": "Planned",
+    "requires": ["REQ-404"]
+  }
+]

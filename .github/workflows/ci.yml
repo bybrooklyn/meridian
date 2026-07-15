@@ -5,7 +5,16 @@ on:
   pull_request:
 
 jobs:
+  governance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo run -p meridian-spec -- check --output=github
+      - run: cargo test -p meridian-spec
+
   rust:
+    needs: governance
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-14]
@@ -19,3 +28,4 @@ jobs:
       - run: cargo check --workspace --all-targets
       - run: cargo test --workspace
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo run -p meridian-editor --bin meridian -- --headless-smoke --frames 4

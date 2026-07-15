@@ -12,6 +12,139 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use meridian_core::StableId;
+use serde::{Deserialize, Serialize};
+
+/// Stable source-document identity, separate from compiled artifact identity.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct SourceId(StableId);
+
+impl SourceId {
+    #[must_use]
+    pub const fn new(id: StableId) -> Self {
+        Self(id)
+    }
+
+    #[must_use]
+    pub fn from_canonical_name(name: &str) -> Self {
+        let digest = blake3::hash(name.as_bytes());
+        let mut bytes = [0_u8; 16];
+        bytes.copy_from_slice(&digest.as_bytes()[..16]);
+        Self(StableId::new(u128::from_le_bytes(bytes)))
+    }
+
+    #[must_use]
+    pub const fn stable_id(self) -> StableId {
+        self.0
+    }
+}
+
+impl Display for SourceId {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, formatter)
+    }
+}
+
+/// BLAKE3 content identity used behind Meridian-owned package/data APIs.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct ArtifactHash([u8; 32]);
+
+impl ArtifactHash {
+    #[must_use]
+    pub fn digest(bytes: &[u8]) -> Self {
+        Self(*blake3::hash(bytes).as_bytes())
+    }
+
+    #[must_use]
+    pub const fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
+    #[must_use]
+    pub const fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    /// Parses a lowercase or uppercase 64-digit hexadecimal digest.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-64-digit or non-hexadecimal value.
+    pub fn from_hex(value: &str) -> Result<Self, ArtifactHashParseError> {
+        if value.len() != 64 {
+            return Err(ArtifactHashParseError::InvalidLength(value.len()));
+        }
+        let mut bytes = [0_u8; 32];
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            let offset = index * 2;
+            *byte = u8::from_str_radix(&value[offset..offset + 2], 16)
+                .map_err(|_| ArtifactHashParseError::InvalidHex { offset })?;
+        }
+        Ok(Self(bytes))
+    }
+}
+
+impl Display for ArtifactHash {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        for byte in self.0 {
+            write!(formatter, "{byte:02x}")?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArtifactHashParseError {
+    InvalidLength(usize),
+    InvalidHex { offset: usize },
+}
+
+impl Display for ArtifactHashParseError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidLength(length) => {
+                write!(formatter, "artifact hash length is {length}; expected 64")
+            }
+            Self::InvalidHex { offset } => write!(
+                formatter,
+                "artifact hash has invalid hexadecimal at byte offset {offset}"
+            ),
+        }
+    }
+}
+
+impl Error for ArtifactHashParseError {}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceAuthority {
+    ProjectSource,
+    EngineFixture,
+    GeneratedSource,
+    DerivedCache,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SourceProvenance {
+    pub origin: String,
+    pub license: String,
+    pub attribution: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SourceMetadata {
+    pub source_id: SourceId,
+    pub schema: String,
+    pub schema_version: u32,
+    pub authority: SourceAuthority,
+    pub importer_version: String,
+    pub source_hash: ArtifactHash,
+    pub dependencies: Vec<SourceId>,
+    pub provenance: SourceProvenance,
+}
+
 /// Stable content identity used by runtime-facing asset references.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AssetId(u128);
@@ -1353,6 +1486,20 @@ impl Error for AssetRegistryError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_and_artifact_identity_are_deterministic_and_round_trip_hex() {
+        assert_eq!(
+            SourceId::from_canonical_name("fixtures/triangle"),
+            SourceId::from_canonical_name("fixtures/triangle")
+        );
+        let hash = ArtifactHash::digest(b"Meridian");
+        assert_eq!(ArtifactHash::from_hex(&hash.to_string()), Ok(hash));
+        assert!(matches!(
+            ArtifactHash::from_hex("short"),
+            Err(ArtifactHashParseError::InvalidLength(5))
+        ));
+    }
 
     fn metadata(id: AssetId, name: &str) -> AssetMetadata {
         AssetMetadata::new(

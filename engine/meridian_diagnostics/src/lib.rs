@@ -1,11 +1,180 @@
 //! Bounded runtime frame diagnostics and stutter classification.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt::{self, Display, Formatter, Write};
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
-use meridian_core::FrameRate;
+use meridian_core::{FrameId, FrameRate, MonotonicNs, OperationId, RuntimeEpoch, TraceId};
+use serde::{Deserialize, Serialize};
+
+/// Severity of one machine-readable engine diagnostic.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticSeverity {
+    Trace,
+    Info,
+    Warning,
+    Error,
+    Fatal,
+}
+
+/// Sink-visible treatment required for one diagnostic field.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RedactionClass {
+    Public,
+    ProjectSensitive,
+    Secret,
+}
+
+/// Recovery selected after an observable runtime failure.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "detail")]
+pub enum RecoveryAction {
+    None,
+    Retry,
+    ReconfigureSurface,
+    RecreateSurface,
+    RebuildDevice,
+    RestoreBackup,
+    RepairJournalTail,
+    RejectInput,
+    Exit,
+    Other(String),
+}
+
+/// One bounded, cross-domain diagnostic event.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DiagnosticEvent {
+    pub sequence: u64,
+    pub monotonic_ns: MonotonicNs,
+    pub runtime_epoch: RuntimeEpoch,
+    pub code: String,
+    pub domain: String,
+    pub severity: DiagnosticSeverity,
+    pub operation_id: Option<OperationId>,
+    pub trace_id: Option<TraceId>,
+    pub frame_id: Option<FrameId>,
+    pub tick_id: Option<u64>,
+    pub recovery_action: RecoveryAction,
+    pub source: String,
+    pub redaction_class: RedactionClass,
+    pub fields: BTreeMap<String, String>,
+}
+
+impl DiagnosticEvent {
+    #[must_use]
+    pub fn new(
+        code: impl Into<String>,
+        domain: impl Into<String>,
+        severity: DiagnosticSeverity,
+        source: impl Into<String>,
+    ) -> Self {
+        Self {
+            sequence: 0,
+            monotonic_ns: MonotonicNs::default(),
+            runtime_epoch: RuntimeEpoch::default(),
+            code: code.into(),
+            domain: domain.into(),
+            severity,
+            operation_id: None,
+            trace_id: None,
+            frame_id: None,
+            tick_id: None,
+            recovery_action: RecoveryAction::None,
+            source: source.into(),
+            redaction_class: RedactionClass::Public,
+            fields: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub const fn correlated(mut self, operation_id: OperationId, trace_id: TraceId) -> Self {
+        self.operation_id = Some(operation_id);
+        self.trace_id = Some(trace_id);
+        self
+    }
+
+    #[must_use]
+    pub const fn at_frame(mut self, frame_id: FrameId, tick_id: Option<u64>) -> Self {
+        self.frame_id = Some(frame_id);
+        self.tick_id = tick_id;
+        self
+    }
+
+    #[must_use]
+    pub fn with_field(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.fields.insert(name.into(), value.into());
+        self
+    }
+}
+
+/// Bounded event timeline used by smoke evidence and later diagnostics sinks.
+#[derive(Clone, Debug)]
+pub struct DiagnosticTimeline {
+    capacity: NonZeroUsize,
+    events: VecDeque<DiagnosticEvent>,
+    next_sequence: u64,
+    dropped_events: u64,
+}
+
+impl DiagnosticTimeline {
+    #[must_use]
+    pub fn new(capacity: NonZeroUsize) -> Self {
+        Self {
+            capacity,
+            events: VecDeque::with_capacity(capacity.get()),
+            next_sequence: 1,
+            dropped_events: 0,
+        }
+    }
+
+    pub fn push(&mut self, mut event: DiagnosticEvent) {
+        event.sequence = self.next_sequence;
+        self.next_sequence = self.next_sequence.wrapping_add(1).max(1);
+        if event.redaction_class == RedactionClass::Secret {
+            event.fields.clear();
+            event
+                .fields
+                .insert("redacted".to_owned(), "true".to_owned());
+        }
+        if self.events.len() == self.capacity.get() {
+            self.events.pop_front();
+            self.dropped_events = self.dropped_events.saturating_add(1);
+        }
+        self.events.push_back(event);
+    }
+
+    #[must_use]
+    pub fn events(&self) -> impl ExactSizeIterator<Item = &DiagnosticEvent> {
+        self.events.iter()
+    }
+
+    #[must_use]
+    pub const fn dropped_events(&self) -> u64 {
+        self.dropped_events
+    }
+
+    /// Serializes retained events plus drop count as a stable JSON envelope.
+    ///
+    /// # Errors
+    ///
+    /// Returns a serialization error only if serde cannot encode an owned field.
+    pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
+        #[derive(Serialize)]
+        struct TimelineEnvelope<'a> {
+            version: &'static str,
+            dropped_events: u64,
+            events: &'a VecDeque<DiagnosticEvent>,
+        }
+        serde_json::to_string_pretty(&TimelineEnvelope {
+            version: "meridian.diagnostic-timeline/v1",
+            dropped_events: self.dropped_events,
+            events: &self.events,
+        })
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FrameBudget {
@@ -87,10 +256,33 @@ impl PipelineDiagnostics {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GpuTimingStatus {
+    NotRequested,
+    Measured(Duration),
+    UnsupportedCapability,
+    UnsupportedPlatform,
+    Inconclusive,
+}
+
+impl GpuTimingStatus {
+    #[must_use]
+    pub const fn measured(self) -> Option<Duration> {
+        match self {
+            Self::Measured(duration) => Some(duration),
+            Self::NotRequested
+            | Self::UnsupportedCapability
+            | Self::UnsupportedPlatform
+            | Self::Inconclusive => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FrameSample {
     pub frame_time: Duration,
     pub main_thread_time: Duration,
     pub gpu_time: Option<Duration>,
+    pub gpu_timing: GpuTimingStatus,
     pub pipeline_creation_events: u32,
     pub upload_stall: bool,
     pub pipeline_diagnostics: Option<PipelineDiagnostics>,
@@ -103,6 +295,7 @@ impl FrameSample {
             frame_time,
             main_thread_time,
             gpu_time: None,
+            gpu_timing: GpuTimingStatus::NotRequested,
             pipeline_creation_events: 0,
             upload_stall: false,
             pipeline_diagnostics: None,
@@ -112,6 +305,17 @@ impl FrameSample {
     #[must_use]
     pub const fn with_gpu_time(mut self, gpu_time: Option<Duration>) -> Self {
         self.gpu_time = gpu_time;
+        self.gpu_timing = match gpu_time {
+            Some(duration) => GpuTimingStatus::Measured(duration),
+            None => GpuTimingStatus::NotRequested,
+        };
+        self
+    }
+
+    #[must_use]
+    pub const fn with_gpu_timing(mut self, gpu_timing: GpuTimingStatus) -> Self {
+        self.gpu_time = gpu_timing.measured();
+        self.gpu_timing = gpu_timing;
         self
     }
 
@@ -193,6 +397,20 @@ impl FrameHistory {
             return false;
         };
         sample.gpu_time = gpu_time;
+        sample.gpu_timing = match gpu_time {
+            Some(duration) => GpuTimingStatus::Measured(duration),
+            None => GpuTimingStatus::NotRequested,
+        };
+        true
+    }
+
+    /// Replaces the typed GPU timing outcome on the most recent frame.
+    pub fn set_latest_gpu_timing(&mut self, gpu_timing: GpuTimingStatus) -> bool {
+        let Some(sample) = self.samples.back_mut() else {
+            return false;
+        };
+        sample.gpu_time = gpu_timing.measured();
+        sample.gpu_timing = gpu_timing;
         true
     }
 
@@ -697,6 +915,35 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_timeline_is_bounded_correlated_and_redacts_secrets() {
+        let mut timeline = DiagnosticTimeline::new(NonZeroUsize::new(2).expect("non-zero"));
+        timeline.push(
+            DiagnosticEvent::new("RUN.INPUT", "RUN", DiagnosticSeverity::Info, "test")
+                .correlated(OperationId::new(7), TraceId::new(9))
+                .at_frame(FrameId::new(11), Some(13)),
+        );
+        let mut secret =
+            DiagnosticEvent::new("DAT.SECRET", "DAT", DiagnosticSeverity::Warning, "test")
+                .with_field("token", "must-not-leak");
+        secret.redaction_class = RedactionClass::Secret;
+        timeline.push(secret);
+        timeline.push(DiagnosticEvent::new(
+            "RUN.DONE",
+            "RUN",
+            DiagnosticSeverity::Info,
+            "test",
+        ));
+
+        let json = timeline.to_json_pretty().expect("timeline serializes");
+
+        assert_eq!(timeline.events().len(), 2);
+        assert_eq!(timeline.dropped_events(), 1);
+        assert!(!json.contains("must-not-leak"));
+        assert!(json.contains("\"redacted\": \"true\""));
+        assert!(json.contains("RUN.DONE"));
+    }
+
+    #[test]
     fn classifies_sixty_fps_stutter_thresholds() {
         let budget = sixty_fps_budget();
 
@@ -780,10 +1027,28 @@ mod tests {
             .with_gpu_time(Some(gpu_time));
 
         assert_eq!(sample.gpu_time, Some(gpu_time));
+        assert_eq!(sample.gpu_timing, GpuTimingStatus::Measured(gpu_time));
         assert_eq!(
             FrameSample::new(Duration::ZERO, Duration::ZERO).gpu_time,
             None
         );
+        assert_eq!(
+            FrameSample::new(Duration::ZERO, Duration::ZERO).gpu_timing,
+            GpuTimingStatus::NotRequested
+        );
+    }
+
+    #[test]
+    fn typed_gpu_status_preserves_unavailable_outcomes_without_fake_duration() {
+        for status in [
+            GpuTimingStatus::UnsupportedCapability,
+            GpuTimingStatus::UnsupportedPlatform,
+            GpuTimingStatus::Inconclusive,
+        ] {
+            let sample = FrameSample::new(Duration::ZERO, Duration::ZERO).with_gpu_timing(status);
+            assert_eq!(sample.gpu_time, None);
+            assert_eq!(sample.gpu_timing, status);
+        }
     }
 
     #[test]
@@ -805,6 +1070,23 @@ mod tests {
                 .expect("history has one sample")
                 .average_gpu_time,
             Some(Duration::from_millis(3))
+        );
+        assert!(history.set_latest_gpu_timing(GpuTimingStatus::UnsupportedPlatform));
+        assert_eq!(
+            history
+                .samples
+                .back()
+                .expect("history has one sample")
+                .gpu_timing,
+            GpuTimingStatus::UnsupportedPlatform
+        );
+        assert_eq!(
+            history
+                .samples
+                .back()
+                .expect("history has one sample")
+                .gpu_time,
+            None
         );
     }
 

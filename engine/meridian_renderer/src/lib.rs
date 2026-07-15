@@ -6,6 +6,7 @@ use std::fmt::{self, Display, Formatter};
 
 mod camera;
 mod extraction;
+mod foundation;
 mod instance_buffer;
 mod lighting;
 mod mesh;
@@ -16,6 +17,9 @@ mod upload;
 pub use camera::{Camera, CameraError, Matrix4, PerspectiveProjection};
 pub use extraction::{
     extract_render_instances, RenderExtractionFrame, RenderExtractionOutput, RenderInstanceSource,
+};
+pub use foundation::{
+    FoundationMeshDescriptor, FoundationRendererError, PenumbraFoundationRenderer,
 };
 pub use instance_buffer::{
     GpuInstanceBuffer, GpuInstanceBufferError, InstanceBufferError, InstanceBufferWrite,

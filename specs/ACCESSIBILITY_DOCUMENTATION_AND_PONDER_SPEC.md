@@ -2,7 +2,10 @@
 
 [Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [UI](EDITOR_AND_MERIDIAN_UI_SPEC.md) · [Agents](AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md)
 
-Version 0.2 · 2026-07-14 · Normative · Planned
+version 0.5 · 2026-07-15 · Normative · Planned
+
+Documentation maturity: `ImplementationReady`. Implementation maturity:
+`Planned`. Governing IDs: `REQ-UI-001`, `REQ-SEC-001`, `WP-UI-001`.
 
 Research anchors: [AccessKit](https://accesskit.dev/), [AccessKit repository](https://github.com/AccessKit/accesskit), and [AccessKit Rust API](https://docs.rs/accesskit). These references support adapter terminology only; Meridian owns semantic intent, validation, documentation records, and Ponder playback.
 
@@ -136,13 +139,17 @@ Docs source is text plus schemas/examples in the repository. CI verifies links, 
 
 User annotations, history, and progress are local user data and not shipped in projects. A corrupt index is rebuildable from signed bundles.
 
-## 9. Diagnostics and privacy
+## 9. Diagnostics, security, and privacy
 
 Accessibility diagnostics: unnamed focusable nodes, unreachable actions, focus traps, contrast, clipping under scale, semantic update latency, unsupported adapter mappings.
 
 Ponder diagnostics: index version, stale/missing articles, broken examples, search timing, bundle verification, context fields included, provider/network state.
 
 No accessibility text or Ponder context may reveal secrets. Network-backed assistance is opt-in per request, previews exact context, and records provider/retention policy.
+
+Documentation bundles, adapter metadata, and repair suggestions are untrusted
+until schema, size, signature/hash, and capability validation pass. A suggested
+fix never receives command authority merely because it improves accessibility.
 
 ## 10. Tiers and optionality
 
@@ -170,14 +177,14 @@ Algorithm gates:
 - docs example build/run/schema validation;
 - provider privacy preview and denied-capability tests.
 
-## 12. Phases
+## 12. Delivery mapping
 
-- Phase 4: semantic core and adapter spike.
-- Phase 6: keyboard/screen-reader editor foundation and local Ponder index.
-- Phase 8: opening-slice settings, captions/cues, remapping, reduced effects.
-- Phase 11: complex editor graph/table accessibility.
-- Phase 18: optional agent-assisted explanation with permission preview.
-- Phase 26: full accessibility and documentation audit.
+- MS-03: semantic core and adapter spike.
+- MS-02/MS-03: keyboard/screen-reader editor foundation and local Ponder index.
+- MS-06/MS-07: opening-slice settings, captions/cues, remapping, reduced effects.
+- MS-04/MS-05/MS-08: complex editor graph/table accessibility.
+- MS-08/MS-09: optional agent-assisted explanation with permission preview.
+- MS-08: full accessibility and documentation audit.
 
 ## 13. Examples
 

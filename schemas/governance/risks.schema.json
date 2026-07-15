@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Meridian risk registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "records"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": "0.5"},
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "title", "owner"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^RISK-[A-Z]+-[0-9]{3}$"},
+          "status": {"enum": ["Open", "Mitigating", "Accepted", "Closed"]},
+          "title": {"type": "string", "minLength": 1},
+          "owner": {"type": "string", "minLength": 1},
+          "milestone": {"type": "string", "pattern": "^MS-(0[0-9]|10)$"},
+          "program": {"type": "string", "pattern": "^PRG-[A-Z]+-[0-9]{3}$"}
+        },
+        "oneOf": [{"required": ["milestone"]}, {"required": ["program"]}]
+      }
+    }
+  }
+}

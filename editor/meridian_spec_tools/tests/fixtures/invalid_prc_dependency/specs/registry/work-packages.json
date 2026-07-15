@@ -1,0 +1,10 @@
+{
+  "version": "0.4",
+  "records": [
+    {
+      "id": "WP-PRC-001",
+      "status": "Planned",
+      "depends_on": ["WP-PRC-999"]
+    }
+  ]
+}

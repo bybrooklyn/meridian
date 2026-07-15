@@ -1,48 +1,60 @@
 # Specification-Suite Agent Guidance
 
-The root [AGENTS.md](../AGENTS.md) is the canonical operational policy for the repository. This file applies additional rules while editing specs/.
+version 0.5 · 2026-07-15
 
-## Scope
+The root [AGENTS.md](../AGENTS.md) is canonical. These rules apply inside `specs/`.
 
-- Preserve the authority order in [MERIDIAN_MASTER_SPEC.md](MERIDIAN_MASTER_SPEC.md) and [SPEC_MIGRATION_AND_CONTRADICTIONS.md](SPEC_MIGRATION_AND_CONTRADICTIONS.md).
-- Do not copy subsystem text into many files. Put the normative contract in its owning spec and link to it.
-- Do not upgrade Planned, Transitional, Research, Deferred, Constructed, or Structural Smoke to Implemented/Validated without fresh evidence.
-- Preserve Project Meridian creative decisions and link to the private `bybrooklyn/project-meridian` source when engine integration depends on them; never copy the full closed-source documents into this repository.
-- Keep phase numbers/names and the Phase 8 critical path synchronized with [IMPLEMENTATION_PHASES.md](IMPLEMENTATION_PHASES.md).
+## 1. Ownership and truth
 
-## Required content for a major subsystem
+- Preserve the authority order in [MERIDIAN_MASTER_SPEC.md](MERIDIAN_MASTER_SPEC.md).
+- Use [IMPLEMENTATION_PLANNING_SPEC.md](IMPLEMENTATION_PLANNING_SPEC.md) for package readiness, completion, planning horizons, concurrency, and replanning.
+- Put each normative contract in one owning spec and link to it.
+- Keep documentation, implementation, and evidence maturity separate.
+- Do not upgrade a status without current evidence registered under `specs/registry/`.
+- Keep creative material in the private Project Meridian repository; link only sanitized engine requirements and source hashes.
+- Keep Alluvium normative behavior in `PROCEDURAL_AUTHORING_SPEC.md`; owning
+  runtime specs describe only their typed consumer boundary and authority.
+- Historical roadmap identifiers are legal only in migration/history records. Active specs use `MS-*`, `WP-*`, `RG-*`, post-1.0 `PRG-*`, validation `VAL-*`, and strategic dependency `DEP-*` IDs.
+- Domain codes are governance identifiers and do not require matching runtime crate/type names.
 
-Include context, goals, non-goals, ownership/dependencies/invalid edges, public types/data, ordered pipeline/state machine, threading/memory, persistence/compatibility, editor and CLI/MCP workflows, accessibility, diagnostics/recovery, security, capability tiers/disabled cost, tests/benchmarks, phases/research gates, and end-to-end/failure/performance-debug examples.
+## 2. Required subsystem shape
 
-If an item is not applicable, say why. A heading with vague future prose is not sufficient.
+Each coordinated subsystem document identifies:
 
-## Architecture changes
+1. authority, version, documentation maturity, implementation maturity, and governing IDs;
+2. goals and non-goals;
+3. ownership, dependencies, consumers, and forbidden edges;
+4. public contracts and data authority;
+5. ordered pipelines or state machines;
+6. clocks, threading, memory, lifetime, persistence, and compatibility;
+7. failure, recovery, diagnostics, security, and provenance;
+8. accessibility and beginner/expert/editor/CLI/agent workflows;
+9. capability tiers and zero-cost-disabled behavior;
+10. tests, benchmarks, evidence classes, research gates, delivery mapping, and end-to-end/failure/performance-debug examples.
 
-For a new or changed decision:
+When an item is intentionally inapplicable, state why. Planned contract examples remain illustrative and MUST NOT imply runtime types exist.
 
-1. identify affected requirement and documents;
-2. update the owning spec;
-3. update the contradiction register if an older statement changes;
-4. update research/ADR when algorithm or dependency evidence changes;
-5. update format/API examples and validation;
-6. update implementation phases and PLANNING only if sequencing/current work changes;
-7. add a legacy banner or migration fixture where needed.
+## 3. Architecture changes
 
-## Citations
+A changed decision updates requirements, the owning spec, ADR, registries, migration/contradiction register, research gate when applicable, API examples, validation, delivery mapping, and PLANNING if the active queue changes.
 
-Use current primary sources: official specifications/docs/repositories and original papers. Record verification date. State what a source supports and what remains Meridian judgment. Do not use a source link as a license or production-readiness claim.
+Use primary sources for algorithms/platform APIs and record verification date. A source supports context, not licensing, redistribution, production readiness, or a performance claim.
 
-## Audit
+## 4. Audit
 
 Before sign-off:
 
-- all required spec filenames exist;
-- relative links resolve;
-- duplicate headings/statuses are coherent;
-- Telepo, permanent egui/Rapier ownership, multiple initial languages, opaque one-file worlds/packages, mandatory cloud, and all-engine-first gating are not revived;
-- provisional numbers are labeled and calibration is described;
-- code/API examples are marked illustrative unless compiled;
-- markdown/whitespace checks pass;
-- root AGENTS and PLANNING agree with the suite.
-
-Use the mandatory phase sign-off in root AGENTS.md.
+- `meridian-spec check` passes;
+- every coordinated domain has exactly one maturity record;
+- every requirement maps to a pre-1.0 work package or post-1.0 program and evidence class;
+- links/fences/status vocabulary/ADR references validate;
+- old active roadmap and deleted combined-weather references are absent;
+- Telepo, permanent bootstrap-UI/Rapier ownership, multiple initial languages, opaque one-file worlds/packages, mandatory cloud, and all-engine-first gating are not revived;
+- provisional numbers remain labeled and have a calibration plan;
+- examples are marked illustrative unless compiled;
+- root AGENTS, PLANNING, roadmap, registries, and subsystem specs agree.
+- Alluvium recipes, fields, outputs, runtime authority, private boundary,
+  report fields, packages, gates, and risks agree without implementation promotion.
+- every milestone delivery-plan record has entry conditions, critical path, parallel lanes, integration checkpoint, exit evidence, and stop conditions;
+- active and next packages meet the detail required for their planning horizon without inventing distant task precision.
+- v0.5 one-app, Rust-first/Luau-after, native-modeler, Wavefront/Collective, first-class 2D, animation/navigation/framework, ShaderIr, post-1.0 program, validation-project, and dependency-strategy decisions agree across authorities.

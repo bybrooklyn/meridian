@@ -1,19 +1,22 @@
 # Principles and Scope
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Phases](IMPLEMENTATION_PHASES.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Phases](DELIVERY_ROADMAP.md)
 
-Version 0.2 · 2026-07-14 · Normative
+version 0.5 · 2026-07-15 · Normative
+
+Documentation maturity: `ImplementationReady`. Governing IDs:
+`REQ-CORE-001` through `REQ-CORE-004`, `REQ-GOV-001` through `REQ-GOV-003`.
 
 ## 1. Product definition
 
-Meridian is a local-first, data-oriented engine for games and interactive applications. It combines runtime, editor, asset pipeline, build service, documentation, version control, collaboration, optional agents, packaging, and deployment behind coherent typed contracts. Project Meridian is the proving game and supplies concrete quality gates without becoming an engine dependency.
+Meridian is a local-first, data-oriented engine and one user-facing creator application for games and interactive applications. It combines runtime, editor, IDE, native modeler, The Alluvium Engine procedural authoring, asset pipeline, build service, documentation, version control, collaboration, optional agents, packaging, and deployment behind coherent typed contracts. The application is named **Meridian**; helper processes and CLI tools do not create separate Studio or IDE products. Project Meridian is the first proving game and supplies concrete quality gates without becoming an engine dependency.
 
 The target is not feature-count imitation. Meridian differentiates through inspectable data, recovery, progressive disclosure, one semantic command model, zero-cost optional packs, provenance-first ownership, and vertical slices that prove systems together.
 
 ## 2. Users
 
 - Beginner creator: opens a project, imports assets, edits a world, presses Play, fixes plain-language diagnostics, and exports without a terminal.
-- Technical designer: edits typed logic, Luau, materials, UI, procedural graphs, and profiles with live validation.
+- Technical designer: edits typed logic, Rust gameplay data/APIs, optional Luau, materials/shaders, models, animation, UI, Alluvium recipes/fields, and profiles with live validation.
 - Engineer: uses Rust APIs, Cargo, schemas, traces, CLI, test harnesses, and backend diagnostics.
 - Team lead: reviews semantic changes, dependencies, budgets, provenance, permissions, and package readiness.
 - Player or operator: receives accessible, signed, recoverable builds with explicit telemetry/network choices.
@@ -39,21 +42,28 @@ Foundation scope:
 - data-oriented world/ECS contracts and extraction;
 - wgpu-first rendering with explicit capability and fallback;
 - assets, import/build graph, streaming, saves, packages;
+- Alluvium textual recipes, typed fields, deterministic evaluation, generated
+  identity, non-destructive overrides, provenance, and cooking;
 - Meridian UI shared by editor, runtime UI, and native tools;
-- editor shell, build service, Cargo/rust-analyzer integration;
-- Luau as the single initial high-level runtime;
+- editor shell, complete Rust-first IDE workflow, build service, Cargo/rust-analyzer integration;
+- native editable-mesh modeler baseline, with Blender as an optional companion;
+- Rust gameplay modules first; Luau as the first optional embedded high-level runtime afterward;
+- first-class 2D path, general animation, navigation infrastructure, and selected reusable framework foundations through their registered packages;
 - Project Meridian opening forest vertical slice.
 
-Long-horizon scope, implemented only through later phases:
+Long-horizon scope, implemented only through later milestones and work packages:
 
 - Cairn physics ownership and simulation portfolio;
 - advanced weather, acoustics, fluids, fire, fracture, terrain, and vegetation;
 - OpenXR;
 - multiplayer and dedicated servers;
+- optional Collective identity/session/social/voice-policy/analytics/moderation modules with self-hostable/provider-neutral contracts;
 - semantic VCS, P2P sync, live collaboration;
 - modding and community library;
 - local/cloud agent integrations under capabilities;
 - native backend experiments and advanced GI/geometry.
+
+Post-1.0 programs, not 1.0 milestone requirements: advanced sculpting/retopology/hair/cloth/character modeling; facial/performance-capture production; completion of all six official framework families; funded hosted-scale Collective work; distributed worlds/MMO; advanced integrity/anti-cheat; native VCS storage/history; and optional shader-compiler internalization.
 
 ## 5. Non-goals
 
@@ -61,7 +71,10 @@ Long-horizon scope, implemented only through later phases:
 - requiring a hosted Meridian control plane;
 - implementing every optional system before a playable game;
 - one universal graph, one giant world file, one opaque package stream, or one global mutable service locator;
+- requiring proprietary software or an opaque AI binary for first-party
+  procedural authoring;
 - supporting multiple scripting runtimes in the first playable product;
+- promising Meridian-operated cloud infrastructure, social services, voice service, analytics, moderation, or MMO hosting without funded operational evidence;
 - preserving compatibility with a third-party implementation API during an ownership migration;
 - claiming deterministic equivalence, security, accessibility, performance, or competitor superiority without evidence;
 - treating AI output as trusted or allowing agents to bypass user-visible commands.
@@ -104,7 +117,7 @@ CI verifies a minimal build by examining dependencies, symbols, package chunks, 
 
 ## 8. Local-first and external tools
 
-Blender, Git hosting, Steam, EOS, Ollama, cloud models, external profilers, and proprietary SDKs are integrations, never prerequisites for core authoring. Cargo remains authoritative for Rust projects, but the editor provides safe build and manifest workflows. A project can use external tools without losing round-trip fidelity.
+Blender, Git hosting, Steam, EOS, Ollama, cloud models, external profilers, and proprietary SDKs are integrations, never prerequisites for core authoring. Meridian's native modeler and Alluvium provide first-party modeling and procedural authoring through editor, CLI, and headless workflows. Cargo remains authoritative for Rust projects, but Meridian provides safe IDE, build, and manifest workflows. External interchange reports preserved, approximated, and omitted semantics; lossless round-trip is claimed only where tested.
 
 ## 9. Truthfulness and evidence
 
@@ -156,4 +169,8 @@ Engine specs may define how these are represented and tested, not rewrite their 
 
 ## 15. Review checklist
 
-A proposal is in scope only if it names the user value, owning crate, data authority, runtime cost, disabled cost, failure recovery, diagnostics, compatibility, security permissions, accessibility impact, test evidence, phase dependency, and stop condition. Missing answers make the proposal research, not implementation-ready.
+A proposal is in scope only if it names the user value, owning crate, data
+authority, runtime cost, disabled cost, failure recovery, diagnostics,
+compatibility, security permissions, accessibility impact, test evidence,
+milestone/work-package dependencies, and stop condition. Missing answers make
+the proposal research, not implementation-ready.

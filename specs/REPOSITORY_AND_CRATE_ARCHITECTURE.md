@@ -2,7 +2,11 @@
 
 [Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Runtime](CORE_RUNTIME_TASKS_AND_PLATFORM_SPEC.md) · [Build](CARGO_IDE_BUILD_AND_TEAM_WORKFLOWS.md)
 
-Version 0.2 · 2026-07-14 · Normative architecture
+version 0.5 · 2026-07-15 · Normative architecture
+
+Documentation maturity: `ImplementationReady`. Implementation maturity:
+`Partial`. Governing IDs: `REQ-CORE-003`, `REQ-CORE-004`, `REQ-RHI-001`,
+`REQ-DAT-001`, `WP-GOV-001`.
 
 ## 1. Goals
 
@@ -20,14 +24,14 @@ Non-goals are a single engine crate, a plugin-everything architecture, dynamic d
 | Root | Authority |
 |---|---|
 | engine/ | reusable runtime/editor libraries |
-| editor/ | Meridian editor product and bootstrap shell |
+| editor/ | The single Meridian creator application, its bounded helper services/tools, and temporary bootstrap shell |
 | external private game repository | Project Meridian code, content, and full creative documents; an ignored local checkout may be mounted at `game/` |
 | shaders/ | shader sources, reflection expectations, validation |
 | schemas/ | versioned shared source/file/network schema inputs |
 | assets_source/ | editable or licensed source content |
 | assets_built/ | derived local cache; never source authority |
 | docs/ | ADRs, developer and architecture guidance |
-| specs/ | normative version 0.2 product and engineering suite |
+| specs/ | normative version 0.5 product and engineering suite |
 | third_party/ | pinned source/provenance manifests and patches |
 | licenses/ | project and dependency licensing evidence |
 | .github/ | CI policy and automation |
@@ -39,7 +43,7 @@ Generated output belongs in target/, a local cache root, or ignored build direct
 ~~~text
 game + editor + tools
         |
-domain services: world assets render physics audio ui gameplay
+domain services: world assets Penumbra Cairn Wavefront UI gameplay animation navigation 2D Collective
         |
 runtime contracts: core tasks platform diagnostics schema capability
         |
@@ -50,7 +54,8 @@ Allowed dependency direction is downward. Domain peers communicate through narro
 
 ## 4. Crate families
 
-Current names are retained where useful; new names are proposed and become binding only when their phase begins.
+Current names are retained where useful; new names become binding only when an
+approved work package establishes their implementation boundary.
 
 ### 4.1 Foundation
 
@@ -71,33 +76,55 @@ Invalid edges: core to renderer; tasks to editor; platform to game; diagnostics 
 - meridian-assets: identity, import recipes, artifact/facet graph, residency.
 - meridian-streaming: cross-system request scheduler and stage queues.
 - meridian-save: journal, snapshots, recovery, migrations.
-- meridian-package: .meridian superblock, chunks, mounts, verification.
+- meridian-package: provisional `.meridian` v1 superblock, canonical manifest,
+  bounded uncompressed chunks, BLAKE3 verification, mounts, and random reads.
 
 bevy_ecs entity IDs MUST NOT appear in saves, packages, scripts, network schemas, editor documents, or public game APIs.
 
 ### 4.3 Presentation and simulation
 
-- meridian-render: scene extraction, render graph, visibility, materials, lighting.
+- meridian-renderer: Penumbra's current implementation crate for extraction,
+  render graph integration, materials, lighting, and current GPU foundations.
 - meridian-rhi: backend-neutral resource and command descriptors; wgpu is current backend.
-- meridian-shader: source/IR validation, reflection, variants, caches.
+- future Meridian Shader Language/ShaderIr modules: source/graph lowering, IR validation, reflection, target modules, variants, source maps, caches. Existing shader tools remain until a package establishes boundaries.
 - cairn-core and Cairn domain crates: broadphase, narrowphase, dynamics, query, character, particles, fracture.
-- meridian-audio: graph compiler, mixer, devices, streaming, spatialization.
+- meridian-audio: Wavefront graph compiler, mixer, devices, streaming, spatialization, acoustics, and optional voice audio path.
 - meridian-ui-core, ui-render, ui-text, ui-semantics, ui-runtime, ui-editor.
-- meridian-weather and later simulation feature packs.
+- meridian-isobar: current empty Isobar scaffold.
+- meridian-basalt: current empty Basalt scaffold.
+- meridian-vegetation: current vegetation scaffold and future vegetation owner.
+- meridian-torsant: reserved name; no crate exists until its first real package.
 
 wgpu, Rapier, egui, and AccessKit types MUST stop at their adapter crates. Existing leaks are migration defects.
 
 ### 4.4 Authoring and product
 
 - meridian-editor-core: document sessions, selection, commands, undo, play mode.
-- meridian-editor: native application composition.
+- meridian-editor: the native application composition currently named by crate
+  history; its executable is `meridian` and user-facing title is **Meridian**.
+  MS-01 native/headless integration exists; Creator Editor Alpha remains planned.
 - meridian-editor-egui-bootstrap: temporary shell only; deletable when Meridian UI migration gates pass.
 - meridian-build: long-lived build service and DAG.
 - meridian-vcs and meridian-sync.
 - meridian-agent-api and provider adapters.
 - meridian-ponder.
-- meridian-luau and generated gameplay bindings.
+- future Rust gameplay module/reflection/reload components under `WP-GAM-001`.
+- future optional meridian-luau and generated gameplay bindings under `WP-GAM-002`.
+- future native model-document/kernel/tool modules under `WP-MDL-001`; no placeholder crate is created by v0.5.
+- future animation, navigation, framework, dedicated 2D, and Collective modules only when their first real work packages start.
+- meridian-spec: documentation-governance CLI under editor/; no runtime or game
+  crate may depend on it.
+- future meridian-alluvium: typed procedural recipe/field evaluation,
+  incremental cache, generated identity, overrides, provenance, and cooking.
+  The name is reserved; no crate exists until `WP-PRC-001` begins real work.
 - external Project Meridian game crates and content, consumed through published Meridian APIs after that integration is activated.
+
+Alluvium is core editor/build architecture, not an optional proprietary plug-in.
+Its domain adapters and runtime-safe evaluator remain capability-scoped. A
+baked-only shipping profile depends on generated asset/world/package facets,
+not on editor, graph compiler, preview cache, or runtime Alluvium code.
+
+The `ANI`, `NAV`, `FWK`, `TWO`, `SHD`, `MDL`, `COL`, `WRL`, and `INT` identifiers are governance domains, not mandatory crate names. Wavefront and Collective are subsystem/product names; current crate names remain until an implementation package has a concrete migration reason. WRL and INT are post-1.0 authorities and create no placeholder crates.
 
 ## 5. Contract shape
 
@@ -141,6 +168,8 @@ The editor process owns user interaction and document sessions. Crash-prone or u
 - build service;
 - package/signing helper with narrow key access;
 - optional agent provider host;
+- model import/heavy-operation and animation import/compression workers;
+- optional Collective provider/service adapter hosts;
 - dedicated game/server processes for play and network tests.
 
 IPC messages use versioned schemas, length limits, cancellation, deadlines, and trace IDs. Process restart restores from source plus committed transaction/checkpoint, never undocumented in-memory state.
@@ -149,7 +178,7 @@ IPC messages use versioned schemas, length limits, cancellation, deadlines, and 
 
 A feature pack is a manifest plus a closed set of crates, schemas, package chunks, editor panels, commands, permissions, and tests. Core knows capabilities, not concrete packs.
 
-Examples: advanced-weather, fluid-simulation, fracture, hardware-ray-tracing, openxr, multiplayer-steam, multiplayer-eos, community-library, cloud-agent.
+Examples: advanced-weather, fluid-simulation, fracture, hardware-ray-tracing, openxr, provider-specific NET/Collective adapters, optional Luau, advanced animation, community-library, and cloud-agent. First-class baseline 2D and the editor's native modeler are product capabilities, but player/runtime inclusion remains profile- and content-driven.
 
 Activation:
 
@@ -216,16 +245,18 @@ Supply-chain requirements are defined in [security](SECURITY_SIGNING_UPDATES_AND
 
 Architecture acceptance requires one minimal headless runtime, one editor build, one external consumer-game integration build when available, and one dedicated-server-shaped build to share schemas without accidental presentation dependencies. Project Meridian integration evidence is produced in its separate private repository.
 
-## 14. Phased migration
+## 14. Delivery migration
 
-- Phase 0: establish this dependency policy and automated inventory.
-- Phase 1: stabilize core/task/platform/diagnostic contracts.
-- Phase 2: keep wgpu current; prevent new backend leakage.
-- Phase 3–7: formalize asset/world/save/UI/audio/gameplay seams.
-- Phase 9: begin Cairn source/provenance and native contract migration.
-- Phase 16–18: build service, VCS, sync, and agents use common commands.
-- Phase 25: re-run modularity audit against shipping profiles.
-- Phase 29: freeze supported format/API compatibility for the release line.
+- MS-00: establish this dependency policy and automated inventory.
+- MS-01: stabilize core/task/platform/diagnostic contracts.
+- MS-01/MS-04/MS-05: keep wgpu current; prevent new backend leakage.
+- MS-01, MS-04, MS-06, and MS-07: formalize asset/world/save/UI/Wavefront/Rust-gameplay seams.
+- MS-03/MS-08: begin Cairn source/provenance and native contract migration.
+- MS-03, MS-08, and MS-09: build service, VCS, sync, and agents use common commands.
+- MS-08/MS-09: re-run modularity audit against shipping profiles.
+- MS-03/MS-05/MS-08/MS-09: add modeler, animation, navigation, framework, 2D, ShaderIr, optional Luau, and Collective modules only through their typed packages and forbidden-edge tests.
+- Post-1.0: WRL/INT and advanced MDL/ANI/FWK/COL/VCS/SHD programs remain outside the MS graph and create code only after their entry gates.
+- MS-10: freeze supported format/API compatibility for the release line.
 
 ## 15. End-to-end and failure examples
 

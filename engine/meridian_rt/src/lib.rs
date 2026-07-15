@@ -3,7 +3,7 @@
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
-use meridian_core::{FixedStepBatch, FixedStepClock, FixedStepConfig};
+use meridian_core::{FixedStepBatch, FixedStepClock, FixedStepConfig, FrameId};
 use meridian_diagnostics::{FrameAssessment, FrameBudget, FrameHistory, FrameSample, FrameSummary};
 use meridian_ecs::EngineWorld;
 use meridian_renderer::{RenderSnapshot, SnapshotError};
@@ -27,7 +27,7 @@ impl Default for RuntimeConfig {
 /// Report produced after one variable-rate runtime frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RuntimeFrameReport {
-    frame_id: u64,
+    frame_id: FrameId,
     first_fixed_tick: u64,
     fixed_steps: u32,
     fixed_tick_after: u64,
@@ -40,6 +40,11 @@ pub struct RuntimeFrameReport {
 impl RuntimeFrameReport {
     #[must_use]
     pub const fn frame_id(self) -> u64 {
+        self.frame_id.get()
+    }
+
+    #[must_use]
+    pub const fn shared_frame_id(self) -> FrameId {
         self.frame_id
     }
 
@@ -84,7 +89,7 @@ pub struct EngineRuntime {
     config: RuntimeConfig,
     clock: FixedStepClock,
     world: EngineWorld,
-    next_frame_id: u64,
+    next_frame_id: FrameId,
     diagnostics: FrameHistory,
 }
 
@@ -95,7 +100,7 @@ impl EngineRuntime {
             clock: FixedStepClock::new(config.fixed_step),
             config,
             world: EngineWorld::new(),
-            next_frame_id: 0,
+            next_frame_id: FrameId::new(0),
             diagnostics: FrameHistory::new(
                 config.diagnostics_capacity,
                 FrameBudget::for_rate(config.fixed_step.rate),
@@ -110,7 +115,7 @@ impl EngineRuntime {
 
     #[must_use]
     pub const fn next_frame_id(&self) -> u64 {
-        self.next_frame_id
+        self.next_frame_id.get()
     }
 
     #[must_use]
@@ -149,10 +154,10 @@ impl EngineRuntime {
         self.world.run_fixed_steps(steps);
 
         let frame_id = self.next_frame_id;
-        self.next_frame_id = self.next_frame_id.saturating_add(1);
+        self.next_frame_id = self.next_frame_id.next();
         let interpolation_alpha = f64_to_f32(interpolation_alpha);
         self.world
-            .run_render_extract_for_frame(frame_id, interpolation_alpha);
+            .run_render_extract_for_frame(frame_id.get(), interpolation_alpha);
 
         let diagnostic_assessment = self
             .diagnostics

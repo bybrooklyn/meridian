@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Meridian requirements registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "records"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": "0.5"},
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "domain", "status", "work_packages", "evidence_classes"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^REQ-(CORE|GOV|RUN|RHI|PEN|UI|EDT|DAT|PHY|GAM|PRJ|AUD|ISO|BAS|VEG|PRC|TOR|DCC|BLD|VCS|SYN|XR|NET|MOD|AGT|SEC|REL|ANI|NAV|FWK|TWO|SHD|MDL|COL|WRL|INT)-[0-9]{3}$"},
+          "title": {"type": "string", "minLength": 1},
+          "domain": {"type": "string"},
+          "status": {"enum": ["Normative", "Deprecated"]},
+          "work_packages": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^WP-[A-Z]+-[0-9]{3}$"}},
+          "programs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^PRG-[A-Z]+-[0-9]{3}$"}},
+          "evidence_classes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+        },
+        "anyOf": [
+          {"properties": {"work_packages": {"minItems": 1}}},
+          {"required": ["programs"], "properties": {"programs": {"minItems": 1}}}
+        ]
+      }
+    }
+  }
+}

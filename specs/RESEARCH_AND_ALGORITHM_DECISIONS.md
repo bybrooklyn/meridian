@@ -1,229 +1,246 @@
 # Research and Algorithm Decisions
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Phases](IMPLEMENTATION_PHASES.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [ADRs](../docs/architecture/decisions/README.md) · [Registry](registry/research-gates.json)
+
+version 0.5 · 2026-07-15 · Normative research policy
+
+Documentation maturity: `ResearchReady`. This document owns research method,
+candidate framing, primary-source anchors, and decision output. Typed gate
+identity/status lives in [`research-gates.json`](registry/research-gates.json).
+
+## 1. Method and maturity
+
+ResearchReady means a decision is intentionally open but has:
+
+- stable `RG-*` identity, owner, opening dependency, and decision deadline;
+- candidates broad enough to avoid a predetermined winner;
+- stable public seam that prototypes cannot bypass;
+- generated/public/redacted corpus and immutable hashes;
+- named hardware/capability profiles, settings, cache/warmup state, and tooling;
+- correctness, visual/artistic, performance-distribution, memory, recovery,
+  security, accessibility, provenance, and maintenance metrics as applicable;
+- preregistered material-improvement threshold before results are collected;
+- decision rule, independent review, ADR output, migration, and losing-prototype
+  archive/cleanup plan.
+
+Research does not authorize production dependencies, private-content copies,
+API leakage, a shipping claim, or a maturity promotion. An adopted architecture
+remains in force until a gate passes and an ADR changes it.
+
+## 2. Adopted baselines outside research
+
+- Meridian UI is the permanent shared retained UI architecture; any egui shell
+  is transitional (`ADR-0009`).
+- Penumbra is one Meridian-owned renderer with clustered Forward+ as its
+  production shading architecture (`ADR-0004`).
+- Shared renderer systems and artist material authority are path-independent
+  (`ADR-0005`, `ADR-0007`).
+- `meridian-rhi` owns public graphics contracts; wgpu is the current production
+  backend implementation (`ADR-0006`).
+- Cairn owns long-term physics contracts; the current Rapier wrapper is
+  transitional (`ADR-0010`).
+- Luau is the first high-level gameplay runtime (`ADR-0012`).
+- Isobar, Basalt, vegetation, and Torsant have separate authority (`ADR-0008`).
+- Alluvium is the adopted procedural world-authoring and asset-generation
+  architecture while implementation remains planned (`ADR-0017`).
+- Optional capability packs have zero disabled cost (`ADR-0014`).
+- Meridian is one user-facing application, Rust gameplay is implemented before optional Luau, Wavefront and Collective have separate authority, 2D is first-class, the native modeler is core, and text/material graphs share one ShaderIr (`ADR-0018` through `ADR-0023`).
+- `MS-00` through `MS-10` remain the 1.0 delivery authority. Advanced ambitions use post-1.0 `PRG-*` records and cannot promote or block milestones (`ADR-0024`).
+
+Research may improve these decisions but cannot describe them as undecided.
+
+## 3. Registered gates
+
+| Gate | Opens | Decision boundary |
+|---|---|---|
+| RG-PEN-001 | after MS-05 | Penumbra successor renderer-path candidates versus production Forward+ |
+| RG-RHI-001 | after MS-07 | native Metal entry, then later Vulkan/Direct3D 12 common-RHI parity and maintenance |
+| RG-UI-001 | after MS-02 | Meridian UI display-list renderer implementation |
+| RG-PHY-001 | after MS-06 | Cairn solver/layout/determinism portfolio behind owned contracts |
+| RG-ISO-001 | after MS-05 | Isobar weather/atmosphere algorithms by capability tier |
+| RG-BAS-001 | after MS-05 | Basalt conventional/meshlet/hierarchy/sparse geometry portfolio |
+| RG-TOR-001 | after MS-07 | specialized optional fire/fluid/thermal/smoke solver portfolios |
+| RG-PRC-001 | after MS-01 | Alluvium evaluator representation and scalar/SIMD/GPU kernel portfolio |
+| RG-PRC-002 | after MS-05 | measured dependency replacement and deep kernel ownership |
+| RG-SEC-001 | after MS-07 | release cryptography and key-management implementation |
+
+Unregistered experiments cannot be cited as roadmap evidence.
+
+## 4. RG-PEN-001 — Penumbra successor research
+
+Forward+ is the production baseline and a full implementation target, not a
+throwaway prototype. `RG-PEN-001` starts only after the representative forest
+renderer passes MS-05.
+
+Candidates remain open: visibility-buffer, deferred, hybrid, compute/material
+binning, or another Meridian-owned path may be evaluated. Every path consumes
+the same `RenderView`, `GpuSceneSnapshot`, material/shader IR, light/shadow/
+environment snapshots, visibility/indirect streams, render graph, histories,
+streaming/residency, profiling, capture, and resource/pipeline systems.
+
+Required workload coverage is PEN-B01 through PEN-B15 as applicable. A
+promotion requires complete feature parity, equal-or-better artistic results,
+meaningful new capabilities or material measured advantage, stability across
+portable/GPU-driven/advanced tiers and native backends, acceptable shader and
+pipeline behavior, no material frame-time/memory/debugging regression, and a
+sustainable maintenance burden. A roughly two-percent isolated win is not
+enough for substantial complexity; high-end-only wins cannot regress lower
+supported tiers.
+
+Experimental paths are development/benchmark/test/debug only. Promotion
+requires an ADR. Forward+ retention, fallback, or removal after promotion is a
+separate later ADR. A successor is not required for 1.0.
+
+Primary anchors:
+
+- Harada, McKee, and Yang, [Forward+: Bringing Deferred Lighting to the Next Level](https://diglib.eg.org/items/1db2c4c6-dcab-42ea-8c0a-6805d781759e/full), for terminology and the clustered Forward+ family;
+- Burns and Hunt, [The Visibility Buffer](https://jcgt.org/published/0002/02/04/), as one successor candidate family;
+- Majercik et al., [Dynamic Diffuse Global Illumination](https://jcgt.org/published/0008/02/01/), for later GI research;
+- Bitterli et al., [ReSTIR](https://cwyman.org/papers/sig20_ReSTIR.pdf), for later sampling research, not current production commitment.
+
+## 5. RG-RHI-001 — native backend entry
+
+The current production backend remains wgpu. Capabilities are queried and
+recorded; feature bits do not constitute performance or quality evidence.
+
+Native sequence:
+
+1. MS-07 and stable RHI contracts pass.
+2. Metal entry is preregistered and implemented while wgpu remains available.
+3. Common RHI and Metal pass differential images, permanent workloads,
+   synchronization/lifetime tests, device/surface recovery, tooling, backend
+   divergence, provenance, staffing, and maintenance review.
+4. Vulkan and Direct3D 12 may begin independently only after step 3.
+
+Platform priority is Apple Silicon; Linux/Steam Deck; Windows NVIDIA; Windows
+AMD; Intel graphics; Windows on ARM. Capability profiles, not named devices,
+determine supported behavior.
+
+Primary anchors:
+
+- current [wgpu feature documentation](https://docs.rs/wgpu/30.0.0/wgpu/struct.Features.html);
+- official [Apple Metal capability tables](https://developer.apple.com/metal/capabilities/);
+- official [Direct3D feature levels](https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-devices-downlevel-intro);
+- official [Vulkan specification registry](https://registry.khronos.org/vulkan/).
+
+These sources define capabilities, not Meridian support claims or redistribution
+rights.
+
+## 6. UI, physics, and data research
 
-Version 0.2 · Research verified against linked primary sources on 2026-07-14
-
-## 1. Method
-
-Research distinguishes:
-
-- Adopted baseline: selected for the named phase and stable seam.
-- Transitional: current repository implementation retained behind a replaceable boundary.
-- Research gate: prototypes must share corpus/metrics/deadline/owner.
-- Deferred: no prototype needed before its phase.
-- Rejected: conflicts with product invariants.
-
-Primary project documentation, official specifications, official repositories, and original research papers are preferred. A link establishes research context, not redistribution rights, production fitness, or a frozen dependency version. Every implementation phase rechecks current version, license, advisories, platform terms, and API behavior.
-
-## 2. Current decision register
-
-| ID | Subject | Decision | Status and phase |
-|---|---|---|---|
-| R-UI-01 | Permanent UI | Meridian-owned retained UI core; editor/runtime share core. egui is disposable bootstrap. | Adopted architecture; P6/P9/P14 migration |
-| R-UI-02 | UI renderer | Backend-neutral display list; evaluate Vello/native paths after text/layout/semantics corpus. | Research gate P6/P9 |
-| R-A11Y-01 | Accessibility | Meridian owns semantic tree; AccessKit/native are adapters. | Adopted P6 |
-| R-RENDER-01 | Current graphics backend | Keep wgpu behind Meridian RHI while capabilities/evidence grow. | Transitional adopted P1/P2 |
-| R-RENDER-02 | Opening renderer | Depth prepass plus clustered Forward+ evolving from current direct PBR. | Adopted P2/P8 |
-| R-RENDER-03 | IBL order | Diffuse irradiance is implemented foundation; pass timing next; specular prefilter/LUT later bounded work. | Adopted active plan |
-| R-RENDER-04 | Visibility/geometry/GI/rays | Shared P12 prototypes; no mandatory vendor/algorithm. | Research P12 |
-| R-PHYS-01 | Physics ownership | Cairn hard-fork path from pinned Rapier plus selected Box2D study/ports; no Rapier API compatibility goal. | Adopted migration P3+ |
-| R-PHYS-02 | Determinism | Explicit modes/envelopes; no universal cross-platform bit identity claim. | Adopted; calibrate P3/P13 |
-| R-ECS-01 | ECS | Current bevy_ecs is transitional behind Meridian IDs/commands/schemas; replacement requires benchmark. | Research deadline after P8 |
-| R-SCRIPT-01 | Initial scripting | Luau broad Lua-compatible subset is the only initial high-level runtime. | Adopted P7 |
-| R-XR-01 | XR | OpenXR-first adapter and predicted-time pipeline. | Adopted architecture, deferred P19 |
-| R-BUILD-01 | Rust build/IDE | Cargo files authoritative; cargo metadata/JSON and rust-analyzer are integrated, not replaced. | Adopted P16 |
-| R-VCS-01 | VCS | Git-compatible interoperability plus Jujutsu-derived changes/operation log; provenance/reimplementation gate. | Adopted architecture, research P17 |
-| R-SYNC-01 | Sync | meridian-sync direct encrypted P2P first, optional self-hosted relay; no Telepo/account/cloud/inbound requirement. | Adopted P18 |
-| R-AGENT-01 | Tool semantics | One typed registry for UI/CLI/Rust/MCP/agents; no privileged AI API. | Adopted P6/P16/P25 |
-| R-AGENT-02 | Ollama | Local/cloud/OpenAI-compatible/web-search are distinct capability/trust profiles. | Adopted P25 |
-| R-SEC-01 | Updates | TUF-inspired role model; exact crypto/library/key policy requires threat-model gate. | Adopted architecture; gate P5/P29 |
-| R-DATA-01 | Hash/compression | Content-addressed design; BLAKE3 and Zstandard are candidates/current plan, verified by format/profile evidence. | Baseline candidate P5 |
-| R-SIM-01 | Advanced simulations | Portfolio of specialized optional solvers; no universal solver/graph. | Research P20/P21/P27 |
-| R-NET-01 | Networking | Transport/provider-neutral core; Steam/EOS optional adapters. | Adopted architecture P22/P23 |
-
-## 3. UI research
-
-Official/reference sources:
-
-- [GPUI README](https://github.com/zed-industries/zed/blob/main/crates/gpui/README.md) describes Zed’s hybrid UI framework and is useful architecture evidence, not a selected Meridian dependency.
-- [Vello repository](https://github.com/linebender/vello) is a GPU compute-oriented 2D renderer candidate for display-list experiments.
-- [Slint backend/renderer documentation](https://docs.slint.dev/latest/docs/slint/guide/backends-and-renderers/backends_and_renderers/) informs backend separation.
-- [AccessKit crate documentation](https://docs.rs/accesskit/latest/accesskit/) defines its cross-platform accessibility adapter role.
-
-R-UI-G1 compares:
-
-- Meridian display list rendered through current renderer;
-- a Vello-backed path;
-- a conservative CPU tessellation/native GPU path.
-
-Stable seam: DisplayList, glyph/image handles, semantic tree. Corpus: editor panels, large virtualized tree/table, text editor, graphs, runtime HUD, DPI/locales. Metrics: correctness, text quality, latency distribution, GPU/CPU/memory, cache behavior, device recovery, platform support, maintenance/license. Deadline: before broad P9 migration. Owner: UI/render leads. Losing prototypes remain in research branch/artifact report, not production dependency graph.
-
-## 4. Rendering research
-
-Sources:
-
-- [wgpu official repository](https://github.com/gfx-rs/wgpu) and [releases](https://github.com/gfx-rs/wgpu/releases) govern current backend behavior/version review.
-- Burns and Hunt’s [visibility buffer paper](https://jcgt.org/published/0002/02/04/) is a primary algorithm reference.
-- Majercik et al. [Dynamic Diffuse Global Illumination](https://jcgt.org/published/0008/02/01/) informs probe/radiance-cache research.
-- Bitterli et al. [ReSTIR](https://cwyman.org/papers/sig20_ReSTIR.pdf) informs later direct-light sampling research, not opening scope.
-
-R-RENDER-G1, deadline P12:
-
-- production Forward+ baseline;
-- visibility-buffer prototype;
-- hybrid path only if a measured use case requires it.
-
-Corpus: B01/B02, dense materials/vegetation, transparency, skinning, decals, editor picking, MSAA/XR-shaped views. Metrics: pass/frame CPU/GPU distribution, memory/bandwidth, material/shader complexity, draw/visibility cost, feature compatibility, image reference, implementation/maintenance. Stable seam: extracted scene, material facets, render graph, visibility results.
-
-R-RENDER-G2 evaluates virtual geometry page/hierarchy/raster/deformation alternatives on a public/generated corpus. R-RENDER-G3 evaluates baked/probe/DDGI/radiance-cache/hardware-ray portfolios against a path-traced reference. No one GI technique is assumed to serve all tiers.
-
-## 5. Cairn research and provenance
-
-Sources:
-
-- [Rapier determinism guidance](https://rapier.rs/docs/user_guides/templates/determinism), [simulation structures](https://rapier.rs/docs/user_guides/rust/simulation_structures/), and [CCD](https://rapier.rs/docs/user_guides/rust/rigid_body_ccd/) define relevant upstream behavior and caveats.
-- [Box2D 3.1 announcement](https://box2d.org/posts/2025/04/box2d-3.1/) and [3.1 release notes](https://box2d.org/documentation/md_release__notes__v310.html) inform modern data-oriented API/solver study.
-- Parker and O’Brien’s [real-time deformation/fracture paper](https://graphics.berkeley.edu/papers/Parker-RTD-2009-08/) is a primary destruction reference.
-
-Before source transfer:
-
-1. record exact upstream repository/revision/archive hash;
-2. archive license/notices and file-level provenance;
-3. enumerate local patches and generated code;
-4. build unmodified baseline;
-5. capture differential scene/test/benchmark corpus;
-6. define Cairn-native seam and remove compatibility objective;
-7. review redistribution/attribution.
-
-R-PHYS-G1 compares broadphase/narrowphase/solver layout changes only behind body/shape/query/snapshot contracts. R-PHYS-G2 defines stable, deterministic, and strict modes from measured results, including compiler/features/thread count/platform.
-
-## 6. ECS and scheduling research
-
-The repository uses bevy_ecs 0.19 as a current implementation aid. The stable seam is Meridian PersistentEntityId, component schema, query descriptors, command buffers, fixed barriers, extraction, save/network mapping.
-
-R-ECS-G1 begins after Phase 8 evidence:
-
-- retain/wrap current ECS;
-- Meridian-owned archetype chunk prototype;
-- hybrid migration.
-
-Corpus: opening world, high-entity synthetic, streaming activation, save/extraction, change tracking, editor queries. Metrics: fixed-step CPU distribution, memory/layout, command merge, determinism, serialization/network fit, tooling, migration and maintenance. Replacement occurs only on measured total product value.
-
-## 7. Luau research
-
-Sources:
-
-- [Luau sandbox guidance](https://luau.org/sandbox/)
-- [Luau embedding API](https://luau.org/api/)
-- [Luau performance](https://luau.org/performance/)
-- [Lua compatibility](https://luau.org/compatibility/)
-- [official repository](https://github.com/luau-lang/luau)
-
-The selected baseline is embedding behind generated Meridian bindings. Research remains for VM isolation granularity, allocator/instruction hooks, bytecode/source distribution, debugger integration, hot-reload state migration, deterministic APIs, and exact broad Lua-compatible subset.
-
-Additional language work is prohibited before Phase 28. Each candidate must beat its maintenance/runtime/package/debug/security cost on actual user demand.
-
-## 8. Cargo, rust-analyzer, and VCS
-
-Sources:
-
-- [Cargo reference](https://doc.rust-lang.org/cargo/reference/), [features](https://doc.rust-lang.org/stable/cargo/reference/features.html), [workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html), and [cargo metadata](https://doc.rust-lang.org/stable/cargo/commands/cargo-metadata.html)
-- [rust-analyzer architecture](https://rust-analyzer.github.io/book/contributing/architecture.html), [configuration](https://rust-analyzer.github.io/book/configuration), and [diagnostics](https://rust-analyzer.github.io/book/diagnostics.html)
-- Jujutsu [operation log](https://docs.jj-vcs.dev/latest/operation-log/), [conflicts](https://jj-vcs.github.io/jj/latest/conflicts/), and [concurrency](https://jj-vcs.github.io/jj/latest/technical/concurrency/)
-- Unreal documentation for [source control](https://dev.epicgames.com/documentation/en-us/unreal-engine/using-source-control-in-the-unreal-editor), [Multi-User Editing](https://dev.epicgames.com/documentation/en-us/unreal-engine/multi-user-editing-overview-for-unreal-engine), and [Virtual Assets](https://dev.epicgames.com/documentation/en-us/unreal-engine/overview-of-virtual-assets-in-unreal-engine) as product comparisons, not implementation authority
-- Forgejo [documentation](https://forgejo.org/docs/latest/), [API use](https://forgejo.org/docs/latest/user/api-usage/), [releases](https://forgejo.org/docs/latest/user/releases/), and [pull requests/Git flow](https://forgejo.org/docs/latest/user/pull-requests-and-git-flow/) for optional self-hosted integration research
-
-R-VCS-G1 deadline P17 compares direct integration/reuse/fork/reimplementation under license/provenance, semantic-data requirements, Git interoperability, operation recovery, large assets, embedded-product UX, and maintenance. Stable user concepts remain ChangeId, OperationId, workspace, semantic diff, and Git remote interoperability.
-
-Live collaboration separately chooses OT/CRDT/locks/operation streams per document type; source control remains authoritative.
-
-## 9. Agent, MCP, and Ollama research
-
-Sources:
-
-- Ollama [web search](https://docs.ollama.com/capabilities/web-search), [cloud](https://docs.ollama.com/cloud), [OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility), and [FAQ](https://docs.ollama.com/faq)
-- OpenAI [Codex app server](https://developers.openai.com/codex/app-server), [MCP](https://developers.openai.com/codex/mcp), and [agent approvals/security](https://developers.openai.com/codex/agent-approvals-security)
-
-R-AGENT-G1 compares provider adapters on schema/tool correctness, local/offline behavior, structured output/tool calls, model discovery, streaming/cancellation, privacy/trust, latency/cost, and maintenance. It never changes command authority.
-
-R-AGENT-G2 evaluates retrieval chunking/embedding models on exact source attribution, recall/precision task corpus, index size/build time, local hardware, stale update behavior, and sensitivity filtering. Exact symbol/schema/diagnostic search is always available without embeddings.
-
-## 10. OpenXR
-
-The official [OpenXR registry](https://registry.khronos.org/OpenXR/) exposed OpenXR 1.1 specification revision 1.1.61 at the 2026-07-14 research pass; use the current registry at implementation. The [OpenXR 1.1 specification](https://registry.khronos.org/OpenXR/specs/1.1/html/xrspec.html) is authoritative for lifecycle, timing, views, actions, spaces, and extensions.
-
-P19 runtime matrix selects required extensions only after testing. Vendor-specific features remain adapters. Stable seams are XR session/view/action/space/capability descriptors and renderer/input/interaction snapshots.
-
-## 11. Updates and security
-
-The official [TUF specification](https://theupdateframework.github.io/specification/) and [TUF site](https://theupdateframework.org/spec/) reported specification version 1.0.32 at the research pass. Meridian adopts the role/freshness/delegation threat model, not an unreviewed homegrown cryptosystem.
-
-R-SEC-G1 before package/update format freeze selects implementation library, algorithms, thresholds, expiration, key storage, metadata canonicalization, and compromise procedure from threat model, platform support, audit maturity, licensing, performance, and operational test.
-
-## 12. Networking and services
-
-Sources:
-
-- Steam [multiplayer](https://partner.steamgames.com/doc/features/multiplayer?l=english), [authentication](https://partner.steamgames.com/doc/features/auth?l=english), and [Networking Sockets](https://partner.steamgames.com/doc/api/ISteamNetworkingSockets?l=english&language=english)
-- Epic Online Services [introduction](https://onlineservices.epicgames.com/en-US/news/introduction-to-epic-online-services-eos?lang=en-US) and [trust and safety](https://onlineservices.epicgames.com/trust-safety)
-
-R-NET-G1 evaluates native UDP/QUIC and provider transport properties on impairment, NAT/relay, encryption/auth seams, platform support, headless operations, maintenance, and license. Replication is stable above transport. Steam/EOS are optional Phase 23 adapters.
-
-## 13. Hashing and compression
-
-Sources:
-
-- [BLAKE3 official repository](https://github.com/BLAKE3-team/BLAKE3)
-- Zstandard [project](https://facebook.github.io/zstd/index.html) and [API manual](https://facebook.github.io/zstd/zstd_manual.html)
-
-Content hash and codec fields are format identifiers, not hardwired implementation assumptions. P5 tests collision-resistant identity use, streaming/range behavior, dictionary/version policy, decompression limits, platform support, and migration. Security does not rely on a fast non-cryptographic checksum.
-
-## 14. Simulation and acoustics research
-
-Primary references:
-
-- Jos Stam [Stable Fluids publications](https://www.josstam.com/publications) and [Real-Time Fluid Dynamics for Games](https://graphics.cs.cmu.edu/nsp/course/15-464/Spring07/papers/StamFluidforGames.pdf)
-- Bridson [fluid simulation resources](https://www.cs.ubc.ca/~rbridson/fluidsimulation/)
-- Ando et al. [stream-function liquids](https://doi.org/10.1145/1185657.1185730)
-- Jiang et al. [APIC](https://www.cs.ucr.edu/~craigs/papers/2015-apic/paper.pdf)
-- Macklin et al. [XPBD](https://matthias-research.github.io/pages/publications/XPBD.pdf)
-- Nguyen et al. [physically based fire](https://graphics.stanford.edu/papers/fire-sg02/)
-- [GSound](https://gamma.cs.unc.edu/GSOUND/gsound_aes41st.pdf) and [precomputed wave simulation](https://gamma.cs.unc.edu/PrecompWaveSim/docs/paper_docs/paper.pdf)
-- shallow-water references [ANZIAM article](https://journal.austms.org.au/ojs/index.php/ANZIAMJ/article/view/645) and [arXiv 1401.4125](https://arxiv.org/abs/1401.4125)
-
-These papers define candidates and validation ideas, not one production solver. Gates:
-
-- R-AUDIO-G1: authored zones/portals/probes versus geometric/wave hybrid on impulse-response and game usefulness corpus, deadline P20.
-- R-DEFORM-G1: XPBD/related deformable formulations versus authored/rigid approximations, deadline P21.
-- R-FIRE-G1: cellular/field/particle visual-thermal portfolios, deadline P21/P27.
-- R-FLUID-G1: shallow-water grid, particle-grid/APIC-like, and authored/baked tiers by scale, deadline P27.
-- R-SNOW-G1: heightfield/granular/deformable tiers, deadline P27.
-
-Metrics include stability envelope, conservation where meaningful, visual/reference error, authoring control, CPU/GPU/memory, streaming, determinism, save/network, accessibility impact, fallback, and zero-cost-disabled proof.
-
-## 15. Open decisions and owners
-
-| Gate | Deadline | Owner role | Stable seam |
-|---|---|---|---|
-| UI renderer backend | P9 | UI + rendering | display list/semantic tree |
-| Native graphics backend threshold | P12 | rendering/platform | RHI descriptors/handles |
-| Visibility/virtual geometry/GI/rays | P12 | rendering | extracted scene/render graph/material facets |
-| Meridian ECS replacement | after P8, before freeze | runtime/world | IDs/schema/commands/query/extraction |
-| Cairn solver/layout/determinism | P3/P13 | physics | Cairn descriptors/handles/snapshot |
-| VCS implementation lineage | P17 | VCS/legal/security | changes/operations/Git interop |
-| Sync transport/NAT/relay | P18 | sync/security | peer/object/chunk/session protocol |
-| XR extensions/runtime matrix | P19 | XR/platform | session/view/action/space |
-| Hybrid acoustics | P20 | audio/simulation | acoustic scene/snapshot/DSP graph |
-| Deform/fire/thermal | P21 | physics/environment | field/structure/event contracts |
-| Multiplayer transports/providers | P22/P23 | network/security | protocol/transport/provider traits |
-| Update crypto/library/key policy | before release package freeze | security/release | role metadata/verifier/signer |
-| Mod runtime/sandbox | P24 | mod/security/gameplay | manifest/capabilities/published API |
-| Agent providers/retrieval | P25 | tooling/security | command/query/context/audit |
-| Buildings/ecosystems | P26 | procedural/content | domain graph/candidate/override |
-| Fluid/flood/erosion/snow | P27 | simulation/world | field/solver snapshot/coupling |
-| Additional languages | P28 | gameplay/tooling | API schema/module/capability |
-
-## 16. Decision output
-
-Each completed gate produces an ADR containing raw evidence links, prototype revisions, corpus hash, hardware/software, metrics/statistics, qualitative review, security/accessibility/maintenance/licensing, winner and limits, migration plan, and losing-prototype archive. PLANNING changes only after the ADR and relevant normative specs are updated.
+`RG-UI-001` compares Penumbra display-list rendering, selected 2D GPU paths, and
+conservative CPU-tessellation/native-GPU paths on accessible editor/runtime UI.
+Stable seams are `DisplayList`, glyph/image handles, semantic tree, focus/event
+model, and recovery. Metrics include correctness, text quality, latency,
+CPU/GPU/memory, cache behavior, device recovery, platform support, maintenance,
+and license. Sources include [AccessKit](https://accesskit.dev/),
+[Vello](https://github.com/linebender/vello), and official candidate docs.
+
+`RG-PHY-001` begins only after exact Rapier/Box2D provenance, an unmodified
+baseline, differential fixtures, and Cairn-owned descriptors/handles/snapshots.
+It compares solver/layout changes and measured determinism envelopes without a
+universal bit-identical promise. Sources include official
+[Rapier determinism guidance](https://rapier.rs/docs/user_guides/templates/determinism),
+[Rapier simulation structures](https://rapier.rs/docs/user_guides/rust/simulation_structures/),
+and [Box2D releases](https://box2d.org/documentation/md_release__notes__v310.html).
+
+Meridian ECS replacement remains a future gate to register after MS-07. Current
+bevy_ecs use stays behind persistent IDs, schemas, queries, commands, barriers,
+extraction, save, and network seams. Replacement requires measured total product
+value, not ownership preference alone.
+
+Content hash, compression, package partition, world-cell sizing, and save
+compaction remain format/profile decisions. Candidates use deterministic build,
+range/streaming, decompression-limit, corruption, migration, patch-size, and
+platform evidence. No algorithm name becomes an unversioned format assumption.
+
+## 7. Alluvium, Isobar, Basalt, Torsant, and Wavefront research
+
+`RG-PRC-001` keeps `ProceduralRecipe`, `FieldValue`, `EvaluationRequest`,
+`EvaluationResult`, `GeneratedObjectId`, and `ProvenanceManifest` stable while
+comparing strict reference, optimized scalar, architecture SIMD, GPU,
+tiled/sparse, and isolated-worker execution. Required evidence covers
+structural correctness, determinism level, preview/clean/dirty latency,
+throughput, CPU/GPU transfer, memory, cancellation, diagnostics, platform
+coverage, and maintenance on PEN-B01/B02/B05/B06/B10/B11. A strict reference
+path is mandatory; acceleration cannot redefine recipe semantics.
+
+`RG-PRC-002` defaults to retaining permissively licensed foundations behind
+Meridian seams. Replacement or deep custom ownership requires a preregistered
+material product benefit, representative workload evidence, license/provenance
+review, migration and compatibility cost, debugging/tooling impact, sustained
+owner capacity, and an ADR. Branding or a trivial isolated gain is rejected.
+
+`RG-ISO-001` selects authored/simple/regional/advanced atmosphere and weather
+algorithms by visual stability, deterministic envelope, authorability, field
+coupling, CPU/GPU/memory cost, fallback, and PEN-B05 evidence.
+
+`RG-BAS-001` compares conventional LOD, meshlet, hierarchy, and sparse-page
+approaches by precision, streaming, memory, deformation, authoring, recovery,
+and PEN-B02/PEN-B06/PEN-B09/PEN-B10/PEN-B11 evidence. It is distinct from
+renderer-path selection.
+
+`RG-TOR-001` chooses specialized per-effect portfolios; it never seeks one
+universal solver. Candidate references include Stam/Bridson fluid methods,
+shallow-water methods, APIC-like particle-grid methods, XPBD, and physically
+based or authored fire/thermal models. Metrics include stability, conservation
+where meaningful, visual/reference error, controls, CPU/GPU/memory, streaming,
+determinism, persistence/network fit, accessibility, fallback, and disabled
+cost. PEN-B07 remains definition-only until this work activates.
+
+Hybrid acoustics, deformables, snow/granular, and specialized cross-system
+solver coupling require separately registered gates before implementation.
+Alluvium buildings, ecosystems, terrain, material, and weathering work follows
+its registered package chain and the owning runtime subsystem gates. Sharing
+evaluation or field infrastructure does not imply a universal graph or solver.
+
+Primary candidate references include:
+
+- Jos Stam's [fluid publications](https://www.josstam.com/publications);
+- Bridson's [fluid simulation resources](https://www.cs.ubc.ca/~rbridson/fluidsimulation/);
+- Jiang et al., [APIC](https://www.cs.ucr.edu/~craigs/papers/2015-apic/paper.pdf);
+- Macklin et al., [XPBD](https://matthias-research.github.io/pages/publications/XPBD.pdf);
+- Nguyen et al., [physically based fire](https://graphics.stanford.edu/papers/fire-sg02/).
+
+## 8. Gameplay, modeler, animation, navigation, 2D, and shaders
+
+Rust gameplay implementation under `WP-GAM-001` is not a language-selection experiment. Research focuses on stable API/schema generation, module isolation, platform-safe Play rebuild/restart, state migration, debugging, and performance. Luau research begins only under `WP-GAM-002` after these contracts stabilize; it covers VM isolation, allocator/instruction limits, module/bytecode policy, debugger/profiler, state migration, deterministic APIs, and exact compatibility. Primary sources are the [Luau sandbox](https://luau.org/sandbox/), [embedding API](https://luau.org/api/), [performance guidance](https://luau.org/performance/), and [compatibility documentation](https://luau.org/compatibility/).
+
+Native modeling research keeps editable model documents, stable element IDs, topology lineage, semantic operations, modifiers, undo/recovery, and explicit interchange loss stable. Candidate mesh kernels, robust predicates, booleans, UV/LOD methods, and optional DCC bridges compare correctness, degeneracy behavior, source recovery, accessibility, performance, licensing, and maintenance. Advanced sculpting/retopology/hair/cloth remains `PRG-MDL-001`, not a hidden 1.0 gate.
+
+Animation research keeps skeleton/clip/graph/event/pose contracts stable while comparing compression, retargeting, blend/IK execution, CPU/GPU deformation, streaming, and rollback behavior. Facial/performance-capture work is `PRG-ANI-001` and adds biometric privacy/provenance gates.
+
+Navigation research keeps source facets, profiles, artifacts, bounded queries, partial outcomes, streaming epochs, and trace semantics stable while comparing mesh/grid/voxel/flow/hybrid representations and optional accelerators. Gameplay AI decisions remain outside NAV.
+
+First-class 2D research compares dedicated sprite/tile/shape batching, atlas policy, 2D lighting, pixel scaling, and Cairn 2D algorithms on `VAL-TWO-001`. It may share infrastructure but cannot rely on hidden 3D execution or memory.
+
+Shader research keeps the Meridian Shader Language semantics, material-graph lowering, canonical `ShaderIr`, reflection, source maps, capability declarations, and compatibility manifests stable. WGSL/Naga is the current target path. Native target lowering follows RHI gates. Compiler internalization is `PRG-SHD-001` and requires differential correctness, security, backend, performance, and maintenance evidence.
+
+## 9. Ecosystem and trust research
+
+Collective provider research keeps identity/session/social/voice-policy/analytics/moderation contracts provider-neutral, modular, privacy-bound, self-hostable, and offline-safe. No research result authorizes a Meridian-operated service without separate operational, legal, security, moderation, reliability, and funding evidence.
+
+VCS lineage, synchronization models, network transports/providers, mod sandbox,
+agent providers/retrieval, XR extensions, and DCC integrations need registered
+gates before implementation. Stable seams are already specified; proprietary
+SDK availability or popularity is not an adoption decision.
+
+The strategic dependency authority is [`registry/dependency-strategy.json`](registry/dependency-strategy.json). Categories are `InternalizeEarly`, `InternalizeEventually`, and `WrapIndefinitelyUnlessNecessary`. None is a promise to rewrite. Every replacement preregisters product value, representative workloads, compatibility/migration, license/security, debugging, staffing, and maintenance. Existing permissive foundations remain when they are the best evidence-backed choice.
+
+Distributed-world and advanced-integrity research is confined to `PRG-WRL-001` and `PRG-INT-001` after 1.0 and their entry gates. Distributed scale and anti-cheat claims require adversarial/failure/cost/false-positive evidence; neither is inferred from NET, Collective, SEC, or MS-10 completion.
+
+`RG-SEC-001` begins from a threat model and compares implementation libraries,
+algorithms, thresholds, expiry, key storage, canonicalization, compromise,
+rotation, reproducibility, audit maturity, platform support, license, and
+operations. Meridian adopts the role/freshness/delegation threat model from the
+[TUF specification](https://theupdateframework.github.io/specification/), not an
+unreviewed custom cryptosystem.
+
+## 10. Decision output
+
+Every completed gate produces an ADR containing gate ID, candidate revisions,
+raw evidence links, corpus/build hashes, hardware/software/capabilities,
+preregistered thresholds, metrics/statistics, visual/artistic review,
+security/accessibility/provenance/maintenance review, winner and limits,
+migration/rollback, and losing-prototype archive. Registries and owning specs
+update before PLANNING activates the selected implementation package.

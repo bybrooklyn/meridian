@@ -1,0 +1,31 @@
+{
+  "$schema":"../../schemas/governance/adr-index.schema.json",
+  "version":"0.5",
+  "records":[
+    {"id":"ADR-0000","status":"Proposed","path":"docs/architecture/decisions/ADR-0000-template.md"},
+    {"id":"ADR-0001","status":"Adopted","path":"docs/architecture/decisions/ADR-0001-governance-status.md"},
+    {"id":"ADR-0002","status":"Adopted","path":"docs/architecture/decisions/ADR-0002-milestone-workstream-roadmap.md"},
+    {"id":"ADR-0003","status":"Adopted","path":"docs/architecture/decisions/ADR-0003-repository-split.md"},
+    {"id":"ADR-0004","status":"Adopted","path":"docs/architecture/decisions/ADR-0004-penumbra-clustered-forward-plus.md"},
+    {"id":"ADR-0005","status":"Adopted","path":"docs/architecture/decisions/ADR-0005-shared-renderer-systems.md"},
+    {"id":"ADR-0006","status":"Adopted","path":"docs/architecture/decisions/ADR-0006-meridian-rhi-wgpu-native-backend.md"},
+    {"id":"ADR-0007","status":"Adopted","path":"docs/architecture/decisions/ADR-0007-material-shader-ir.md"},
+    {"id":"ADR-0008","status":"Adopted","path":"docs/architecture/decisions/ADR-0008-isobar-basalt-torsant-boundaries.md"},
+    {"id":"ADR-0009","status":"Adopted","path":"docs/architecture/decisions/ADR-0009-editor-first.md"},
+    {"id":"ADR-0010","status":"Adopted","path":"docs/architecture/decisions/ADR-0010-cairn.md"},
+    {"id":"ADR-0011","status":"Adopted","path":"docs/architecture/decisions/ADR-0011-data-authority.md"},
+    {"id":"ADR-0012","status":"Adopted","path":"docs/architecture/decisions/ADR-0012-luau.md"},
+    {"id":"ADR-0013","status":"Adopted","path":"docs/architecture/decisions/ADR-0013-typed-commands-agents.md"},
+    {"id":"ADR-0014","status":"Adopted","path":"docs/architecture/decisions/ADR-0014-optional-capability-packs.md"},
+    {"id":"ADR-0015","status":"Adopted","path":"docs/architecture/decisions/ADR-0015-security-update-trust.md"},
+    {"id":"ADR-0016","status":"Adopted","path":"docs/architecture/decisions/ADR-0016-redacted-private-benchmark-policy.md"},
+    {"id":"ADR-0017","status":"Adopted","path":"docs/architecture/decisions/ADR-0017-alluvium.md"},
+    {"id":"ADR-0018","status":"Adopted","path":"docs/architecture/decisions/ADR-0018-general-purpose-single-application.md"},
+    {"id":"ADR-0019","status":"Adopted","path":"docs/architecture/decisions/ADR-0019-rust-first-luau-after.md"},
+    {"id":"ADR-0020","status":"Adopted","path":"docs/architecture/decisions/ADR-0020-wavefront-and-collective.md"},
+    {"id":"ADR-0021","status":"Adopted","path":"docs/architecture/decisions/ADR-0021-first-class-two-dimensional.md"},
+    {"id":"ADR-0022","status":"Adopted","path":"docs/architecture/decisions/ADR-0022-native-modeler.md"},
+    {"id":"ADR-0023","status":"Adopted","path":"docs/architecture/decisions/ADR-0023-meridian-shader-language.md"},
+    {"id":"ADR-0024","status":"Adopted","path":"docs/architecture/decisions/ADR-0024-post-one-programs.md"}
+  ]
+}

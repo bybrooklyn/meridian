@@ -1,16 +1,20 @@
 # Cargo, IDE, Build, and Team Workflows
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Architecture](REPOSITORY_AND_CRATE_ARCHITECTURE.md) · [VCS](VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [ADR-0018](../docs/architecture/decisions/ADR-0018-general-purpose-single-application.md) · [Architecture](REPOSITORY_AND_CRATE_ARCHITECTURE.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Shader language](MERIDIAN_SHADER_LANGUAGE_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [VCS](VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md)
 
-Version 0.2 · 2026-07-14 · Normative · Current Cargo workspace foundation, build service Planned
+version 0.5 · 2026-07-15 · Normative · Current Cargo workspace foundation, build service Planned
+
+Documentation maturity: `ImplementationReady`. Implementation maturity:
+`Planned` with current Cargo/CI foundations. Governing IDs: `REQ-BLD-001`,
+`WP-BLD-001`.
 
 ## 1. Goals and non-goals
 
-Cargo manifests and lockfiles remain authoritative for Rust. Meridian provides lossless project editing, rust-analyzer integration, and one observable/cancellable build DAG spanning Rust, shaders, assets, logic, UI, tests, packages, signing, and deployment.
+Cargo manifests and lockfiles remain authoritative for Rust. The one user-facing application is named **Meridian**; project management, editor, IDE, modeler, graph tools, debugger, profiler, build, VCS, and Play workflows are workspaces within it rather than separate Studio/IDE products. Meridian provides lossless project editing, rust-analyzer integration, and one observable/cancellable build DAG spanning Rust, shaders, assets, models, animation, logic, UI, tests, packages, signing, and deployment.
 
 Goals: beginners build without terminal knowledge; experts retain Cargo/rustc detail; every artifact maps to immutable inputs/tool versions; stale events/results cannot corrupt a newer build; workers restart safely; teams share reproducible profiles/evidence.
 
-Non-goals: replacing Cargo or rust-analyzer, rewriting TOML destructively, scraping human terminal text as the primary protocol, storing secrets in profiles, or treating remote workers as trusted.
+Non-goals: replacing Cargo or rust-analyzer, creating separate Meridian Studio/IDE applications, rewriting TOML destructively, scraping human terminal text as the primary protocol, storing secrets in profiles, or treating remote workers as trusted.
 
 ## 2. Ownership and processes
 
@@ -18,7 +22,7 @@ Non-goals: replacing Cargo or rust-analyzer, rewriting TOML destructively, scrap
 - meridian-build: build graph, scheduler, operation state, cache/provenance.
 - meridian-build-protocol: versioned editor/service/worker messages.
 - meridian-cargo: cargo metadata, JSON messages, rustc artifacts, tests.
-- meridian-ide: language-server/session and source navigation contracts.
+- meridian-ide: language-server/session, code intelligence, debugger, test, profiler, and source-navigation contracts used inside Meridian.
 - domain compiler adapters: shader, asset, UI, logic, package/signing.
 
 The editor invokes a long-lived build service process. Import/compiler/signing/remote work runs in narrower supervised workers. Runtime crates do not depend on Cargo/IDE crates.
@@ -49,7 +53,7 @@ BuildNode {
 }
 ~~~
 
-Node kinds include Cargo check/build/test/doc, shader validate/compile/reflect, asset import/facet/variant, world/UI/logic compile, package, sign, install, launch, benchmark, and evidence assemble.
+Node kinds include Cargo check/build/test/doc, Meridian Shader Language parse/IR/target/reflect, asset import/facet/variant, native model validate/modifier/derive/interchange, animation import/compress/build, Alluvium recipe validate/migrate/evaluate/bake/provenance/license-audit, world/UI/logic compile, package, sign, install, launch, benchmark, and evidence assemble.
 
 The graph is content-addressed. Timestamps may optimize discovery but never establish correctness.
 
@@ -77,11 +81,17 @@ rust-analyzer remains the Rust semantic engine. Meridian manages one session per
 
 Editor code actions become previews and normal file/VCS transactions. Generated sources are read-only with provenance and source mapping. Different build/profile diagnostics are labeled; they do not overwrite each other.
 
+Meridian's IDE baseline includes project/workspace navigation, code editing, semantic completion/navigation, diagnostics, formatting, safe refactors/code actions, build/test/run/debug controls, breakpoints, stack/locals with redaction, structured terminal/process views, generated-source/source-map navigation, profiler links, and documentation. Rust is first. Optional Luau support follows `WP-GAM-002` and cannot fork command, breakpoint, source-map, or capability semantics.
+
+The complete IDE is not one monolithic process. rust-analyzer, compilers, debugger adapters, importers, Alluvium workers, model operations, and remote workers may be bounded helper processes. The user still experiences one Meridian application and one project/session/permission model.
+
 ## 8. Team workflows
 
 Project-defined tasks include build, run, play, test, benchmark, package, and validate profiles. Personal UI/layout/tool paths remain local overlays. Shared profiles prohibit machine-specific absolute paths and secret values.
 
 Build/evidence manifests let a teammate reproduce or explain differences. Remote workers negotiate platform/toolchain/capabilities, receive content-addressed bounded inputs, and return signed/verified outputs under trust policy.
+
+Remote development separates source authority, file synchronization, semantic service, build execution, runtime/debug target, artifact transport, and secrets. Disconnects preserve local source and durable checkpoints. Remote work is optional, provider-neutral, capability-declared, and never a Meridian-hosted-service requirement.
 
 ## 9. Beginner and expert UX
 
@@ -102,6 +112,7 @@ Expert:
 - pin toolchain/target/environment;
 - run one node or compare BuildIds;
 - export trace/evidence.
+- move from model element, shader source span, animation node, gameplay system, or world object to the responsible build node and generated artifact.
 
 CLI and MCP submit the same BuildRequest and consume the same event stream.
 
@@ -120,6 +131,9 @@ Large artifacts are immutable and streamed/range-addressed. A worker cannot publ
 - downloaded tools/SDKs have pinned version/hash/license/provenance;
 - signing is a separate least-privilege operation;
 - compiler/build output is treated as untrusted until validated.
+- Alluvium external tools and kernels receive only declared content-addressed
+  inputs and cannot publish until output schema, provenance, license, budget,
+  and determinism policy pass.
 
 ## 12. Diagnostics and recovery
 
@@ -139,9 +153,15 @@ Build service crash recovery reopens the operation database, validates committed
 - feature/minimal/default/all-profile dependency gates;
 - build latency/critical path/cache hit/memory/IO on named corpus.
 
-## 14. Phases
+## 14. Delivery mapping
 
-Phase 1 establishes workspace/CI rules. Phase 5 supplies domain artifact graph inputs. Phase 16 delivers build service, Cargo/IDE integration, team profiles, and evidence output. Phases 17–18 integrate source/sync checkpoints. Phase 29 certifies reproducibility and selected remote/signing profiles.
+MS-01 establishes workspace/CI rules. MS-01/MS-03/MS-04 supply domain artifact
+graph inputs. `WP-PRC-001` integrates Alluvium validation and baking with the
+same observable build graph before MS-05. MS-03/MS-08 deliver build service,
+Cargo/IDE integration, team profiles, and evidence output. MS-08/MS-09 integrate
+source/sync checkpoints, the native modeler, animation, ShaderIr, Rust gameplay,
+and optional Luau build adapters as their packages activate. MS-10 certifies
+reproducibility and selected remote/signing profiles.
 
 ## 15. Examples
 

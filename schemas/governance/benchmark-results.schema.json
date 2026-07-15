@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Penumbra benchmark results",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "records"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const":"0.5" },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "workload", "status", "report"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^EV-PEN-[0-9]{8}-[0-9]{3}$" },
+          "workload": { "type": "string", "pattern": "^PEN-B(0[1-9]|1[0-6])$" },
+          "status": {
+            "enum": [
+              "Pass",
+              "Fail",
+              "NotRun",
+              "UnsupportedCapability",
+              "UnsupportedPlatform",
+              "Occluded",
+              "Redacted",
+              "Waived",
+              "Stale",
+              "Inconclusive"
+            ]
+          },
+          "report": { "type": "object" }
+        }
+      }
+    }
+  }
+}

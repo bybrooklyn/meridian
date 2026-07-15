@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Meridian milestone delivery plans",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "records"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const":"0.5" },
+    "records": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "milestone",
+          "entry_conditions",
+          "critical_path",
+          "parallel_lanes",
+          "integration_checkpoint",
+          "exit_evidence",
+          "stop_conditions"
+        ],
+        "properties": {
+          "milestone": { "type": "string", "pattern": "^MS-(0[0-9]|10)$" },
+          "entry_conditions": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 3 }
+          },
+          "critical_path": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^WP-[A-Z]+-[0-9]{3}$" }
+          },
+          "parallel_lanes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "packages"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "packages": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": { "type": "string", "pattern": "^WP-[A-Z]+-[0-9]{3}$" }
+                }
+              }
+            }
+          },
+          "integration_checkpoint": { "type": "string", "minLength": 5 },
+          "exit_evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 3 }
+          },
+          "stop_conditions": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 3 }
+          }
+        }
+      }
+    }
+  }
+}

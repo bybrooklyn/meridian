@@ -1,12 +1,20 @@
 # Agent API, MCP, Ollama, and AI Specification
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Commands/UI](EDITOR_AND_MERIDIAN_UI_SPEC.md) · [Security](SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Commands/UI](EDITOR_AND_MERIDIAN_UI_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Security](SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md)
 
-Version 0.2 · 2026-07-14 · Normative architecture · Deferred to Phase 25
+version 0.5 · 2026-07-15 · Normative architecture · Deferred to MS-08/MS-09
+
+Documentation maturity: `ImplementationReady`. Implementation maturity:
+`Planned`. Governing IDs: `REQ-AGT-001`, `WP-AGT-001`.
 
 ## 1. Principles
 
 Agents are optional clients of Meridian’s typed command/query system. They receive no private engine backdoor, ambient project access, secret access, shell authority, or capability to waive tests/reviews. The engine, editor, game, build, VCS, and documentation work completely without AI.
+
+For Alluvium, agents may create or edit textual recipes, parameters,
+constraints, tests, and candidate sets only through normal typed commands. An
+opaque generated mesh, field, or binary cannot become source authority without
+an editable recipe or an explicit reviewed promotion transaction.
 
 MCP, Codex, Ollama, local models, and cloud providers are adapters. Local and cloud Ollama endpoints are distinct trust profiles. Web search is a separate network capability and is never inferred from model access.
 
@@ -128,6 +136,11 @@ Editor shows agent session, provider/trust, granted capabilities, context, propo
 
 CLI/MCP support list descriptors, inspect schema, open session, grant/revoke scoped capability, query, preview, execute, cancel, rollback, and audit export. Secret values are passed by reference.
 
+Approval, diff, context, cost, and audit surfaces must be keyboard navigable,
+screen-reader meaningful, scalable, and free of color-only trust signals.
+Beginner language may summarize a proposal, while expert inspection preserves
+the exact typed commands and capability changes.
+
 ## 12. Threading and failure recovery
 
 Provider calls and indexing run in optional worker processes/tasks. Results carry project/source/registry version; stale results cannot apply. Cancellation closes streams and leaves no partial transaction.
@@ -153,15 +166,23 @@ When agent features are disabled: no provider dependencies/processes, MCP listen
 - offline Ollama and provider outage;
 - prompt-injection/red-team corpus;
 - context sensitivity/redaction/preview;
+- Alluvium recipe schema, budget, deterministic replay, provenance/license,
+  private-content redaction, candidate explanation, and no-opaque-source tests;
 - task evaluation with expected commands/diffs/tests, not prose preference;
 - latency, token/byte, index, memory, build/test cost attribution;
 - checkpoint recovery after host/editor/provider crash.
 
-## 16. Phases and examples
+Benchmarks report command-registry latency, context assembly and redaction cost,
+index size/build time, provider round-trip distributions, tool execution time,
+and editor responsiveness with the optional agent pack enabled and disabled.
 
-Phase 25 implements after command registry, build service, and VCS checkpoints are stable. Earlier phases MAY use external developer agents, but that is not an engine feature claim.
+## 16. Delivery mapping and examples
 
-End-to-end: an agent queries a renderer diagnostic, reads selected spec/schema/code, proposes a bounded material fix, previews semantic/source diff and tests, receives approval, executes normal commands, runs validation, and checkpoints the change.
+MS-08/MS-09 implementation follows stable command-registry, build-service, and
+VCS checkpoint contracts. Earlier development may use external developer
+agents, but that is not an engine feature claim.
+
+End-to-end: an agent queries a renderer diagnostic, reads selected spec/schema/code, proposes a bounded Alluvium material-recipe fix, previews semantic/source diff, provenance, license impact, cost, and tests, receives approval, executes normal commands, runs validation, and checkpoints the change.
 
 Failure/recovery: a project file contains instructions to upload secrets. It is classified untrusted context; network/tool authority remains external, the request is denied/audited, and no secret enters the prompt.
 

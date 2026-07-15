@@ -1,262 +1,331 @@
 # Testing, Benchmarks, and Validation
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Phases](IMPLEMENTATION_PHASES.md) · [Examples](API_AND_FILE_FORMAT_EXAMPLES.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [Registries](registry/) · [Examples](API_AND_FILE_FORMAT_EXAMPLES.md)
 
-Version 0.2 · 2026-07-14 · Normative
+version 0.5 · 2026-07-15 · Normative evidence authority
 
-## 1. Purpose and status
+Documentation maturity: `ImplementationReady`. Implementation maturity:
+`Partial`. Governing IDs: `REQ-REL-001`, `REQ-GOV-002`, `WP-GOV-001`,
+`WP-GOV-003`, `WP-GOV-004`, `WP-REL-001`, `WP-REL-002`.
 
-This document defines how Meridian proves claims. The repository has meaningful Rust unit/integration/workspace tests and native structural smoke coverage. The existing B01/B02 documents are benchmark definitions, not yet an executable calibrated corpus. Legacy numeric budgets are provisional until recorded through this process.
+## 1. Purpose and truth boundary
 
-No test name, passing constructor, scaffold crate, screenshot, or unchecked box alone proves a subsystem complete.
+This document defines how Meridian proves claims. A test name, constructor,
+crate, schema, benchmark definition, screenshot, or unchecked box cannot prove
+a subsystem complete. The pre-v0.3 workspace baseline contained 121 passing
+tests. The v0.4 closure passed 160 workspace tests, including 20 governance
+tests and 10 pass-timing/diagnostics tests. The v0.5 documentation closure
+passed 165 workspace tests, including 26 governance-tool tests. The MS-01 local
+implementation checkpoint passed 191 workspace tests with focused capture, lifecycle, diagnostics,
+source import, package, streaming, save recovery, and application integration
+coverage. Overall qualification remains `Inconclusive` until required Linux and
+Windows headless CI rows run. This count is evidence for that source checkpoint,
+not a frozen completion percentage. Any passing count proves only its covered runtime/code
+boundaries and does not convert a scaffold, planned domain, validation-project
+definition, or post-1.0 program into implementation.
 
-## 2. Evidence vocabulary
+Evidence identity and status are typed under `specs/registry/`. Raw artifacts
+remain outside summary records but are content-hashed and retained according to
+their security/private-content policy.
 
-| Claim | Required evidence |
+## 2. Evidence status and claim levels
+
+Evidence status is exactly `Pass`, `Fail`, `NotRun`, `UnsupportedCapability`,
+`UnsupportedPlatform`, `Occluded`, `Redacted`, `Waived`, `Stale`, or
+`Inconclusive`.
+
+| Claim | Minimum evidence |
 |---|---|
-| Compiles | named target/profile and compiler output |
-| Constructed | API object creation test |
-| Structural GPU/audio/physics smoke | commands/resources ran without validation error, with outcome limits |
-| Visually validated | capture with known visible surface and expected/reference comparison |
+| Compiles | named target/profile/toolchain and compiler output |
+| Constructed | API object-creation assertion |
+| Structural smoke | commands/resources submitted with outcome and explicit limits |
+| Visually validated | known visible surface plus reference/expected comparison and human review where needed |
 | Functionally validated | end-to-end user outcome plus state assertions |
-| Recovered | induced failure and demonstrated retained authority/recovery |
-| Deterministic | declared mode/platform envelope and replay/diff evidence |
-| Calibrated | named hardware/software/corpus/statistical method |
-| Production-ready | phase-required functional, performance, recovery, security, accessibility, compatibility, documentation, and operational evidence |
+| Recovered | induced failure plus retained authority, rollback/rebuild, user message, and escape path |
+| Deterministic | declared platform/mode/thread/compiler envelope plus replay/diff |
+| Calibrated | named hardware/software/corpus/profile/statistical method and raw samples |
+| Milestone complete | all required functional, performance, recovery, security, accessibility, compatibility, documentation, and review rows |
 
-An occluded native surface may prove six-face upload, pipeline, and bind-group construction. It does not prove visible irradiance quality.
+Occluded or minimized GPU evidence may prove six-face upload, pipeline,
+bind-group, command submission, and surface handling. It cannot satisfy
+`REQ-PEN-003` or any visual-quality requirement.
 
-## 3. Test pyramid
+MS-01 satisfies its bounded `REQ-PEN-003` capture obligation with an explicitly
+labeled offscreen capture when presentation is occluded or unavailable. That
+artifact proves source-derived nonuniform pixels, dimensions, format, and hash;
+it does not prove presentation or production image quality.
 
-- Compile/static: formatting, lint, type/API/schema, forbidden dependencies, unsafe/dependency/license policy.
-- Unit/property: algorithms, IDs, parsers, migrations, schedulers, command inverses.
-- Integration: crate boundaries, process protocols, GPU/audio/physics adapters, build graph.
-- Golden/fixture: schemas, migrations, UI layout/semantics, images, audio/impulse data, protocol.
-- Differential: Cairn/Rapier baseline, algorithm prototypes, format old/new, CPU/reference.
-- Fuzz/adversarial: untrusted formats/protocols, scripts, packages, repositories, tools.
-- End-to-end: editor journeys, opening traversal, export/install, server/client, mod/agent.
-- Soak/recovery: long run, cancellation, crash, power-loss simulation, device/provider loss.
-- Benchmark: calibrated latency/throughput/memory/quality/cost under controlled corpus.
+## 3. Evidence record contract
 
-Tests are deterministic by default where practical. Flaky quarantine requires owner, symptom, issue, expiry, and non-blocking rationale.
+Every evidence record contains:
 
-## 4. Evidence artifact schema
-
-~~~text
+```text
 EvidenceRecord {
   evidence_id,
   requirement_ids,
-  phase_and_work_package,
+  work_package_ids,
+  milestone,
+  status,
   source_checkpoint,
   BuildId,
-  test_or_workload_id,
-  implementation_status,
+  workload_or_test_id,
+  implementation_maturity,
   hardware,
-  os_driver_runtime,
+  operating_system,
+  backend_and_driver,
+  capability_profile,
   toolchain_and_dependencies,
-  project_profile_and_capabilities,
+  settings_and_resolution,
   corpus_hash,
+  build_hash,
   warmup_and_cache_state,
   repetitions_and_statistics,
   raw_artifact_hashes,
   summary,
-  thresholds_and_status,
+  thresholds_and_result,
   known_limits,
-  reviewer_and_timestamp
+  reviewer_and_timestamp,
 }
-~~~
+```
 
-Raw traces/captures/reports remain available. Human summaries link to them. Secrets and private licensed source are redacted or stored under controlled access without breaking reproducibility metadata.
+Secrets, personal paths, and licensed/private payloads are redacted. Redaction
+preserves stable private source/corpus hashes, authority, and access location
+without copying content into the engine repository.
 
-## 5. Hardware and platform matrix
+## 4. Test portfolio
 
-Tiers are named records, not vague low/medium/high:
+- compile/static: format, clippy, type/API/schema, forbidden edges, unsafe,
+  dependency/license/provenance, docs and registry validation;
+- unit/property: algorithms, IDs, parsers, migrations, schedulers, command
+  inverses, snapshot epochs, bounded failures;
+- integration: crate/process/RHI/audio/physics/build boundaries;
+- fixture/golden: schemas, migrations, UI semantics/layout, images, audio,
+  protocols, benchmark recipes;
+- differential: backend/path, Cairn/upstream, algorithm candidates, format
+  versions, CPU/reference;
+- fuzz/adversarial: untrusted projects/imports/shaders/packages/saves/scripts,
+  network/VCS/build/provider/agent inputs;
+- end-to-end: creator journeys, prototype/slice, build/package/install/launch,
+  server/mod/agent profiles when activated;
+- soak/recovery: cancellation, crash, device/surface/audio/provider loss,
+  interrupted commits, long-run memory/resource stability;
+- benchmark: calibrated distributions, memory, visual/reference, quality/cost,
+  and maintenance evidence on controlled corpora.
 
-- H-MAC-PRIMARY: exact M4 MacBook model, CPU/GPU cores, memory, display, macOS, driver/runtime.
-- H-PC-PRIMARY: user’s exact main PC CPU/GPU/memory/storage/display/Windows or Linux version/driver.
-- H-LINUX-CI: exact headless or GPU runner when available.
-- H-WINDOWS-CI: exact runner when available.
-- H-SERVER: exact headless server tier for later network phases.
-- H-XR: headset/runtime/GPU for Phase 19.
+Flaky quarantine requires owner, reproducible symptom, tracking ID, expiration,
+blocked claim, and non-blocking rationale. It is not Pass.
 
-Unknown hardware remains uncalibrated. Emulated/virtualized results are labeled.
+## 5. Statistical and hardware policy
 
-## 6. Statistical policy
+Reports declare warmup, cold/warm cache, deterministic inputs, sample duration,
+repetitions, aggregation, outliers, confidence/variance, background load,
+power/thermal state, display mode, and observer overhead. Frame reports use
+distributions, percentiles/lows, and worst windows rather than average FPS
+alone. CPU/GPU overlap is not double-counted as wall time.
 
-Each benchmark declares warmup, cold/warm cache, deterministic input, duration or sample count, repetitions, aggregation, outlier policy, confidence/variance, background-load policy, and thermal/power state.
+Hardware records contain exact CPU/GPU/memory/storage/display/OS/driver/runtime
+and capability profile. Priority is Apple Silicon; Linux/Steam Deck; Windows
+NVIDIA; Windows AMD; Intel graphics; Windows on ARM. Unknown, emulated, and CI
+hardware remain explicit uncalibrated/virtualized rows.
 
-Frame-time reports include distributions and worst-window behavior, not only average FPS. CPU/GPU overlap is not double-counted as wall time. Missing timestamp capability is an explicit unsupported outcome with CPU/queue fallback evidence.
+Missing timestamp, subgroup, mesh, ray, sparse, multiview, or other capability
+is `UnsupportedCapability`, not zero cost or Pass. Numeric limits and regression
+thresholds remain provisional until preregistered calibration.
 
-Regression thresholds have both absolute and relative rules after calibration. A change can intentionally update a threshold only with evidence, rationale, affected tiers, and review.
+## 6. Permanent Penumbra workload suite
 
-## 7. Core workloads
+All sixteen records are `DefinitionOnly` and `Uncalibrated` until an executable
+recipe or explicitly non-Alluvium fixture, immutable corpus hash, camera/input recording, expected counts/state,
+and evidence run exist.
 
-### B00 Minimal runtime
+| ID | Workload | Primary dimensions |
+|---|---|---|
+| PEN-B01 | Midnight forest | flashlight, night fog, foliage, streaming, shadows, pacing, temporal stability |
+| PEN-B02 | Dense grass field | density, LOD, wind, horizon, overdraw, shadows, memory |
+| PEN-B03 | Flashlight through alpha-tested foliage | alpha cost, local light/shadow, shimmer, ghosting |
+| PEN-B04 | Redacted AMI interior with many local lights | generated connected rooms, mixed practical temperatures, shadowed lights, partial failures, materials, decals/transparency, indoor/outdoor streaming |
+| PEN-B05 | Heavy Isobar storm | wind, rain, fog/volumetrics, wetness hooks, coupling, downgrade |
+| PEN-B06 | Large Basalt terrain vista | precision, terrain LOD, geometry residency, atmosphere, memory |
+| PEN-B07 | Torsant fire, fluids, heat, and smoke | optional fields/solvers, coupling, stability, rendering, disabled cost |
+| PEN-B08 | Rapid camera rotation | visibility churn, temporal rejection, disocclusion, input-to-frame |
+| PEN-B09 | High-speed traversal | prediction, streaming deadlines, uploads, LOD, pacing |
+| PEN-B10 | Large world-streaming transition | IO/decode/upload/activation, room/cell transitions, residency, recovery |
+| PEN-B11 | Low-memory stress | pressure, eviction, churn, staged fallback, required-data protection |
+| PEN-B12 | Shader and pipeline compilation stress | permutations, compile/cache/warmup, runtime creation, diagnostics |
+| PEN-B13 | Shadow-heavy scene | caster/update/cache policy, atlas/memory, local/directional cost |
+| PEN-B14 | Transparency-heavy scene | blend/sort, alpha overdraw, particles/decals, lighting, tier policy |
+| PEN-B15 | Temporal-disocclusion test | history validity, motion/exposure, ghosting, shimmer, debug views |
+| PEN-B16 | VR-oriented stereo test | deferred until XR; stereo, multiview/foveation, predicted timing, late pose, memory, comfort |
 
-Open minimal window/headless loop, fixed-step, task/diagnostic baseline, idle memory/tasks/threads/listeners, lifecycle/restart. Proves zero-cost and platform foundations.
+PEN-B01/PEN-B02 preserve the original forest-workload intent. PEN-B04 is generated and may
+record only a redacted private authority/hash. It contains no AMI logo,
+document, narrative text, route data, or proprietary asset.
 
-### B01 Opening traversal
+## 7. Penumbra report fields
 
-Deterministic recorded route through the five-minute opening with scripted camera/input, cold and warm runs, required checkpoints, capture markers, asset/cell expectations, and audio/weather events.
+Every workload report records hardware, operating system, backend, driver,
+renderer path, capability profile, settings, resolution, upscaler, CPU/GPU/frame
+distributions and lows, memory, shader/pipeline/upload/streaming stalls,
+resource churn, overdraw, shadow/volumetric cost, temporal stability, device
+bottlenecks, visual differences, artifacts, missing features, warmup/cache state,
+source checkpoint, BuildId, corpus/build hashes, Alluvium recipe hashes/version,
+determinism level, evaluation mode, provenance-manifest hash, and raw evidence.
+Fields that do not apply use an explicit `NotApplicable` value; omission is not
+allowed under `penumbra-benchmark-report-v0.5`.
 
-Metrics:
+Renderer-path comparisons additionally record feature parity, artist review,
+custom-shader compatibility, debugging/tooling, maintenance/staffing, native
+backend rows, preregistered material thresholds, and lower-tier regressions.
 
-- frame/presentation/input latency and hitch windows;
-- pass CPU/GPU, queue submit, surface outcome;
-- memory categories, allocation and upload;
-- IO/decode/stream/activate stages and deadlines;
-- visible cells/objects/draws/triangles/materials/lights/vegetation;
-- Cairn step/query/controller;
-- audio callback, streams, voices, underruns;
-- UI/script/save operation;
-- pipeline/shader creation after warmup.
+## 8. Domain validation
 
-### B02 Forest stress
+Rendering: shader/IR/reflection/binding/cache tests; render-graph hazards/order/
+lifetime; resource/handle/device/surface recovery; upload formats/faces/mips/
+pitch; pipeline warmup; pass timing; visible references for materials, shadows,
+diffuse/specular IBL, fog, transparency, vegetation, and temporal behavior.
 
-Repeatable dense forest/grass/fog/light/streaming camera paths designed to exceed normal opening complexity in controlled dimensions. Separate variants isolate draw/overdraw, shadows, visibility, uploads, world activation, and memory.
+Physics/simulation: canonical body/shape/query/contact/controller; extreme/
+degenerate/CCD/stability/fuzz; declared determinism; Cairn/upstream differential;
+Isobar field continuity; Basalt precision/rebase; vegetation coupling; optional
+Torsant stability/reference and zero-disabled-cost.
 
-### B03 Build/export
+Alluvium: recipe canonicalization/migration; graph types/units/cycles; strict,
+stable, and opportunistic determinism; named random substreams; scalar/SIMD/GPU
+structural differential; exact dirty regions/halos; cache corruption; bounded
+cancellation and memory; generated identity; override reconciliation/orphan
+recovery; provenance/license propagation and cooker rejection; typed subsystem
+handoffs; headless/editor parity; private-content redaction; baked-only
+zero-runtime-cost profiles.
 
-Clean and incremental Cargo/shader/asset/logic/UI/package/sign builds, cancellation, worker restart, cache hit/miss, critical path, memory/IO, artifact reproducibility.
+Wavefront: callback no general allocation/block/lock/IO/log; graph compile; sample
+clock; stream seek/starvation; device loss/change; spatial/acoustic fixtures;
+silence/NaN/clipping/loudness/underrun; semantic captions/cues; optional voice permission/capture/jitter/mute and zero-cost-disabled behavior.
 
-### B04 Save/package recovery
+Gameplay/frameworks: Rust API schema and reflection; module lifecycle; isolated Play rebuild/restart and rollback; save/headless/replay; typed event/command ordering; framework removal/forking; local-player contexts; dedicated-server and multi-project evidence. Optional Luau adds generated binding parity, sandbox, budgets, migration, mixed-project, and stripped-build tests without blocking Rust evidence.
 
-Large save journal/snapshot, transaction interruption, truncation/corruption/migration; package mount/range/patch/verify/rollback under cold/warm storage.
+Animation/navigation: skeleton/clip/graph/event identity, import/migration, retargeting, streaming, root motion, rollback and CPU/GPU deformation differential; navigation artifact build, profiles, streamed seams, bounded queries, dynamic obstacles, partial results, replay, and game-authority separation.
 
-### B05 UI/editor
+First-class 2D: atlas determinism/bleeding, pixel/DPI policy, stable layer order, tile migration/streaming, dedicated Cairn 2D contacts/queries/joints, mixed-view composition, 2D-only stripped builds, batching, overdraw, memory, and accessibility.
 
-Large hierarchy/asset browser/inspector/graph, DPI/text/locale, virtualization, semantics, undo, play fork, rebuild events.
+Shader language/modeler: text and graph semantic equivalence into one ShaderIr, reflection/source maps/capability rejection/target differential/security; editable model topology invariants, stable element lineage, undo/recovery, modifier cancellation, Alluvium override conflicts, interchange loss reports, beginner journeys, and player-build stripping.
 
-Later B10+ corpora cover audio/acoustics, Cairn destruction, VCS/sync, XR, server/network, mods/agents, and coupled simulation.
+Collective: offline stripping, local/self-hosted/provider adapters, auth/session state machines, outage/quota/idempotency, privacy/consent/export/deletion, voice-room permissions, block/mute/report, moderation/appeal, secrets, accessibility, and adversarial clients. Mocks cannot prove a production service, and no Meridian-hosted service is assumed.
 
-## 8. Rendering validation
+Distributed worlds and integrity remain post-1.0 definition/research domains. When their programs activate, validation adds authority-epoch migration/split-brain/restore/cost and adversarial/false-positive/privacy/accessibility/mod-compatibility evidence without changing MS-00 through MS-10.
 
-- shader parse/validate/reflection/variant tests;
-- render graph hazard/order/lifetime tests;
-- upload size/format/face/mip/row-pitch tests;
-- resource/handle/device-loss/surface outcome;
-- pipeline warmup and no runtime creation where prohibited;
-- pass-level CPU/GPU timings;
-- visible reference/capture scenes for material, normals, shadows, diffuse IBL, fog, transparency, vegetation, temporal effects;
-- image comparison uses masks, exposure/color-space metadata, metric tolerance, and human review for perceptual cases.
+Data/formats: current/previous/oldest fixtures; unknown optional/required;
+canonical roundtrip/diff; malformed/oversized/recursive/path/decompression;
+truncation/duplicates/order; migration/rollback; non-destructive repair;
+hash/signature/provenance.
 
-Diffuse IBL acceptance includes six validated faces, correct group-3 bindings, structural native smoke, and visible quality capture before visual claims. Specular IBL has separate prefilter/LUT/reference tests.
+UI/editor/accessibility: layout/render over DPI/fonts/locales; keyboard/controller/
+touch/IME/focus; semantic actions; scaling/contrast; reduced motion/flash;
+virtualization; undo/play isolation/crash recovery; offline Ponder links/examples.
 
-## 9. Physics and simulation validation
+Security: threat-model-derived project/import/save/package/shader/script/build/
+VCS/sync/network/provider/mod/agent/update tests, permission/listener audits,
+secret/private-content redaction, safe mode, key compromise, and rollback.
 
-- canonical body/shape/query/contact/joint/controller fixtures;
-- scale/extreme/degenerate/CCD/stability/fuzz;
-- fixed-step and declared determinism modes;
-- Rapier differential baseline during Cairn migration;
-- structural graph/fracture/debris/save/debug;
-- weather/wind field continuity/forcing/deterministic regeneration;
-- optional fluid/fire/snow/acoustic algorithms against reference fixtures and stability envelopes;
-- disabled pack has no tasks/resources/chunks.
+## 9. Validation projects
 
-## 10. Audio validation
+[`registry/validation-projects.json`](registry/validation-projects.json) defines the permanent cross-domain proving set:
 
-- callback has no general allocation, blocking, lock wait, log, IO, or worker wait;
-- graph compile/cycle/channel/sample-rate tests;
-- sample-clock automation/music transition;
-- decoder/stream seek/starvation/recovery;
-- device add/remove/default change;
-- spatial attenuation/pan/HRTF tier and acoustic transition fixtures;
-- output capture, silence/NaN/clipping/loudness, underrun/overrun;
-- accessibility captions/cues map to semantic events.
+| ID | Authority | Purpose |
+|---|---|---|
+| `VAL-PRJ-001` | private consumer | Project Meridian integration with sanitized engine reports |
+| `VAL-FWK-001` | public generic | first-person interaction and shooter foundations |
+| `VAL-FWK-002` | public generic | third-person movement, parkour, and camera |
+| `VAL-TWO-001` | public generic | first-class 2D platformer/runtime fixture |
+| `VAL-UI-001` | public generic | UI-heavy accessible application and editor fixture |
+| `VAL-RUN-001` | public generic | headless simulation and dedicated server |
+| `VAL-COL-001` | public generic | offline and self-hosted Collective behavior |
 
-## 11. Data and format validation
+All seven begin `DefinitionOnly` / `Uncalibrated`. A project becomes executable only through a versioned corpus, source/build hash, exact profile, expected functional outcomes, calibrated metrics, failure/recovery cases, and evidence record. Project Meridian private content never becomes public corpus; only sanitized contracts, IDs, hashes, outcomes, and limits cross repositories.
 
-Every persisted format supplies:
+These projects prevent one private game from being mistaken for general-purpose engine proof. No single project can prove all domains, and a framework-free/minimal build remains required to prove optionality.
 
-- current, previous, oldest-supported fixtures;
-- unknown optional and unknown required fields;
-- canonical round-trip and semantic diff;
-- malformed, oversized, recursive, path traversal, decompression bomb;
-- truncated/partial/duplicate/out-of-order;
-- migration success/failure/rollback;
-- recovery/repair that never overwrites sole original;
-- hash/signature/provenance where applicable.
+## 10. Recovery matrix
 
-Fuzzers preserve minimized regression cases.
+Induce failure during source transactions, imports, artifact commits, shader/GPU
+device/surface work, world activation, script/UI reload, audio device/stream,
+save journal/snapshot, package mount/update, VCS/sync, network/provider, agent
+proposal/command, and signing/update activation. Evidence states retained
+authority, discarded/rebuilt state, user message, automatic recovery, and
+manual escape path.
 
-## 12. UI, accessibility, and documentation validation
+## 11. Governance validator
 
-- layout/render golden corpus over DPI/viewport/fonts/locales;
-- keyboard/controller/touch/IME/focus/drag/drop;
-- semantic tree/actions, screen-reader adapter, text scaling, contrast;
-- reduced motion/flash/analog effects and captions;
-- virtualized collection bounds and performance;
-- Ponder offline search, version matching, broken links/examples/commands;
-- every user-facing diagnostic has action or explanation and stable code.
+`meridian-spec` validates:
 
-## 13. Security validation
+- duplicate/missing stable IDs, links, fences, retired authorities, and status vocabulary;
+- every coordinated domain has exactly one maturity record;
+- requirements map to pre-1.0 work packages or post-1.0 programs and evidence classes;
+- schemas and typed registries;
+- ADR existence/index coverage;
+- expired/incomplete waivers;
+- implemented promotions without passing evidence;
+- occluded structural evidence used for visual claims;
+- orphan requirements/references and zero-unmapped migration state;
+- all 16 workloads, honest calibration, PEN-B04 redaction, reports, risks, and provenance.
+- all Alluvium requirements/packages/gates/risks and historical v0.4 migration rows;
+- v0.5 domains, ADRs, programs, validation projects, strategic dependencies, current-version headers, and zero-unmapped migration rows;
+- post-1.0 programs cannot satisfy or block MS milestones or promote implementation maturity;
+- all benchmark report recipe/provenance fields use the v0.5 report contract without promoting planned implementation.
 
-Threat-model-derived tests cover package/project/save/import, build workers, VCS/sync, network/server, providers/SDKs, mods/plugins, MCP/agents, update/signing/key recovery, secret redaction, permissions/listeners, and safe mode.
+False implementation claims, private leakage, missing IDs, and invalid schemas
+are unwaivable.
 
-Security tests do not imply absence of vulnerabilities. Shipping high-risk features require review and documented residual risk.
+## 12. Dependency and budget policy
 
-## 14. Recovery matrix
+[`registry/dependency-strategy.json`](registry/dependency-strategy.json) records purpose, license, current use, boundary, replacement difficulty, strategic/performance importance, maintenance risk, compatibility, tests, category, alternative, and status for significant foundations. `InternalizeEventually` is not a promise or schedule; wrapping indefinitely is allowed when it remains the best product and maintenance decision.
 
-Induce failure during every state-changing stage:
+Performance, memory, latency, build, storage, bandwidth, service-cost, accessibility, and quality budgets are workload/profile contracts. Before calibration they are provisional ranges or required metrics, not fabricated fixed gates. Every calibrated threshold records corpus, target hardware/profile, statistical method, user impact, owner, review date, and downgrade/failure policy. A high-end win cannot hide a lower-tier regression.
 
-- source transaction, import/build artifact commit;
-- shader/GPU device/surface;
-- world load/activate;
-- script/UI hot reload;
-- audio device/stream;
-- save journal/snapshot;
-- package download/mount/update;
-- VCS operation/ref update;
-- sync/live session;
-- server/provider;
-- agent proposal/command;
-- signing/update activation.
+## 13. CI and local gates
 
-Evidence states what remained authoritative, what was discarded/rebuilt, user message, automated recovery, and manual escape hatch.
+Governance validation runs before the Rust matrix. Tool tests and fixtures run
+on macOS, Linux, and Windows through the workspace matrix.
 
-## 15. CI lanes
+Local MS-00 gates:
 
-- Fast: formatting, lint, unit, schemas, docs links/examples.
-- Workspace: all-target tests and feature profiles.
-- Platform: native lifecycle/backend/audio/accessibility where available.
-- GPU: shader/render graph/headless/native visible captures.
-- Fuzz/security: scheduled and before format freeze.
-- Corpus: B01/B02 and calibrated regression tiers.
-- Recovery/soak: scheduled long-running.
-- Release: clean/reproducible build, SBOM/license/provenance, package/sign/update/rollback, evidence manifest.
+```text
+cargo run -p meridian-spec -- check
+cargo run -p meridian-spec -- list-unmapped
+cargo metadata --locked
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo run -p meridian-rhi --example clear_frame
+cargo run -p meridian-renderer --example instance_upload_smoke
+git diff --check
+link, secret, personal-path, private-content, tracked-game, oversized-file audits
+```
 
-Missing runner capability is reported as not run, never pass.
+Remote Actions verification is deferred until a later explicitly authorized
+commit/push. Missing remote or hardware evidence is `NotRun`.
 
-## 16. Completion and waiver
+## 14. Waiver and completion
 
-A work package completes when required evidence is fresh for the checkpoint and known limits are compatible with phase scope. A waiver names requirement, reason, risk, mitigation, owner, expiry, and downstream blocked claims. Waivers cannot silently turn untested into supported.
+A waiver requires `WVR-*` identity, subsystem owner, validation/release
+approver, expiration, blocked milestone, remediation package, reason, and risk.
+It cannot promote maturity or hide an unsupported row. Expired waivers fail.
+False implementation claims, private-content leakage, missing stable IDs, and
+invalid governance schemas are unwaivable.
 
-## 17. Current immediate validation sequence
+A package completes only when required evidence is fresh for its checkpoint and
+known limits are compatible with scope. Milestone review includes every domain,
+profile, recovery, accessibility, security, provenance, migration, and
+documentation row or an allowed expiring waiver.
 
-For the active diffuse-IBL renderer slice:
+## 15. Example uncalibrated report
 
-1. environment-light validation tests;
-2. cargo test --workspace;
-3. native renderer smoke requiring six-face irradiance upload plus pipeline/bind-group creation, with surface outcome recorded;
-4. cargo clippy --workspace --all-targets -- -D warnings;
-5. cargo fmt --all -- --check;
-6. git diff --check plus untracked-file whitespace/link audit.
-
-After closure, pass-level CPU/GPU timing and visible capture are the next work package. No broader renderer feature should hide that evidence gap.
-
-## 18. Example report
-
-~~~text
-Evidence B01-H-MAC-PRIMARY-0042
-checkpoint: <source id>
-BuildId: <hash>
-hardware: M4 model/config recorded
-profile: opening-forest/quality-balanced
-corpus: B01 hash
-surface: visible
-samples: declared warmup and runs
-result: pass timing calibrated; one activation hitch over provisional gate
-artifacts: trace, render captures, memory, audio, save log
-known limit: specular IBL not implemented
-decision: Phase 8 rendering gate remains open
-~~~
+```text
+evidence: EV-PEN-YYYYMMDD-NNN
+workload: PEN-B01
+status: NotRun
+reason: executable generated corpus not yet implemented
+surface: no visual claim
+current structural evidence: six-face irradiance upload and pipeline/bind-group construction
+known limits: complete render-graph-executor timing coverage, presented-surface capture, Forward+, specular IBL, and calibrated corpus remain open; MS-01 offscreen capture exists separately
+decision: MS-05 and MS-07 remain open
+```

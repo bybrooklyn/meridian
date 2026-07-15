@@ -1,16 +1,21 @@
-# Audio, Music, and Acoustics Specification
+# Wavefront Audio, Music, Voice, and Acoustics Specification
 
-[Master index](MERIDIAN_MASTER_SPEC.md) · [Migration register](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Runtime/tasks](CORE_RUNTIME_TASKS_AND_PLATFORM_SPEC.md) · [Assets/world/save/package formats](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Weather/environment](WEATHER_ENVIRONMENT_AND_SIMULATION_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md) · [Implementation phases](IMPLEMENTATION_PHASES.md)
+[Master index](MERIDIAN_MASTER_SPEC.md) · [ADR-0020](../docs/architecture/decisions/ADR-0020-wavefront-and-collective.md) · [Collective](COLLECTIVE_ONLINE_SERVICES_SPEC.md) · [Runtime/tasks](CORE_RUNTIME_TASKS_AND_PLATFORM_SPEC.md) · [Assets/world/save/package formats](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Isobar](ISOBAR_WEATHER_AND_ATMOSPHERE_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md) · [Delivery roadmap](DELIVERY_ROADMAP.md)
 
-Status: version 0.2 normative architecture for planned audio work, 2026-07-14.
+Status: version 0.5 normative architecture for planned audio work, 2026-07-15.
 
-Current implementation status: `engine/meridian_audio` is a scaffold only. This document specifies planned architecture and transitional gates. It does not claim an implemented mixer, decoder, device backend, music system, or acoustic solver.
+Documentation maturity: `ResearchReady`. Implementation maturity: `Scaffold`.
+Governing IDs: `REQ-AUD-001`, `WP-AUD-001`.
+
+Architecture status: Wavefront is `Adopted` by ADR-0020. Current implementation status: `engine/meridian_audio` is a scaffold only. The subsystem name does not rename the crate in this pass. This document specifies planned architecture and transitional gates. It does not claim an implemented mixer, decoder, device backend, music system, voice stack, or acoustic solver.
 
 ## 1. Context
 
-Meridian audio must support the opening forest first: reliable device output, streamed ambience, footsteps, authored environmental one-shots, simple spatialization, forest/field acoustic contrast, title/static transitions, and diagnostics that reveal underruns. Advanced hybrid acoustics, adaptive music authoring, platform object audio, plugin hosting, and real-time geometric propagation are later optional packs.
+Wavefront is Meridian's audio subsystem. It must support the opening forest first: reliable device output, streamed ambience, footsteps, authored environmental one-shots, simple spatialization, forest/field acoustic contrast, title/static transitions, and diagnostics that reveal underruns. Advanced hybrid acoustics, adaptive music authoring, platform object audio, plugin hosting, real-time geometric propagation, and voice communication are independently optional packs.
 
-The version 0.1 documents named CPAL and Symphonia as plausible low-level foundations and required forest audio, weather mixing, silence transitions, spatialization, and dynamic music. Version 0.2 refines that into a real-time-safe audio callback, immutable compiled DSP graphs, integer sample clocks, chunked streaming, explicit device backends, and scalable acoustic feature tiers.
+Wavefront owns capture devices, permission-aware microphone acquisition, encoding/decoding seams, jitter-to-audio buffering, DSP, mute/gain, spatial playback, accessibility hooks, mixing, and output devices. [Collective](COLLECTIVE_ONLINE_SERVICES_SPEC.md) owns optional voice-room membership, identity, permissions, block/mute policy synchronization, provider coordination, and moderation workflow. [Networking](MULTIPLAYER_AND_SERVER_SPEC.md) owns transport. No subsystem may collapse those three authorities into a provider SDK surface.
+
+The version 0.1 documents named CPAL and Symphonia as plausible low-level foundations and required forest audio, weather mixing, silence transitions, spatialization, and dynamic music. Version 0.3 refines that into a real-time-safe audio callback, immutable compiled DSP graphs, integer sample clocks, chunked streaming, explicit device backends, and scalable acoustic feature tiers.
 
 ## 2. Goals and Non-Goals
 
@@ -23,6 +28,7 @@ Goals:
 - Build acoustic scenes from material and world facets, not from render triangles by default.
 - Degrade cleanly under load without blocking the callback.
 - Keep expensive acoustics and generative music zero-cost when disabled.
+- Keep microphone capture and voice processing absent until explicitly enabled and permissioned.
 
 Non-goals for the opening slice:
 
@@ -32,6 +38,7 @@ Non-goals for the opening slice:
 - No mandatory HRTF dependency.
 - No fixed codec commitment before licensing/platform research.
 - No claim that Meridian acoustics are physically validated until measured against fixtures.
+- No always-on microphone, ambient voice account, mandatory voice provider, or Meridian-hosted voice service.
 
 ## 3. Ownership and Crate Boundaries
 
@@ -51,20 +58,26 @@ Planned ownership:
 | Streaming decode workers | `meridian-audio` + `meridian-assets` | planned | Asset system owns packaged bytes; audio owns decode policy. |
 | Acoustic scene and propagation | future `meridian-acoustics` or `meridian-audio::acoustics` | planned | May split once hybrid acoustics becomes large. |
 | Music transport graph | `meridian-audio` | planned | Uses sample clock plus music beat/bar time. |
+| Voice capture, local DSP, decode, jitter-to-mixer bridge, and playback | `meridian-audio` | planned | Wavefront owns audio behavior; transport and room policy remain external. |
+| Voice rooms, identity, permissions, provider session, reporting | Collective | planned | Collective never owns callback, device, or mixer state. |
 | Audio editor panels/tools | `editor/meridian_editor` and future audio tools | planned | Editor may depend on engine audio schemas. |
 | Project Meridian cues | external private game repository | planned | Game content never owns engine mixer policy. |
+| The Alluvium Engine | Generated acoustic material/region/portal/obstruction source facets and provenance | planned | Audio retains live propagation, mixer, voice, and device authority. |
 
 Allowed dependencies:
 
 - `meridian-audio` may depend on `meridian-core`, `meridian-diagnostics`, `meridian-assets`, `meridian-tasks`, and feature-gated backend/decode libraries.
 - `meridian-audio` may read immutable weather, world, material, and transform snapshots through public contracts.
-- `meridian-renderer`, `meridian-weather`, and `meridian-physics` must not depend on `meridian-audio`; cross-system coupling travels through events, fields, and material facets.
+- `meridian-audio` may consume versioned Alluvium acoustic artifacts; it must
+  not invoke authoring/compiler internals from the callback or runtime graph.
+- `meridian-renderer`, `meridian-isobar`, and `meridian-physics` must not depend on `meridian-audio`; cross-system coupling travels through events, fields, and material facets.
 
 Invalid dependencies:
 
 - Invalid: `meridian_renderer -> meridian_audio` to decide visual timing from bus loudness.
 - Invalid: a consumer-game crate depending on `cpal` to open an output device directly.
 - Invalid: `meridian-audio` public APIs exposing `cpal::Device`, decoder objects, platform handles, or editor widget types.
+- Invalid: Collective or a provider SDK writing directly to the Wavefront callback or opening a microphone without a Wavefront permission transaction.
 
 Dependency direction:
 
@@ -86,7 +99,8 @@ editor tools
 
 ## 4. Public Types and Data Structures
 
-The following are Rust-like schemas, not current implementation. Names are stable intent; exact module paths can change during implementation phases.
+The following are Rust-like schemas, not current implementation. Names are
+stable intent; exact module paths can change through approved work packages.
 
 ```text
 struct AudioBusId(u64 stable_hash);
@@ -94,6 +108,7 @@ struct AudioCueId(u128 persistent_uuid);
 struct AudioStreamId { slot: u32, generation: u32 }
 struct AudioGraphId(u128 persistent_uuid);
 struct AcousticZoneId(u128 persistent_uuid);
+struct VoiceParticipantId(u128 persistent_uuid);
 
 struct AudioTimestamp {
     sample: u64,
@@ -132,6 +147,15 @@ enum AudioCommand {
     SwapGraph { graph: Arc<CompiledAudioGraph>, effective_sample: u64 },
 }
 
+struct VoiceAudioPolicy {
+    capture_permission: PermissionState,
+    push_to_talk: bool,
+    local_mute: bool,
+    input_gain_db: f32,
+    processing_profile: VoiceProcessingProfile,
+    accessibility_cues: AccessibilityCuePolicy,
+}
+
 struct AcousticPatch {
     bounds: Aabb,
     material: AcousticMaterialId,
@@ -160,6 +184,7 @@ Per engine frame:
 4. Streaming jobs are prioritized by start sample, audibility, and preload policy.
 5. Prepared immutable graph/resource snapshots are published for block-boundary adoption.
 6. Diagnostics collect non-callback counters and enqueue callback-safe metric snapshots.
+7. If voice is enabled, a permissioned capture worker and NET/Collective bridge publish bounded decoded frames and participant policy into ordinary Wavefront stream inputs.
 
 Per audio callback block:
 
@@ -281,6 +306,7 @@ MCP/agent surface:
 - Agents use the same command/query registry as the editor.
 - Allowed operations include listing cues, reading diagnostics, proposing graph edits, running validation, and creating checkpoints.
 - Agents cannot access microphone input, system devices, or external plugin scans without explicit permission.
+- Voice tools expose permission, mute, capture-device, jitter, packet-loss concealment, and accessibility state without revealing private speech content.
 
 ## 9. Diagnostics, Failure Recovery, and Security
 
@@ -296,6 +322,7 @@ Diagnostics:
 - acoustic ray/path counts;
 - convolution cost;
 - device changes and backend fallback.
+- voice capture permission, jitter, concealment, mute, and participant-stream health without recording speech by default.
 
 Failure recovery:
 
@@ -311,6 +338,7 @@ Security:
 - Optional plugin hosting must run isolated where practical and must never execute during the opening-slice baseline.
 - Source audio metadata is treated as untrusted input.
 - MCP and agent commands require project capability checks and audit entries.
+- Voice capture is opt-in, visibly indicated, revocable, and never activated by joining a Collective room alone.
 
 ## 10. Capability Tiers and Zero-Cost-Disabled Behavior
 
@@ -341,6 +369,7 @@ Zero-cost-disabled tests:
 - Disabled acoustics allocate no acoustic scene, schedule no propagation work, and add no scene traversal.
 - Disabled music graph schedules no transport evaluation.
 - Disabled HRTF creates no convolution kernels.
+- Disabled voice creates no capture stream, encoder/decoder, jitter buffer, transport binding, provider SDK, microphone permission request, or package chunk.
 - Headless/server builds exclude client audio device backends and source media not needed for validation.
 
 ## 11. Algorithm Alternatives and Research Gates
@@ -366,8 +395,8 @@ Music:
 
 Research gates:
 
-- Phase 10 selects initial device/decode/mixer implementation details through virtual-device fixtures and opening-forest cue tests.
-- Phase 20 compares zone/portal, probe, and selected real-time geometric acoustic prototypes on shared forest/building fixtures.
+- MS-04/MS-06/MS-08 selects initial device/decode/mixer implementation details through virtual-device fixtures and opening-forest cue tests.
+- MS-08 compares zone/portal, probe, and selected real-time geometric acoustic prototypes on shared forest/building fixtures.
 - No production claim of physical acoustic accuracy is allowed without measured fixtures and documented error bounds.
 
 ## 12. Tests, Benchmarks, and Acceptance Evidence
@@ -395,12 +424,12 @@ Acceptance evidence:
 - Recovery demo for device loss or missing stream chunk.
 - Documentation and editor tooltips for beginner cue placement and expert mixer diagnostics.
 
-## 13. Phased Implementation
+## 13. Delivery Mapping
 
-- Phase 8: minimum opening audio: output, mixer, streaming, simple spatialization, footstep/event cues, forest/field bus transitions, diagnostics.
-- Phase 10: robust mixer, DSP graph compiler, adaptive music foundation, virtual-device tests, source/built audio document versions.
-- Phase 20: hybrid acoustics, acoustic authoring, bake/probe tooling, advanced profiling.
-- Phase 25: MCP/agent audio commands with audit and permission checks.
+- MS-06/MS-07: minimum Wavefront audio: output, mixer, streaming, simple spatialization, footstep/event cues, forest/field bus transitions, diagnostics. Voice is not a Project Meridian prerequisite.
+- MS-04/MS-06/MS-08: robust mixer, DSP graph compiler, adaptive music foundation, virtual-device tests, source/built audio document versions.
+- MS-08: hybrid acoustics, acoustic authoring, bake/probe tooling, advanced profiling.
+- MS-08/MS-09: MCP/agent audio commands with audit and permission checks; optional Wavefront voice-device/runtime contracts may support Collective when independently selected.
 - Later optional packs: plugin hosting, generative music, platform object audio depth, advanced dynamic propagation.
 
 ## 14. Examples
@@ -436,3 +465,8 @@ Profiler shows callback p99 near the device deadline.
 -> User switches distant ambience to stereo area bed.
 -> Validation confirms no HRTF kernels or propagation work remain for that bus on the low tier.
 ```
+Audio authoring and runtime settings expose captions and non-speech cues,
+visual alternatives for gameplay-critical sound, mono/downmix and dynamic-range
+controls, hearing-device-safe defaults, keyboard/controller operation, and
+screen-reader labels for graph and mixer state. Beginner cue placement and
+expert sample/graph diagnostics operate on the same source model.

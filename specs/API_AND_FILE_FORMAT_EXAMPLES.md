@@ -2,7 +2,7 @@
 
 [Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Formats](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md)
 
-Version 0.2 · 2026-07-14
+version 0.5 · 2026-07-15
 
 All examples are illustrative specification syntax unless explicitly linked to current compiled code. They define intended shape and invariants, not a promise that the named API or CLI exists. Stable IDs are abbreviated for readability.
 
@@ -194,7 +194,80 @@ facets:
 
 Facets load independently and use separately versioned schemas.
 
-## 10. Cairn body, shape, constraint, and destruction
+## 10. Planned Penumbra path, capability, scene, material, and shader contracts
+
+These types are specification-only in v0.5. They are not current Rust APIs.
+
+~~~rust
+pub struct RendererPathId(pub StableId);
+
+pub struct RendererPathDescriptor {
+    pub id: RendererPathId,
+    pub maturity: RendererPathMaturity,
+    pub required_capabilities: Vec<CapabilityId>,
+    pub supported_material_features: MaterialFeatureSet,
+    pub fallback: RendererFallbackPolicy,
+}
+
+pub struct GpuCapabilityProfile {
+    pub portable_core: PortableGpuCapabilities,
+    pub optional: BTreeMap<CapabilityId, CapabilityRecord>,
+    pub limits: GpuLimits,
+    pub backend: BackendIdentity,
+}
+
+pub struct RenderView {
+    pub id: RenderViewId,
+    pub epoch: Epoch,
+    pub camera: CameraSnapshot,
+    pub output: OutputDescriptor,
+    pub history: TemporalHistoryId,
+}
+
+pub struct GpuSceneSnapshot {
+    pub epoch: Epoch,
+    pub geometry: GeometryTable,
+    pub instances: InstanceTable,
+    pub materials: MaterialTable,
+    pub lights: LightSnapshot,
+    pub shadows: ShadowSnapshot,
+    pub environment: EnvironmentalFieldSnapshot,
+}
+~~~
+
+Visibility output and indirect-command streams reference immutable scene/view
+epochs. Backends reject stale epochs instead of guessing ownership.
+
+~~~text
+MaterialSource
+  -> validated MaterialIr
+  -> renderer-path lowering
+  -> ShaderIr
+  -> WGSL lowering during the wgpu era
+  -> reflection + binding generation + specialization
+  -> pipeline-cache manifest + source map
+
+Future native backend lowerings consume ShaderIr; WGSL remains a valid current
+backend language but is not the permanent canonical source authority.
+~~~
+
+~~~yaml
+schema: meridian.custom-shader-compatibility/v1
+shader: shader.water.ripples
+renderer_paths: [penumbra.forward-plus]
+required_capabilities: [gpu.indirect.table-driven]
+fallback: material.standard-water
+trust: project-authored
+reflection_manifest: blake3:...
+source_map: blake3:...
+~~~
+
+Artists author one high-level material. Renderer paths may lower it differently
+but cannot require duplicated artist-authored materials. Public engine, game,
+simulation, asset, and editor contracts expose Meridian descriptors rather than
+wgpu or future native-backend types.
+
+## 11. Cairn body, shape, constraint, and destruction
 
 ~~~rust
 let body = cairn.create_body(BodyDescriptor {
@@ -222,7 +295,7 @@ cairn.attach_structure(body, StructureDescriptor {
 
 Handles are process-local; persistent body/structure identity is stored separately.
 
-## 11. DSP graph and adaptive music
+## 12. DSP graph and adaptive music
 
 ~~~yaml
 schema: meridian.audio-graph/v1
@@ -245,11 +318,11 @@ music:
 
 The graph compiler rejects cycles without an explicit delay.
 
-## 12. Weather state and field
+## 13. Isobar weather and atmosphere state
 
 ~~~yaml
-schema: meridian.weather/v1
-id: weather.opening
+schema: meridian.isobar-state/v1
+id: isobar.opening
 seed: 318472
 states:
   midnight_still:
@@ -267,32 +340,50 @@ transitions:
     curve: ease_in_out
 ~~~
 
-Rendering, vegetation, and audio consume one immutable WindSnapshot.
+Penumbra, vegetation, and audio consume one immutable Isobar snapshot. Basalt
+may contribute terrain shelter and surface data through an explicit versioned
+input; Isobar does not read renderer state.
 
-## 13. Procedural forest graph
+## 14. Alluvium terrain and vegetation recipe
 
 ~~~yaml
-schema: meridian.procedural-graph/v1
-domain: vegetation
-id: graph.opening_forest
+schema: meridian.procedural-recipe/v1
+id: recipe.public.representative_forest
+version: 1
 seed: 9917
-nodes:
-  slope: { op: terrain.slope }
-  path_distance: { op: mask.distance, input: route.main }
-  candidates: { op: scatter.poisson, radius: 1.8 }
-  suitable:
-    op: filter.all
-    inputs: [candidates, { slope_lt: 0.55 }, { path_distance_gt: 1.2 }]
-  output:
-    op: vegetation.emit
-    asset_family: asset.tree.pine
+determinism: stable
+evaluation:
+  allowed: [interactive_preview, authoritative_bake]
+  runtime_safe: false
+outputs: [geometry, field, vegetation, collision, navigation, acoustic, scene_fragment]
+graph:
+  - id: slope
+    op: basalt.terrain_slope
+  - id: path_distance
+    op: field.distance_to_spline
+    input: route.public_test
+  - id: suitable
+    op: field.ecological_suitability
+    inputs: [slope, path_distance, field.moisture, field.canopy_shelter]
+  - id: trees
+    op: vegetation.place
     input: suitable
-overrides: overrides/opening_forest.yaml
+    random_stream: ordinary_trees
+overrides: overrides/public_representative_forest.moverride
+license_policy: public_engine_fixture
 ~~~
 
-Dirty propagation regenerates only affected cells plus declared halo.
+`.mproc` is reserved for recipe source and `.mfield` for derived field
+artifacts. Encoding is not frozen by this example. Dirty propagation
+regenerates only affected cells plus declared halos, preserves stable generated
+identity and overrides, and emits provenance/license disposition.
 
-## 14. Gameplay State Flow
+Torsant has no crate or required opening-slice schema in v0.5. A future first
+implementation package must define versioned fire/fluid/thermal source events,
+solver tiers, coupling latency, recovery, and zero-cost-disabled behavior before
+adding `meridian-torsant`.
+
+## 15. Gameplay State Flow
 
 ~~~yaml
 schema: meridian.state-flow/v1
@@ -314,7 +405,7 @@ assertions:
   - completion_requires_no: discovery.optional_document_count
 ~~~
 
-## 15. Narrative text and graph integration
+## 16. Narrative text and graph integration
 
 ~~~yaml
 schema: meridian.narrative-flow/v1
@@ -338,7 +429,7 @@ validation:
   optional_beats_gate_completion: false
 ~~~
 
-## 16. Network replication schema
+## 17. Network replication schema
 
 ~~~yaml
 schema: meridian.replication/v1
@@ -358,7 +449,7 @@ prediction: local_owner
 
 Project Meridian does not enable this schema.
 
-## 17. Mod manifest
+## 18. Mod manifest
 
 ~~~yaml
 schema: meridian.mod/v1
@@ -376,14 +467,14 @@ capabilities:
 dependencies: []
 ~~~
 
-## 18. Agent command
+## 19. Agent command
 
 ~~~json
 {
   "command": "world.set_property",
   "version": 1,
   "input": {
-    "object_id": "weather.opening",
+    "object_id": "isobar.opening",
     "property": "states.midnight_still.fog_density",
     "value": 0.58
   },
@@ -395,7 +486,7 @@ dependencies: []
 
 Preview returns semantic diff, affected artifacts, performance/security impact, and required approval.
 
-## 19. Save journal
+## 20. Save journal
 
 ~~~text
 SaveHeader { magic, format_version, game_id, schema_set_hash }
@@ -406,7 +497,7 @@ TransactionCommit { tx_id, record_count, transaction_hash }
 
 A transaction without a valid commit is ignored during recovery.
 
-## 20. .meridian package
+## 21. .meridian package
 
 ~~~text
 Superblock {

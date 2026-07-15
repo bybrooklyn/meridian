@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Meridian post-1.0 program registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "records"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": "0.5"},
+    "records": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "domain", "status", "horizon", "requirements", "entry_gates", "success_evidence", "may_satisfy_milestones"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^PRG-[A-Z]+-[0-9]{3}$"},
+          "title": {"type": "string", "minLength": 1},
+          "domain": {"type": "string"},
+          "status": {"enum": ["Planned", "Research", "Deferred"]},
+          "horizon": {"const": "Post1.0"},
+          "requirements": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^REQ-[A-Z]+-[0-9]{3}$"}},
+          "entry_gates": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 5}},
+          "success_evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 3}},
+          "may_satisfy_milestones": {"const": false}
+        }
+      }
+    }
+  }
+}

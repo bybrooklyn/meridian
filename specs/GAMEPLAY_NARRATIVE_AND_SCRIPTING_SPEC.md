@@ -1,46 +1,50 @@
 # Gameplay, Narrative, and Scripting Specification
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Opening slice](PROJECT_MERIDIAN_VERTICAL_SLICE_PLAN.md) · [Data formats](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [ADR-0019](../docs/architecture/decisions/ADR-0019-rust-first-luau-after.md) · [Frameworks](OFFICIAL_GAMEPLAY_FRAMEWORKS_SPEC.md) · [Prototype](PROJECT_MERIDIAN_PROTOTYPE_PLAN.md) · [Data](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Security](SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md)
 
-Version 0.2 · 2026-07-14 · Normative · Planned with runtime/ECS precursors
+Version 0.5 · 2026-07-15 · Normative architecture
 
-## 1. Goals and non-goals
+Documentation maturity: `ImplementationReady`. Implementation maturity: `Planned`.
+Governing IDs: `REQ-GAM-001`; `REQ-GAM-002`; `WP-GAM-001`; `WP-GAM-002`.
 
-Meridian gameplay is authored through stable engine APIs, typed domain documents, and exactly one initial high-level runtime: Luau with a broad Lua-compatible subset. Rust remains available for native engine/game modules.
+Current implementation status: Meridian has runtime/ECS/data precursors but no stable public gameplay API, Rust game-module lifecycle, gameplay reflection, Play-session reload, typed logic compiler, Luau VM, generated bindings, or gameplay debugger. Project Meridian's prototype will use Rust through `WP-GAM-001`; Luau is not its prerequisite.
 
-Goals: one API schema, generated bindings, safe hot reload, stable identity, typed events/commands, inspectable state, save/network readiness, deterministic modes where promised, and purpose-built logic tools.
+## 1. Authority, Goals, and Non-Goals
 
-Non-goals: exposing Bevy/Rapier/wgpu objects; multiple initial script runtimes; one giant universal graph; hidden objective systems; allowing script to perform arbitrary filesystem/process/network/agent operations; or changing Project Meridian’s creative design.
+The `GAM` domain owns stable gameplay-facing schemas, modules, components/resources/queries, typed events and commands, gameplay lifecycle barriers, reflection metadata, logic documents, save/network/headless hooks, debugging, and optional language bindings. Engine subsystems own their runtime state. Frameworks provide replaceable packages over these APIs. Projects own game-specific rules and creative data.
 
-C#, Anorak, Python, and mixed-language architecture are Phase 28 research. Python is last by default.
+Goals:
 
-## 2. Creative boundary
+- implement one safe, observable Rust gameplay path first;
+- generate editor reflection, documentation, compatibility metadata, and later Luau bindings from one API schema;
+- preserve stable identity, typed failure, save/network readiness, deterministic modes where promised, and isolated Play sessions;
+- make Rust-only, Luau-only, data/logic-only, and explicitly mixed projects possible after the relevant packages exist;
+- keep beginner templates and visual/text logic tools without hiding authoritative state.
 
-Project Meridian retains:
+Non-goals are exposing Bevy/Rapier/wgpu/backend types, requiring an embedded VM, one giant universal graph, arbitrary process/filesystem/network access, pretending native Rust always hot reloads safely, or changing a project's creative design. Additional languages beyond Luau are later independent research.
 
-- no enemies, combat, player death, or forced dialogue;
-- no sprint or jump in the opening;
-- optional documents and discoveries never gate completion;
-- no objective checklist;
-- subtle environmental progression across forest, field, compound, settlement, roads, and ending;
-- opening route remains final content.
+## 2. Ownership and Forbidden Edges
 
-Gameplay tooling represents these decisions and validates them. It does not normalize them into conventional quests.
+Planned components are descriptive boundaries, not crate commitments:
 
-## 3. Ownership and invalid edges
+- gameplay schema: stable modules, types, members, events, commands, capabilities, versions;
+- Rust gameplay runtime: module lifecycle, registration, reflection, command/query adapters, isolated Play loading;
+- optional Luau runtime: sandbox, module loading, budgets, generated bindings, mapped debugging;
+- logic IR: shared values, expressions, events, actions, state and narrative primitives;
+- project modules: game-specific Rust, optional scripts, documents, and data.
 
-- meridian-gameplay-schema: API declarations, stable type/member/event/command IDs.
-- meridian-gameplay-runtime: entity/component/query/event/command facade.
-- meridian-luau: VM lifecycle, sandbox, modules, budgets, generated bindings.
-- meridian-logic-ir: shared typed value/expression/event/action primitives.
-- domain documents: State Flow, Narrative Flow, Interaction, Action, behavior, and data tables.
-- project game crates: Project Meridian-specific components/systems/documents.
+Forbidden edges:
 
-logic-ir does not depend on editor widgets or Luau. Luau and Rust bind the same schema. Domain documents share primitives/compiler infrastructure but retain separate schemas and editors.
+- public game code storing ECS-native entity IDs, pointers, renderer handles, physics donor types, or OS resources;
+- Rust or Luau mutating render/audio/network/physics internals directly;
+- editor widgets becoming serialization authority;
+- native module reload continuing after ABI/state safety is unknown;
+- script capabilities self-authorizing or bypassing project security/accessibility policy;
+- private Project Meridian types entering public framework or engine APIs.
 
-## 4. API schema
+## 3. Planned API Schema
 
-~~~text
+```text
 ApiModule {
   id, version, stability, capabilities,
   types, components, resources, queries,
@@ -52,136 +56,139 @@ ApiFunction {
   purity, thread_domain, capabilities,
   determinism, allocation_class, since, deprecated
 }
-~~~
 
-Generation produces Rust descriptors/adapters, Luau definitions/runtime glue, documentation, editor completion, MCP schemas, compatibility fixtures, and API hashes. Handwritten bindings are prohibited unless registered as a reviewed escape hatch.
+GameplayModuleDescriptor {
+  id, version, api_hash, build_id, dependencies,
+  capabilities, lifecycle, state_schema, reload_policy
+}
+```
 
-## 5. Runtime identity and values
+Generation produces Rust descriptors/adapters, editor property metadata, documentation, CLI/MCP schemas, compatibility fixtures, API hashes, and later Luau definitions/runtime glue. Handwritten binding exceptions require a registered review and parity test.
 
-Scripts use PersistentEntityId or generation-checked EntityRef, never ECS-native IDs. Values crossing the runtime boundary are schema-defined scalars, IDs, handles, vectors/transforms, enums, immutable arrays/maps, or opaque capability handles.
+Cross-boundary values are schema-defined scalars, IDs, handles, vectors/transforms, enums, immutable arrays/maps, records, or opaque capability handles. Scripts and modules use `PersistentEntityId` or generation-checked `EntityRef`, never ECS-native IDs. Every invalid/stale reference returns a typed result.
 
-An EntityRef can become invalid between callbacks. Every operation returns a typed result. Long-lived references are reacquired by persistent ID or subscription.
+## 4. Rust-First Gameplay Foundation
 
-## 6. Luau lifecycle and sandbox
+Rust is the first implementation and extension language under `WP-GAM-001`. The foundation includes:
 
-One VM is owned per configured isolation domain, normally a game world or trusted module group. Modules are content-addressed artifacts with source map, API hash, capabilities, and budget profile.
+- project-visible gameplay crates/modules and stable engine API facades;
+- schema-derived component/resource/property reflection for hierarchy and inspector;
+- typed event, command, query, operation-ticket, and error contracts;
+- fixed/presentation/headless lifecycle registration at declared barriers;
+- deterministic time/random/query modes where selected;
+- save migrations, replay/network seams, diagnostics, and tests;
+- isolated Play-session build, load, stop, checkpoint, rebuild, and restart.
+
+Rust game code remains ordinary auditable source. The engine may support dynamic libraries, process isolation, relinked modules, or whole Play-session restart by platform/profile. No one mechanism is promised universally.
+
+## 5. Native Reload and Play Isolation
+
+```text
+snapshot source-authoritative editor state
+-> build candidate game module in bounded worker
+-> verify API hash capabilities dependencies and state schema
+-> stop affected Play world at safe barrier
+-> checkpoint declared save-safe state where compatible
+-> load candidate in isolated session or restart process/session
+-> migrate and validate state
+-> publish new generation after health window
+-> retain prior build and checkpoint for rollback
+```
+
+If ABI, platform loader, leaked thread, native resource, or state safety is uncertain, Meridian restarts the isolated Play session. It does not pretend unsafe native code was hot-reloaded. Editor source state remains separate from Play state. Failed candidates preserve the previous accepted build and provide mapped compiler/runtime diagnostics.
+
+## 6. Optional Luau Runtime
+
+Luau is Meridian's first optional embedded high-level language, delivered only by `WP-GAM-002` after Rust APIs stabilize. It binds the same schema and cannot redefine gameplay semantics.
+
+One VM is owned per configured isolation domain, normally a world or trusted module group. Modules are content-addressed with source maps, API hash, capabilities, budget, and state schema.
 
 Sandbox rules:
 
-- no ambient filesystem, process, native library, network, clipboard, agent, or debug access;
-- no dynamic native module loading;
-- bounded memory and instruction/time budgets;
+- no ambient filesystem, process, native library, network, clipboard, debug, agent, or host pointer access;
+- bounded memory, instruction/time, recursion, module, and event budgets;
 - deterministic random/time APIs in deterministic modes;
 - explicit capability objects for permitted operations;
-- stack traces and errors redact secrets;
-- untrusted content uses stricter domain/capabilities.
+- stack traces and diagnostics redact secrets/private data;
+- untrusted mods receive stricter isolation and published APIs only.
 
-Luau compatibility deviations from standard Lua are documented and tested. Project code cannot depend on undocumented VM internals.
+Luau reload may migrate declared serialized module state at a safe barrier. VM stacks, closures, unknown raw tables, pointers, and operation tickets are never persisted. If Luau is absent, no VM, artifact, task, binding table, panel, dependency, or package chunk exists.
 
-## 7. Scheduling
+## 7. Scheduling and State Authority
 
-Script callbacks run at declared barriers:
+Gameplay callbacks run only at declared barriers:
 
-- OnLoad and OnUnload around world/module lifecycle;
-- OnFixedUpdate within bounded gameplay job partitions;
-- event handlers consume immutable event batches;
-- OnPresent is optional presentation-only and cannot mutate simulation;
-- async operations return operation tickets resumed at a safe barrier.
+- module load/unload around world lifecycle;
+- fixed simulation systems in explicit ordered sets or dependency graph;
+- event handlers consume immutable ordered batches;
+- presentation systems may request effects but cannot mutate authoritative simulation;
+- asynchronous operations return generation-checked tickets resumed at safe barriers;
+- dedicated/headless profiles omit presentation hooks.
 
-Script code never runs on render submission or audio callback threads. Mutations enqueue typed commands. Event order is stable by event sequence and subscriber key in deterministic modes.
+Mutations enqueue typed commands. Event order is stable by sequence and subscriber key in deterministic modes. Game code never runs on render submission or Wavefront audio callback threads.
 
-## 8. Hot reload
+## 8. Typed Logic Documents
 
-1. compile/validate new source in worker;
-2. verify API/capability/budget;
-3. run module migration function against a bounded serialized state view if required;
-4. pause affected callbacks at barrier;
-5. instantiate candidate and run validation hook;
-6. atomically switch module generation;
-7. retain prior artifact/state checkpoint until success window;
-8. roll back on error and report mapped source diagnostic.
+Shared logic IR includes stable state/event/command IDs, typed ports, expressions, variables, references, source spans, capabilities, budgets, and debug metadata.
 
-Hot reload never guesses state layout. Incompatible state requires explicit reset or migration.
-
-## 9. Typed logic documents
-
-Shared IR includes StableStateId, EventId, CommandId, typed ports, conditions, expressions, variables, references, debug spans, and capability requirements.
-
-- State Flow: hierarchical/parallel state transitions and guards.
+- State Flow: hierarchical and parallel state transitions and guards.
 - Narrative Flow: beats, optional discoveries, presentation requests, prerequisites.
-- Interaction: focus, prompt, eligibility, action mapping, response.
-- Action: reusable ordered/parallel commands with compensation.
+- Interaction: focus, eligibility, action mapping, prompts, responses.
+- Action: ordered/parallel typed commands with compensation.
+- Behavior assets: optional project/framework decisions over game-visible state, never NAV or subsystem internals.
 
-Compiled IR validates types, missing references, unreachable required states, cycles/livelock, capability absence, save compatibility, and domain restrictions.
+Text and graph views operate on one model and have keyboard/semantic parity. Compilers validate types, missing references, cycles/livelock, unreachable required states, capability absence, save compatibility, and authority violations.
 
-## 10. Project Meridian model
+## 9. Project Meridian Boundary
 
-The opening uses explicit route/start/title states, flashlight and simple interaction actions, optional document discoveries, checkpoint events, and environmental transition state. Completion is reachable with zero optional documents. Tests prove no objective checklist or prohibited movement/combat action is introduced.
+The prototype uses Rust modules plus typed data/logic documents. It proves engine APIs, isolated Play restart, interaction, movement, save, Wavefront, Cairn, Penumbra, and packaging. It does not block on Luau.
 
-Later compound/settlement/road/world-boundary decisions reference their creative source IDs and remain outside Phase 8 except for schema compatibility.
+Project Meridian's private rules and creative content remain private. Engine-side tests may prove generic route/state/optional-discovery invariants using sanitized fixtures, but no private narrative, route payload, document, or asset enters this repository.
 
-## 11. Persistence and compatibility
+## 10. Persistence, Network, and Compatibility
 
-Save-safe script/document state is schema-declared:
-
-~~~text
+```text
 GameplayStateRecord {
   owner_id, schema_id, schema_version,
   fields, module_generation, migration_id
 }
-~~~
+```
 
-VM stacks, closures, raw tables with unknown shape, ECS IDs, pointers, and operation tickets are not persisted. Unknown optional fields round-trip. Missing required migrations stop load into a recoverable inspection mode.
+Only declared values persist. Unknown optional fields round-trip. Missing required migrations open recoverable inspection rather than corrupting source. Network/replay schemas use stable IDs and explicit authority; language implementation details never enter the protocol.
 
-API compatibility uses stable IDs and semantic versions. Removing a published member requires deprecation, migration, fixture, and release-policy approval.
+Published API removal requires deprecation, migration, fixtures, compatibility review, and release approval. Rust, Luau, logic documents, editor, CLI, and MCP use the same member IDs and errors.
 
-## 12. Editor, CLI, and Ponder
+## 11. Editor, CLI, Accessibility, and Diagnostics
 
-Beginner path: create interaction from template, select trigger and action, preview prompt, play from location, inspect plain validation.
+Beginner workflow: create a Rust gameplay project/module from a visible template, add reflected properties and typed interactions, build, run in isolated Play, inspect plain diagnostics, and recover after failure. Once available, Luau is an optional project setting, not the default prerequisite.
 
-Expert path: view IR, stable IDs, API schema, capabilities, event trace, allocations/instructions, save representation, generated Luau definitions, and hot-reload transaction.
+Expert workflow: inspect API schemas, system ordering, capabilities, event/command traces, allocations, state migrations, build IDs, replay divergence, generated bindings, and reload/restart transactions.
 
-Editors provide graph and text views that round-trip one source model. Graphs have keyboard/semantic alternate views. Planned commands include gameplay validate, api generate/check, luau test/profile, logic trace, and path reachability.
+Gameplay schemas express input alternatives, timing adjustments, captions/cues, text/contrast needs, reduced-motion behavior, and progression requirements. Graph and debugger tools are keyboard and screen-reader accessible and never encode required state by color alone.
 
-## 13. Diagnostics and debugging
+Diagnostics include module/source/API/build hashes, lifecycle state, system/callback duration and allocation, event/command sequence, persistent entity IDs, capability decisions, build/reload generation, state migration, and deterministic divergence. Pausing a Play world cannot block Wavefront or corrupt a server session.
 
-Required: module/source/API hash, callback duration/instructions/allocations, event/command sequence, entity IDs, capability decisions, hot-reload generation, state transition history, save migration, and deterministic divergence.
+## 12. Security, Failure, and Recovery
 
-Debugger supports mapped breakpoints, stack/locals with redaction, pause policy, step, event/state-flow trace, and time-bounded evaluation. Pausing one world cannot block audio or corrupt network/server timing.
+Capabilities are deny-by-default and project/profile scoped. Native project code is trusted at the level its build profile declares but remains isolated from editor source state where possible. Script/mod code is untrusted. Agent-generated code passes the same build, review, capability, and test gates as human code.
 
-## 14. Security and zero-cost behavior
+Failures include compile error, API mismatch, missing dependency, capability denial, stale entity, budget excess, migration failure, leaked native resources, VM fault, deterministic divergence, and module crash. Each has a stable error, affected IDs, source span where possible, rollback/restart action, and preserved prior source/build/checkpoint.
 
-Capabilities are deny-by-default and project/profile scoped. Scripts cannot grant capabilities. Agent-generated source is treated as untrusted until normal validation/review.
+## 13. Tests, Evidence, and Delivery
 
-If Luau is not selected by a project, its VM, artifacts, editor panels, tasks, and package chunks are absent. Logic documents that compile directly to native/IR MAY remain without a VM.
+- `REQ-GAM-001`: Rust is first and must prove stable APIs, reflection, lifecycle, isolated Play rebuild/restart, saves, diagnostics, and headless operation.
+- `REQ-GAM-002`: optional Luau must prove generated binding parity, sandboxing, migration, mixed-project semantics, and zero-cost omission.
+- `WP-GAM-001` contributes to MS-06/MS-08 and is required by the Project Meridian prototype.
+- `WP-GAM-002` contributes to selected MS-08/MS-09 profiles and cannot block MS-06/MS-07.
 
-## 15. Tests and benchmarks
+Tests cover API generation and compatibility, Rust module lifecycle, reflected properties, event/command ordering, fixed/presentation/headless barriers, build failures, isolated restart and checkpoint rollback, save migrations, stale entities, deterministic replay, graph type/cycle/reachability fuzzing, and accessibility. Luau adds compatibility, sandbox escape, budget exhaustion, binding parity, reload, and stripped-build tests.
 
-- schema generation parity and stable-ID compatibility;
-- Luau compatibility corpus and sandbox escape suite;
-- budget/infinite-loop/memory exhaustion;
-- callback/event ordering and deterministic replay modes;
-- hot reload success, failure, state migration, rollback;
-- save fixtures across versions and missing modules;
-- graph type/cycle/reachability/livelock fuzz tests;
-- opening completion with zero optional discoveries;
-- API call, event dispatch, VM startup/module load, memory, and hot-reload benchmarks.
+Benchmarks record module build/restart, system/callback distributions, event dispatch, queries, save migration, memory, allocations, optional VM startup/load, and reload. Compilation success alone is not runtime or migration evidence.
 
-Provisional thresholds are calibrated on opening and stress corpora.
+## 14. Examples
 
-## 16. Phases
+End to end: Rust game code registers a reflected door component and typed `OpenDoor` command. The editor exposes properties, an Interaction document invokes the command, Wavefront receives an event, and the save stores schema-defined state.
 
-- Phase 7: API schema, Luau, sandbox, hot reload, core documents, opening logic.
-- Phase 8: opening traversal, interaction, optional discoveries, save/title integration.
-- Later game phases extend documents without changing shared IR ownership.
-- Phase 22 uses schema metadata for replication.
-- Phase 24 publishes selected mod API.
-- Phase 28 evaluates additional languages independently.
+Failure: a Rust change alters state without a migration. Candidate Play startup fails, the editor keeps source edits and prior build/checkpoint, and offers reset or an explicit migration rather than unsafe continuation.
 
-## 17. Examples
-
-End-to-end: an Interaction document maps focus on a gate to Use, validates state, invokes a typed OpenGate command, updates the State Flow, emits an audio event, and journals a save-safe field. Rust, Luau, UI, and trace use the same IDs.
-
-Failure/recovery: a Luau hot reload changes state shape without migration. Candidate validation fails, old artifact/state remain active, the editor highlights the schema difference, and play continues.
-
-Performance debug: a frame spike opens a script trace grouped by module/callback/entity. It reveals an unbounded world query; the user replaces it with a schema-indexed query and verifies instruction/allocation reductions on the same replay.
+Performance debug: a spike groups fixed systems by module/query/command and reveals an unbounded world scan; the creator replaces it with a schema-indexed query and verifies the same replay.

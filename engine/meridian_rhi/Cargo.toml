@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+meridian-core = { path = "../meridian_core" }
 meridian-platform = { path = "../meridian_platform" }
 meridian-render-graph = { path = "../meridian_render_graph" }
 pollster.workspace = true

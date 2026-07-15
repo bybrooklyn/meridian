@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 meridian-assets = { path = "../meridian_assets" }
+meridian-core = { path = "../meridian_core" }
 meridian-tasks = { path = "../meridian_tasks" }
 meridian-world = { path = "../meridian_world" }
 

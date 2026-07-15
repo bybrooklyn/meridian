@@ -1,142 +1,139 @@
 # Meridian Specification Migration and Contradiction Register
 
-[Master index](MERIDIAN_MASTER_SPEC.md) · [Principles](PRINCIPLES_AND_SCOPE.md) · [Heading migration ledger](../docs/migrations/V0_1_DOCUMENT_MIGRATION.md) · [Implementation phases](IMPLEMENTATION_PHASES.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [v0.1 heading ledger](../docs/migrations/V0_1_DOCUMENT_MIGRATION.md) · [v0.3 roadmap ledger](../docs/migrations/V0_3_ROADMAP_MIGRATION.md) · [v0.4 Alluvium ledger](../docs/migrations/V0_4_ALLUVIUM_AMENDMENT.md) · [v0.5 general-purpose ledger](../docs/migrations/V0_5_GENERAL_PURPOSE_PLATFORM_AMENDMENT.md)
 
-Status: normative migration record, version 0.2, 2026-07-14.
+version 0.5 · 2026-07-15 · Normative migration/history record
 
-This document records how the binding amendment and the 2026-07-14 repository split replaced the seven original version 0.1 root documents. Engine/performance material is consolidated into this suite and benchmark definitions; creative material is rewritten in the separate private `bybrooklyn/project-meridian` repository. The deleted files remain traceable through the heading-level migration ledger. A requirement is never deleted silently: it is preserved, replaced, split, relocated, deferred, or rejected here.
+This register records winning decisions and preserves the disposition of older
+architecture, roadmap, and private-game statements. Historical phase/file names
+may appear here and in `docs/migrations/`; active specifications use v0.5
+milestones, packages, gates, and authorities.
 
-## 1. Authority order
+## 1. Authority and status migration
 
-When two statements conflict, use this order:
+The v0.5 owning subsystem specification and adopted ADR win, followed by this
+register, the delivery roadmap, typed registries, and PLANNING. Private Project
+Meridian documents own creative decisions only. Code and evidence prove current
+behavior but do not silently choose permanent architecture.
 
-1. The version 0.2 documents under `specs/`, with this register resolving migration questions.
-2. `PLANNING.md` for current implementation status and the active work package only.
-3. The private `bybrooklyn/project-meridian` creative specifications for game-specific narrative, art, pacing, and content decisions.
-4. The [heading migration ledger](../docs/migrations/V0_1_DOCUMENT_MIGRATION.md) for historical design rationale and provisional benchmark hypotheses from the deleted version 0.1 documents.
-5. Current code as evidence of what exists, never as an automatic long-term architecture decision.
+Status is now three-axis:
 
-The master amendment wins over older documents. A later measured ADR may amend version 0.2 only when it names the affected requirement IDs, records alternatives, supplies evidence, and updates this register.
+- documentation: `Draft`, `ArchitectureComplete`, `ResearchReady`,
+  `ImplementationReady`, `VerifiedCurrent`;
+- implementation: `Implemented`, `ImplementedFoundation`, `StructuralSmoke`,
+  `Partial`, `Transitional`, `Scaffold`, `Planned`, `Research`, `Deferred`,
+  `Unsupported`;
+- evidence: `Pass`, `Fail`, `NotRun`, `UnsupportedCapability`,
+  `UnsupportedPlatform`, `Occluded`, `Redacted`, `Waived`, `Stale`,
+  `Inconclusive`.
 
-## 2. Status vocabulary
+The older single status vocabulary is superseded because it allowed complete
+documentation to be confused with complete software.
 
-| Status | Meaning |
-|---|---|
-| Preserved | Older decision remains normative. |
-| Refined | Intent remains, but ownership, API, pipeline, or gate is made concrete. |
-| Replaced | New decision supersedes the older one. |
-| Transitional | Existing code remains temporarily while a named migration phase replaces it. |
-| Deferred | Requirement remains in scope but cannot block the opening vertical slice. |
-| Research gate | No production algorithm is selected until competing prototypes are measured. |
-| Rejected | Requirement conflicts with product principles and is removed with rationale. |
+## 2. Winning decisions
 
-## 3. Contradiction and duplication matrix
-
-| Subject | Existing document and statement | New or conflicting decision | Winner and reason | Migration action | Updated source of truth |
-|---|---|---|---|---|---|
-| Specification authority | The original plan listed seven version 0.1 root documents without a conflict hierarchy. | The amendment requires one coordinated engine suite and the repository split requires a separate private creative suite. | Version 0.2 wins; duplicate root documents permit drift and leak the game/engine boundary. | Merge engine/performance material into v0.2, relocate rewritten creative material to `bybrooklyn/project-meridian`, record heading dispositions, and delete all seven root files. | `MERIDIAN_MASTER_SPEC.md` and migration ledger |
-| Engine identity | GDD requires a standalone custom engine; older plans primarily describe a game-specific engine. | Meridian is a general-purpose game and interactive-application engine; Project Meridian is its first proving game. | Both are compatible after scope separation. | Preserve custom-engine requirement; prohibit engine crates from depending on the game; classify game-only systems separately. | `PRINCIPLES_AND_SCOPE.md` |
-| Ease of use | Older docs imply editor tooling but do not make progressive disclosure an architecture invariant. | Normal users need no Blender, shader code, Cargo, VCS knowledge, AI, or cloud account. | Amendment wins because usability affects formats, APIs, defaults, and process boundaries. | Add beginner/expert workflows and zero-required-external-tool gates to every subsystem. | `PRINCIPLES_AND_SCOPE.md` |
-| Advanced systems | Version 0.1 lists weather, simulation, RT, and world systems near the main roadmap. | Expensive systems are optional feature packs and must be zero-cost when disabled. | Amendment wins to control scope and shipping cost. | Add capability registry, dependency pruning, no recurring work/resource tests, and explicit feature-pack ownership. | `REPOSITORY_AND_CRATE_ARCHITECTURE.md` |
-| Editor framework | Version 0.1 technical design and `PLANNING.md` use `egui` for the editor foundation. | `egui` is disposable bootstrap scaffolding; Meridian UI is the permanent in-tree framework. | Amendment wins; `egui` cannot define persistence, accessibility, plugin, or runtime UI contracts. | Keep `egui` only in temporary editor targets; migrate panel-by-panel; prohibit `egui` types in project documents or public engine APIs. | `EDITOR_AND_MERIDIAN_UI_SPEC.md` |
-| Runtime UI | Version 0.1 describes runtime UI separately from editor UI. | Editor, game UI, and native apps share Meridian UI core, renderer, text, layout, input, semantics, and styling; widget libraries remain separable. | Amendment wins to prevent duplicate UI engines while preserving minimal shipping builds. | Replace unrelated runtime UI architecture with shared core plus `ui-runtime` and `ui-editor` libraries. | `EDITOR_AND_MERIDIAN_UI_SPEC.md` |
-| Physics product | Version 0.1 names Rapier as the physics implementation. Current `meridian-physics` wraps `rapier3d`. | Cairn is an in-tree engine family beginning from a provenance-controlled Rapier fork with selected Box2D study/ports; Rapier API compatibility is not a goal. | Amendment wins; current wrapper is transitional evidence, not final ownership. | Freeze wrapper expansion at vertical-slice needs; pin source revisions, archive licenses, establish differential tests, then fork behind Cairn-native handles and descriptors. | `CAIRN_PHYSICS_SPEC.md` |
-| ECS | Current code wraps `bevy_ecs`; version 0.1 treats it as the runtime ECS. | Long-term baseline specifies Meridian-owned archetype chunks, stable persistent IDs, command buffers, and scheduler metadata. | Amendment wins for stable serialization, networking, tooling, and deterministic ownership. | Keep `bevy_ecs` as a replaceable Phase 1/2 implementation aid; prevent its entity/types from crossing public game/save/network APIs; migrate behind Meridian ECS contracts after benchmarks. | `ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md` and `CORE_RUNTIME_TASKS_AND_PLATFORM_SPEC.md` |
-| World source | Older planning uses cells/regions but leaves room for opaque built-world assumptions. | Authoritative source is a directory of schema-defined documents with stable IDs and binary sidecars; compiled chunks are caches. | Amendment wins for diff, merge, migration, and recovery. | Define world root layout, per-document versions, unknown-field handling, canonicalization, and compiled chunk headers. | `ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md` |
-| World loading | Version 0.1 describes one streaming system but not cross-system authority. | One scheduler combines spatial cells, rooms, visibility, gameplay relevance, acoustics, network interest, and budgets. | Refined; old intent is preserved. | Keep current deterministic cell scheduler, add typed request reasons and staged IO/decode/upload/activation ownership. | `ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md` |
-| Packaging | Older asset packs and export language can be read as independent pack files or one opaque archive. | `.meridian` is a chunked mountable package with manifest, indexes, independent compression, signatures, patches, and recovery. | Amendment wins; neither one giant compressed stream nor loose shipping output meets the contract. | Treat current pack index as an internal precursor; assign versioned superblock/chunk/index formats and CLI recovery operations. | `ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md` |
-| Save format | Version 0.1 has versioned save/recovery foundations. | Saves are append-only transaction journals plus compacted snapshots and rotating recovery heads. | Refined; current versioning and recovery behavior are preserved. | Map current records to journal transactions, define commit markers/checksums, preserve unknown records, and add inspect/diff/repair tools. | `ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md` |
-| Asset identity | Current code has deterministic `AssetId`, manifests, states, and residency. | Identity separates `AssetId`, `SourceId`, `ArtifactHash`, `FacetId`, `VariantKey`, and `PackageChunkId`. | Amendment refines the implemented foundation. | Keep `AssetId`; add the other identity domains without repurposing source paths or runtime handles. | `ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md` |
-| Materials | Older rendering material means mostly visual PBR. | One conceptual material may expose visual, physical, structural, thermal, environmental, and acoustic facets. | Amendment wins, with facets opt-in. | Preserve current PBR resource as the visual facet; add independent schemas and loading so a server never loads textures for collision. | `RENDERING_AND_GRAPHICS_SPEC.md` and related subsystem specs |
-| Rendering baseline | Version 0.1 discusses deferred opaque plus Forward+; current code has a direct PBR smoke path. | Opening-forest baseline must be chosen; visibility and virtual geometry remain measured alternatives. | Forward+ with depth prepass and clustered lighting is the Phase 2/8 baseline because it fits vegetation, transparency, MSAA/VR evolution, and the existing direct path. Visibility-buffer rendering is a Phase 12 research gate. | Evolve current direct PBR path into measured Forward+ passes; do not claim advanced renderer completion from smoke construction. | `RENDERING_AND_GRAPHICS_SPEC.md` |
-| Image-based lighting | Current diffuse irradiance cube is implemented; older immediate plan made specular IBL next. | Diffuse IBL remains complete evidence; prefiltered specular IBL and BRDF LUT are future renderer work, subordinate to vertical-slice priorities. | Existing evidence preserved; priority refined. | Keep group-3 binding behavior; schedule specular IBL as a bounded Phase 2 work package after pass timing, without adding broader material variants. | `RENDERING_AND_GRAPHICS_SPEC.md` and `PLANNING.md` |
-| Ray tracing and GI | Version 0.1 lists staged ray tracing and dynamic irradiance questions. | No vendor or algorithm is mandatory; use a capability and benchmark-selected portfolio with raster/baked fallback and path-traced reference. | Amendment wins to avoid unsupported claims. | Keep hardware RT out of opening critical path; prototype probe/radiance-cache and hardware-ray approaches in Phase 12. | `RENDERING_AND_GRAPHICS_SPEC.md` |
-| Gameplay languages | Older roadmaps could be read as allowing several initial languages or generic scripting. | Rust plus exactly one initial high-level runtime: Luau with a broad Lua-compatible subset. C#, Anorak, Python, and mixed-language projects are later. | Amendment wins to prevent binding and tooling multiplication. | Generate Luau bindings from one API schema; reject additional runtime language work before Phase 28. | `GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md` |
-| Logic tools | Older game docs describe hidden progression directly in game systems. | State Flow, Narrative Flow, Interaction, Action, and related documents share a typed logic IR but remain purpose-built documents. | Refined; creative behavior is preserved. | Encode stable state/event/command IDs and test path reachability without exposing a quest checklist. | `GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md` |
-| Telepo | Any prior Telepo/cloud concept is separate and may imply accounts or hosted relays. | Telepo has not entered development and is absorbed into `meridian-sync`; direct encrypted P2P is first, with optional self-hosted relay and no required account. | Amendment explicitly replaces Telepo. | Remove `.telepo` and mandatory cloud assumptions; use `.meridian/sync/`; keep Meridian VCS authoritative. | `VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md` |
-| VCS | Production docs use normal Git workflows. | Meridian adds Git-compatible storage and a Jujutsu-derived operation/change model with semantic operations. | Both coexist: Git remains interoperable storage/remotes; Meridian UX and operation log are canonical in-editor. | Keep repository compatibility, hide staging/HEAD concepts in beginner UI, and defer the fork until Phase 17 research/provenance gates. | `VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md` |
-| Live collaboration | Broad collaboration plans risk replacing source control with session state. | Live collaboration augments VCS and checkpoints; it is never authoritative history. | Amendment wins. | Separate presence/locks/session transport from immutable operation history and package/artifact transfer. | `VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md` |
-| Cargo/IDE | Version 0.1 uses Cargo workspace and CI but does not define lossless manifest editing or one build DAG. | Cargo files remain authoritative; editor edits use a lossless TOML tree; Cargo JSON, `cargo metadata`, assets, shaders, packaging, and signing feed one build service. | Amendment refines existing direction. | Preserve root workspace; add immutable build IDs, structured events, cancellation, and process restart boundaries. | `CARGO_IDE_BUILD_AND_TEAM_WORKFLOWS.md` |
-| Agent APIs | Existing `.mcp.json` is tooling configuration, not an engine API. | UI, CLI, Rust, MCP, and agents use one typed command/query registry with capabilities, transactions, audit, and checkpoints. | Amendment wins. | Do not create an AI-only backdoor; expose the same semantic commands with stricter permission profiles. | `AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md` |
-| Ollama | Older roadmaps may place local AI late or treat it as generic OpenAI compatibility. | Deep Ollama support is in the initial agent phase; local and cloud hosts are distinct trust profiles; web search is separately permissioned. | Amendment wins. | Discover capabilities at runtime; never infer cloud/web permission from a local endpoint; version embedding indexes. | `AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md` |
-| Security/signing | Version 0.1 has licensing/provenance but not a complete trust hierarchy. | TUF-inspired root/targets/snapshot/timestamp roles, delegated package roles, signed provenance, and explicit trust levels are foundational. | Amendment wins. | Add threat-model and cryptographic selection gates before shipping formats freeze; unsigned local builds remain clearly labeled. | `SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md` |
-| Multiplayer | No early multiplayer in Project Meridian; long-term scope was vague. | Transport-neutral replication, dedicated/listen servers, Steam/EOS adapters, prediction/rollback, and impairment testing are later phases. | Preserved and refined; Project Meridian remains single-player. | Keep networking crates absent from early builds; define schemas now without implementing Phase 22 work. | `MULTIPLAYER_AND_SERVER_SPEC.md` |
-| Modding | Version 0.1 defers a plugin marketplace. | Mod infrastructure is optional per game; only published APIs are stable; community library is free/community-first, not a required marketplace. | Amendment refines and preserves deferral. | Define capability manifests and restricted editor distribution in Phase 24; no opening-slice dependency. | `MODDING_AND_COMMUNITY_LIBRARY_SPEC.md` |
-| Weather | Version 0.1 schedules a broad weather phase after the opening. | Opening uses basic weather/wind; multi-resolution regional atmosphere and coupled fields come later, with artist forcing and deterministic seeds. | Refined to vertical slices. | Implement only slice-required wind/fog/weather first; defer planetary, flooding, erosion, and high-quality local fluid tiles. | `WEATHER_ENVIRONMENT_AND_SIMULATION_SPEC.md` |
-| Audio | Version 0.1 audio is largely a future system. | Audio callback, immutable compiled DSP graph, sample clock, streaming, spatialization, and hybrid acoustics have concrete ownership. | Amendment wins on technical detail; sequence remains slice-driven. | Build minimal output/mixer/spatial audio for Phase 8, preserving graph ABI for Phase 10/20 expansion. | `AUDIO_MUSIC_AND_ACOUSTICS_SPEC.md` |
-| Procedural authoring | Version 0.1 proposes a generalized authoring graph early. | Share graph/compiler infrastructure but keep domain documents separate; partial regeneration and non-destructive overrides are mandatory. | Amendment wins to avoid a giant universal graph. | Initial graph generates only opening-forest terrain/vegetation masks; broader buildings/ecosystems remain later. | `PROCEDURAL_AUTHORING_SPEC.md` |
-| VR/XR | Version 0.1 does not put VR on opening critical path. | OpenXR lifecycle and physical interaction are specified now but implemented after desktop slice stabilization. | Preserved and refined. | Maintain renderer/input/physics timing seams; no Phase 19 implementation before Phase 8 evidence. | `VR_XR_AND_INTERACTION_SPEC.md` |
-| Phase strategy | `PLANNING.md` has long engine and game milestone sequences and an Engine-Ready Gate before game content. | Every phase must produce a visible result; the opening forest is Phase 8 and may not wait for entire subsystems. | Amendment wins; an all-engine-before-game gate is rejected. | Replace the Engine-Ready Gate with capability gates feeding a vertical-slice DAG; preserve current completed code as partial evidence. | `IMPLEMENTATION_PHASES.md` |
-| Completion evidence | Older plans use checkboxes and textual exit criteria. | No phase completes without demo, tests, benchmarks, recovery evidence, docs, and required audits. Skeleton types are insufficient. | Amendment wins. | Convert checkboxes to work-package status and evidence links; mark current partial implementations honestly. | `TESTING_BENCHMARKS_AND_VALIDATION.md` |
-| Performance numbers | Version 0.1 has detailed numeric budgets before final scenes exist. | Unmeasured numbers are provisional and must state calibration method; no invented claims. | Amendment wins while retaining useful hypotheses. | Label legacy budgets provisional; keep measured current values separately; freeze gates only after B01/B02 corpus calibration. | `TESTING_BENCHMARKS_AND_VALIDATION.md` |
-| Competitor claims | User ambition describes Meridian as more ambitious than UE5. | No superiority claim without reproducible, like-for-like benchmarks. | Amendment wins for truthfulness. | Describe intended differentiation and architecture, not unmeasured superiority. | `PRINCIPLES_AND_SCOPE.md` |
-
-## 4. Duplicate requirement normalization
-
-The following repeated creative decisions remain authoritative in the separate private Project Meridian documents and are referenced only where an engine contract needs them:
-
-- no enemies, combat, player death, conventional jumpscare, or forced dialogue;
-- no sprint or jump in the opening movement contract;
-- documents and discoveries are optional and do not gate completion;
-- the opening midnight forest, field transition, title interruption, compound, five sites, unfinished settlement, subtle road emergence, ending, and post-game state remain the game spine;
-- realistic rural material language, darkness readability, rare silhouettes, and restrained analog degradation remain art/narrative constraints;
-- the opening slice is production content, not a throwaway demo.
-
-`PROJECT_MERIDIAN_VERTICAL_SLICE_PLAN.md` owns the sanitized engine-facing acceptance mapping. The private `project-meridian` documents own exact narrative and art detail.
-
-## 5. Current code classification
-
-Current code is classified as follows:
-
-| Area | Classification | Migration note |
+| Subject | Previous ambiguity | v0.5 winner and migration |
 |---|---|---|
-| Fixed-step clocks, diagnostics, render graph, platform contracts, tasks, asset IDs, save recovery, immutable render extraction, upload planning | Preserved foundation | Extend behind version 0.2 ownership and diagnostic contracts. |
-| `wgpu` RHI, direct PBR, cascaded shadows, diffuse IBL | Transitional production foundation | Keep backend private; evolve toward capability-selected render graph. Diffuse IBL is implemented; specular IBL remains planned. |
-| `bevy_ecs` | Transitional implementation | Hide behind Meridian ECS contracts; benchmark before replacement. |
-| `rapier3d` wrapper | Transitional research/bootstrap | Freeze public leakage; Phase 3 establishes Cairn provenance and fork. |
-| Audio, UI, terrain, vegetation, weather marker crates | Scaffold only | Presence is not implementation evidence. Their version 0.2 specs define first real gates. |
-| Editor/tool marker crates | Scaffold only | Do not report a usable editor. Game code and full creative content are not part of this repository. |
-| Asset IO/decode/streaming queues | Partial | Uncompressed path exists; Zstandard, GPU residency activation, and corruption corpus remain open. |
-| Renderer native smoke | Structural GPU evidence | Occluded surface validates construction/submission, not visible image quality. |
+| Suite authority | Seven v0.1 roots and a v0.2 suite could drift. | v0.3 owning specs, registries, ADRs, and validator are canonical. v0.1 headings remain zero-unmapped in the historical ledger. |
+| Delivery | P0-P29 mixed subsystem order, products, and evidence. | MS-00 through MS-10 are evidence gates; parallel domain work uses `WP-*`. Every old phase/package maps in the v0.3 ledger. |
+| Status | Planned, transitional, and implemented labels were overloaded. | Separate documentation, implementation, and evidence maturity; scaffolds and structural smoke cannot promote claims. |
+| Product sequencing | Earlier all-engine-first interpretations delayed game proof; later discussion risked prototype-before-editor work. | Editor-first: MS-02 UI proof, MS-03 Creator Editor Alpha, MS-05 representative forest, then MS-06 private prototype and MS-07 production opening slice. |
+| Renderer name | Rendering had generic or mixed labels. | Penumbra is the Meridian-owned renderer; `meridian-renderer` remains its implementation crate. |
+| Production shading | Deferred/Forward+/visibility-buffer alternatives were mixed with current direct PBR code. | Clustered Forward+ is adopted production architecture. Current direct PBR/shadow/diffuse-IBL code is Partial/Transitional foundation. |
+| Successor path | A future renderer could be presumed or selected from small wins. | `RG-PEN-001` opens after MS-05, requires preregistered material thresholds, full parity, lower-tier/native evidence, and sustainable maintenance. No successor is required for 1.0. |
+| Shared renderer systems | Multiple paths risked duplicating materials, scene data, streaming, lights, temporal state, and debugging. | Render graph, GPU scene/views, visibility/indirect streams, material/shader IR, light/shadow/environment snapshots, temporal/post/debug/resource systems are path-independent. |
+| Material and shader authoring | Visual materials and WGSL could become path/backend authority. | One `MaterialSource -> MaterialIr`; one `ShaderIr` lowers to WGSL now and native targets later. Artists do not duplicate materials per path. |
+| RHI | wgpu could leak or be mistaken for permanent public API. | `meridian-rhi` owns Meridian contracts; wgpu is current production backend implementation and remains available during native work. |
+| Native backends | Native work could start before a playable corpus or stable abstraction. | `RG-RHI-001`: Metal only after MS-07/stable RHI; Vulkan and Direct3D 12 only after mature Metal/common-RHI differential and maintenance gates. |
+| Hardware support | Named GPUs and feature bits could imply support. | `GpuCapabilityProfile` and measured evidence determine tiers; numeric limits remain provisional until calibration. |
+| Weather/environment/simulation | One combined spec blurred weather, terrain, vegetation, and specialized simulation ownership. | Isobar owns weather/atmosphere; Basalt owns terrain/large-world geometry; vegetation remains independent; Torsant owns optional fire/fluids/thermal/smoke. |
+| Scaffold names | Empty weather and terrain crates used generic names. | Empty packages are renamed `meridian-isobar` and `meridian-basalt`; no Torsant crate exists until real implementation starts. |
+| Physics | Rapier wrapper could be mistaken for final engine ownership. | Cairn owns long-term contracts and provenance-controlled migration; current Rapier wrapper remains Transitional evidence. |
+| ECS | bevy_ecs could become persistence/network authority. | It remains transitional behind Meridian persistent IDs, schemas, commands, and snapshots; replacement requires evidence. |
+| UI | egui could become permanent editor/runtime architecture. | Meridian UI is the permanent shared framework; any bootstrap UI is isolated, transitional, and deletable. |
+| Data | Built artifacts or one-file worlds/packages could become authority. | Schema-defined source directories/documents are authoritative; artifacts/chunks are rebuildable caches; saves are transactional journals/snapshots. |
+| Gameplay | Several initial languages could multiply bindings and tooling; earlier wording let Luau block the first game path. | Rust gameplay modules, reflection, typed APIs, and isolated Play rebuild/restart are first in `WP-GAM-001`. Luau remains the first optional embedded high-level language in `WP-GAM-002` and cannot block MS-06/MS-07. |
+| Commands and agents | AI-specific APIs could bypass user tools. | UI, CLI, Rust, MCP, and agents share typed commands/queries, permissions, transactions, audit, undo, and rollback. |
+| Optional systems | Advanced packs could add hidden cost. | Disabled packs add no tasks, threads, listeners, GPU resources, allocations, panels, dependencies, or chunks. |
+| VCS/sync | Telepo/cloud or live sessions could replace source history. | Git interoperability plus Meridian change/operation UX; optional encrypted sync augments durable checkpoints, with no required account/cloud. |
+| Benchmarks | B01/B02 and provisional budgets could look calibrated. | Permanent `PEN-B01` through `PEN-B16` definitions remain DefinitionOnly/Uncalibrated until executable evidence exists. |
+| AMI benchmark | Private lore/interiors could leak into engine fixtures. | PEN-B04 is a generated redacted functional surrogate. Only private creative authority defines or expands AMI; engine records contain no proprietary content. |
+| Donor code | Renderer/physics donor code could be imported without durable provenance. | No borrowed source before complete `third_party/provenance` record and license/revision/hash/modification/test/exit review. |
+| Ambition claims | Meridian's ambition could become an unmeasured superiority claim. | Architecture and goals may be ambitious; performance/quality/competitor claims require reproducible like-for-like evidence. |
+| Procedural authoring | Procedural work was narrow, mostly deferred, and overlapped Basalt source ownership. | Alluvium is adopted as core editor/build procedural authoring. It owns recipes, evaluation, fields, generated identity, overrides, provenance, and cooking; runtime systems retain live authority. |
+| Alluvium runtime cost | “Core” could imply every game ships an evaluator. | Core first-party authoring is always available; baked-only shipping profiles omit editor/compiler/runtime evaluator and incur zero recurring Alluvium cost. |
+| Procedural formats | A definition-only graph example and many possible branded extensions could become accidental commitments. | Logical `meridian.procedural-recipe/v1`; `.mproc` recipe source and `.mfield` derived artifacts are reserved. Other extensions require owning schemas and evidence. |
+| Procedural game boundary | Project Meridian targets could leak AMI facilities, private recipes, seeds, or curation into engine fixtures. | Public engine specs retain sanitized functional targets and hashes only; proprietary recipes and creative constraints remain private. |
+| Creator application identity | Editor, Studio, and IDE wording could imply separate products. | There is one user-facing application named Meridian. Editor, IDE, modeler, graph, profiler, debugger, VCS, build, and Play are workspaces; bounded helpers/CLI are allowed. |
+| Native modeling | Blender/DCC assumptions could exclude beginners or make imported binaries the only source. | `MDL` owns a core native editable-model document and beginner modeler with stable element lineage. Blender/OpenUSD/glTF are optional interchange with explicit loss reports. |
+| Animation and navigation | Cross-system behavior lacked dedicated authority. | `ANI` owns animation/pose/retarget/sequencing; `NAV` owns traversability/artifacts/queries. Gameplay/frameworks retain decisions. Advanced facial work is post-1.0. |
+| Official frameworks | Ambition could imply six complete genre stacks before 1.0. | `FWK` delivers shared/selected foundations before 1.0; completion and maintenance of all six families is `PRG-FWK-001`. |
+| First-class 2D | 2D could be treated as flattened 3D or postponed indefinitely. | `TWO` coordinates dedicated Penumbra and Cairn 2D paths and a public proving project before 1.0; disabled 3D has zero cost. |
+| Shader language | WGSL or graph tools could become competing source authorities, and `MSL` conflicts with established terminology. | The Meridian Shader Language text frontend and material graphs lower to one `ShaderIr`; the full working name is used. WGSL/Naga remains a target/compiler boundary. |
+| Audio name and voice | Audio lacked a stable subsystem name; online voice could mix device, transport, and service authority. | Wavefront owns audio/capture/DSP/mixer/device behavior; NET owns transport; Collective owns optional voice-room identity/policy/provider coordination. |
+| Online services | Provider adapters, social, analytics, moderation, and sessions could fragment or imply hosted infrastructure. | Collective is one internally modular optional subsystem for those services, provider-neutral and self-hostable. Meridian promises no hosted cloud without funded operations. |
+| Distributed worlds and integrity | MMO/anti-cheat ambition could distort the 1.0 roadmap. | `WRL` and `INT` are separate post-1.0 research authorities with explicit failure/privacy/cost/false-positive gates. |
+| Post-1.0 work | Adding more MS phases would flatten long-horizon programs into 1.0 delivery. | MS-00 through MS-10 remain stable. `PRG-*` records cannot satisfy, block, or promote milestones. |
+| Dependency ownership | “Own everything” could force unnecessary rewrites. | Strategic dependencies are `InternalizeEarly`, `InternalizeEventually`, or `WrapIndefinitelyUnlessNecessary`; replacement requires measured product and maintenance evidence. |
 
-## 6. Legacy document disposition
+## 3. Current code classification
 
-1. The two engine/performance v0.1 root documents are deleted after every level 1–3 heading maps to a current engine spec, benchmark definition, explicit replacement, or rejection.
-2. The five creative v0.1 root documents are rewritten without obsolete engine architecture and versioned in the private `bybrooklyn/project-meridian` repository.
-3. The [migration ledger](../docs/migrations/V0_1_DOCUMENT_MIGRATION.md) is the retained historical map and must report zero unmapped headings.
-4. Legacy numeric budgets are hypotheses until present in the validation spec with calibration status.
-5. Creative changes require an explicit game-design amendment in the private game repository; the engine suite does not casually rewrite them.
-6. The ignored local `game/` checkout and its nested Git metadata must never be staged by this repository.
+| Area | v0.5 classification | Boundary |
+|---|---|---|
+| Fixed-step runtime, diagnostics, tasks, platform contracts | `ImplementedFoundation` / `Partial` | Current tests and native smoke do not complete all platforms/recovery. |
+| RHI and render graph | `ImplementedFoundation` | wgpu-backed current implementation; stable native-ready contract and broad execution features remain. |
+| Direct PBR, cascaded shadows, diffuse irradiance IBL, extraction/upload, current high-level pass timing | `ImplementedFoundation` / `Transitional` | Penumbra foundation only; complete render-graph timing coverage, Forward+, visible quality, and specular IBL remain open packages. |
+| Native renderer smoke | `StructuralSmoke` | Six-face upload and pipeline/bind-group construction; occluded outcome is not visual evidence. |
+| Asset/world/streaming/save | `Partial` | Useful foundations; authoritative source/import/package pipeline incomplete. |
+| Rapier wrapper/controller | `Transitional` | Not Cairn-owned implementation. |
+| Meridian UI, editor, Wavefront, Isobar, Basalt, vegetation | `Scaffold` unless narrower evidence is registered | Crate presence does not prove a usable product/system. |
+| Alluvium | `Planned` | Architecture, requirements, packages, gates, risks, and examples exist; no implementation crate or product behavior exists. |
+| Native modeler, Rust gameplay modules, optional Luau, animation, navigation, frameworks, first-class 2D, Meridian Shader Language, Collective | `Planned` or `Deferred` | Documentation/contracts and registries only; no runtime/editor implementation claim. |
+| Torsant, networking, XR, mods, VCS/sync, agents | `Planned`, `Research`, or `Deferred` | No production implementation claim. |
+| Distributed worlds, advanced integrity, and other `PRG-*` programs | `Deferred` or `Research` | Post-1.0 authority only; no milestone or implementation evidence. |
 
-## 7. Unresolved research gates
+## 4. Historical migration disposition
 
-These are intentionally not fabricated as settled production decisions:
+The seven v0.1 root files remain deleted. Their 953 recorded headings are
+mapped by [V0_1_DOCUMENT_MIGRATION.md](../docs/migrations/V0_1_DOCUMENT_MIGRATION.md),
+which preserves engine destinations, private creative destinations, superseded
+claims, and rejected assumptions.
 
-- final native-backend threshold beyond `wgpu`;
-- visibility buffer versus clustered Forward+ after the opening baseline;
-- virtual geometry hierarchy, page size, raster path, and deformable support;
-- production dynamic-GI portfolio and ray-tracing API maturity;
-- final shader source/IR and backend translation stack;
-- Meridian ECS replacement timing and measured advantage over the current wrapper;
-- Cairn solver portfolio constants, SIMD layout, and strict cross-platform determinism envelope;
-- update/package signature algorithms and key-management library after threat-model review;
-- live-collaboration CRDT/OT use by data type;
-- QUIC/native UDP/Steam/EOS transport assignments by workload;
-- volumetric fire, local fluid, shallow-water, snow/granular, and acoustic propagation production algorithms;
-- WebAssembly component-model plugin runtime and sandbox guarantees;
-- specific proprietary SDK integrations and redistribution terms.
+The retired `IMPLEMENTATION_PHASES.md`, its P0-P29 roadmap, conflicting renderer
+subpackage labels, combined weather/environment/simulation headings,
+`docs/adr/`, old benchmark shorthand, and generic scaffold names are mapped by
+[V0_3_ROADMAP_MIGRATION.md](../docs/migrations/V0_3_ROADMAP_MIGRATION.md).
+Both historical ledgers report zero unmapped entries. The
+[v0.4 Alluvium amendment ledger](../docs/migrations/V0_4_ALLUVIUM_AMENDMENT.md)
+maps every prior procedural heading and amendment subject with zero unmapped rows.
+The [v0.5 general-purpose platform ledger](../docs/migrations/V0_5_GENERAL_PURPOSE_PLATFORM_AMENDMENT.md) maps all 40 review areas, 20 resolved decisions, and 6 stale prompt terms: 66 mapped rows and zero unmapped rows.
 
-Each gate is assigned a phase, corpus, metrics, stable API seam, and decision owner in `RESEARCH_AND_ALGORITHM_DECISIONS.md` and `IMPLEMENTATION_PHASES.md`.
+## 5. Open research, not contradictions
 
-## 8. Migration acceptance
+These remain deliberately unresolved behind registered gates:
 
-This register is complete when:
+- Penumbra successor candidates after MS-05 (`RG-PEN-001`);
+- native backend entry/maintenance (`RG-RHI-001`);
+- virtual geometry, GI, ray, shadow, and upscaling portfolios;
+- Meridian UI display-list renderer;
+- Cairn solver/layout/determinism envelopes;
+- ECS replacement timing;
+- Isobar/Basalt/Torsant production algorithms;
+- Alluvium evaluator/kernel portfolio (`RG-PRC-001`) and evidence-gated
+  dependency replacement (`RG-PRC-002`);
+- signing cryptography and key-management implementation;
+- native-modeling kernels, animation compression/retargeting, navigation representation, 2D algorithms, and shader compiler/target implementation behind their adopted seams;
+- VCS lineage, sync conflict models, network transports/providers, Collective providers, mod sandbox, XR extensions, Wavefront propagation, and additional gameplay languages;
+- every post-1.0 `PRG-*` program after its entry gates.
 
-- every old assumption named by the amendment appears in the matrix;
-- every version 0.2 document links here and does not silently revive a replaced decision;
-- all seven legacy root files are absent and every heading has a recorded disposition;
-- the private creative repository contains the rewritten five-document suite and authority index;
-- `PLANNING.md` distinguishes current evidence from future scope;
-- a clean engine clone contains no `game/` directory and still passes Cargo metadata/tests;
-- searches for `Telepo`, permanent `egui`, permanent Rapier ownership, one-file world/package assumptions, and multiple initial scripting languages either point here or use compliant language;
-- a future contributor can identify the winning decision and migration phase without reading the amendment prompt.
+ResearchReady means candidates, seams, corpus, metrics, owner, decision rule,
+and archive policy are specified. It does not mean a candidate is adopted.
+
+## 6. Acceptance
+
+This migration closes only when `meridian-spec check` validates documents,
+schemas, maturity, evidence, workloads, ADRs, and zero-unmapped IDs; active docs
+contain no retired authority; private content remains absent; Cargo and Rust
+gates pass; current smokes retain honest limits; and the private game index
+records the AMI/redacted benchmark boundary. Later changes update this register
+rather than silently reviving older decisions.

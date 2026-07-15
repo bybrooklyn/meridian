@@ -1,12 +1,22 @@
 # Project Meridian Opening-Forest Vertical Slice Plan
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Phases](IMPLEMENTATION_PHASES.md) · [Private creative slice](https://github.com/bybrooklyn/project-meridian/blob/main/docs/OPENING_FOREST_VERTICAL_SLICE.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Delivery](DELIVERY_ROADMAP.md) · [Implementation planning](IMPLEMENTATION_PLANNING_SPEC.md) · [Private creative slice](https://github.com/bybrooklyn/project-meridian/blob/main/docs/OPENING_FOREST_VERTICAL_SLICE.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md)
 
-Version 0.2 · 2026-07-14 · Normative integration plan
+version 0.5 · 2026-07-15 · Normative integration plan
+
+Documentation maturity: `ImplementationReady`. Implementation maturity:
+`Planned`. Delivery: `MS-07`. Governing IDs: `REQ-PRJ-002`, `WP-PRJ-002`.
 
 ## 1. Result
 
-Phase 8 delivers roughly five minutes of final-game traversal beginning in the midnight forest and reaching the intended title/return transition. It is extremely dark but deliberately readable, ambient and non-combat, with dense trees/grass, flashlight navigation, restrained fog/analog treatment, environmental sound, subtle interaction, reliable save/recovery, and a one-click export.
+MS-07 delivers roughly five minutes of production-quality final-game traversal
+beginning in the midnight forest and reaching the intended title/return
+transition. It is extremely dark but deliberately readable, ambient and
+non-combat, with dense trees/grass, flashlight navigation, restrained
+fog/analog treatment, environmental sound, subtle interaction, reliable
+save/recovery, and a one-click export. The bounded MS-06 prototype is governed
+separately by [PROJECT_MERIDIAN_PROTOTYPE_PLAN.md](PROJECT_MERIDIAN_PROTOTYPE_PLAN.md)
+and cannot satisfy this slice.
 
 This engine-facing plan does not replace the private creative suite. The separate Project Meridian repository remains authoritative for route, pacing, art, audio intent, narrative, asset list, and no-enemy/no-death/no-sprint/no-jump requirements. This plan turns those constraints into engine integration gates without importing the full closed-source game documentation.
 
@@ -24,16 +34,18 @@ This engine-facing plan does not replace the private creative suite. The separat
 
 ~~~text
 Runtime/platform ─┬─ Input/movement ─┐
-Renderer/assets ──┼─ Forest/fog/light├─ Playable route
-World/streaming ──┤                  │
+Penumbra/assets ──┼─ Forest/fog/light├─ Playable route
+Basalt/streaming ─┤                  │
 Cairn collision ──┤                  │
-Audio/weather ────┤                  │
-Luau/logic ───────┤                  │
+Wavefront/Isobar ─┤                  │
+Rust/logic ───────┤                  │
 UI/accessibility ─┤                  │
 Save/package ─────┴─ Export/recovery ┘
 ~~~
 
-Each incoming capability is a narrow gate. Phase 8 may proceed with the simplest tested implementation that preserves the long-lived seam and creative result.
+Each incoming capability is a narrow gate. MS-07 may use the simplest tested
+implementation that preserves the long-lived seam and creative result, but it
+cannot inherit prototype-only acceptance.
 
 ## 4. Slice documents and data
 
@@ -43,16 +55,26 @@ Authoritative source uses:
 - world directory with stable route/zone/entity IDs;
 - imported assets with provenance and visual/physical/acoustic facets as needed;
 - material documents;
-- weather/wind/fog state document;
-- interaction/state-flow documents and Luau modules only where needed;
+- Isobar weather/wind/fog state document;
+- Basalt terrain/cell documents and vegetation placement sources;
+- private Alluvium recipes, seeds, generated identities, hero locks/overrides,
+  accepted artifact/provenance hashes, and cook/license decisions;
+- Rust gameplay modules plus typed interaction/state-flow documents; optional Luau only if independently ready and useful;
 - Meridian UI settings/pause/accessibility documents;
 - audio graph/events/regions;
-- save schema and Phase 8 migration fixtures;
+- save schema and MS-07 migration fixtures;
 - build/export profile.
 
 Compiled cells, shaders, pipelines, textures, meshes, audio streams, logic bytecode, and package chunks are derived artifacts.
 
 ## 5. Work packages
+
+The `VS-*` labels below are local implementation slices within `WP-PRJ-002`,
+not global registry identifiers. Before MS-07 activation, the owning package
+must turn each ready slice into bounded tasks with exact dependencies, changed
+authority, tests, evidence, and stop conditions. Their order may overlap where
+write ownership is disjoint, but all converge at the `WP-PRJ-002` production
+review.
 
 ### VS-01 Route and creative lock
 
@@ -68,27 +90,45 @@ Use fixed-step semantic input, grounded Cairn-owned movement seam, walk/crouch a
 
 Failure behavior: lost focus releases movement; invalid ground/contact falls back safely; stuck detection offers checkpoint recovery. Gate: recorded traversal replays without divergence beyond declared mode and no sprint/jump action exists.
 
-### VS-03 Forest world, assets, and streaming
+### VS-03 Meridian-modeled and Alluvium-authored Basalt forest world, assets, and streaming
 
-Build final-source world cells, hero trees/undergrowth/grass, collision proxies, route blockers, visibility/streaming hints, variants, provenance, and lower-cost tiers. Streaming requests include visibility, player path, audio, gameplay, and preload reasons.
+Build and curate final-source Alluvium recipes and Basalt world cells, terrain,
+hero trees/undergrowth/grass,
+collision proxies, route blockers, visibility/streaming hints, variants,
+provenance, and lower-cost tiers. Vegetation remains its own subsystem and
+consumes Basalt geometry. Streaming requests include visibility, player path,
+audio, gameplay, and preload reasons.
+
+Alluvium remains authoring/cooking authority only. Accepted shipping content is
+fixed and versioned; Basalt, vegetation, Isobar, Cairn, Penumbra, audio,
+navigation, streaming, and saves retain live runtime authority. Regeneration
+must preserve hero locks and manual overrides or produce an explicit conflict/
+orphan review.
+
+Hero and route-critical model sources may be created or repaired in Meridian's native modeler. Editable mesh documents, stable element lineage, materials/semantic regions, collision/LOD facets, and explicit interchange reports remain source authority. Blender is optional and cannot be required to reproduce the accepted slice.
 
 Gate: cold/warm traversal runs without missing required assets, cell activation hitch beyond calibrated threshold, route holes, or provenance gaps.
 
 ### VS-04 Rendering, darkness, fog, and atmosphere
 
-Use the Phase 2 Forward+ baseline path, PBR visual facets, sun/moon artistic setup, cascaded shadows, diffuse IBL, flashlight, fog/atmosphere, vegetation tiers, tonemapping, and restrained optional analog effects.
+Use Penumbra's adopted Forward+ production path and shared PBR, shadow,
+environment-light, flashlight, Isobar atmosphere, vegetation, temporal,
+tonemapping, and restrained optional analog-effect systems. Current direct-PBR
+foundations remain useful but do not satisfy this gate by themselves.
 
 Immediate prerequisite: pass-level CPU/GPU timing and visible capture. Specular IBL/BRDF LUT may be added as bounded quality work after instrumentation; it does not redefine diffuse IBL completion.
 
 Gate: named hero/traversal captures are readable on calibrated displays, reduced-effects mode works, pipeline warmup is clean, and unsupported/occluded outcomes are reported honestly.
 
-### VS-05 Basic wind, weather, and vegetation response
+### VS-05 Basic Isobar wind, weather, and vegetation response
 
-Author deterministic weather transition/state and a simple shared wind field consumed by vegetation, audio, and rendering. No advanced fluid/planetary solver.
+Author deterministic Isobar weather transition/state and a simple shared wind
+field consumed by vegetation, audio, and Penumbra. No advanced planetary solver
+or Torsant fire/fluid/thermal package is required.
 
 Gate: wind is coherent across consumers, deterministic from source/seed where promised, scalable by tier, and absent work is proven when weather pack portions are disabled.
 
-### VS-06 Basic audio and acoustics
+### VS-06 Basic Wavefront audio and acoustics
 
 Deliver device output, streamed ambience, footsteps/material events, authored one-shots, simple spatial attenuation/occlusion/reverb regions, title/static transition, captions/non-speech cue policy, and diagnostics.
 
@@ -96,9 +136,9 @@ Gate: no callback allocation/blocking, no underruns in traversal corpus, device 
 
 ### VS-07 Logic and narrative
 
-Represent start, route triggers, optional discoveries, title transition, and recovery state with typed State Flow/Interaction/Action documents plus the minimum Luau needed. There is no objective checklist and optional documents never gate completion.
+Represent start, route triggers, optional discoveries, title transition, and recovery state with Rust gameplay modules plus typed State Flow/Interaction/Action documents. Optional Luau may be used only after `WP-GAM-002` and is never required for this slice. There is no objective checklist and optional documents never gate completion.
 
-Gate: reachability tests cover completion with zero optional documents, repeat/load behavior, invalid script rollback, and hot-reload boundaries.
+Gate: reachability tests cover completion with zero optional documents, repeat/load behavior, invalid module/build rollback, and isolated Play rebuild/restart boundaries.
 
 ### VS-08 UI and accessibility
 
@@ -120,7 +160,9 @@ Gate: no Cargo knowledge required; expert build graph remains inspectable; cance
 
 ### VS-11 Performance, diagnostics, and quality scaling
 
-Create executable B01 opening traversal and B02 forest stress workloads. Capture frame/pass CPU/GPU, memory, IO/streaming, task queues, audio callback/streaming, pipeline creation, world activation, and input latency.
+Create executable PEN-B01 opening traversal and PEN-B02 forest stress workloads.
+Capture frame/pass CPU/GPU, memory, IO/streaming, task queues, audio
+callback/streaming, pipeline creation, world activation, and input latency.
 
 Quality profiles change meaningful algorithms/content tiers and preserve route/readability. Thresholds remain provisional until corpus and named hardware calibration.
 
@@ -137,7 +179,7 @@ Final reviews: creative/narrative, art/readability, audio, accessibility, perfor
 3. start cell and required assets preload under budgets;
 4. fixed simulation consumes semantic input and commits gameplay/physics commands;
 5. world scheduler updates relevance and staged cell activation;
-6. weather publishes immutable environment snapshot;
+6. Isobar publishes an immutable environment snapshot;
 7. renderer/audio extract immutable domain snapshots;
 8. UI presents settings/interactions/save state through commands;
 9. checkpoint writes journal transaction and rotating recovery head;
@@ -171,10 +213,10 @@ Planned semantic commands:
 ~~~text
 meridian project validate --profile opening-forest
 meridian build --profile opening-forest --events json
-meridian run --workload B01 --capture all
+meridian run --workload PEN-B01 --capture all
 meridian save verify <fixture>
 meridian package inspect <build.meridian>
-meridian evidence verify phase-8
+meridian evidence verify MS-07
 ~~~
 
 CLI and MCP use the same registry as the editor. Agents may run validation and propose edits but cannot waive creative, security, or evidence gates.
@@ -204,7 +246,7 @@ A capture is useful only if a reviewer can move from symptom to owning source ob
 | missing/corrupt asset | preserve project, identify dependency/provenance, use declared optional fallback only |
 | cell load misses deadline | preserve route collision/game state, degrade visuals, trace reason |
 | audio device loss | continue muted with notice, retry/reselect safely |
-| script hot reload fails | keep last valid artifact and state policy |
+| Rust module rebuild/restart or optional script reload fails | keep last valid artifact and declared checkpoint/state policy |
 | save write interrupted | load last committed transaction/recovery head |
 | build worker crashes | keep source and prior artifacts, restart/retry by BuildId |
 | optional SDK/cloud absent | opening remains buildable/playable |
@@ -215,11 +257,11 @@ All imported assets, scripts, shaders, packages, and build outputs are untrusted
 
 ## 13. Evidence bundle
 
-Phase 8 evidence contains:
+MS-07 evidence contains:
 
 - exact source-control checkpoint and dependency/toolchain lock;
 - clean demo builds and package manifests;
-- B01/B02 reports for named hardware and quality profiles;
+- PEN-B01/PEN-B02 reports for named hardware and quality profiles;
 - CPU/GPU/memory/IO/audio captures;
 - hero and traversal image/video captures;
 - save/crash/device/worker recovery demonstrations;
@@ -239,4 +281,7 @@ End-to-end: first launch enters the forest, the player walks with flashlight, st
 
 Failure/recovery: the process is terminated during checkpoint. Relaunch detects the incomplete tail, loads the prior committed head, explains the recovery, and places the player at the declared safe checkpoint without source or package mutation.
 
-Performance debug: B01 hitches at a route bend. The trace correlates a cell activation, texture upload, vegetation draw burst, and audio stream refill. The owner changes preload/variant partitioning, reruns identical workload/hardware, and attaches before/after evidence without generalizing beyond the corpus.
+Performance debug: PEN-B01 hitches at a route bend. The trace correlates a cell
+activation, texture upload, vegetation draw burst, and audio stream refill. The
+owner changes preload/variant partitioning, reruns identical workload/hardware,
+and attaches before/after evidence without generalizing beyond the corpus.

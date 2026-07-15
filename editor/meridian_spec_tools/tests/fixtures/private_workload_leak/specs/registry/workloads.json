@@ -1,0 +1,17 @@
+{
+  "version": "0.4",
+  "report_contract": "penumbra-benchmark-report-v0.5",
+  "required_report_fields": [
+    "alluvium_recipe_hashes",
+    "alluvium_version",
+    "determinism_level",
+    "evaluation_mode",
+    "provenance_manifest_hash"
+  ],
+  "records": [
+    {
+      "id": "PEN-B04",
+      "logo_assets": ["private-logo.fixture"]
+    }
+  ]
+}

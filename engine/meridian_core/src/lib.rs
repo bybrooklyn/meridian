@@ -1,10 +1,100 @@
 //! Renderer-independent engine identity and timing contracts.
 
+use std::fmt::{self, Display, Formatter};
 use std::num::NonZeroU32;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 pub const ENGINE_NAME: &str = "Meridian";
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+macro_rules! u64_id {
+    ($name:ident, $doc:literal) => {
+        #[doc = $doc]
+        #[derive(
+            Clone,
+            Copy,
+            Debug,
+            Default,
+            Deserialize,
+            Eq,
+            Hash,
+            Ord,
+            PartialEq,
+            PartialOrd,
+            Serialize,
+        )]
+        #[serde(transparent)]
+        pub struct $name(u64);
+
+        impl $name {
+            #[must_use]
+            pub const fn new(value: u64) -> Self {
+                Self(value)
+            }
+
+            #[must_use]
+            pub const fn get(self) -> u64 {
+                self.0
+            }
+
+            #[must_use]
+            pub const fn next(self) -> Self {
+                Self(self.0.wrapping_add(1))
+            }
+        }
+
+        impl Display for $name {
+            fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+                Display::fmt(&self.0, formatter)
+            }
+        }
+    };
+}
+
+u64_id!(
+    FrameId,
+    "Shared runtime frame identity used across domain boundaries."
+);
+u64_id!(
+    RuntimeEpoch,
+    "Lifecycle generation invalidating stale queued work."
+);
+u64_id!(
+    OperationId,
+    "Identity for one bounded user or engine operation."
+);
+u64_id!(
+    TraceId,
+    "Identity correlating events across subsystem boundaries."
+);
+u64_id!(MonotonicNs, "Monotonic process-local time in nanoseconds.");
+
+/// Stable persistent identity. Runtime handles must never be converted into this type.
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
+#[serde(transparent)]
+pub struct StableId(u128);
+
+impl StableId {
+    #[must_use]
+    pub const fn new(value: u128) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    pub const fn get(self) -> u128 {
+        self.0
+    }
+}
+
+impl Display for StableId {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{:032x}", self.0)
+    }
+}
 
 /// A positive frame or simulation rate measured in hertz.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

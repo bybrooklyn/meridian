@@ -1,0 +1,17 @@
+{
+  "version": "0.5",
+  "records": [
+    {
+      "id": "PRG-WRL-001",
+      "title": "bad fixture",
+      "domain": "WRL",
+      "status": "Deferred",
+      "horizon": "Post1.0",
+      "requirements": ["REQ-WRL-001"],
+      "entry_gates": ["fixture"],
+      "success_evidence": ["fixture"],
+      "may_satisfy_milestones": true,
+      "milestones": ["MS-10"]
+    }
+  ]
+}

@@ -1,10 +1,37 @@
-# Benchmark Records
+# Penumbra Benchmark Definitions
 
-[Normative validation policy](../../specs/TESTING_BENCHMARKS_AND_VALIDATION.md)
+version 0.5 · All workloads are `DefinitionOnly` / `Uncalibrated`
 
-This directory owns committed workload definitions and human-readable result summaries. Machine-readable results validate against `schemas/benchmark-result.schema.json` and record the complete EvidenceRecord context: source checkpoint, BuildId, corpus/artifact hashes, hardware/software, backend, profile/capabilities, cache/warmup state, samples/statistics, raw artifacts, thresholds, status, and known limits.
+The machine-readable authority is
+[`specs/registry/workloads.json`](../../specs/registry/workloads.json); the
+[validation specification](../../specs/TESTING_BENCHMARKS_AND_VALIDATION.md)
+owns evidence and report policy. Markdown files explain scenario intent. They
+are not benchmark results.
 
-- [B01 — Midnight Forest Flashlight](B01-midnight-forest-flashlight.md) is the integrated opening traversal and recovery workload.
-- [B02 — Field Horizon and Vegetation Stress](B02-field-horizon-sunset.md) is the generated/redacted rendering and streaming stress workload.
+| ID | Definition |
+|---|---|
+| PEN-B01 | [Midnight forest](PEN-B01-midnight-forest.md) |
+| PEN-B02 | [Dense grass field](PEN-B02-dense-grass-field.md) |
+| PEN-B03 | [Flashlight through alpha-tested foliage](PEN-B03-alpha-tested-foliage.md) |
+| PEN-B04 | [Redacted AMI interior](PEN-B04-redacted-ami-interior.md) |
+| PEN-B05 | [Heavy Isobar storm](PEN-B05-heavy-isobar-storm.md) |
+| PEN-B06 | [Large Basalt terrain vista](PEN-B06-basalt-terrain-vista.md) |
+| PEN-B07 | [Torsant coupled simulation](PEN-B07-torsant-coupled-simulation.md) |
+| PEN-B08 | [Rapid camera rotation](PEN-B08-rapid-camera-rotation.md) |
+| PEN-B09 | [High-speed traversal](PEN-B09-high-speed-traversal.md) |
+| PEN-B10 | [World-streaming transition](PEN-B10-world-streaming-transition.md) |
+| PEN-B11 | [Low-memory stress](PEN-B11-low-memory-stress.md) |
+| PEN-B12 | [Shader/pipeline stress](PEN-B12-shader-pipeline-stress.md) |
+| PEN-B13 | [Shadow-heavy scene](PEN-B13-shadow-heavy.md) |
+| PEN-B14 | [Transparency-heavy scene](PEN-B14-transparency-heavy.md) |
+| PEN-B15 | [Temporal disocclusion](PEN-B15-temporal-disocclusion.md) |
+| PEN-B16 | [VR-oriented stereo](PEN-B16-vr-stereo.md) |
 
-Neither workload is executable or calibrated yet. Their qualitative gates are provisional, and unsupported or occluded outcomes are never counted as visual passes.
+Results are separate typed records. Before/after comparisons require identical
+checkpoint, corpus, hardware, capability profile, settings, cache/warmup, and
+statistical method.
+
+The v0.5 report contract also records Alluvium recipe hashes/version,
+determinism level, evaluation mode, and provenance-manifest hash. Workloads not
+using Alluvium record explicit `NotApplicable` values. The new fields do not
+change any workload's `DefinitionOnly` / `Uncalibrated` status.

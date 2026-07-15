@@ -1,12 +1,13 @@
 //! Backend-neutral GPU adapter, device, surface, and clear-frame boundary.
 
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, VecDeque};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use meridian_core::FrameId;
 use meridian_platform::{PlatformWindow, WindowSize};
 use meridian_render_graph::{
     CompiledRenderGraph, RenderGraphBuilder, ResourceDescriptor, ResourceKind,
@@ -155,6 +156,238 @@ pub enum FrameOutcome {
     SkippedOccluded,
     ReconfiguredOutdated,
     RecreatedLostSurface,
+    DeviceLost,
+    UnsupportedSurface,
+}
+
+impl FrameOutcome {
+    #[must_use]
+    pub const fn submitted(self) -> bool {
+        matches!(self, Self::Presented | Self::PresentedSuboptimal)
+    }
+
+    #[must_use]
+    pub const fn visible(self) -> bool {
+        matches!(self, Self::Presented | Self::PresentedSuboptimal)
+    }
+
+    #[must_use]
+    pub const fn recoverable(self) -> bool {
+        matches!(
+            self,
+            Self::SkippedTimeout | Self::ReconfiguredOutdated | Self::RecreatedLostSurface
+        )
+    }
+
+    #[must_use]
+    pub const fn skipped(self) -> bool {
+        matches!(
+            self,
+            Self::SkippedZeroSize
+                | Self::SkippedTimeout
+                | Self::SkippedOccluded
+                | Self::ReconfiguredOutdated
+                | Self::RecreatedLostSurface
+                | Self::DeviceLost
+                | Self::UnsupportedSurface
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct CaptureId(u64);
+
+impl CaptureId {
+    #[must_use]
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CaptureRequest {
+    pub frame_id: FrameId,
+    pub max_width: u32,
+    pub max_height: u32,
+    pub max_bytes: u64,
+}
+
+impl CaptureRequest {
+    #[must_use]
+    pub const fn new(frame_id: FrameId, max_width: u32, max_height: u32, max_bytes: u64) -> Self {
+        Self {
+            frame_id,
+            max_width,
+            max_height,
+            max_bytes,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CaptureSource {
+    PresentedSurface,
+    Offscreen,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CapturedPixelFormat {
+    Rgba8Srgb,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CapturedFrame {
+    pub capture_id: CaptureId,
+    pub frame_id: FrameId,
+    pub width: u32,
+    pub height: u32,
+    pub format: CapturedPixelFormat,
+    pub source: CaptureSource,
+    pub surface_outcome: Option<FrameOutcome>,
+    pub pixels: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CaptureFailure {
+    ZeroExtent,
+    DimensionLimit,
+    ByteLimit,
+    SizeOverflow,
+    UnsupportedFormat,
+    SurfaceCopyUnsupported,
+    ReadbackSaturated,
+    MappingFailed,
+    StaleReadback,
+    InvalidRowData,
+    DeviceLost,
+}
+
+impl Display for CaptureFailure {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "capture failed: {self:?}")
+    }
+}
+
+impl Error for CaptureFailure {}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CaptureOutcome {
+    Captured(CapturedFrame),
+    UnsupportedCapability {
+        capture_id: CaptureId,
+        frame_id: FrameId,
+        failure: CaptureFailure,
+    },
+    Inconclusive {
+        capture_id: CaptureId,
+        frame_id: FrameId,
+        failure: CaptureFailure,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CaptureDiagnostics {
+    pub readback_capacity: usize,
+    pub readbacks_in_flight: usize,
+    pub pending_requests: usize,
+    pub queued_results: usize,
+    pub dropped_results: u64,
+}
+
+/// Correlates all pass timings recorded for one renderer frame.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct TimingFrameId(u64);
+
+impl TimingFrameId {
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// Stable, allocation-free label for a timed renderer pass.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct PassTimingLabel(&'static str);
+
+impl PassTimingLabel {
+    #[must_use]
+    pub const fn new(label: &'static str) -> Self {
+        Self(label)
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GpuTimingFailure {
+    ZeroTimestamp,
+    ZeroDuration,
+    EndBeforeBegin,
+    InvalidTimestampPeriod,
+    DurationOutOfRange,
+    MappingFailed,
+    StaleReadback,
+    ReadbackSaturated,
+    DeviceLost,
+    MetalTimestampDataInvalid,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GpuTimingOutcome {
+    Measured(Duration),
+    NotRequested,
+    UnsupportedCapability,
+    UnsupportedPlatform(GpuTimingFailure),
+    Inconclusive(GpuTimingFailure),
+}
+
+impl GpuTimingOutcome {
+    #[must_use]
+    pub const fn measured(self) -> Option<Duration> {
+        match self {
+            Self::Measured(duration) => Some(duration),
+            Self::NotRequested
+            | Self::UnsupportedCapability
+            | Self::UnsupportedPlatform(_)
+            | Self::Inconclusive(_) => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PassTimingSample {
+    pub frame_id: TimingFrameId,
+    pub runtime_frame_id: Option<FrameId>,
+    pub submission_id: u64,
+    pub pass: PassTimingLabel,
+    pub cpu_encode_time: Duration,
+    pub gpu: GpuTimingOutcome,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TimingAvailability {
+    Available,
+    NotRequested,
+    UnsupportedCapability,
+    UnsupportedPlatform(GpuTimingFailure),
+    Inconclusive(GpuTimingFailure),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TimingDiagnostics {
+    pub availability: TimingAvailability,
+    pub readback_capacity: usize,
+    pub readbacks_in_flight: usize,
+    pub queued_results: usize,
+    pub dropped_results: u64,
 }
 
 /// Backend-neutral usage class for a GPU buffer allocated by the RHI.
@@ -542,6 +775,16 @@ pub struct ShadowDepthDraw<'a> {
     pub uniform_bind_group: &'a GpuUniformBindGroup,
 }
 
+pub struct OffscreenIndexedCaptureDraw<'a> {
+    pub pipeline: &'a GpuRenderPipeline,
+    pub vertex_buffer: &'a GpuBuffer,
+    pub index_buffer: &'a GpuBuffer,
+    pub index_count: u32,
+    pub material_bindings: &'a GpuMaterialBindings,
+    pub color: ClearColor,
+    pub size: WindowSize,
+}
+
 impl GpuBuffer {
     #[must_use]
     pub const fn size(&self) -> u64 {
@@ -587,12 +830,131 @@ pub struct DeviceLoss {
 }
 
 struct TimestampQueryState {
+    slots: Vec<TimestampReadbackSlot>,
+    timestamp_period_ns: f32,
+    sender: mpsc::Sender<TimestampReadbackMessage>,
+    receiver: mpsc::Receiver<TimestampReadbackMessage>,
+}
+
+struct TimestampReadbackSlot {
     query_set: wgpu::QuerySet,
     resolve_buffer: wgpu::Buffer,
     readback_buffer: wgpu::Buffer,
-    timestamp_period_ns: f32,
-    pending: bool,
+    generation: u64,
+    in_flight: Option<TimestampCorrelation>,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TimestampCorrelation {
+    generation: u64,
+    frame_id: TimingFrameId,
+    runtime_frame_id: Option<FrameId>,
+    submission_id: u64,
+    pass: PassTimingLabel,
+    cpu_encode_time: Duration,
+}
+
+struct TimestampReadbackMessage {
+    slot_index: usize,
+    correlation: TimestampCorrelation,
+    result: TimestampReadbackResult,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TimestampReadbackResult {
+    Timestamps { begin: u64, end: u64 },
+    MappingFailed,
+}
+
+#[derive(Clone, Copy)]
+struct PendingPassTiming {
+    frame_id: TimingFrameId,
+    runtime_frame_id: Option<FrameId>,
+    submission_id: u64,
+    pass: PassTimingLabel,
+    gpu: PendingGpuTiming,
+}
+
+#[derive(Clone, Copy)]
+enum PendingGpuTiming {
+    Readback { slot_index: usize, generation: u64 },
+    Final(GpuTimingOutcome),
+}
+
+struct CaptureState {
+    slots: Vec<CaptureReadbackSlot>,
+    sender: mpsc::Sender<CaptureReadbackMessage>,
+    receiver: mpsc::Receiver<CaptureReadbackMessage>,
+    pending: VecDeque<PendingCaptureRequest>,
+    results: VecDeque<CaptureOutcome>,
+    dropped_results: u64,
+}
+
+struct CaptureReadbackSlot {
+    buffer: Option<wgpu::Buffer>,
+    buffer_size: u64,
+    generation: u64,
+    in_flight: Option<CaptureCorrelation>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PendingCaptureRequest {
+    id: CaptureId,
+    request: CaptureRequest,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CaptureCorrelation {
+    generation: u64,
+    capture_id: CaptureId,
+    frame_id: FrameId,
+    width: u32,
+    height: u32,
+    padded_bytes_per_row: u32,
+    source_format: CaptureSourceFormat,
+    source: CaptureSource,
+    surface_outcome: Option<FrameOutcome>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CaptureSourceFormat {
+    Rgba8Srgb,
+    Bgra8Srgb,
+}
+
+struct CaptureReadbackMessage {
+    slot_index: usize,
+    correlation: CaptureCorrelation,
+    result: CaptureReadbackResult,
+}
+
+enum CaptureReadbackResult {
+    Bytes(Vec<u8>),
+    MappingFailed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PendingCapture {
+    slot_index: usize,
+    generation: u64,
+    correlation: CaptureCorrelation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CaptureLayout {
+    padded_bytes_per_row: u32,
+    buffer_size: u64,
+}
+
+const TIMESTAMP_READBACK_SLOT_COUNT: usize = 8;
+const TIMING_RESULT_CAPACITY: usize = 64;
+const CAPTURE_READBACK_SLOT_COUNT: usize = 3;
+const CAPTURE_RESULT_CAPACITY: usize = 16;
+const CAPTURE_REQUEST_CAPACITY: usize = 3;
+const CLEAR_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("clear");
+const BOOTSTRAP_PIPELINE_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("bootstrap_pipeline");
+const SHADOW_DEPTH_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("shadow_depth");
+const INDEXED_MESH_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("indexed_mesh");
 
 pub struct Rhi {
     instance: wgpu::Instance,
@@ -608,7 +970,18 @@ pub struct Rhi {
     clear_graph: CompiledRenderGraph,
     depth_buffer: Option<DepthBuffer>,
     timestamp_query: Option<TimestampQueryState>,
+    timing_availability: TimingAvailability,
+    timing_results: VecDeque<PassTimingSample>,
+    dropped_timing_results: u64,
+    next_timing_frame_id: u64,
+    active_timing_frame: Option<TimingFrameId>,
+    active_runtime_frame: Option<FrameId>,
+    next_submission_id: u64,
+    latest_measured_gpu_duration: Option<Duration>,
     device_loss: Arc<Mutex<Option<DeviceLoss>>>,
+    surface_copy_supported: bool,
+    capture: CaptureState,
+    next_capture_id: u64,
 }
 
 impl Rhi {
@@ -638,6 +1011,13 @@ impl Rhi {
             wgpu::Features::TIMESTAMP_QUERY
         } else {
             wgpu::Features::empty()
+        };
+        let timing_availability = if !config.enable_timestamps {
+            TimingAvailability::NotRequested
+        } else if required_features.contains(wgpu::Features::TIMESTAMP_QUERY) {
+            TimingAvailability::Available
+        } else {
+            TimingAvailability::UnsupportedCapability
         };
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -670,6 +1050,9 @@ impl Rhi {
         );
         let surface_config =
             make_surface_config(&surface, &adapter, size, &surface_capabilities, config)?;
+        let surface_copy_supported = surface_capabilities
+            .usages
+            .contains(wgpu::TextureUsages::COPY_SRC);
         let configured = !size.is_zero();
         if configured {
             surface.configure(&device, &surface_config);
@@ -695,7 +1078,18 @@ impl Rhi {
             clear_graph: build_clear_graph()?,
             depth_buffer,
             timestamp_query,
+            timing_availability,
+            timing_results: VecDeque::with_capacity(TIMING_RESULT_CAPACITY),
+            dropped_timing_results: 0,
+            next_timing_frame_id: 1,
+            active_timing_frame: None,
+            active_runtime_frame: None,
+            next_submission_id: 1,
+            latest_measured_gpu_duration: None,
             device_loss,
+            surface_copy_supported,
+            capture: create_capture_state(),
+            next_capture_id: 1,
         })
     }
 
@@ -704,98 +1098,187 @@ impl Rhi {
         &self.capabilities
     }
 
-    /// Reads the most recently submitted GPU timestamp scope, when supported.
-    ///
-    /// This waits for the submitted work so benchmark callers can associate a
-    /// duration with the frame that produced it. Unsupported adapters and
-    /// frames that did not submit a drawable surface return `Ok(None)`.
+    /// Opens an explicit timing frame so separately submitted passes share one
+    /// correlation identifier. Calls made without an explicit frame receive a
+    /// one-submission automatic frame identifier.
     ///
     /// # Errors
     ///
-    /// Returns [`RhiErrorKind::TimestampReadback`] when the query mapping or
-    /// timestamp data is invalid, or [`RhiErrorKind::DeviceLost`] after device
-    /// loss.
-    pub fn take_last_gpu_duration(&mut self) -> Result<Option<Duration>, RhiError> {
-        if let Some(loss) = self.device_loss() {
+    /// Returns [`RhiErrorKind::TimingFrameState`] when another explicit timing
+    /// frame is already active.
+    pub fn begin_timing_frame(&mut self) -> Result<TimingFrameId, RhiError> {
+        self.begin_timing_frame_internal(None)
+    }
+
+    /// Opens a timing frame correlated to the shared runtime frame identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::TimingFrameState`] if another scope is active.
+    pub fn begin_timing_frame_for(
+        &mut self,
+        runtime_frame_id: FrameId,
+    ) -> Result<TimingFrameId, RhiError> {
+        self.begin_timing_frame_internal(Some(runtime_frame_id))
+    }
+
+    fn begin_timing_frame_internal(
+        &mut self,
+        runtime_frame_id: Option<FrameId>,
+    ) -> Result<TimingFrameId, RhiError> {
+        if let Some(active) = self.active_timing_frame {
             return Err(RhiError::new(
-                RhiErrorKind::DeviceLost,
-                format!("{:?}: {}", loss.reason, loss.message),
+                RhiErrorKind::TimingFrameState,
+                format!("timing frame {} is already active", active.get()),
             ));
         }
-        let Some(timestamp_query) = self.timestamp_query.as_mut() else {
-            return Ok(None);
-        };
-        if !timestamp_query.pending {
-            return Ok(None);
-        }
+        let frame_id = self.allocate_timing_frame_id();
+        self.active_timing_frame = Some(frame_id);
+        self.active_runtime_frame = runtime_frame_id;
+        Ok(frame_id)
+    }
 
-        let (sender, receiver) = mpsc::sync_channel(1);
-        timestamp_query
-            .readback_buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                let _ = sender.send(result);
-            });
-        self.device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .map_err(|error| {
-                RhiError::new(
-                    RhiErrorKind::TimestampReadback,
-                    format!("timestamp readback poll failed: {error:?}"),
-                )
-            })?;
-        let map_result = receiver.recv().map_err(|error| {
-            RhiError::new(
-                RhiErrorKind::TimestampReadback,
-                format!("timestamp readback callback failed: {error}"),
-            )
-        })?;
-        timestamp_query.pending = false;
-        if let Err(error) = map_result {
-            timestamp_query.readback_buffer.unmap();
-            return Err(RhiError::new(
-                RhiErrorKind::TimestampReadback,
-                format!("timestamp buffer mapping failed: {error:?}"),
-            ));
-        }
-
-        let (begin, end) = {
-            let view = timestamp_query
-                .readback_buffer
-                .get_mapped_range(..)
-                .map_err(|error| {
-                    RhiError::new(
-                        RhiErrorKind::TimestampReadback,
-                        format!("timestamp buffer access failed: {error:?}"),
-                    )
-                })?;
-            if view.len() != 16 {
-                let length = view.len();
-                drop(view);
-                timestamp_query.readback_buffer.unmap();
-                return Err(RhiError::new(
-                    RhiErrorKind::TimestampReadback,
-                    format!("timestamp readback returned {length} bytes instead of 16"),
-                ));
+    /// Closes the matching explicit timing frame.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::TimingFrameState`] when no frame is active or
+    /// `frame_id` does not identify the active frame.
+    pub fn end_timing_frame(&mut self, frame_id: TimingFrameId) -> Result<(), RhiError> {
+        match self.active_timing_frame {
+            Some(active) if active == frame_id => {
+                self.active_timing_frame = None;
+                self.active_runtime_frame = None;
+                Ok(())
             }
-            let mut begin_bytes = [0; 8];
-            let mut end_bytes = [0; 8];
-            begin_bytes.copy_from_slice(&view[..8]);
-            end_bytes.copy_from_slice(&view[8..16]);
-            (
-                u64::from_ne_bytes(begin_bytes),
-                u64::from_ne_bytes(end_bytes),
-            )
-        };
-        timestamp_query.readback_buffer.unmap();
+            Some(active) => Err(RhiError::new(
+                RhiErrorKind::TimingFrameState,
+                format!(
+                    "cannot end timing frame {}; frame {} is active",
+                    frame_id.get(),
+                    active.get()
+                ),
+            )),
+            None => Err(RhiError::new(
+                RhiErrorKind::TimingFrameState,
+                format!("timing frame {} is not active", frame_id.get()),
+            )),
+        }
+    }
 
-        let ticks = end.checked_sub(begin).ok_or_else(|| {
-            RhiError::new(
-                RhiErrorKind::TimestampReadback,
-                "timestamp end precedes timestamp begin",
-            )
-        })?;
-        timestamp_duration(ticks, timestamp_query.timestamp_period_ns).map(Some)
+    /// Advances timestamp mapping callbacks without waiting for GPU work.
+    pub fn poll_pass_timings(&mut self) {
+        let poll_failed = self.device.poll(wgpu::PollType::Poll).is_err();
+        if self.device_loss().is_some() {
+            self.timing_availability =
+                TimingAvailability::Inconclusive(GpuTimingFailure::DeviceLost);
+            self.fail_all_timing_readbacks(GpuTimingFailure::DeviceLost);
+        } else if poll_failed {
+            self.fail_all_timing_readbacks(GpuTimingFailure::MappingFailed);
+        }
+        self.collect_timing_readbacks();
+        if self.device_loss().is_some() {
+            self.timing_availability =
+                TimingAvailability::Inconclusive(GpuTimingFailure::DeviceLost);
+            self.fail_all_timing_readbacks(GpuTimingFailure::DeviceLost);
+        }
+    }
+
+    /// Returns one finalized pass timing, if available, without waiting.
+    pub fn take_pass_timing(&mut self) -> Option<PassTimingSample> {
+        self.poll_pass_timings();
+        self.timing_results.pop_front()
+    }
+
+    #[must_use]
+    pub fn timing_diagnostics(&self) -> TimingDiagnostics {
+        TimingDiagnostics {
+            availability: self.timing_availability,
+            readback_capacity: self
+                .timestamp_query
+                .as_ref()
+                .map_or(0, |state| state.slots.len()),
+            readbacks_in_flight: self.timestamp_query.as_ref().map_or(0, |state| {
+                state
+                    .slots
+                    .iter()
+                    .filter(|slot| slot.in_flight.is_some())
+                    .count()
+            }),
+            queued_results: self.timing_results.len(),
+            dropped_results: self.dropped_timing_results,
+        }
+    }
+
+    /// Requests capture of the next compatible draw. No capture work occurs otherwise.
+    ///
+    /// # Errors
+    ///
+    /// Returns saturation or invalid-limit failures without submitting GPU work.
+    pub fn request_capture(
+        &mut self,
+        request: CaptureRequest,
+    ) -> Result<CaptureId, CaptureFailure> {
+        if request.max_width == 0 || request.max_height == 0 || request.max_bytes == 0 {
+            return Err(CaptureFailure::ZeroExtent);
+        }
+        if self.capture.pending.len() >= CAPTURE_REQUEST_CAPACITY {
+            return Err(CaptureFailure::ReadbackSaturated);
+        }
+        let id = CaptureId(self.next_capture_id);
+        self.next_capture_id = self.next_capture_id.wrapping_add(1).max(1);
+        self.capture
+            .pending
+            .push_back(PendingCaptureRequest { id, request });
+        Ok(id)
+    }
+
+    /// Advances capture callbacks without waiting for GPU completion.
+    pub fn poll_captures(&mut self) {
+        let poll_failed = self.device.poll(wgpu::PollType::Poll).is_err();
+        if self.device_loss().is_some() {
+            self.fail_all_capture_readbacks(CaptureFailure::DeviceLost);
+        } else if poll_failed {
+            self.fail_all_capture_readbacks(CaptureFailure::MappingFailed);
+        }
+        self.collect_capture_readbacks();
+    }
+
+    /// Returns one capture outcome without waiting.
+    pub fn take_capture(&mut self) -> Option<CaptureOutcome> {
+        self.poll_captures();
+        self.capture.results.pop_front()
+    }
+
+    #[must_use]
+    pub fn capture_diagnostics(&self) -> CaptureDiagnostics {
+        CaptureDiagnostics {
+            readback_capacity: self.capture.slots.len(),
+            readbacks_in_flight: self
+                .capture
+                .slots
+                .iter()
+                .filter(|slot| slot.in_flight.is_some())
+                .count(),
+            pending_requests: self.capture.pending.len(),
+            queued_results: self.capture.results.len(),
+            dropped_results: self.capture.dropped_results,
+        }
+    }
+
+    /// Compatibility shim for the former blocking frame-duration API.
+    ///
+    /// This method no longer waits. New code should use [`Self::take_pass_timing`]
+    /// so unavailable outcomes remain explicit.
+    ///
+    /// # Errors
+    ///
+    /// Retains the former `Result` signature for source compatibility. The
+    /// nonblocking compatibility implementation currently returns `Ok` only.
+    #[deprecated(note = "use poll_pass_timings and take_pass_timing for typed outcomes")]
+    pub fn take_last_gpu_duration(&mut self) -> Result<Option<Duration>, RhiError> {
+        self.poll_pass_timings();
+        Ok(self.latest_measured_gpu_duration.take())
     }
 
     #[must_use]
@@ -1842,9 +2325,9 @@ impl Rhi {
             targets: &color_targets,
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         });
-        let depth_stencil = depth_only.then_some(wgpu::DepthStencilState {
+        let depth_stencil = Some(wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: Some(true),
+            depth_write_enabled: Some(depth_only || layout.is_some()),
             depth_compare: Some(wgpu::CompareFunction::LessEqual),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
@@ -1922,11 +2405,11 @@ impl Rhi {
 
         match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(texture) => {
-                self.encode_clear_and_present(texture, color);
+                self.encode_clear_and_present(texture, color, FrameOutcome::Presented);
                 Ok(FrameOutcome::Presented)
             }
             wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
-                self.encode_clear_and_present(texture, color);
+                self.encode_clear_and_present(texture, color, FrameOutcome::PresentedSuboptimal);
                 self.resize(self.size);
                 Ok(FrameOutcome::PresentedSuboptimal)
             }
@@ -1945,6 +2428,92 @@ impl Rhi {
                 "surface acquisition raised a validation error",
             )),
         }
+    }
+
+    /// Submits the clear pass to a small offscreen target for structural GPU
+    /// validation when a presentation surface is unavailable.
+    ///
+    /// This performs no readback or capture and makes no visual-quality claim.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::DeviceLost`] after device loss.
+    #[doc(hidden)]
+    pub fn submit_clear_structural_validation(
+        &mut self,
+        color: ClearColor,
+    ) -> Result<(), RhiError> {
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        let size = WindowSize::new(64, 64);
+        let color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Meridian clear structural validation color"),
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.surface_config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let depth = create_depth_buffer_for_device(
+            &self.device,
+            size,
+            DepthFormat::Depth32Float,
+            "Meridian clear structural validation depth",
+        );
+        self.encode_clear(&color_view, Some(&depth.view), color, None, None);
+        Ok(())
+    }
+
+    /// Draws the clear path into an explicitly offscreen capture target.
+    /// This cannot satisfy presentation evidence.
+    ///
+    /// # Errors
+    ///
+    /// Returns invalid-size or device-loss errors before submission.
+    pub fn submit_clear_offscreen_capture(
+        &mut self,
+        color: ClearColor,
+        size: WindowSize,
+    ) -> Result<(), RhiError> {
+        if size.is_zero() {
+            return Err(RhiError::new(
+                RhiErrorKind::InvalidTextureSize,
+                "offscreen capture must have non-zero dimensions",
+            ));
+        }
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        let texture = self.create_capture_target("Meridian clear offscreen capture", size);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let depth = create_depth_buffer_for_device(
+            &self.device,
+            size,
+            DepthFormat::Depth32Float,
+            "Meridian clear offscreen capture depth",
+        );
+        let capture = self.begin_capture_for_texture(
+            size,
+            self.surface_config.format,
+            CaptureSource::Offscreen,
+            None,
+        );
+        self.encode_clear(&view, Some(&depth.view), color, Some(&texture), capture);
+        Ok(())
     }
 
     /// Executes a three-vertex pipeline draw and presents one surface frame.
@@ -2097,6 +2666,136 @@ impl Rhi {
         )
     }
 
+    /// Submits the indexed material path to a small offscreen target for
+    /// structural GPU validation when a presentation surface is unavailable.
+    ///
+    /// This method performs no readback or capture and makes no visual-quality
+    /// claim. It exists so native smoke validation can execute the real indexed
+    /// pipeline even when the window system reports an occluded surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::InvalidDraw`] for incompatible buffers or an
+    /// out-of-range index count, or [`RhiErrorKind::DeviceLost`] after device
+    /// loss.
+    #[doc(hidden)]
+    pub fn submit_indexed_mesh_structural_validation(
+        &mut self,
+        pipeline: &GpuRenderPipeline,
+        vertex_buffer: &GpuBuffer,
+        index_buffer: &GpuBuffer,
+        index_count: u32,
+        material_bindings: &GpuMaterialBindings,
+        color: ClearColor,
+    ) -> Result<(), RhiError> {
+        let draw = IndexedDraw {
+            pipeline,
+            vertex_buffer,
+            index_buffer,
+            index_count,
+            texture_bind_group: None,
+            material_texture_bind_group: Some(&material_bindings.textures),
+            uniform_bind_group: Some(&material_bindings.uniforms),
+            material_parameter_bind_group: Some(&material_bindings.parameters),
+            lighting_bind_group: Some(&material_bindings.lighting),
+        };
+        validate_indexed_draw(draw.vertex_buffer, draw.index_buffer, draw.index_count)?;
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        let size = WindowSize::new(64, 64);
+        let color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Meridian indexed structural validation color"),
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.surface_config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let depth = create_depth_buffer_for_device(
+            &self.device,
+            size,
+            DepthFormat::Depth32Float,
+            "Meridian indexed structural validation depth",
+        );
+        self.encode_indexed_mesh(&color_view, Some(&depth.view), draw, color, None, None);
+        Ok(())
+    }
+
+    /// Draws the indexed material path into an offscreen capture target.
+    /// This uses the same pipeline and bindings but makes no presentation claim.
+    ///
+    /// # Errors
+    ///
+    /// Returns draw, size, or device-loss errors before submission.
+    pub fn submit_indexed_mesh_offscreen_capture(
+        &mut self,
+        capture_draw: &OffscreenIndexedCaptureDraw<'_>,
+    ) -> Result<(), RhiError> {
+        let draw = IndexedDraw {
+            pipeline: capture_draw.pipeline,
+            vertex_buffer: capture_draw.vertex_buffer,
+            index_buffer: capture_draw.index_buffer,
+            index_count: capture_draw.index_count,
+            texture_bind_group: None,
+            material_texture_bind_group: Some(&capture_draw.material_bindings.textures),
+            uniform_bind_group: Some(&capture_draw.material_bindings.uniforms),
+            material_parameter_bind_group: Some(&capture_draw.material_bindings.parameters),
+            lighting_bind_group: Some(&capture_draw.material_bindings.lighting),
+        };
+        validate_indexed_draw(
+            capture_draw.vertex_buffer,
+            capture_draw.index_buffer,
+            capture_draw.index_count,
+        )?;
+        if capture_draw.size.is_zero() {
+            return Err(RhiError::new(
+                RhiErrorKind::InvalidTextureSize,
+                "offscreen capture must have non-zero dimensions",
+            ));
+        }
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        let texture =
+            self.create_capture_target("Meridian indexed offscreen capture", capture_draw.size);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let depth = create_depth_buffer_for_device(
+            &self.device,
+            capture_draw.size,
+            DepthFormat::Depth32Float,
+            "Meridian indexed offscreen capture depth",
+        );
+        let capture = self.begin_capture_for_texture(
+            capture_draw.size,
+            self.surface_config.format,
+            CaptureSource::Offscreen,
+            None,
+        );
+        self.encode_indexed_mesh(
+            &view,
+            Some(&depth.view),
+            draw,
+            capture_draw.color,
+            Some(&texture),
+            capture,
+        );
+        Ok(())
+    }
+
     /// Renders one indexed mesh into one cascade layer of a shadow map.
     ///
     /// The supplied group-1 uniform binding must contain the light
@@ -2140,7 +2839,10 @@ impl Rhi {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Meridian shadow depth encoder"),
             });
+        let timing = self.begin_pass_timing(SHADOW_DEPTH_PASS_LABEL);
+        self.prepare_timestamp_resolve(&mut encoder, timing);
         let color_attachments: [Option<wgpu::RenderPassColorAttachment<'_>>; 0] = [];
+        let cpu_start = Instant::now();
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Meridian shadow depth pass"),
@@ -2153,6 +2855,7 @@ impl Rhi {
                     }),
                     stencil_ops: None,
                 }),
+                timestamp_writes: self.timestamp_writes(timing),
                 ..Default::default()
             });
             pass.set_pipeline(&draw.pipeline.pipeline);
@@ -2164,7 +2867,7 @@ impl Rhi {
             );
             pass.draw_indexed(0..draw.index_count, 0, 0..1);
         }
-        self.queue.submit(Some(encoder.finish()));
+        self.submit_timed_encoder(encoder, timing, cpu_start.elapsed());
         Ok(())
     }
 
@@ -2186,11 +2889,16 @@ impl Rhi {
 
         match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(texture) => {
-                self.encode_indexed_mesh_and_present(texture, draw, color);
+                self.encode_indexed_mesh_and_present(texture, draw, color, FrameOutcome::Presented);
                 Ok(FrameOutcome::Presented)
             }
             wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
-                self.encode_indexed_mesh_and_present(texture, draw, color);
+                self.encode_indexed_mesh_and_present(
+                    texture,
+                    draw,
+                    color,
+                    FrameOutcome::PresentedSuboptimal,
+                );
                 self.resize(self.size);
                 Ok(FrameOutcome::PresentedSuboptimal)
             }
@@ -2211,18 +2919,51 @@ impl Rhi {
         }
     }
 
-    fn encode_clear_and_present(&mut self, texture: wgpu::SurfaceTexture, color: ClearColor) {
+    fn encode_clear_and_present(
+        &mut self,
+        texture: wgpu::SurfaceTexture,
+        color: ClearColor,
+        outcome: FrameOutcome,
+    ) {
         let view = texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        let depth_view = self.depth_buffer.as_ref().map(|depth| depth.view.clone());
+        let capture = self.begin_capture_for_texture(
+            self.size,
+            self.surface_config.format,
+            CaptureSource::PresentedSurface,
+            Some(outcome),
+        );
+        self.encode_clear(
+            &view,
+            depth_view.as_ref(),
+            color,
+            Some(&texture.texture),
+            capture,
+        );
+        self.queue.present(texture);
+    }
+
+    fn encode_clear(
+        &mut self,
+        view: &wgpu::TextureView,
+        depth_view: Option<&wgpu::TextureView>,
+        color: ClearColor,
+        source_texture: Option<&wgpu::Texture>,
+        capture: Option<PendingCapture>,
+    ) {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Meridian clear frame encoder"),
             });
+        let timing = self.begin_pass_timing(CLEAR_PASS_LABEL);
+        self.prepare_timestamp_resolve(&mut encoder, timing);
+        let cpu_start = Instant::now();
         {
             let color_attachments = [Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
@@ -2238,9 +2979,9 @@ impl Rhi {
             let _clear_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Meridian clear pass"),
                 color_attachments: &color_attachments,
-                depth_stencil_attachment: self.depth_buffer.as_ref().map(|depth| {
+                depth_stencil_attachment: depth_view.map(|depth_view| {
                     wgpu::RenderPassDepthStencilAttachment {
-                        view: &depth.view,
+                        view: depth_view,
                         depth_ops: Some(wgpu::Operations {
                             load: wgpu::LoadOp::Clear(1.0),
                             store: wgpu::StoreOp::Store,
@@ -2248,12 +2989,14 @@ impl Rhi {
                         stencil_ops: None,
                     }
                 }),
-                timestamp_writes: self.timestamp_writes(),
+                timestamp_writes: self.timestamp_writes(timing),
                 ..Default::default()
             });
         }
-        self.submit_encoder(encoder);
-        self.queue.present(texture);
+        if let (Some(source_texture), Some(capture)) = (source_texture, capture) {
+            record_capture_copy(&mut encoder, source_texture, &self.capture, capture);
+        }
+        self.submit_timed_encoder_with_capture(encoder, timing, cpu_start.elapsed(), capture);
     }
 
     fn encode_pipeline_and_present(
@@ -2270,6 +3013,9 @@ impl Rhi {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Meridian bootstrap pipeline encoder"),
             });
+        let timing = self.begin_pass_timing(BOOTSTRAP_PIPELINE_PASS_LABEL);
+        self.prepare_timestamp_resolve(&mut encoder, timing);
+        let cpu_start = Instant::now();
         {
             let color_attachments = [Some(wgpu::RenderPassColorAttachment {
                 view: &view,
@@ -2298,13 +3044,13 @@ impl Rhi {
                         stencil_ops: None,
                     }
                 }),
-                timestamp_writes: self.timestamp_writes(),
+                timestamp_writes: self.timestamp_writes(timing),
                 ..Default::default()
             });
             pass.set_pipeline(&pipeline.pipeline);
             pass.draw(0..3, 0..1);
         }
-        self.submit_encoder(encoder);
+        self.submit_timed_encoder(encoder, timing, cpu_start.elapsed());
         self.queue.present(texture);
     }
 
@@ -2313,18 +3059,49 @@ impl Rhi {
         texture: wgpu::SurfaceTexture,
         draw: IndexedDraw<'_>,
         color: ClearColor,
+        outcome: FrameOutcome,
     ) {
         let view = texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        let depth_view = self.depth_buffer.as_ref().map(|depth| depth.view.clone());
+        let capture = self.begin_capture_for_texture(
+            self.size,
+            self.surface_config.format,
+            CaptureSource::PresentedSurface,
+            Some(outcome),
+        );
+        self.encode_indexed_mesh(
+            &view,
+            depth_view.as_ref(),
+            draw,
+            color,
+            Some(&texture.texture),
+            capture,
+        );
+        self.queue.present(texture);
+    }
+
+    fn encode_indexed_mesh(
+        &mut self,
+        view: &wgpu::TextureView,
+        depth_view: Option<&wgpu::TextureView>,
+        draw: IndexedDraw<'_>,
+        color: ClearColor,
+        source_texture: Option<&wgpu::Texture>,
+        capture: Option<PendingCapture>,
+    ) {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Meridian indexed mesh encoder"),
             });
+        let timing = self.begin_pass_timing(INDEXED_MESH_PASS_LABEL);
+        self.prepare_timestamp_resolve(&mut encoder, timing);
+        let cpu_start = Instant::now();
         {
             let color_attachments = [Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
@@ -2340,9 +3117,9 @@ impl Rhi {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Meridian indexed mesh pass"),
                 color_attachments: &color_attachments,
-                depth_stencil_attachment: self.depth_buffer.as_ref().map(|depth| {
+                depth_stencil_attachment: depth_view.map(|depth_view| {
                     wgpu::RenderPassDepthStencilAttachment {
-                        view: &depth.view,
+                        view: depth_view,
                         depth_ops: Some(wgpu::Operations {
                             load: wgpu::LoadOp::Clear(1.0),
                             store: wgpu::StoreOp::Store,
@@ -2350,7 +3127,7 @@ impl Rhi {
                         stencil_ops: None,
                     }
                 }),
-                timestamp_writes: self.timestamp_writes(),
+                timestamp_writes: self.timestamp_writes(timing),
                 ..Default::default()
             });
             pass.set_pipeline(&draw.pipeline.pipeline);
@@ -2376,38 +3153,489 @@ impl Rhi {
             );
             pass.draw_indexed(0..draw.index_count, 0, 0..1);
         }
-        self.submit_encoder(encoder);
-        self.queue.present(texture);
+        if let (Some(source_texture), Some(capture)) = (source_texture, capture) {
+            record_capture_copy(&mut encoder, source_texture, &self.capture, capture);
+        }
+        self.submit_timed_encoder_with_capture(encoder, timing, cpu_start.elapsed(), capture);
     }
 
-    fn timestamp_writes(&self) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
+    fn create_capture_target(&self, label: &str, size: WindowSize) -> wgpu::Texture {
+        self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.surface_config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        })
+    }
+
+    fn begin_capture_for_texture(
+        &mut self,
+        size: WindowSize,
+        format: wgpu::TextureFormat,
+        source: CaptureSource,
+        surface_outcome: Option<FrameOutcome>,
+    ) -> Option<PendingCapture> {
+        self.poll_captures();
+        let pending = self.capture.pending.pop_front()?;
+        if source == CaptureSource::PresentedSurface && !self.surface_copy_supported {
+            self.push_capture_result(CaptureOutcome::UnsupportedCapability {
+                capture_id: pending.id,
+                frame_id: pending.request.frame_id,
+                failure: CaptureFailure::SurfaceCopyUnsupported,
+            });
+            return None;
+        }
+        let Some(source_format) = capture_source_format(format) else {
+            self.push_capture_result(CaptureOutcome::UnsupportedCapability {
+                capture_id: pending.id,
+                frame_id: pending.request.frame_id,
+                failure: CaptureFailure::UnsupportedFormat,
+            });
+            return None;
+        };
+        let layout = match capture_layout(size, pending.request) {
+            Ok(layout) => layout,
+            Err(failure) => {
+                self.push_capture_result(CaptureOutcome::Inconclusive {
+                    capture_id: pending.id,
+                    frame_id: pending.request.frame_id,
+                    failure,
+                });
+                return None;
+            }
+        };
+        let Some(slot_index) = first_free_slot_index(
+            self.capture
+                .slots
+                .iter()
+                .map(|slot| slot.in_flight.is_some()),
+        ) else {
+            self.push_capture_result(CaptureOutcome::Inconclusive {
+                capture_id: pending.id,
+                frame_id: pending.request.frame_id,
+                failure: CaptureFailure::ReadbackSaturated,
+            });
+            return None;
+        };
+        let slot = &mut self.capture.slots[slot_index];
+        if slot.buffer_size != layout.buffer_size || slot.buffer.is_none() {
+            slot.buffer = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Meridian capture readback"),
+                size: layout.buffer_size,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            }));
+            slot.buffer_size = layout.buffer_size;
+        }
+        slot.generation = slot.generation.wrapping_add(1).max(1);
+        let correlation = CaptureCorrelation {
+            generation: slot.generation,
+            capture_id: pending.id,
+            frame_id: pending.request.frame_id,
+            width: size.width,
+            height: size.height,
+            padded_bytes_per_row: layout.padded_bytes_per_row,
+            source_format,
+            source,
+            surface_outcome,
+        };
+        Some(PendingCapture {
+            slot_index,
+            generation: slot.generation,
+            correlation,
+        })
+    }
+
+    fn allocate_timing_frame_id(&mut self) -> TimingFrameId {
+        let frame_id = TimingFrameId(self.next_timing_frame_id);
+        self.next_timing_frame_id = self.next_timing_frame_id.wrapping_add(1).max(1);
+        frame_id
+    }
+
+    fn allocate_submission_id(&mut self) -> u64 {
+        let submission_id = self.next_submission_id;
+        self.next_submission_id = self.next_submission_id.wrapping_add(1).max(1);
+        submission_id
+    }
+
+    fn begin_pass_timing(&mut self, pass: PassTimingLabel) -> PendingPassTiming {
+        self.poll_pass_timings();
+        let frame_id = self
+            .active_timing_frame
+            .unwrap_or_else(|| self.allocate_timing_frame_id());
+        let submission_id = self.allocate_submission_id();
+        let gpu = match self.timing_availability {
+            TimingAvailability::Available => {
+                let slot = self.timestamp_query.as_mut().and_then(|state| {
+                    let slot_index = first_free_slot_index(
+                        state.slots.iter().map(|slot| slot.in_flight.is_some()),
+                    )?;
+                    Some((slot_index, &mut state.slots[slot_index]))
+                });
+                match slot {
+                    Some((slot_index, slot)) => {
+                        slot.generation = slot.generation.wrapping_add(1).max(1);
+                        PendingGpuTiming::Readback {
+                            slot_index,
+                            generation: slot.generation,
+                        }
+                    }
+                    None => PendingGpuTiming::Final(GpuTimingOutcome::Inconclusive(
+                        GpuTimingFailure::ReadbackSaturated,
+                    )),
+                }
+            }
+            availability => PendingGpuTiming::Final(timing_unavailable_outcome(availability)),
+        };
+        PendingPassTiming {
+            frame_id,
+            runtime_frame_id: self.active_runtime_frame,
+            submission_id,
+            pass,
+            gpu,
+        }
+    }
+
+    fn prepare_timestamp_resolve(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        timing: PendingPassTiming,
+    ) {
+        let PendingGpuTiming::Readback { slot_index, .. } = timing.gpu else {
+            return;
+        };
+        let Some(slot) = self
+            .timestamp_query
+            .as_ref()
+            .and_then(|state| state.slots.get(slot_index))
+        else {
+            return;
+        };
+        encoder.clear_buffer(&slot.resolve_buffer, 0, None);
+    }
+
+    fn timestamp_writes(
+        &self,
+        timing: PendingPassTiming,
+    ) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
+        let PendingGpuTiming::Readback { slot_index, .. } = timing.gpu else {
+            return None;
+        };
         self.timestamp_query
             .as_ref()
-            .map(|timestamp_query| wgpu::RenderPassTimestampWrites {
-                query_set: &timestamp_query.query_set,
+            .and_then(|state| state.slots.get(slot_index))
+            .map(|slot| wgpu::RenderPassTimestampWrites {
+                query_set: &slot.query_set,
                 beginning_of_pass_write_index: Some(0),
                 end_of_pass_write_index: Some(1),
             })
     }
 
-    fn submit_encoder(&mut self, mut encoder: wgpu::CommandEncoder) {
-        if let Some(timestamp_query) = self.timestamp_query.as_mut() {
-            encoder.resolve_query_set(
-                &timestamp_query.query_set,
-                0..2,
-                &timestamp_query.resolve_buffer,
-                0,
-            );
-            encoder.copy_buffer_to_buffer(
-                &timestamp_query.resolve_buffer,
-                0,
-                &timestamp_query.readback_buffer,
-                0,
-                16,
-            );
-            timestamp_query.pending = true;
+    fn submit_timed_encoder(
+        &mut self,
+        encoder: wgpu::CommandEncoder,
+        timing: PendingPassTiming,
+        cpu_encode_time: Duration,
+    ) {
+        self.submit_timed_encoder_with_capture(encoder, timing, cpu_encode_time, None);
+    }
+
+    fn submit_timed_encoder_with_capture(
+        &mut self,
+        mut encoder: wgpu::CommandEncoder,
+        timing: PendingPassTiming,
+        cpu_encode_time: Duration,
+        capture: Option<PendingCapture>,
+    ) {
+        match timing.gpu {
+            PendingGpuTiming::Readback {
+                slot_index,
+                generation,
+            } => {
+                let correlation = TimestampCorrelation {
+                    generation,
+                    frame_id: timing.frame_id,
+                    runtime_frame_id: timing.runtime_frame_id,
+                    submission_id: timing.submission_id,
+                    pass: timing.pass,
+                    cpu_encode_time,
+                };
+                let state = self
+                    .timestamp_query
+                    .as_mut()
+                    .expect("available timing has timestamp state");
+                let sender = state.sender.clone();
+                let slot = state
+                    .slots
+                    .get_mut(slot_index)
+                    .expect("pending timing references a timestamp slot");
+                encoder.resolve_query_set(&slot.query_set, 0..2, &slot.resolve_buffer, 0);
+                encoder.copy_buffer_to_buffer(
+                    &slot.resolve_buffer,
+                    0,
+                    &slot.readback_buffer,
+                    0,
+                    16,
+                );
+                let command_buffer = encoder.finish();
+                let readback_buffer = slot.readback_buffer.clone();
+                command_buffer.map_buffer_on_submit(
+                    &slot.readback_buffer,
+                    wgpu::MapMode::Read,
+                    ..,
+                    move |map_result| {
+                        let result = if map_result.is_ok() {
+                            read_mapped_timestamps(&readback_buffer)
+                        } else {
+                            readback_buffer.unmap();
+                            TimestampReadbackResult::MappingFailed
+                        };
+                        let _ = sender.send(TimestampReadbackMessage {
+                            slot_index,
+                            correlation,
+                            result,
+                        });
+                    },
+                );
+                slot.in_flight = Some(correlation);
+                self.register_capture_mapping(&command_buffer, capture);
+                self.queue.submit([command_buffer]);
+            }
+            PendingGpuTiming::Final(gpu) => {
+                let command_buffer = encoder.finish();
+                self.register_capture_mapping(&command_buffer, capture);
+                self.queue.submit([command_buffer]);
+                self.push_timing_result(PassTimingSample {
+                    frame_id: timing.frame_id,
+                    runtime_frame_id: timing.runtime_frame_id,
+                    submission_id: timing.submission_id,
+                    pass: timing.pass,
+                    cpu_encode_time,
+                    gpu,
+                });
+            }
         }
-        self.queue.submit([encoder.finish()]);
+    }
+
+    fn register_capture_mapping(
+        &mut self,
+        command_buffer: &wgpu::CommandBuffer,
+        pending: Option<PendingCapture>,
+    ) {
+        let Some(pending) = pending else {
+            return;
+        };
+        let Some(slot) = self.capture.slots.get_mut(pending.slot_index) else {
+            self.push_capture_result(CaptureOutcome::Inconclusive {
+                capture_id: pending.correlation.capture_id,
+                frame_id: pending.correlation.frame_id,
+                failure: CaptureFailure::StaleReadback,
+            });
+            return;
+        };
+        if slot.generation != pending.generation || slot.in_flight.is_some() {
+            self.push_capture_result(CaptureOutcome::Inconclusive {
+                capture_id: pending.correlation.capture_id,
+                frame_id: pending.correlation.frame_id,
+                failure: CaptureFailure::StaleReadback,
+            });
+            return;
+        }
+        let Some(buffer) = slot.buffer.clone() else {
+            self.push_capture_result(CaptureOutcome::Inconclusive {
+                capture_id: pending.correlation.capture_id,
+                frame_id: pending.correlation.frame_id,
+                failure: CaptureFailure::StaleReadback,
+            });
+            return;
+        };
+        let sender = self.capture.sender.clone();
+        let slot_index = pending.slot_index;
+        let correlation = pending.correlation;
+        let callback_buffer = buffer.clone();
+        command_buffer.map_buffer_on_submit(&buffer, wgpu::MapMode::Read, .., move |result| {
+            let result = if result.is_ok() {
+                read_mapped_capture(&callback_buffer)
+            } else {
+                callback_buffer.unmap();
+                CaptureReadbackResult::MappingFailed
+            };
+            let _ = sender.send(CaptureReadbackMessage {
+                slot_index,
+                correlation,
+                result,
+            });
+        });
+        slot.in_flight = Some(correlation);
+    }
+
+    fn collect_timing_readbacks(&mut self) {
+        loop {
+            let message = self
+                .timestamp_query
+                .as_ref()
+                .and_then(|state| state.receiver.try_recv().ok());
+            let Some(message) = message else {
+                break;
+            };
+            self.complete_timing_readback(&message);
+        }
+    }
+
+    fn collect_capture_readbacks(&mut self) {
+        loop {
+            let message = self.capture.receiver.try_recv().ok();
+            let Some(message) = message else {
+                break;
+            };
+            self.complete_capture_readback(message);
+        }
+    }
+
+    fn complete_capture_readback(&mut self, message: CaptureReadbackMessage) {
+        let Some(slot) = self.capture.slots.get_mut(message.slot_index) else {
+            self.push_capture_result(capture_failure_outcome(
+                message.correlation,
+                CaptureFailure::StaleReadback,
+            ));
+            return;
+        };
+        match take_matching_capture(&mut slot.in_flight, message.correlation) {
+            Ok(Some(_)) => {}
+            Err(failure) => {
+                self.push_capture_result(capture_failure_outcome(message.correlation, failure));
+                return;
+            }
+            Ok(None) => return,
+        }
+        let outcome = match message.result {
+            CaptureReadbackResult::MappingFailed => {
+                capture_failure_outcome(message.correlation, CaptureFailure::MappingFailed)
+            }
+            CaptureReadbackResult::Bytes(bytes) => {
+                match normalize_capture_rows(message.correlation, &bytes) {
+                    Ok(pixels) => CaptureOutcome::Captured(CapturedFrame {
+                        capture_id: message.correlation.capture_id,
+                        frame_id: message.correlation.frame_id,
+                        width: message.correlation.width,
+                        height: message.correlation.height,
+                        format: CapturedPixelFormat::Rgba8Srgb,
+                        source: message.correlation.source,
+                        surface_outcome: message.correlation.surface_outcome,
+                        pixels,
+                    }),
+                    Err(failure) => capture_failure_outcome(message.correlation, failure),
+                }
+            }
+        };
+        self.push_capture_result(outcome);
+    }
+
+    fn fail_all_capture_readbacks(&mut self, failure: CaptureFailure) {
+        let correlations = self
+            .capture
+            .slots
+            .iter_mut()
+            .filter_map(|slot| slot.in_flight.take())
+            .collect::<Vec<_>>();
+        for correlation in correlations {
+            self.push_capture_result(capture_failure_outcome(correlation, failure));
+        }
+    }
+
+    fn push_capture_result(&mut self, result: CaptureOutcome) {
+        push_bounded_capture_result(
+            &mut self.capture.results,
+            &mut self.capture.dropped_results,
+            result,
+        );
+    }
+
+    fn complete_timing_readback(&mut self, message: &TimestampReadbackMessage) {
+        let correlation = {
+            let Some(state) = self.timestamp_query.as_mut() else {
+                return;
+            };
+            let Some(slot) = state.slots.get_mut(message.slot_index) else {
+                self.push_timing_result(timing_sample_from_correlation(
+                    message.correlation,
+                    GpuTimingOutcome::Inconclusive(GpuTimingFailure::StaleReadback),
+                ));
+                return;
+            };
+            match take_matching_correlation(&mut slot.in_flight, message.correlation) {
+                Ok(Some(correlation)) => correlation,
+                Ok(None) => return,
+                Err(failure) => {
+                    self.push_timing_result(timing_sample_from_correlation(
+                        message.correlation,
+                        GpuTimingOutcome::Inconclusive(failure),
+                    ));
+                    return;
+                }
+            }
+        };
+        let gpu = match self.timing_availability {
+            TimingAvailability::UnsupportedPlatform(failure) => {
+                GpuTimingOutcome::UnsupportedPlatform(failure)
+            }
+            TimingAvailability::Inconclusive(failure) => GpuTimingOutcome::Inconclusive(failure),
+            TimingAvailability::Available => {
+                let timestamp_period_ns = self
+                    .timestamp_query
+                    .as_ref()
+                    .expect("available timing has timestamp state")
+                    .timestamp_period_ns;
+                let (gpu, availability) = classify_timestamp_readback(
+                    message.result,
+                    timestamp_period_ns,
+                    self.capabilities.backend,
+                );
+                if let Some(availability) = availability {
+                    self.timing_availability = availability;
+                }
+                gpu
+            }
+            TimingAvailability::NotRequested => GpuTimingOutcome::NotRequested,
+            TimingAvailability::UnsupportedCapability => GpuTimingOutcome::UnsupportedCapability,
+        };
+        self.push_timing_result(timing_sample_from_correlation(correlation, gpu));
+    }
+
+    fn fail_all_timing_readbacks(&mut self, failure: GpuTimingFailure) {
+        let correlations = self
+            .timestamp_query
+            .as_mut()
+            .map_or_else(Vec::new, |state| {
+                state
+                    .slots
+                    .iter_mut()
+                    .filter_map(|slot| slot.in_flight.take())
+                    .collect::<Vec<_>>()
+            });
+        for correlation in correlations {
+            self.push_timing_result(timing_sample_from_correlation(
+                correlation,
+                GpuTimingOutcome::Inconclusive(failure),
+            ));
+        }
+    }
+
+    fn push_timing_result(&mut self, sample: PassTimingSample) {
+        push_bounded_timing_result(
+            &mut self.timing_results,
+            &mut self.dropped_timing_results,
+            &mut self.latest_measured_gpu_duration,
+            sample,
+        );
     }
 
     fn recreate_surface(&mut self) -> Result<(), RhiError> {
@@ -2422,6 +3650,14 @@ impl Rhi {
             ));
         }
         let capabilities = self.surface.get_capabilities(&self.adapter);
+        self.surface_copy_supported = capabilities.usages.contains(wgpu::TextureUsages::COPY_SRC);
+        if self.surface_copy_supported {
+            self.surface_config.usage |= wgpu::TextureUsages::COPY_SRC;
+        } else {
+            self.surface_config
+                .usage
+                .remove(wgpu::TextureUsages::COPY_SRC);
+        }
         self.surface_config.format =
             choose_surface_format(&capabilities.formats).ok_or_else(|| {
                 RhiError::new(
@@ -2506,6 +3742,9 @@ fn make_surface_config(
         PresentPolicy::AllowTearing => wgpu::PresentMode::AutoNoVsync,
     };
     surface_config.desired_maximum_frame_latency = config.desired_maximum_frame_latency.clamp(1, 4);
+    if capabilities.usages.contains(wgpu::TextureUsages::COPY_SRC) {
+        surface_config.usage |= wgpu::TextureUsages::COPY_SRC;
+    }
     Ok(surface_config)
 }
 
@@ -2562,46 +3801,382 @@ fn create_timestamp_query_state(
     device: &wgpu::Device,
     timestamp_period_ns: f32,
 ) -> TimestampQueryState {
-    let query_set = device.create_query_set(&wgpu::QuerySetDescriptor {
-        label: Some("Meridian frame timestamps"),
-        ty: wgpu::QueryType::Timestamp,
-        count: 2,
-    });
-    let resolve_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Meridian timestamp resolve buffer"),
-        size: 16,
-        usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-    let readback_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Meridian timestamp readback buffer"),
-        size: 16,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
+    let slots = (0..TIMESTAMP_READBACK_SLOT_COUNT)
+        .map(|slot_index| {
+            let query_label = format!("Meridian pass timestamps {slot_index}");
+            let resolve_label = format!("Meridian timestamp resolve {slot_index}");
+            let readback_label = format!("Meridian timestamp readback {slot_index}");
+            TimestampReadbackSlot {
+                query_set: device.create_query_set(&wgpu::QuerySetDescriptor {
+                    label: Some(&query_label),
+                    ty: wgpu::QueryType::Timestamp,
+                    count: 2,
+                }),
+                resolve_buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(&resolve_label),
+                    size: 16,
+                    usage: wgpu::BufferUsages::QUERY_RESOLVE
+                        | wgpu::BufferUsages::COPY_SRC
+                        | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }),
+                readback_buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(&readback_label),
+                    size: 16,
+                    usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                    mapped_at_creation: false,
+                }),
+                generation: 0,
+                in_flight: None,
+            }
+        })
+        .collect();
+    let (sender, receiver) = mpsc::channel();
     TimestampQueryState {
-        query_set,
-        resolve_buffer,
-        readback_buffer,
+        slots,
         timestamp_period_ns,
-        pending: false,
+        sender,
+        receiver,
     }
 }
 
+fn create_capture_state() -> CaptureState {
+    let (sender, receiver) = mpsc::channel();
+    CaptureState {
+        slots: (0..CAPTURE_READBACK_SLOT_COUNT)
+            .map(|_| CaptureReadbackSlot {
+                buffer: None,
+                buffer_size: 0,
+                generation: 0,
+                in_flight: None,
+            })
+            .collect(),
+        sender,
+        receiver,
+        pending: VecDeque::with_capacity(CAPTURE_REQUEST_CAPACITY),
+        results: VecDeque::with_capacity(CAPTURE_RESULT_CAPACITY),
+        dropped_results: 0,
+    }
+}
+
+fn capture_source_format(format: wgpu::TextureFormat) -> Option<CaptureSourceFormat> {
+    match format {
+        wgpu::TextureFormat::Rgba8UnormSrgb => Some(CaptureSourceFormat::Rgba8Srgb),
+        wgpu::TextureFormat::Bgra8UnormSrgb => Some(CaptureSourceFormat::Bgra8Srgb),
+        _ => None,
+    }
+}
+
+fn capture_layout(
+    size: WindowSize,
+    request: CaptureRequest,
+) -> Result<CaptureLayout, CaptureFailure> {
+    if size.is_zero() {
+        return Err(CaptureFailure::ZeroExtent);
+    }
+    if size.width > request.max_width || size.height > request.max_height {
+        return Err(CaptureFailure::DimensionLimit);
+    }
+    let tight_bytes_per_row = size
+        .width
+        .checked_mul(4)
+        .ok_or(CaptureFailure::SizeOverflow)?;
+    let padded_bytes_per_row = tight_bytes_per_row
+        .checked_add(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT - 1)
+        .ok_or(CaptureFailure::SizeOverflow)?
+        / wgpu::COPY_BYTES_PER_ROW_ALIGNMENT
+        * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let buffer_size = u64::from(padded_bytes_per_row)
+        .checked_mul(u64::from(size.height))
+        .ok_or(CaptureFailure::SizeOverflow)?;
+    if buffer_size > request.max_bytes {
+        return Err(CaptureFailure::ByteLimit);
+    }
+    Ok(CaptureLayout {
+        padded_bytes_per_row,
+        buffer_size,
+    })
+}
+
+fn record_capture_copy(
+    encoder: &mut wgpu::CommandEncoder,
+    source_texture: &wgpu::Texture,
+    state: &CaptureState,
+    pending: PendingCapture,
+) {
+    let Some(buffer) = state
+        .slots
+        .get(pending.slot_index)
+        .and_then(|slot| slot.buffer.as_ref())
+    else {
+        return;
+    };
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: source_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(pending.correlation.padded_bytes_per_row),
+                rows_per_image: Some(pending.correlation.height),
+            },
+        },
+        wgpu::Extent3d {
+            width: pending.correlation.width,
+            height: pending.correlation.height,
+            depth_or_array_layers: 1,
+        },
+    );
+}
+
+fn read_mapped_capture(buffer: &wgpu::Buffer) -> CaptureReadbackResult {
+    let Ok(view) = buffer.get_mapped_range(..) else {
+        buffer.unmap();
+        return CaptureReadbackResult::MappingFailed;
+    };
+    let bytes = view.to_vec();
+    drop(view);
+    buffer.unmap();
+    CaptureReadbackResult::Bytes(bytes)
+}
+
+fn normalize_capture_rows(
+    correlation: CaptureCorrelation,
+    bytes: &[u8],
+) -> Result<Vec<u8>, CaptureFailure> {
+    let tight_row = correlation
+        .width
+        .checked_mul(4)
+        .ok_or(CaptureFailure::SizeOverflow)?;
+    let expected = u64::from(correlation.padded_bytes_per_row)
+        .checked_mul(u64::from(correlation.height))
+        .ok_or(CaptureFailure::SizeOverflow)?;
+    if u64::try_from(bytes.len()).map_err(|_| CaptureFailure::SizeOverflow)? != expected
+        || correlation.padded_bytes_per_row < tight_row
+    {
+        return Err(CaptureFailure::InvalidRowData);
+    }
+    let output_size = usize::try_from(
+        u64::from(tight_row)
+            .checked_mul(u64::from(correlation.height))
+            .ok_or(CaptureFailure::SizeOverflow)?,
+    )
+    .map_err(|_| CaptureFailure::SizeOverflow)?;
+    let padded_row = usize::try_from(correlation.padded_bytes_per_row)
+        .map_err(|_| CaptureFailure::SizeOverflow)?;
+    let tight_row = usize::try_from(tight_row).map_err(|_| CaptureFailure::SizeOverflow)?;
+    let mut pixels = Vec::with_capacity(output_size);
+    for row in bytes.chunks_exact(padded_row) {
+        let row = row.get(..tight_row).ok_or(CaptureFailure::InvalidRowData)?;
+        match correlation.source_format {
+            CaptureSourceFormat::Rgba8Srgb => pixels.extend_from_slice(row),
+            CaptureSourceFormat::Bgra8Srgb => {
+                for pixel in row.chunks_exact(4) {
+                    pixels.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
+                }
+            }
+        }
+    }
+    if pixels.len() != output_size {
+        return Err(CaptureFailure::InvalidRowData);
+    }
+    Ok(pixels)
+}
+
+const fn capture_failure_outcome(
+    correlation: CaptureCorrelation,
+    failure: CaptureFailure,
+) -> CaptureOutcome {
+    CaptureOutcome::Inconclusive {
+        capture_id: correlation.capture_id,
+        frame_id: correlation.frame_id,
+        failure,
+    }
+}
+
+fn take_matching_capture(
+    active: &mut Option<CaptureCorrelation>,
+    incoming: CaptureCorrelation,
+) -> Result<Option<CaptureCorrelation>, CaptureFailure> {
+    let Some(current) = *active else {
+        return Ok(None);
+    };
+    if current.generation != incoming.generation || current.capture_id != incoming.capture_id {
+        return Err(CaptureFailure::StaleReadback);
+    }
+    Ok(active.take())
+}
+
+fn push_bounded_capture_result(
+    results: &mut VecDeque<CaptureOutcome>,
+    dropped_results: &mut u64,
+    result: CaptureOutcome,
+) {
+    if results.len() == CAPTURE_RESULT_CAPACITY {
+        results.pop_front();
+        *dropped_results = dropped_results.saturating_add(1);
+    }
+    results.push_back(result);
+}
+
+fn read_mapped_timestamps(readback_buffer: &wgpu::Buffer) -> TimestampReadbackResult {
+    let Ok(view) = readback_buffer.get_mapped_range(..) else {
+        readback_buffer.unmap();
+        return TimestampReadbackResult::MappingFailed;
+    };
+    if view.len() != 16 {
+        drop(view);
+        readback_buffer.unmap();
+        return TimestampReadbackResult::MappingFailed;
+    }
+    let mut begin_bytes = [0; 8];
+    let mut end_bytes = [0; 8];
+    begin_bytes.copy_from_slice(&view[..8]);
+    end_bytes.copy_from_slice(&view[8..16]);
+    drop(view);
+    readback_buffer.unmap();
+    TimestampReadbackResult::Timestamps {
+        begin: u64::from_ne_bytes(begin_bytes),
+        end: u64::from_ne_bytes(end_bytes),
+    }
+}
+
+const fn timing_unavailable_outcome(availability: TimingAvailability) -> GpuTimingOutcome {
+    match availability {
+        TimingAvailability::Available => {
+            GpuTimingOutcome::Inconclusive(GpuTimingFailure::ReadbackSaturated)
+        }
+        TimingAvailability::NotRequested => GpuTimingOutcome::NotRequested,
+        TimingAvailability::UnsupportedCapability => GpuTimingOutcome::UnsupportedCapability,
+        TimingAvailability::UnsupportedPlatform(failure) => {
+            GpuTimingOutcome::UnsupportedPlatform(failure)
+        }
+        TimingAvailability::Inconclusive(failure) => GpuTimingOutcome::Inconclusive(failure),
+    }
+}
+
+const fn timing_sample_from_correlation(
+    correlation: TimestampCorrelation,
+    gpu: GpuTimingOutcome,
+) -> PassTimingSample {
+    PassTimingSample {
+        frame_id: correlation.frame_id,
+        runtime_frame_id: correlation.runtime_frame_id,
+        submission_id: correlation.submission_id,
+        pass: correlation.pass,
+        cpu_encode_time: correlation.cpu_encode_time,
+        gpu,
+    }
+}
+
+fn first_free_slot_index(in_flight: impl IntoIterator<Item = bool>) -> Option<usize> {
+    in_flight
+        .into_iter()
+        .enumerate()
+        .find_map(|(index, in_flight)| (!in_flight).then_some(index))
+}
+
+fn take_matching_correlation(
+    active: &mut Option<TimestampCorrelation>,
+    incoming: TimestampCorrelation,
+) -> Result<Option<TimestampCorrelation>, GpuTimingFailure> {
+    let Some(current) = *active else {
+        return Ok(None);
+    };
+    if current.generation != incoming.generation {
+        return Err(GpuTimingFailure::StaleReadback);
+    }
+    Ok(active.take())
+}
+
+fn classify_timestamp_readback(
+    result: TimestampReadbackResult,
+    timestamp_period_ns: f32,
+    backend: Backend,
+) -> (GpuTimingOutcome, Option<TimingAvailability>) {
+    match result {
+        TimestampReadbackResult::MappingFailed => (
+            GpuTimingOutcome::Inconclusive(GpuTimingFailure::MappingFailed),
+            None,
+        ),
+        TimestampReadbackResult::Timestamps { begin, end } => {
+            match timestamp_duration_from_raw(begin, end, timestamp_period_ns) {
+                Ok(duration) => (GpuTimingOutcome::Measured(duration), None),
+                Err(
+                    GpuTimingFailure::ZeroTimestamp
+                    | GpuTimingFailure::ZeroDuration
+                    | GpuTimingFailure::EndBeforeBegin,
+                ) if backend == Backend::Metal => (
+                    GpuTimingOutcome::UnsupportedPlatform(
+                        GpuTimingFailure::MetalTimestampDataInvalid,
+                    ),
+                    Some(TimingAvailability::UnsupportedPlatform(
+                        GpuTimingFailure::MetalTimestampDataInvalid,
+                    )),
+                ),
+                Err(failure) => {
+                    let availability = matches!(
+                        failure,
+                        GpuTimingFailure::ZeroTimestamp
+                            | GpuTimingFailure::ZeroDuration
+                            | GpuTimingFailure::EndBeforeBegin
+                            | GpuTimingFailure::InvalidTimestampPeriod
+                            | GpuTimingFailure::DurationOutOfRange
+                    )
+                    .then_some(TimingAvailability::Inconclusive(failure));
+                    (GpuTimingOutcome::Inconclusive(failure), availability)
+                }
+            }
+        }
+    }
+}
+
+fn push_bounded_timing_result(
+    results: &mut VecDeque<PassTimingSample>,
+    dropped_results: &mut u64,
+    latest_measured_gpu_duration: &mut Option<Duration>,
+    sample: PassTimingSample,
+) {
+    if let GpuTimingOutcome::Measured(duration) = sample.gpu {
+        *latest_measured_gpu_duration = Some(duration);
+    }
+    if results.len() == TIMING_RESULT_CAPACITY {
+        results.pop_front();
+        *dropped_results = (*dropped_results).saturating_add(1);
+    }
+    results.push_back(sample);
+}
+
+fn timestamp_duration_from_raw(
+    begin: u64,
+    end: u64,
+    timestamp_period_ns: f32,
+) -> Result<Duration, GpuTimingFailure> {
+    if begin == 0 || end == 0 {
+        return Err(GpuTimingFailure::ZeroTimestamp);
+    }
+    if begin == end {
+        return Err(GpuTimingFailure::ZeroDuration);
+    }
+    let ticks = end
+        .checked_sub(begin)
+        .ok_or(GpuTimingFailure::EndBeforeBegin)?;
+    timestamp_duration(ticks, timestamp_period_ns)
+}
+
 #[allow(clippy::cast_precision_loss)]
-fn timestamp_duration(ticks: u64, timestamp_period_ns: f32) -> Result<Duration, RhiError> {
+fn timestamp_duration(ticks: u64, timestamp_period_ns: f32) -> Result<Duration, GpuTimingFailure> {
     if !timestamp_period_ns.is_finite() || timestamp_period_ns <= 0.0 {
-        return Err(RhiError::new(
-            RhiErrorKind::TimestampReadback,
-            "timestamp period is invalid",
-        ));
+        return Err(GpuTimingFailure::InvalidTimestampPeriod);
     }
     let seconds = (ticks as f64 * f64::from(timestamp_period_ns)) / 1_000_000_000.0;
     if !seconds.is_finite() || seconds < 0.0 || seconds > Duration::MAX.as_secs_f64() {
-        return Err(RhiError::new(
-            RhiErrorKind::TimestampReadback,
-            "timestamp duration is outside the representable range",
-        ));
+        return Err(GpuTimingFailure::DurationOutOfRange);
     }
     Ok(Duration::from_secs_f64(seconds))
 }
@@ -2733,6 +4308,7 @@ pub enum RhiErrorKind {
     InvalidShadowMapSize,
     InvalidShadowCascade,
     TimestampReadback,
+    TimingFrameState,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2862,6 +4438,122 @@ fn validate_texture_write(
 mod tests {
     use super::*;
 
+    fn timing_correlation(generation: u64) -> TimestampCorrelation {
+        TimestampCorrelation {
+            generation,
+            frame_id: TimingFrameId(41),
+            runtime_frame_id: Some(FrameId::new(42)),
+            submission_id: 73,
+            pass: PassTimingLabel::new("test_pass"),
+            cpu_encode_time: Duration::from_micros(125),
+        }
+    }
+
+    fn capture_correlation(generation: u64, format: CaptureSourceFormat) -> CaptureCorrelation {
+        CaptureCorrelation {
+            generation,
+            capture_id: CaptureId(5),
+            frame_id: FrameId::new(7),
+            width: 2,
+            height: 2,
+            padded_bytes_per_row: 256,
+            source_format: format,
+            source: CaptureSource::Offscreen,
+            surface_outcome: None,
+        }
+    }
+
+    #[test]
+    fn capture_layout_enforces_alignment_dimensions_bytes_and_zero_extent() {
+        let request = CaptureRequest::new(FrameId::new(1), 64, 64, 64 * 64 * 4 + 16_384);
+        let layout = capture_layout(WindowSize::new(2, 2), request).expect("layout valid");
+        assert_eq!(layout.padded_bytes_per_row, 256);
+        assert_eq!(layout.buffer_size, 512);
+        assert_eq!(
+            capture_layout(WindowSize::new(0, 2), request),
+            Err(CaptureFailure::ZeroExtent)
+        );
+        assert_eq!(
+            capture_layout(WindowSize::new(65, 2), request),
+            Err(CaptureFailure::DimensionLimit)
+        );
+        let tiny = CaptureRequest::new(FrameId::new(1), 64, 64, 1);
+        assert_eq!(
+            capture_layout(WindowSize::new(2, 2), tiny),
+            Err(CaptureFailure::ByteLimit)
+        );
+        let overflow = CaptureRequest::new(FrameId::new(1), u32::MAX, 1, u64::MAX);
+        assert_eq!(
+            capture_layout(WindowSize::new(u32::MAX, 1), overflow),
+            Err(CaptureFailure::SizeOverflow)
+        );
+    }
+
+    #[test]
+    fn capture_rows_strip_padding_and_convert_bgra_to_rgba() {
+        let mut bytes = vec![0_u8; 512];
+        bytes[..8].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        bytes[256..264].copy_from_slice(&[9, 10, 11, 12, 13, 14, 15, 16]);
+        let rgba = normalize_capture_rows(
+            capture_correlation(1, CaptureSourceFormat::Bgra8Srgb),
+            &bytes,
+        )
+        .expect("rows normalize");
+        assert_eq!(
+            rgba,
+            vec![3, 2, 1, 4, 7, 6, 5, 8, 11, 10, 9, 12, 15, 14, 13, 16]
+        );
+        assert_eq!(
+            normalize_capture_rows(
+                capture_correlation(1, CaptureSourceFormat::Rgba8Srgb),
+                &bytes[..511],
+            ),
+            Err(CaptureFailure::InvalidRowData)
+        );
+    }
+
+    #[test]
+    fn capture_generation_saturation_failures_and_result_overflow_stay_typed() {
+        let current = capture_correlation(2, CaptureSourceFormat::Rgba8Srgb);
+        let mut active = Some(current);
+        assert_eq!(
+            take_matching_capture(
+                &mut active,
+                capture_correlation(1, CaptureSourceFormat::Rgba8Srgb)
+            ),
+            Err(CaptureFailure::StaleReadback)
+        );
+        assert_eq!(active, Some(current));
+        assert_eq!(first_free_slot_index([true, true, true]), None);
+
+        let mut results = VecDeque::new();
+        let mut dropped = 0;
+        for id in 0..=CAPTURE_RESULT_CAPACITY {
+            push_bounded_capture_result(
+                &mut results,
+                &mut dropped,
+                CaptureOutcome::Inconclusive {
+                    capture_id: CaptureId(u64::try_from(id).expect("fits")),
+                    frame_id: FrameId::new(1),
+                    failure: if id == 0 {
+                        CaptureFailure::MappingFailed
+                    } else {
+                        CaptureFailure::DeviceLost
+                    },
+                },
+            );
+        }
+        assert_eq!(results.len(), CAPTURE_RESULT_CAPACITY);
+        assert_eq!(dropped, 1);
+        assert!(matches!(
+            results.back(),
+            Some(CaptureOutcome::Inconclusive {
+                failure: CaptureFailure::DeviceLost,
+                ..
+            })
+        ));
+    }
+
     #[test]
     fn clear_graph_contains_one_clear_pass() {
         let graph = build_clear_graph().expect("clear graph should compile");
@@ -2956,11 +4648,166 @@ mod tests {
             Duration::from_millis(1)
         );
         assert_eq!(
-            timestamp_duration(1, 0.0)
-                .expect_err("zero period is invalid")
-                .kind(),
-            RhiErrorKind::TimestampReadback
+            timestamp_duration(1, 0.0).expect_err("zero period is invalid"),
+            GpuTimingFailure::InvalidTimestampPeriod
         );
+        assert_eq!(
+            timestamp_duration(u64::MAX, f32::MAX).expect_err("overflowing duration is invalid"),
+            GpuTimingFailure::DurationOutOfRange
+        );
+    }
+
+    #[test]
+    fn raw_timestamps_reject_zero_reversed_and_equal_values() {
+        assert_eq!(
+            timestamp_duration_from_raw(0, 0, 1.0),
+            Err(GpuTimingFailure::ZeroTimestamp)
+        );
+        assert_eq!(
+            timestamp_duration_from_raw(0, 8, 1.0),
+            Err(GpuTimingFailure::ZeroTimestamp)
+        );
+        assert_eq!(
+            timestamp_duration_from_raw(9, 8, 1.0),
+            Err(GpuTimingFailure::EndBeforeBegin)
+        );
+        assert_eq!(
+            timestamp_duration_from_raw(9, 9, 1.0),
+            Err(GpuTimingFailure::ZeroDuration)
+        );
+    }
+
+    #[test]
+    fn metal_invalid_timestamps_disable_gpu_timing_for_the_rhi_lifetime() {
+        for result in [
+            TimestampReadbackResult::Timestamps { begin: 0, end: 0 },
+            TimestampReadbackResult::Timestamps { begin: 2, end: 1 },
+            TimestampReadbackResult::Timestamps { begin: 2, end: 2 },
+        ] {
+            let (outcome, availability) = classify_timestamp_readback(result, 1.0, Backend::Metal);
+            assert_eq!(
+                outcome,
+                GpuTimingOutcome::UnsupportedPlatform(GpuTimingFailure::MetalTimestampDataInvalid)
+            );
+            assert_eq!(
+                availability,
+                Some(TimingAvailability::UnsupportedPlatform(
+                    GpuTimingFailure::MetalTimestampDataInvalid
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn map_failure_is_inconclusive_without_disabling_future_queries() {
+        assert_eq!(
+            classify_timestamp_readback(
+                TimestampReadbackResult::MappingFailed,
+                1.0,
+                Backend::Vulkan
+            ),
+            (
+                GpuTimingOutcome::Inconclusive(GpuTimingFailure::MappingFailed),
+                None
+            )
+        );
+    }
+
+    #[test]
+    fn timestamp_slot_selection_reports_saturation() {
+        assert_eq!(
+            first_free_slot_index([true; TIMESTAMP_READBACK_SLOT_COUNT]),
+            None
+        );
+        assert_eq!(
+            first_free_slot_index([true, true, false, true, true, true, true, true]),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn stale_generation_does_not_release_active_slot() {
+        let current = timing_correlation(2);
+        let stale = timing_correlation(1);
+        let mut active = Some(current);
+
+        assert_eq!(
+            take_matching_correlation(&mut active, stale),
+            Err(GpuTimingFailure::StaleReadback)
+        );
+        assert_eq!(active, Some(current));
+        assert_eq!(
+            take_matching_correlation(&mut active, current),
+            Ok(Some(current))
+        );
+        assert_eq!(active, None);
+    }
+
+    #[test]
+    fn timing_sample_preserves_frame_submission_pass_and_device_loss() {
+        let correlation = timing_correlation(7);
+        let sample = timing_sample_from_correlation(
+            correlation,
+            GpuTimingOutcome::Inconclusive(GpuTimingFailure::DeviceLost),
+        );
+
+        assert_eq!(sample.frame_id, TimingFrameId(41));
+        assert_eq!(sample.submission_id, 73);
+        assert_eq!(sample.pass, PassTimingLabel::new("test_pass"));
+        assert_eq!(sample.cpu_encode_time, Duration::from_micros(125));
+        assert_eq!(
+            sample.gpu,
+            GpuTimingOutcome::Inconclusive(GpuTimingFailure::DeviceLost)
+        );
+    }
+
+    #[test]
+    fn result_queue_is_bounded_and_tracks_latest_measurement() {
+        let mut results = VecDeque::new();
+        let mut dropped = 0;
+        let mut latest = None;
+
+        for submission_id in 1..=u64::try_from(TIMING_RESULT_CAPACITY + 1).unwrap() {
+            push_bounded_timing_result(
+                &mut results,
+                &mut dropped,
+                &mut latest,
+                PassTimingSample {
+                    frame_id: TimingFrameId(1),
+                    runtime_frame_id: None,
+                    submission_id,
+                    pass: PassTimingLabel::new("bounded"),
+                    cpu_encode_time: Duration::ZERO,
+                    gpu: GpuTimingOutcome::Measured(Duration::from_nanos(submission_id)),
+                },
+            );
+        }
+
+        assert_eq!(results.len(), TIMING_RESULT_CAPACITY);
+        assert_eq!(results.front().map(|sample| sample.submission_id), Some(2));
+        assert_eq!(dropped, 1);
+        assert_eq!(latest, Some(Duration::from_nanos(65)));
+    }
+
+    #[test]
+    fn unavailable_timing_states_keep_cpu_samples_typed() {
+        for (availability, expected) in [
+            (
+                TimingAvailability::NotRequested,
+                GpuTimingOutcome::NotRequested,
+            ),
+            (
+                TimingAvailability::UnsupportedCapability,
+                GpuTimingOutcome::UnsupportedCapability,
+            ),
+        ] {
+            let sample = timing_sample_from_correlation(
+                timing_correlation(1),
+                timing_unavailable_outcome(availability),
+            );
+            assert_eq!(sample.cpu_encode_time, Duration::from_micros(125));
+            assert_eq!(sample.gpu, expected);
+        }
     }
 
     #[test]

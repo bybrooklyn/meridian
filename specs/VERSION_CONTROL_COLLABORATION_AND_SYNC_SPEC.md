@@ -2,11 +2,17 @@
 
 [Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Build/team](CARGO_IDE_BUILD_AND_TEAM_WORKFLOWS.md) · [Security](SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md)
 
-Version 0.2 · 2026-07-14 · Normative architecture · Planned
+version 0.5 · 2026-07-15 · Normative architecture · Planned
+
+Documentation maturity: `ResearchReady`. Implementation maturity:
+`Research` / `Deferred`. Governing IDs: `REQ-VCS-001`, `REQ-SYN-001`,
+`WP-VCS-001`, `WP-SYN-001`, `PRG-VCS-001`.
 
 ## 1. Decision
 
-Meridian VCS uses Git-compatible object/remotes interoperability plus a Jujutsu-derived change and operation model for user experience, recovery, concurrent work, and undo. The exact fork/implementation is a provenance and research gate.
+Meridian VCS first provides Meridian-native project, asset, world, graph, model, and semantic workflows over existing Git and/or Jujutsu foundations. Git-compatible objects/remotes and a Jujutsu-shaped change/operation model supply interoperability, recovery, concurrent work, and undo while Meridian owns the user-facing contracts. The exact integration is a provenance and research gate.
+
+`WP-VCS-001` does not require a new object store or history engine. A native Meridian storage/history replacement is post-1.0 `PRG-VCS-001` work and may begin only if production evidence shows material value that wrappers cannot provide, migration and Git escape remain safe, and maintenance capacity is sustainable. Wrapping Git/Jujutsu indefinitely is an acceptable outcome.
 
 Telepo is not a product or separate subsystem. It is replaced by meridian-sync: direct encrypted peer-to-peer exchange first, optional self-hosted relay, no mandatory account, cloud, hosted Meridian service, or inbound port. Local sync state lives under .meridian/sync/.
 
@@ -16,7 +22,7 @@ Live collaboration augments immutable VCS operations/checkpoints. It never becom
 
 Goals: understandable changes rather than staging/HEAD, operation-log undo, semantic diffs/merges, large/binary assets, partial workspaces, offline work, Git remotes, encrypted direct sync, crash recovery, and beginner/expert parity.
 
-Non-goals: hiding irreversible data loss, requiring Git knowledge, promising conflict-free editing for all data, storing working state only in cloud, silently force-pushing, or making live-session state the only copy.
+Non-goals: hiding irreversible data loss, requiring Git knowledge, promising conflict-free editing for all data, storing working state only in cloud, silently force-pushing, making live-session state the only copy, or rewriting mature storage/history solely to claim ownership.
 
 ## 3. Data model
 
@@ -106,6 +112,11 @@ Expose current operation/workspace, uncheckpointed changes, conflict/invariant s
 
 Operation-log recovery supports undo after interrupted commands. Import receives immutable objects before reference movement. Corrupt objects quarantine and ref movement rolls back to prior valid operation.
 
+Beginner history, conflict, lock, trust, and recovery flows must be keyboard and
+screen-reader operable, scalable, and not color-only. Expert graph and semantic
+diff views expose the same operations and provenance without requiring staging
+jargon or raw object manipulation.
+
 ## 13. Tests and benchmarks
 
 - operation graph/concurrent workspace/property tests;
@@ -118,9 +129,9 @@ Operation-log recovery supports undo after interrupted commands. Import receives
 - live disconnect/rejoin/checkpoint/conflict;
 - large repository/object/operation/transfer performance and storage.
 
-## 14. Phases
+## 14. Delivery mapping
 
-Phase 17 delivers VCS model and Git interoperability after provenance research. Phase 18 adds P2P sync, partial workspaces, and live collaboration. Phase 24 uses VCS/package trust for mods. Phase 29 hardens recovery/interoperability/support.
+MS-08 delivers Meridian's UI/asset-aware VCS model and Git/Jujutsu interoperability after provenance research. MS-08/MS-09 adds P2P sync, partial workspaces, and live collaboration. MS-09 uses VCS/package trust for mods. MS-10 hardens recovery/interoperability/support. `PRG-VCS-001` is post-1.0 and cannot satisfy or block those milestones.
 
 ## 15. Examples
 

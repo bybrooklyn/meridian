@@ -1,0 +1,31 @@
+{
+  "version": "0.4",
+  "records": [
+    {
+      "id": "WP-GOV-001",
+      "title": "Fixture one",
+      "domain": "GOV",
+      "status": "Planned",
+      "milestones": ["MS-00"],
+      "requirements": ["REQ-GOV-001"],
+      "depends_on": ["WP-GOV-002"]
+    },
+    {
+      "id": "WP-GOV-002",
+      "title": "Fixture two",
+      "domain": "GOV",
+      "status": "Planned",
+      "milestones": ["MS-00"],
+      "requirements": ["REQ-GOV-001"],
+      "depends_on": ["WP-GOV-001"]
+    },
+    {
+      "id": "WP-GOV-003",
+      "title": "Fixture three",
+      "domain": "GOV",
+      "status": "Planned",
+      "milestones": ["MS-00"],
+      "requirements": ["REQ-GOV-001"]
+    }
+  ]
+}

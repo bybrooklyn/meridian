@@ -9,6 +9,8 @@ use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
+use meridian_core::{OperationId, RuntimeEpoch, TraceId};
+
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
 enum TaskCompletion<T> {
@@ -16,9 +18,46 @@ enum TaskCompletion<T> {
     Panicked,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum TaskClass {
+    RealtimeAssist,
+    FrameCritical,
+    #[default]
+    Streaming,
+    Build,
+    Background,
+}
+
+/// Correlation and invalidation metadata carried with worker jobs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TaskContext {
+    pub class: TaskClass,
+    pub operation_id: OperationId,
+    pub trace_id: TraceId,
+    pub runtime_epoch: RuntimeEpoch,
+}
+
+impl TaskContext {
+    #[must_use]
+    pub const fn new(
+        class: TaskClass,
+        operation_id: OperationId,
+        trace_id: TraceId,
+        runtime_epoch: RuntimeEpoch,
+    ) -> Self {
+        Self {
+            class,
+            operation_id,
+            trace_id,
+            runtime_epoch,
+        }
+    }
+}
+
 /// A typed handle for a submitted background task.
 pub struct Task<T> {
     id: u64,
+    context: Option<TaskContext>,
     receiver: Receiver<TaskCompletion<T>>,
 }
 
@@ -26,6 +65,11 @@ impl<T> Task<T> {
     #[must_use]
     pub const fn id(&self) -> u64 {
         self.id
+    }
+
+    #[must_use]
+    pub const fn context(&self) -> Option<TaskContext> {
+        self.context
     }
 
     /// Waits until the task completes.
@@ -116,6 +160,35 @@ impl TaskPool {
         T: Send + 'static,
         F: FnOnce() -> T + Send + 'static,
     {
+        self.submit_internal(None, job)
+    }
+
+    /// Submits a typed closure with cross-domain correlation metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TaskError::PoolClosed`] if shutdown has begun.
+    pub fn submit_correlated<T, F>(
+        &self,
+        context: TaskContext,
+        job: F,
+    ) -> Result<Task<T>, TaskError>
+    where
+        T: Send + 'static,
+        F: FnOnce() -> T + Send + 'static,
+    {
+        self.submit_internal(Some(context), job)
+    }
+
+    fn submit_internal<T, F>(
+        &self,
+        context: Option<TaskContext>,
+        job: F,
+    ) -> Result<Task<T>, TaskError>
+    where
+        T: Send + 'static,
+        F: FnOnce() -> T + Send + 'static,
+    {
         let task_id = self.next_task_id.fetch_add(1, Ordering::Relaxed);
         let (result_sender, result_receiver) = mpsc::channel();
         let wrapped_job = Box::new(move || {
@@ -134,6 +207,7 @@ impl TaskPool {
 
         Ok(Task {
             id: task_id,
+            context,
             receiver: result_receiver,
         })
     }
@@ -202,6 +276,24 @@ mod tests {
 
         assert_eq!(first.wait().expect("task completed"), 5);
         assert_eq!(second.wait().expect("task completed"), "background");
+    }
+
+    #[test]
+    fn correlated_submission_preserves_context_without_changing_simple_api() {
+        let pool = pool();
+        let context = TaskContext::new(
+            TaskClass::Streaming,
+            OperationId::new(2),
+            TraceId::new(3),
+            RuntimeEpoch::new(4),
+        );
+        let task = pool
+            .submit_correlated(context, || 9_u32)
+            .expect("pool is open");
+
+        assert_eq!(task.context(), Some(context));
+        assert_eq!(task.wait().expect("task completed"), 9);
+        assert_eq!(pool.submit(|| 1_u32).expect("pool is open").context(), None);
     }
 
     #[test]

@@ -4,5 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+meridian-assets = { path = "../meridian_assets" }
+meridian-core = { path = "../meridian_core" }
+
 [lints]
 workspace = true

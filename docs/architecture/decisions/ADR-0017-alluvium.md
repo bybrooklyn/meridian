@@ -1,0 +1,54 @@
+# ADR-0017: The Alluvium Engine
+
+- Status: Adopted
+- Date: 2026-07-15
+- Spec version: v0.4
+- Implementation status: Planned
+- Owners: future `meridian-alluvium`, editor/build, data, and procedural workstreams
+- Amends: ADR-0008, ADR-0009, ADR-0011, ADR-0014
+- Supersedes: none
+- Superseded by: none
+
+## Context
+
+Meridian needs first-party procedural authoring that can create coherent terrain, vegetation, materials, weathering, infrastructure, structures, and simulation-aware source data without requiring proprietary tools. The v0.3 procedural specification described useful graph, determinism, cache, and override foundations but treated the work too narrowly and left authoring ownership ambiguous with Basalt and optional capability packs.
+
+## Decision
+
+Adopt The Alluvium Engine as Meridian's core procedural world-authoring, asset-generation, environmental-composition, and simulation-aware cooking system.
+
+Alluvium owns recipes, typed graph and field evaluation, cache/invalidation, generated identity, non-destructive overrides, provenance/license propagation, and cooking of generated outputs. It produces typed source or built artifacts for Basalt, vegetation, Isobar, Torsant, Cairn, Penumbra, audio/acoustics, navigation, world streaming, assets, packages, and saves. Those systems retain authority over live runtime state and behavior.
+
+The editor/build capability is core Meridian functionality, not an optional proprietary plug-in. Runtime-safe evaluation remains content-triggered and capability-scoped. A baked-only project does not ship the editor, graph compiler, preview cache, or runtime evaluator and incurs no recurring Alluvium runtime cost.
+
+The first implementation package may create `meridian-alluvium`. No marker crate is created by the v0.4 documentation amendment. Internal modules use descriptive names. Third-party foundations remain behind Meridian seams and are replaced only through measured research gates and an ADR.
+
+Project Meridian supplies the first private proving requirements. Engine documents and evidence contain only sanitized functional contracts, generated surrogates, and controlled hashes; AMI content, proprietary recipes, seeds, hero overrides, and assets remain private.
+
+## Amendments to Existing Decisions
+
+- ADR-0008: Basalt retains terrain and large-world runtime authority; Alluvium owns procedural terrain authoring and derived source generation.
+- ADR-0009: textual recipes, CLI/headless operation, and a basic inspector precede the full visual graph editor; every surface uses the same typed commands and schemas.
+- ADR-0011: recipes, parameters, seeds, and overrides are source authority; generated artifacts and field caches remain derived unless explicitly promoted through a source transaction.
+- ADR-0014: Alluvium editor/build support is core. Domain adapters and runtime evaluation still obey capability and zero-cost-disabled rules.
+
+## Consequences
+
+- The `PRC` domain remains stable while the owning specification is retitled in place.
+- `MS-05` requires a minimum Alluvium foundation and environmental proving recipes.
+- Alluvium cannot become a universal runtime solver or duplicate subsystem authority.
+- First-party authoring cannot require proprietary software or an online account.
+- AI output remains editable recipe/source data under normal command, provenance, license, and cooker policy.
+- Competitive parity and performance claims require evidence; adoption of the architecture is not an implementation claim.
+
+## Current Evidence
+
+- [Alluvium specification](../../../specs/PROCEDURAL_AUTHORING_SPEC.md)
+- [Delivery roadmap](../../../specs/DELIVERY_ROADMAP.md)
+- [v0.4 migration ledger](../../migrations/V0_4_ALLUVIUM_AMENDMENT.md)
+- [Source data authority](ADR-0011-data-authority.md)
+- [Repository split](ADR-0003-repository-split.md)
+
+## Status Review
+
+Review after `WP-PRC-001`, after the `MS-05` representative forest evidence, and before any runtime-safe evaluator or dependency replacement is promoted.

@@ -1,8 +1,11 @@
 # Cairn Physics Specification
 
-[Master index](MERIDIAN_MASTER_SPEC.md) · [Migration register](SPEC_MIGRATION_AND_CONTRADICTIONS.md)
+[Master index](MERIDIAN_MASTER_SPEC.md) · [First-class 2D](TWO_DIMENSIONAL_ENGINE_SPEC.md) · [Frameworks](OFFICIAL_GAMEPLAY_FRAMEWORKS_SPEC.md) · [Animation](ANIMATION_CINEMATICS_AND_FACIAL_SYSTEMS_SPEC.md) · [Navigation](NAVIGATION_AND_AI_INFRASTRUCTURE_SPEC.md) · [Migration register](SPEC_MIGRATION_AND_CONTRADICTIONS.md)
 
-Status: normative specification, version 0.2, 2026-07-14.
+Status: normative specification, version 0.5, 2026-07-15.
+
+Documentation maturity: `ResearchReady`. Implementation maturity:
+`Transitional`. Governing IDs: `REQ-PHY-001`, `WP-PHY-001`, `RG-PHY-001`.
 
 Cairn is Meridian's in-tree physics family. It is a provenance-first hard-fork
 path from pinned Rapier plus selected Box2D study and ports where licensing,
@@ -19,12 +22,13 @@ yet.
 
 | Area | Status | Evidence and limit |
 |---|---|---|
-| Grounded controller | Implemented foundation | `meridian_physics` owns an engine-side grounded controller with fixed-step movement, crouch, slope handling, reset, and no jump/sprint contract for the current game movement. |
+| Grounded controller | `ImplementedFoundation` | `meridian_physics` owns an engine-side grounded controller with fixed-step movement, crouch, slope handling, reset, and no jump/sprint contract for the current game movement. |
 | Rapier wrapper | Transitional | `RapierWorld`, `RapierCharacter`, and opaque collider IDs wrap static boxes, fixed stepping, kinematic character movement, and controller correction. This does not define permanent Cairn API compatibility. |
-| Cairn provenance fork | Planned | Exact Rapier and Box2D commits, license archive, provenance manifest, differential tests, and baseline benchmarks still need Phase 3 execution. |
+| Cairn provenance fork | Planned | Exact Rapier and Box2D commits, license archive, provenance manifest, differential tests, and baseline benchmarks still need MS-01/MS-04/MS-06 execution. |
 | Data-oriented storage | Planned | Body/shape/solver storage must move to Cairn-native handles, hot/cold fields, and SIMD-aware layouts. |
 | Structural destruction | Planned flagship | Destructible connected structures are Cairn's first flagship, not a pile-of-boxes demo. |
 | Determinism modes | Planned | Stable, deterministic, and strict replay modes require measured platform guarantees and costs. |
+| Cairn 2D | Planned | First-class 2D requires dedicated 2D shapes, broadphase, contacts, joints, queries, character/movement seams, diagnostics, and stripped-build evidence. Box2D study does not implement this path. |
 
 ## 2. Context
 
@@ -50,6 +54,7 @@ zero-cost feature tiers.
 - Make destructible connected structures the first flagship.
 - Support optional deformables, vehicles, VR interaction, networking, and
   advanced simulation without recurring cost when disabled.
+- Provide a dedicated Cairn 2D world and solver path that shares identity, diagnostics, provenance, task, save, and query principles without pretending 2D and 3D storage or algorithms are interchangeable.
 
 ## 4. Non-goals
 
@@ -63,6 +68,7 @@ zero-cost feature tiers.
 - Do not implement structural destruction by only spawning disconnected debris.
 - Do not force all deformables, fluids, or structural behavior into one solver
   if specialized solvers are better after measurement.
+- Do not implement 2D by constraining a hidden 3D world, and do not require a 3D solver or 3D collision facets in a 2D-only target.
 
 ## 5. Ownership and Crate Boundaries
 
@@ -72,10 +78,12 @@ zero-cost feature tiers.
 | Planned `meridian-cairn-solver` | Rigid solver, islands, constraints, warm start, sleeping, CCD | Persistent save format interpretation |
 | Planned `meridian-cairn-structure` | Structural graph, bonds, fracture operations, support/load propagation | Visual mesh rendering policy |
 | Planned `meridian-cairn-deform` | Cloth/rope/soft-body/granular optional solvers | Required baseline rigid-body simulation |
+| Planned Cairn 2D modules | 2D bodies/shapes/contacts/joints/queries, dedicated storage and solver scheduling | 3D-world emulation, 2D gameplay decisions, Penumbra sprites |
 | `meridian-physics` transitional | Current Rapier-backed wrapper and grounded-controller tests | Permanent Cairn ownership once fork exists |
 | `meridian-world` | Spatial cells, origin rebasing, source IDs for physics entities | Solver internals |
 | `meridian-save` | Persisted stable physics state and schema migrations | Direct solver memory dumps |
 | Editor physics tools | Debug panels, previews, authoring controls, stress/failure visualization | Hidden runtime state outside schemas |
+| The Alluvium Engine | Collision, physical-material, constraint, structural, and fracture-rule source facets | Live Cairn world, contacts, constraints, solver state, or destruction authority |
 
 Invalid dependencies:
 
@@ -86,6 +94,8 @@ Invalid dependencies:
   meshes on a server.
 - Save data must serialize Cairn descriptors and state, not internal array
   indices without generation/version checks.
+- Cairn runtime must not invoke Alluvium editor/compiler internals or infer
+  physical authority from visual artifacts.
 
 ## 6. Provenance and Fork Procedure
 
@@ -129,6 +139,9 @@ pub struct CairnColliderId { pub index: u32, pub generation: u32 }
 pub struct CairnConstraintId { pub index: u32, pub generation: u32 }
 pub struct CairnStructureId { pub index: u32, pub generation: u32 }
 pub struct CairnMaterialId(pub u128);
+pub struct CairnWorld2dId(pub u64);
+pub struct CairnBody2dId { pub index: u32, pub generation: u32 }
+pub struct CairnCollider2dId { pub index: u32, pub generation: u32 }
 ```
 
 Handles are stable only within their declared world lifetime. Persistent save
@@ -190,6 +203,17 @@ pub trait CairnWorld {
 ```
 
 No method returns mutable aliases into hot solver arrays.
+
+### 7.4 Dedicated 2D Contracts
+
+```text
+RigidBody2dDesc { body_type, transform2d, velocity2d, mass, damping, flags }
+Shape2dDesc { circle | capsule | box | segment | polygon | chain | compound }
+Collider2dDesc { shape, material, layer, filter, sensor, one_way_policy }
+CairnWorld2d { create, remove, step, query, snapshot, diagnostics }
+```
+
+2D and 3D IDs, coordinate spaces, descriptors, worlds, contacts, joints, and query results are distinct types. Shared semantic material IDs and source entity IDs may map into either dimension. Mixed projects bridge dimensions only through explicit gameplay or authored portal/projection contracts; implicit collision across dimensions is forbidden.
 
 ## 8. Data-oriented Storage
 
@@ -516,6 +540,7 @@ debris.
 | No physics | Cairn crates, collision facets, solver tasks, and physics package chunks are omitted. |
 | Queries only | Static collision/query acceleration only; no dynamic solver step. |
 | Opening slice | Grounded controller, static environment collision, triggers/sensors, simple dynamic interactions. |
+| First-class 2D | Dedicated 2D bodies, colliders, queries, sensors, joints, contacts, replay, and editor diagnostics. |
 | Standard rigid | Dynamic bodies, joints, motors, CCD, character controller, deterministic snapshots. |
 | Structural | Structural graph, breakable bonds, runtime fracture budget, debris policy. |
 | Advanced | deformables, vehicles, VR hand solve, fluids/granular coupling, GPU secondary sims. |
@@ -528,13 +553,13 @@ load no collision artifacts, and write no save records.
 
 | Decision | Alternatives | Gate |
 |---|---|---|
-| Fork baseline | Rapier stable, Rapier development revision, selected rewrite | Phase 3; correctness, maturity, license, performance, and API fit. |
-| 2D algorithm reuse | Box2D study only, direct ports, rewrites | Phase 3/13; provenance, license, dimensional fit, and test value. |
-| Broadphase | dynamic BVH, SAP, grids, tiled static BVH | Phase 3/8/13 scene corpus. |
-| Penetration depth | EPA, MPR, SAT-specific paths, alternative contact generation | Phase 3 fuzz and differential tests. |
-| Solver | sequential impulse, TGS, XPBD, split impulse, specialized structural solver | Phase 3 and Phase 13 benchmark scenes. |
-| SIMD layout | SoA, AoSoA, scalar fallback, runtime dispatch | Phase 3/13; Apple Silicon first, then x86-64/Windows/Linux evidence. |
-| Fracture geometry | authored chunks, Voronoi, robust booleans, voxel/level-set, tetrahedral | Phase 13; nonmanifold robustness and artist control. |
+| Fork baseline | Rapier stable, Rapier development revision, selected rewrite | MS-01/MS-04/MS-06; correctness, maturity, license, performance, and API fit. |
+| 2D algorithm reuse | Box2D study only, direct ports, rewrites | MS-01, MS-04, MS-06, and MS-08; provenance, license, dimensional fit, and test value. |
+| Broadphase | dynamic BVH, SAP, grids, tiled static BVH | MS-01, MS-04, MS-06, and MS-08 scene corpus. |
+| Penetration depth | EPA, MPR, SAT-specific paths, alternative contact generation | MS-01/MS-04/MS-06 fuzz and differential tests. |
+| Solver | sequential impulse, TGS, XPBD, split impulse, specialized structural solver | MS-01/MS-04/MS-06 and MS-08 benchmark scenes. |
+| SIMD layout | SoA, AoSoA, scalar fallback, runtime dispatch | MS-01, MS-04, MS-06, and MS-08; Apple Silicon first, then x86-64/Windows/Linux evidence. |
+| Fracture geometry | authored chunks, Voronoi, robust booleans, voxel/level-set, tetrahedral | MS-08; nonmanifold robustness and artist control. |
 
 ## 19. Tests, Benchmarks, and Acceptance Evidence
 
@@ -550,7 +575,8 @@ Required tests:
 - CCD tunneling fixtures;
 - deterministic replay fixtures;
 - fuzz tests for degenerate geometry;
-- differential tests against pinned Rapier for selected baseline behaviors;
+- differential tests against pinned Rapier for selected 3D baseline behaviors and separately licensed/provenanced 2D references where selected;
+- dedicated 2D shape-pair, joint, query, one-way-platform, determinism, save/replay, and zero-hidden-3D-cost fixtures;
 - provenance manifest validation;
 - grounded-controller movement and reset tests;
 - structural bond break/reconnect tests;
@@ -571,7 +597,7 @@ Required benchmarks:
 - strict replay overhead;
 - Apple Silicon/NEON first, then Linux and Windows target evidence.
 
-Acceptance evidence for Phase 3:
+Acceptance evidence for MS-01/MS-04/MS-06:
 
 - pinned provenance manifest;
 - differential harness;
@@ -581,7 +607,7 @@ Acceptance evidence for Phase 3:
 - benchmark report;
 - migration note freezing further Rapier-wrapper expansion.
 
-Acceptance evidence for Phase 13:
+Acceptance evidence for MS-08:
 
 - connected structure with authored/generated chunks;
 - support graph and bond damage;
@@ -590,18 +616,19 @@ Acceptance evidence for Phase 13:
 - visual/collision/server representation split;
 - tests, benchmarks, and performance captures.
 
-## 20. Phased Implementation
+## 20. Delivery Mapping
 
-| Phase | Scope |
+| Milestone | Scope |
 |---|---|
-| Phase 3 | Cairn fork foundation, provenance, body/shape API, broadphase/narrowphase start, fixed timestep, character collision, differential suite. |
-| Phase 5 | Collision facets integrate with asset/world/package formats. |
-| Phase 8 | Opening-forest grounded movement, collision, triggers, save/export evidence. |
-| Phase 13 | Structural destruction flagship. |
-| Phase 19 | VR hands/controllers, grab constraints, haptic event extraction. |
-| Phase 21 | Deformables, vegetation coupling, fire/thermal research prototypes. |
-| Phase 22 | Multiplayer prediction, replication, rollback scope. |
-| Phase 29 | 1.0 hardening and long-term compatibility. |
+| MS-01/MS-04/MS-06 | Cairn fork foundation, provenance, body/shape API, broadphase/narrowphase start, fixed timestep, character collision, differential suite. |
+| MS-01/MS-03/MS-04 | Collision facets integrate with asset/world/package formats. |
+| MS-06/MS-07 | Opening-forest grounded movement, collision, triggers, save/export evidence. |
+| MS-08 | Structural destruction flagship. |
+| MS-08 | `WP-TWO-001` integrates a dedicated Cairn 2D baseline and public 2D validation project. |
+| MS-09 | VR hands/controllers, grab constraints, haptic event extraction. |
+| MS-08 | Deformables, vegetation coupling, fire/thermal research prototypes. |
+| MS-09 | Multiplayer prediction, replication, rollback scope. |
+| MS-10 | 1.0 hardening and long-term compatibility. |
 
 ## 21. End-to-end Example
 
@@ -654,3 +681,7 @@ Acceptable fixes include lowering structural quality tier, delaying fragment
 promotion, merging tiny debris, changing bond thresholds, or moving high-quality
 solve offline. Each change needs before/after benchmark evidence for the same
 scene and hardware.
+Physics-authored interactions expose comfort and accessibility consequences:
+camera impulse, haptics, required reach/precision, timing windows, alternative
+input, and reduced-motion behavior. Debug overlays have keyboard/semantic table
+alternatives and never encode collision or stability state by color alone.
