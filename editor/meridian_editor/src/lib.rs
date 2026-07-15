@@ -64,6 +64,7 @@ const COLLISION_ASSET_NAME: &str = "fixtures/ms01/public-triangle.collision";
 const CELL_ASSET_NAME: &str = "fixtures/ms01/world-cell-0-0-0";
 const SAVE_COMPONENT: &str = "meridian.ms01.position";
 const EVIDENCE_CAPACITY: usize = 512;
+const UI_SMOKE_MAX_PRESENT_ATTEMPTS: u8 = 3;
 
 type AppResult<T> = Result<T, Box<dyn Error>>;
 
@@ -1126,6 +1127,7 @@ struct UiNativeSmokeApplication {
     rhi: Option<Rhi>,
     renderer: Option<UiOverlayRenderer>,
     structural_fallback_submitted: bool,
+    surface_attempts: u8,
 }
 
 impl UiNativeSmokeApplication {
@@ -1145,6 +1147,7 @@ impl UiNativeSmokeApplication {
             rhi: None,
             renderer: None,
             structural_fallback_submitted: false,
+            surface_attempts: 0,
         };
         application.refresh_display(WindowSize::new(960, 540), 1.0);
         Ok(application)
@@ -1219,17 +1222,24 @@ impl UiNativeSmokeApplication {
                 report.incomplete_text_primitives
             );
             self.advance_stage(context)?;
-        } else if outcome.recoverable() {
-            context.request_redraw();
         } else {
-            self.submit_structural_fallback(context)?;
+            self.surface_attempts = self.surface_attempts.saturating_add(1);
+            self.submit_structural_fallback()?;
+            if self.surface_attempts >= UI_SMOKE_MAX_PRESENT_ATTEMPTS {
+                println!(
+                    "Meridian UI native smoke {:?} did not present after {} attempts; retaining structural-only evidence",
+                    self.stage, self.surface_attempts
+                );
+                self.advance_stage(context)?;
+            } else {
+                context.request_redraw();
+            }
         }
         Ok(())
     }
 
-    fn submit_structural_fallback(&mut self, context: &mut PlatformContext<'_>) -> AppResult<()> {
+    fn submit_structural_fallback(&mut self) -> AppResult<()> {
         if self.structural_fallback_submitted {
-            context.exit();
             return Ok(());
         }
         let (Some(rhi), Some(renderer)) = (self.rhi.as_mut(), self.renderer.as_ref()) else {
@@ -1241,7 +1251,6 @@ impl UiNativeSmokeApplication {
             "Meridian UI native smoke {:?} surface unavailable; raster bridge submitted offscreen structural validation only",
             self.stage
         );
-        self.advance_stage(context)?;
         Ok(())
     }
 
@@ -1252,6 +1261,7 @@ impl UiNativeSmokeApplication {
         }
         self.stage = UiSmokeStage::RuntimeOverlay;
         self.structural_fallback_submitted = false;
+        self.surface_attempts = 0;
         self.rebuild_for_size(self.physical_size, f64::from(self.scale_factor))?;
         context.request_redraw();
         Ok(())

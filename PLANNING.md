@@ -284,6 +284,11 @@ panel's local surface was occluded and submitted structural evidence; the
 runtime overlay presented locally. No production renderer selection or
 qualifying milestone evidence has landed.
 
+Disabled-cost evidence so far: the bridge is the opt-in
+`meridian-renderer/ui-raster-bridge` feature selected by `meridian-editor`;
+`cargo tree -p meridian-rt` contains no `meridian-ui` dependency. This is a
+package-graph audit, not a substitute for the remaining runtime trace evidence.
+
 User-visible result: Meridian gains one native, keyboard-operable recovery
 panel and one runtime overlay from an immutable Meridian-owned display list,
 with a deterministic headless fixture and a semantic-tree snapshot. This is the
@@ -299,9 +304,9 @@ platform/input/renderer seams and the UI/accessibility specifications have been
 inspected. `DEP-UI-001` records the text-shaping boundary; `RG-UI-001` remains
 closed until after MS-02 and does not select a production display-list renderer.
 
-Owned files/crates: `engine/meridian_ui`, `engine/meridian_renderer`,
-`editor/meridian_editor`, and only the Meridian-owned RHI bridge required to
-present the immutable overlay;
+Owned files/crates: `engine/meridian_ui`, the opt-in
+`meridian-renderer/ui-raster-bridge` feature, `editor/meridian_editor`, and
+only the Meridian-owned RHI bridge required to present the immutable overlay;
 `Cargo.toml`, `Cargo.lock`, the UI/accessibility authority, registries, and
 this plan change only when evidence requires them.
 

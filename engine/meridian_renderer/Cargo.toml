@@ -4,13 +4,16 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+ui-raster-bridge = ["dep:meridian-ui"]
+
 [dependencies]
 bevy_ecs.workspace = true
 meridian-core = { path = "../meridian_core" }
 meridian-diagnostics = { path = "../meridian_diagnostics" }
 meridian-platform = { path = "../meridian_platform" }
 meridian-rhi = { path = "../meridian_rhi" }
-meridian-ui = { path = "../meridian_ui" }
+meridian-ui = { path = "../meridian_ui", optional = true }
 
 [lints]
 workspace = true

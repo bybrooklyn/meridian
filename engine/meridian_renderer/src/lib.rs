@@ -12,6 +12,7 @@ mod lighting;
 mod mesh;
 mod resources;
 mod snapshot;
+#[cfg(feature = "ui-raster-bridge")]
 mod ui_overlay;
 mod upload;
 
@@ -38,6 +39,7 @@ pub use snapshot::{
     MaterialHandle, MeshHandle, RenderFlags, RenderInstance, RenderInstanceId, RenderSnapshot,
     RenderSnapshotBuilder, SnapshotError, TextureHandle, Transform,
 };
+#[cfg(feature = "ui-raster-bridge")]
 pub use ui_overlay::{UiOverlayRenderReport, UiOverlayRenderer, UiOverlayRendererError};
 pub use upload::{
     RenderUploadBatch, RenderUploadError, RenderUploadOperation, RenderUploadTracker,

@@ -17,7 +17,7 @@ meridian-diagnostics = { path = "../../engine/meridian_diagnostics" }
 meridian-input = { path = "../../engine/meridian_input" }
 meridian-package = { path = "../../engine/meridian_package" }
 meridian-platform = { path = "../../engine/meridian_platform" }
-meridian-renderer = { path = "../../engine/meridian_renderer" }
+meridian-renderer = { path = "../../engine/meridian_renderer", features = ["ui-raster-bridge"] }
 meridian-rhi = { path = "../../engine/meridian_rhi" }
 meridian-rt = { path = "../../engine/meridian_rt" }
 meridian-save = { path = "../../engine/meridian_save" }
