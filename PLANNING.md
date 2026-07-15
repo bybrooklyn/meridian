@@ -6,7 +6,8 @@ Status: `MS-01` and `WP-REL-002` passed qualification on GitHub Actions run
 `29452928922` for source checkpoint `010db80`: governance plus Linux, Windows,
 and macOS workspace/headless-smoke rows passed. All named MS-01 implementation
 packages are closed with fresh evidence. `WP-UI-001` is the sole active package;
-its execution readiness and partial implementation status are recorded below.
+its local implementation-foundation evidence is recorded below, while its
+cross-platform MS-02 qualification remains unregistered.
 
 ## 1. Authority and stop rule
 
@@ -27,7 +28,8 @@ online, distributed-world, integrity, or simulation system.
 | Penumbra | `Partial` / `Transitional` | direct PBR, cascaded shadows, diffuse irradiance IBL, extraction/upload, typed pass timing, asynchronous visible capture, and structural/native GPU smokes exist |
 | Assets/world/streaming/save | `ImplementedFoundation` / `Partial` | one bounded public source family imports transactionally, packages, worker-streams, activates, saves, recovers, and reconstructs; production schemas/compression/signing remain incomplete |
 | Cairn | `Transitional` | current Rapier wrapper and grounded controller are evidence; Meridian-owned Cairn internals are not implemented |
-| Meridian UI, Creator Editor, audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | the `meridian-editor` package now owns the MS-01 **Meridian** executable, not Creator Editor Alpha or Meridian UI |
+| Meridian UI | `ImplementedFoundation` | retained layout, text input, semantics, deterministic fixtures, an opt-in raster bridge, and local native/headless smokes exist; MS-02 cross-platform qualification remains unregistered |
+| Creator Editor, audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | the `meridian-editor` package now owns the MS-01 **Meridian** executable, not Creator Editor Alpha |
 | Alluvium | `Planned` | current v0.5 authority preserves the v0.4 adoption, requirements, packages, gates, and risks; no crate, evaluator, recipe parser, inspector, cook path, or corpus exists |
 | Native modeler, Rust gameplay, Luau, animation, navigation, frameworks, first-class 2D, Meridian Shader Language, Collective | `Planned` or `Deferred` | specifications and registries exist; no product implementation claim |
 | Torsant, networking, XR, modding, agents, VCS/sync | `Planned`, `Research`, or `Deferred` | no production implementation claim |
@@ -277,13 +279,14 @@ Next unblocked package: `WP-UI-001`, now active
 
 ## 10. Active package — WP-UI-001 / MS-02 Meridian UI core proof
 
-Execution status: `Active`. Implementation maturity: `Partial`; retained UI
-contracts, deterministic fixtures, system-font glyph rasterization, and a
-bounded temporary native two-stage raster bridge are implemented. The recovery
-panel first reported an unavailable local surface and submitted structural
-fallback evidence, then presented on retry; the runtime overlay also presented
-locally. No production renderer selection or qualifying milestone evidence has
-landed.
+Execution status: `Active`. Implementation maturity: `ImplementedFoundation`;
+retained UI contracts, deterministic fixtures, system-font glyph rasterization,
+and a bounded temporary native two-stage raster bridge are implemented. The
+recovery panel first reported an unavailable local surface and submitted
+structural fallback evidence, then presented on retry; the runtime overlay also
+presented locally. `EV-UI-20260715-001` records that scoped local result. No
+production renderer selection or qualifying cross-platform milestone evidence
+has landed.
 
 Disabled-cost evidence: the bridge is the opt-in
 `meridian-renderer/ui-raster-bridge` feature selected only by
@@ -363,9 +366,12 @@ the overlay cannot rebuild after device loss. In that case retain the logical
 contracts and revert only the failed renderer adapter path.
 
 Next review: close only after the MS-02 keyboard/semantic/layout/disabled-cost
-evidence is registered and the native panel/overlay result is separately labeled
-for any unsupported or occluded surface. `WP-BLD-001` is the next MS-03 critical
-path candidate after MS-02 `Pass`.
+evidence is qualified on Linux, Windows, and macOS and the native panel/overlay
+result remains separately labeled for any unsupported or occluded surface. The
+local foundation is registered as `EV-UI-20260715-001`; its GitHub Actions
+qualifier is temporarily uninspectable because the authenticated API is rate
+limited. `WP-BLD-001` is the next MS-03 critical-path candidate only after
+MS-02 `Pass`.
 
 ## 11. Evidence policy
 

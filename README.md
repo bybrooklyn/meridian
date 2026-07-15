@@ -41,7 +41,8 @@ asset/world/streaming/save, and physics-wrapper foundations. Passing tests and
 structural/native GPU smokes prove those boundaries only. The MS-01 `meridian`
 executable now imports a public fixture, packages/streams/activates it, renders
 package-derived geometry, writes an explicitly presented-or-offscreen PNG and
-correlated evidence, and proves save recovery. Meridian UI, Creator Editor,
+correlated evidence, and proves save recovery. Meridian UI has a local core
+foundation with separately scoped evidence; Creator Editor,
 clustered Forward+, Alluvium, the native modeler, Rust gameplay modules, Luau,
 first-class 2D, animation, navigation, official frameworks, Wavefront runtime,
 Collective, Isobar, Basalt, Torsant, the Project Meridian prototype, native

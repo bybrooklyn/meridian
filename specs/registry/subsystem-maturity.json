@@ -7,7 +7,7 @@
     {"domain":"RUN","spec":"specs/CORE_RUNTIME_TASKS_AND_PLATFORM_SPEC.md","documentation":"ImplementationReady","implementation":"ImplementedFoundation","requirements":["REQ-RUN-001"]},
     {"domain":"RHI","spec":"specs/RENDERING_AND_GRAPHICS_SPEC.md","documentation":"ResearchReady","implementation":"ImplementedFoundation","requirements":["REQ-RHI-001","REQ-RHI-002","REQ-RHI-003"]},
     {"domain":"PEN","spec":"specs/RENDERING_AND_GRAPHICS_SPEC.md","documentation":"ResearchReady","implementation":"Transitional","requirements":["REQ-PEN-001","REQ-PEN-002","REQ-PEN-003","REQ-PEN-004","REQ-PEN-005"]},
-    {"domain":"UI","spec":"specs/EDITOR_AND_MERIDIAN_UI_SPEC.md","documentation":"ImplementationReady","implementation":"Partial","requirements":["REQ-UI-001"]},
+    {"domain":"UI","spec":"specs/EDITOR_AND_MERIDIAN_UI_SPEC.md","documentation":"ImplementationReady","implementation":"ImplementedFoundation","requirements":["REQ-UI-001"]},
     {"domain":"EDT","spec":"specs/EDITOR_AND_MERIDIAN_UI_SPEC.md","documentation":"ImplementationReady","implementation":"Scaffold","requirements":["REQ-EDT-001"]},
     {"domain":"DAT","spec":"specs/ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md","documentation":"ImplementationReady","implementation":"Partial","requirements":["REQ-DAT-001"]},
     {"domain":"PHY","spec":"specs/CAIRN_PHYSICS_SPEC.md","documentation":"ResearchReady","implementation":"Transitional","requirements":["REQ-PHY-001"]},

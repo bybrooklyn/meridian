@@ -2,10 +2,10 @@
 
 [Master](MERIDIAN_MASTER_SPEC.md) · [ADR-0018](../docs/architecture/decisions/ADR-0018-general-purpose-single-application.md) · [Accessibility](ACCESSIBILITY_DOCUMENTATION_AND_PONDER_SPEC.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Shader language](MERIDIAN_SHADER_LANGUAGE_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Commands](AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md)
 
-version 0.5 · 2026-07-15 · Normative · Meridian UI Planned, egui shell Transitional
+version 0.5 · 2026-07-15 · Normative · Meridian UI core proof ImplementedFoundation, egui shell Transitional
 
 Documentation maturity: `ImplementationReady`. Implementation maturity:
-`Partial`. Governing IDs: `REQ-UI-001`, `REQ-EDT-001`, `WP-UI-001`,
+`ImplementedFoundation`. Governing IDs: `REQ-UI-001`, `REQ-EDT-001`, `WP-UI-001`,
 `WP-EDT-001`, `RG-UI-001`.
 
 Research anchors: [AccessKit](https://accesskit.dev/) and [AccessKit Rust API](https://docs.rs/accesskit) inform accessibility adapter boundaries; [OpenXR 1.1](https://registry.khronos.org/OpenXR/specs/1.1/html/xrspec.html) informs later XR panel timing and composition boundaries. Meridian owns UI IR, semantics, layout, commands, and persistence.

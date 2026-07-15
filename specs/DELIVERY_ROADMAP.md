@@ -30,7 +30,7 @@ Every milestone review records:
 | Governance and release | GOV, REL, SEC | truthful specifications, evidence, trust, compatibility, and release policy | v0.5 closure passed locally; remote Actions remains `NotRun` |
 | Runtime and platform | CORE, RUN | clocks, tasks, diagnostics, input, platform lifecycle, recovery | implemented foundations; platform matrix incomplete |
 | RHI and Penumbra | RHI, PEN | capability-driven GPU abstraction and Meridian-owned renderer | direct PBR/shadow/diffuse-IBL foundation; production Forward+ incomplete |
-| Creator experience | UI, EDT | Meridian UI and an accessible, recoverable editor | scaffolds only |
+| Creator experience | UI, EDT | Meridian UI and an accessible, recoverable editor | local Meridian UI core foundation; Creator Editor Alpha remains planned |
 | Data and production | DAT, BLD, MDL, DCC | source authority, imports, worlds, packages, saves, build graph, native modeling, optional DCC tools | partial data foundations; modeler and most production tooling planned |
 | World authoring and simulation | PHY, ISO, BAS, VEG, PRC, TOR | Cairn, Isobar, Basalt, vegetation, Alluvium, and coupled simulation | physics wrapper transitional; named environmental crates scaffold; Alluvium planned |
 | Game and media | GAM, FWK, ANI, NAV, PRJ, AUD | Rust-first gameplay, optional Luau, reusable frameworks, animation/navigation, Project Meridian, Wavefront | game external; Wavefront scaffold; other domains planned |
