@@ -1,0 +1,11 @@
+[package]
+name = "meridian-physics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rapier3d.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "meridian-ecs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy_ecs.workspace = true
+meridian-renderer = { path = "../meridian_renderer" }
+
+[lints]
+workspace = true

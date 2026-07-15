@@ -1,0 +1,7 @@
+/target/
+/game/
+/.mcp.json
+/assets_built/**
+!/assets_built/.gitkeep
+/benchmarks/results/
+.DS_Store

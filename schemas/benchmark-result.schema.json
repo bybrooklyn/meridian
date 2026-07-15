@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Meridian benchmark result",
+  "type": "object",
+  "required": ["scene", "build_hash", "asset_hash", "backend", "preset", "metrics"],
+  "properties": {
+    "scene": {"type": "string"},
+    "build_hash": {"type": "string"},
+    "asset_hash": {"type": "string"},
+    "backend": {"type": "string"},
+    "preset": {"type": "string"},
+    "camera_path": {"type": "string"},
+    "time_of_day": {"type": "string"},
+    "weather": {"type": "string"},
+    "metrics": {
+      "type": "object",
+      "required": ["cpu_frame_ms", "gpu_frame_ms", "median_fps", "one_percent_low_fps", "worst_frame_ms"],
+      "properties": {
+        "cpu_frame_ms": {"type": "number", "minimum": 0},
+        "gpu_frame_ms": {"type": "number", "minimum": 0},
+        "gpu_time_samples": {"type": "integer", "minimum": 0},
+        "average_gpu_frame_ms": {"type": "number", "minimum": 0},
+        "worst_gpu_frame_ms": {"type": "number", "minimum": 0},
+        "median_fps": {"type": "number", "minimum": 0},
+        "one_percent_low_fps": {"type": "number", "minimum": 0},
+        "zero_point_one_percent_low_fps": {"type": "number", "minimum": 0},
+        "worst_frame_ms": {"type": "number", "minimum": 0},
+        "frame_time_stddev_ms": {"type": "number", "minimum": 0},
+        "process_memory_mb": {"type": "number", "minimum": 0},
+        "gpu_memory_mb": {"type": "number", "minimum": 0},
+        "pipeline_creation_events": {"type": "integer", "minimum": 0},
+        "pipeline_count": {"type": "integer", "minimum": 0},
+        "required_pipeline_count": {"type": "integer", "minimum": 0},
+        "warmed_pipeline_count": {"type": "integer", "minimum": 0},
+        "startup_pipeline_creation_events": {"type": "integer", "minimum": 0},
+        "runtime_pipeline_creation_attempts": {"type": "integer", "minimum": 0},
+        "pipeline_runtime_ready": {"type": "boolean"},
+        "streaming_upload_bytes": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
