@@ -2,10 +2,11 @@
 
 [Master](MERIDIAN_MASTER_SPEC.md) · [ADR-0018](../docs/architecture/decisions/ADR-0018-general-purpose-single-application.md) · [Architecture](REPOSITORY_AND_CRATE_ARCHITECTURE.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Shader language](MERIDIAN_SHADER_LANGUAGE_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [VCS](VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md)
 
-version 0.5 · 2026-07-15 · Normative · Current Cargo workspace foundation, build service Planned
+version 0.5 · 2026-07-15 · Normative · Current Cargo workspace foundation, build service Partial
 
 Documentation maturity: `ImplementationReady`. Implementation maturity:
-`Planned` with current Cargo/CI foundations. Governing IDs: `REQ-BLD-001`,
+`Partial` with current Cargo/CI foundations and a bounded `meridian-build`
+service/CLI slice. Governing IDs: `REQ-BLD-001`,
 `WP-BLD-001`.
 
 ## 1. Goals and non-goals
@@ -19,7 +20,13 @@ Non-goals: replacing Cargo or rust-analyzer, creating separate Meridian Studio/I
 ## 2. Ownership and processes
 
 - meridian-project: project/workspace/profile source documents and Cargo mapping.
-- meridian-build: build graph, scheduler, operation state, cache/provenance.
+- meridian-build: current bounded editor-only service foundation for deterministic
+  local BuildIds, typed operation/event state, bounded Cargo metadata and
+  redacted Cargo JSON mapping, structured Cargo checks, cancellation, and a
+  helper CLI. Its bounded versioned snapshot marks interrupted operations
+  `WorkerLost`; full DAG scheduling, cross-checkout identity normalization,
+  host-owned cache/provenance persistence, and worker supervision remain
+  planned.
 - meridian-build-protocol: versioned editor/service/worker messages.
 - meridian-cargo: cargo metadata, JSON messages, rustc artifacts, tests.
 - meridian-ide: language-server/session, code intelligence, debugger, test, profiler, and source-navigation contracts used inside Meridian.

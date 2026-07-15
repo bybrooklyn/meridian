@@ -33,7 +33,7 @@ Use the status vocabulary from the master specification:
 | [ADR-0006](ADR-0006-meridian-rhi-wgpu-native-backend.md) | Meridian RHI, wgpu, and Native Backend Boundary | Adopted | Implemented RHI foundation; native backend planned/research |
 | [ADR-0007](ADR-0007-material-shader-ir.md) | Material and Shader IR Authority | Adopted | Transitional WGSL foundation; IR planned |
 | [ADR-0008](ADR-0008-isobar-basalt-torsant-boundaries.md) | Isobar, Basalt, and Torsant Boundaries | Adopted | Isobar/Basalt scaffold; Torsant planned |
-| [ADR-0009](ADR-0009-editor-first.md) | Editor-first Product Architecture | Adopted | Transitional editor shell; Meridian UI core foundation locally implemented, cross-platform qualification pending |
+| [ADR-0009](ADR-0009-editor-first.md) | Editor-first Product Architecture | Adopted | Transitional editor shell; Meridian UI core proof qualified, Creator Editor Alpha planned |
 | [ADR-0010](ADR-0010-cairn.md) | Cairn Physics Ownership | Adopted | Transitional Rapier wrapper; Cairn planned |
 | [ADR-0011](ADR-0011-data-authority.md) | Source Data Authority | Adopted | Partial data foundations |
 | [ADR-0012](ADR-0012-luau.md) | Luau as Initial High-level Runtime | Amended by ADR-0019 | Planned after the Rust-first gameplay foundation |

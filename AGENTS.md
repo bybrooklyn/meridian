@@ -17,18 +17,21 @@ Actions run `29452928922`: governance plus the Linux, Windows, and macOS
 workspace/headless-smoke rows all passed for `010db80`. The repository has runtime, RHI,
 render-graph, direct PBR, cascaded-shadow, diffuse-irradiance IBL,
 extraction/upload, asynchronous capture, transactional source import, package,
-streaming, save-recovery, and physics-wrapper foundations. The production
-Penumbra Forward+ path, Meridian UI, Creator Editor, Alluvium, native modeler,
+streaming, save-recovery, physics-wrapper, and bounded Cargo metadata/JSON
+build-service foundations. The production
+Penumbra Forward+ path, Creator Editor, Alluvium, native modeler,
 Rust gameplay modules, optional Luau, animation, navigation, frameworks,
 first-class 2D, Meridian Shader Language, Wavefront runtime, Collective,
 Isobar, Basalt, Torsant, native backends, game prototype, and post-1.0 programs
 remain incomplete.
 
-`WP-UI-001` is the sole active package. Its execution plan is recorded in
-PLANNING; its implementation maturity is `Partial`, without MS-02 completion
-or qualifying evidence. Alluvium architecture is adopted but implementation
-remains `Planned`; do not activate a PRC package unless PLANNING records its
-Definition of Ready.
+`WP-UI-001` is `ImplementedFoundation` and MS-02 passed qualification on
+GitHub Actions run `29457181283` for `fb8323f`: governance plus Linux, Windows,
+and macOS workspace, UI-headless, UI-free runtime, and dependency-audit rows
+passed. `WP-BLD-001` is the sole active package once PLANNING records its
+Definition of Ready. Alluvium architecture is adopted but implementation remains
+`Planned`; do not activate a PRC package unless PLANNING records its Definition
+of Ready.
 
 ## 3. Repository and private-game boundary
 

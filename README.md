@@ -41,9 +41,9 @@ asset/world/streaming/save, and physics-wrapper foundations. Passing tests and
 structural/native GPU smokes prove those boundaries only. The MS-01 `meridian`
 executable now imports a public fixture, packages/streams/activates it, renders
 package-derived geometry, writes an explicitly presented-or-offscreen PNG and
-correlated evidence, and proves save recovery. Meridian UI has a local core
-foundation with separately scoped evidence; Creator Editor,
-clustered Forward+, Alluvium, the native modeler, Rust gameplay modules, Luau,
+correlated evidence, and proves save recovery. Meridian UI's MS-02 core proof
+is qualified with separately scoped headless and local-native evidence; Creator Editor,
+clustered Forward+, a full build service, Alluvium, the native modeler, Rust gameplay modules, Luau,
 first-class 2D, animation, navigation, official frameworks, Wavefront runtime,
 Collective, Isobar, Basalt, Torsant, the Project Meridian prototype, native
 backends, and post-1.0 programs are not implemented.
@@ -63,6 +63,7 @@ cargo run -p meridian-editor --bin meridian -- --smoke
 cargo run -p meridian-editor --bin meridian -- --ui-headless-smoke
 cargo run -p meridian-rt --example headless_profile_smoke
 ! cargo tree -p meridian-rt | grep -q meridian-ui
+cargo run -p meridian-build --example cargo_service_smoke
 ~~~
 
 ## License

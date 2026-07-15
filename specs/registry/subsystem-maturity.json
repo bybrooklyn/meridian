@@ -20,7 +20,7 @@
     {"domain":"PRC","spec":"specs/PROCEDURAL_AUTHORING_SPEC.md","documentation":"ResearchReady","implementation":"Planned","requirements":["REQ-PRC-001","REQ-PRC-002","REQ-PRC-003","REQ-PRC-004","REQ-PRC-005","REQ-PRC-006","REQ-PRC-007","REQ-PRC-008","REQ-PRC-009"]},
     {"domain":"TOR","spec":"specs/TORSANT_FIRE_FLUIDS_AND_THERMAL_SIMULATION_SPEC.md","documentation":"ResearchReady","implementation":"Research","requirements":["REQ-TOR-001"]},
     {"domain":"DCC","spec":"specs/REPOSITORY_AND_CRATE_ARCHITECTURE.md","documentation":"ArchitectureComplete","implementation":"Deferred","requirements":["REQ-DCC-001"]},
-    {"domain":"BLD","spec":"specs/CARGO_IDE_BUILD_AND_TEAM_WORKFLOWS.md","documentation":"ImplementationReady","implementation":"Planned","requirements":["REQ-BLD-001"]},
+    {"domain":"BLD","spec":"specs/CARGO_IDE_BUILD_AND_TEAM_WORKFLOWS.md","documentation":"ImplementationReady","implementation":"Partial","requirements":["REQ-BLD-001"]},
     {"domain":"VCS","spec":"specs/VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md","documentation":"ResearchReady","implementation":"Research","requirements":["REQ-VCS-001"]},
     {"domain":"SYN","spec":"specs/VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md","documentation":"ResearchReady","implementation":"Deferred","requirements":["REQ-SYN-001"]},
     {"domain":"XR","spec":"specs/VR_XR_AND_INTERACTION_SPEC.md","documentation":"ResearchReady","implementation":"Deferred","requirements":["REQ-XR-001"]},

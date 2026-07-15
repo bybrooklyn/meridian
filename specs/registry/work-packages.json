@@ -51,7 +51,7 @@
     {"id":"WP-PRJ-001","title":"Project Meridian consumer-game prototype","domain":"PRJ","status":"Planned","milestones":["MS-06"],"requirements":["REQ-PRJ-001"],"depends_on":["WP-EDT-001","WP-MDL-001","WP-PEN-011","WP-PRC-002","WP-PHY-001","WP-AUD-001","WP-GAM-001","WP-DAT-001","WP-BLD-001"]},
     {"id":"WP-PRJ-002","title":"Opening playable slice production integration","domain":"PRJ","status":"Planned","milestones":["MS-07"],"requirements":["REQ-PRJ-002"],"depends_on":["WP-PRJ-001"]},
     {"id":"WP-DCC-001","title":"Optional DCC roundtrip and live-link foundation","domain":"DCC","status":"Deferred","milestones":["MS-08"],"requirements":["REQ-DCC-001","REQ-MDL-004"],"depends_on":["WP-MDL-002"]},
-    {"id":"WP-BLD-001","title":"Observable build service and IDE integration","domain":"BLD","status":"Planned","milestones":["MS-03","MS-08"],"requirements":["REQ-BLD-001","REQ-CORE-002","REQ-CORE-004"]},
+    {"id":"WP-BLD-001","title":"Observable build service and IDE integration","domain":"BLD","status":"Active","milestones":["MS-03","MS-08"],"requirements":["REQ-BLD-001","REQ-CORE-002","REQ-CORE-004"]},
     {"id":"WP-VCS-001","title":"Meridian VCS and Git interoperability","domain":"VCS","status":"Research","milestones":["MS-08"],"requirements":["REQ-VCS-001"]},
     {"id":"WP-SYN-001","title":"Encrypted optional sync and collaboration","domain":"SYN","status":"Deferred","milestones":["MS-08","MS-09"],"requirements":["REQ-SYN-001"]},
     {"id":"WP-XR-001","title":"OpenXR timing, stereo, and interaction foundation","domain":"XR","status":"Deferred","milestones":["MS-09"],"requirements":["REQ-XR-001"]},

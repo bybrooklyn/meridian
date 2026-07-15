@@ -31,6 +31,7 @@ jobs:
       - run: cargo run -p meridian-editor --bin meridian -- --headless-smoke --frames 4
       - run: cargo run -p meridian-editor --bin meridian -- --ui-headless-smoke
       - run: cargo run -p meridian-rt --example headless_profile_smoke
+      - run: cargo run -p meridian-build --example cargo_service_smoke
       - name: Verify minimal runtime has no UI dependency
         shell: bash
         run: |

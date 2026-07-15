@@ -3,7 +3,7 @@
 - Status: Adopted
 - Date: 2026-07-15
 - Spec version: v0.3
-- Implementation status: Transitional editor shell; Meridian UI core foundation locally implemented, cross-platform qualification pending
+- Implementation status: Transitional editor shell; Meridian UI core proof qualified, Creator Editor Alpha planned
 - Owners: meridian-editor-core, meridian-ui, meridian-editor-egui-bootstrap
 - Supersedes: none
 - Superseded by: none

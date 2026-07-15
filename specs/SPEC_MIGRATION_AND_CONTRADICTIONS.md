@@ -86,7 +86,8 @@ documentation to be confused with complete software.
 | Native renderer smoke | `StructuralSmoke` | Six-face upload and pipeline/bind-group construction; occluded outcome is not visual evidence. |
 | Asset/world/streaming/save | `Partial` | Useful foundations; authoritative source/import/package pipeline incomplete. |
 | Rapier wrapper/controller | `Transitional` | Not Cairn-owned implementation. |
-| Meridian UI, editor, Wavefront, Isobar, Basalt, vegetation | `Scaffold` unless narrower evidence is registered | Crate presence does not prove a usable product/system. |
+| Meridian UI | `ImplementedFoundation` | MS-02 qualified retained UI core; this does not claim Creator Editor workflows or platform accessibility adapters. |
+| Creator Editor, Wavefront, Isobar, Basalt, vegetation | `Scaffold` unless narrower evidence is registered | Crate presence does not prove a usable product/system. |
 | Alluvium | `Planned` | Architecture, requirements, packages, gates, risks, and examples exist; no implementation crate or product behavior exists. |
 | Native modeler, Rust gameplay modules, optional Luau, animation, navigation, frameworks, first-class 2D, Meridian Shader Language, Collective | `Planned` or `Deferred` | Documentation/contracts and registries only; no runtime/editor implementation claim. |
 | Torsant, networking, XR, mods, VCS/sync, agents | `Planned`, `Research`, or `Deferred` | No production implementation claim. |

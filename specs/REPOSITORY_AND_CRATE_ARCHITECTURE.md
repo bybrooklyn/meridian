@@ -104,7 +104,10 @@ wgpu, Rapier, egui, and AccessKit types MUST stop at their adapter crates. Exist
   history; its executable is `meridian` and user-facing title is **Meridian**.
   MS-01 native/headless integration exists; Creator Editor Alpha remains planned.
 - meridian-editor-egui-bootstrap: temporary shell only; deletable when Meridian UI migration gates pass.
-- meridian-build: long-lived build service and DAG.
+- meridian-build: editor-only build-service foundation with Meridian-owned
+  BuildId/request/event contracts, bounded Cargo JSON mapping, structured Cargo
+  checks, and a helper CLI; long-lived scheduling, durable cache/provenance,
+  and broad DAG adapters remain planned.
 - meridian-vcs and meridian-sync.
 - meridian-agent-api and provider adapters.
 - meridian-ponder.

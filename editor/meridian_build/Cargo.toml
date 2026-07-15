@@ -1,0 +1,18 @@
+[package]
+name = "meridian-build"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "meridian-build"
+path = "src/main.rs"
+
+[dependencies]
+blake3.workspace = true
+meridian-core = { path = "../../engine/meridian_core" }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -1639,6 +1639,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "meridian-build"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "meridian-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "meridian-core"
 version = "0.1.0"
 dependencies = [

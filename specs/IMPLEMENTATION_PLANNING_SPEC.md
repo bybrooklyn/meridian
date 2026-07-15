@@ -192,8 +192,11 @@ failure, or a required backend type leaks into a public engine/data API.
 `29452928922` passed governance and the macOS, Linux, and Windows workspace /
 headless-smoke rows for `010db80`. The native surface was occluded or
 unavailable, so the qualification preserves that surface outcome and uses a
-separately labeled offscreen-visible PNG. `WP-UI-001` is next but is not active
-until its Definition of Ready is recorded; no later package is implicitly active.
+separately labeled offscreen-visible PNG. `WP-UI-001` is
+`ImplementedFoundation` and MS-02 is `Pass`: GitHub Actions run `29457181283`
+passed governance plus Linux, Windows, and macOS UI-headless, UI-free runtime,
+and minimal-runtime dependency rows for `fb8323f`. `WP-BLD-001` is the sole
+active package once its Definition of Ready is recorded in `PLANNING.md`.
 
 ## 9. Milestone execution map
 
