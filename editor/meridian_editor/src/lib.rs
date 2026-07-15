@@ -1109,11 +1109,20 @@ fn suffixed_path(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(value)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UiSmokeStage {
+    Recovery,
+    RuntimeOverlay,
+}
+
 struct UiNativeSmokeApplication {
-    runtime: UiRuntime,
+    recovery_runtime: UiRuntime,
+    overlay_runtime: UiRuntime,
     display_list: DisplayList,
     logical_viewport: UiSize,
     scale_factor: f32,
+    physical_size: WindowSize,
+    stage: UiSmokeStage,
     rhi: Option<Rhi>,
     renderer: Option<UiOverlayRenderer>,
     structural_fallback_submitted: bool,
@@ -1121,13 +1130,18 @@ struct UiNativeSmokeApplication {
 
 impl UiNativeSmokeApplication {
     fn new() -> AppResult<Self> {
-        let document = recovery_panel_document()
+        let recovery_document = recovery_panel_document()
             .map_err(|error| io::Error::other(format!("recovery UI fixture invalid: {error:?}")))?;
+        let overlay_document = runtime_overlay_document()
+            .map_err(|error| io::Error::other(format!("runtime UI fixture invalid: {error:?}")))?;
         let mut application = Self {
-            runtime: UiRuntime::new(document),
+            recovery_runtime: UiRuntime::new(recovery_document),
+            overlay_runtime: UiRuntime::new(overlay_document),
             display_list: DisplayList::default(),
             logical_viewport: UiSize::new(960.0, 540.0),
             scale_factor: 1.0,
+            physical_size: WindowSize::new(960, 540),
+            stage: UiSmokeStage::Recovery,
             rhi: None,
             renderer: None,
             structural_fallback_submitted: false,
@@ -1137,6 +1151,7 @@ impl UiNativeSmokeApplication {
     }
 
     fn refresh_display(&mut self, physical_size: WindowSize, scale_factor: f64) {
+        self.physical_size = physical_size;
         self.scale_factor = f64_to_f32(scale_factor).clamp(0.5, 4.0);
         self.logical_viewport = UiSize::new(
             f64_to_f32(f64::from(physical_size.width) / f64::from(self.scale_factor)),
@@ -1145,10 +1160,13 @@ impl UiNativeSmokeApplication {
         let mut input = UiFrameInput::new(self.logical_viewport);
         input.scale_factor = self.scale_factor;
         input.high_contrast = true;
-        if self.display_list.primitives.is_empty() {
+        if self.stage == UiSmokeStage::Recovery {
             input.events.push(UiEvent::FocusNext);
         }
-        self.display_list = self.runtime.reconcile(input).display_list;
+        self.display_list = match self.stage {
+            UiSmokeStage::Recovery => self.recovery_runtime.reconcile(input).display_list,
+            UiSmokeStage::RuntimeOverlay => self.overlay_runtime.reconcile(input).display_list,
+        };
     }
 
     fn build_renderer(&self, rhi: &mut Rhi) -> AppResult<UiOverlayRenderer> {
@@ -1194,12 +1212,13 @@ impl UiNativeSmokeApplication {
                 .map(UiOverlayRenderer::report)
                 .ok_or_else(|| io::Error::other("UI smoke renderer disappeared"))?;
             println!(
-                "Meridian UI native smoke submitted {} solid primitives and {} rasterized glyphs; {} text primitive(s) were incomplete",
+                "Meridian UI native smoke {:?} submitted {} solid primitives and {} rasterized glyphs; {} text primitive(s) were incomplete",
+                self.stage,
                 report.solid_primitives,
                 report.rasterized_glyphs,
                 report.incomplete_text_primitives
             );
-            context.exit();
+            self.advance_stage(context)?;
         } else if outcome.recoverable() {
             context.request_redraw();
         } else {
@@ -1219,9 +1238,22 @@ impl UiNativeSmokeApplication {
         renderer.submit_structural_validation(rhi, ClearColor::default())?;
         self.structural_fallback_submitted = true;
         println!(
-            "Meridian UI native smoke surface unavailable; raster bridge submitted offscreen structural validation only"
+            "Meridian UI native smoke {:?} surface unavailable; raster bridge submitted offscreen structural validation only",
+            self.stage
         );
-        context.exit();
+        self.advance_stage(context)?;
+        Ok(())
+    }
+
+    fn advance_stage(&mut self, context: &mut PlatformContext<'_>) -> AppResult<()> {
+        if self.stage == UiSmokeStage::RuntimeOverlay {
+            context.exit();
+            return Ok(());
+        }
+        self.stage = UiSmokeStage::RuntimeOverlay;
+        self.structural_fallback_submitted = false;
+        self.rebuild_for_size(self.physical_size, f64::from(self.scale_factor))?;
+        context.request_redraw();
         Ok(())
     }
 

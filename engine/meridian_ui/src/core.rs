@@ -1063,10 +1063,13 @@ pub fn recovery_panel_document() -> Result<UiDocument, UiDocumentError> {
 pub fn runtime_overlay_document() -> Result<UiDocument, UiDocumentError> {
     let root = UiNodeId::new(0x200);
     let label = UiNodeId::new(0x201);
+    let mut overlay = UiNode::container(root, "Runtime overlay", UiLayout::Overlay, vec![label]);
+    overlay.kind = UiWidgetKind::Overlay;
+    overlay.style.background = None;
     UiDocument::new(
         root,
         vec![
-            UiNode::container(root, "Runtime overlay", UiLayout::Overlay, vec![label]),
+            overlay,
             UiNode::label(label, "Runtime status", "Loading Meridian runtime…"),
         ],
     )
@@ -1199,5 +1202,15 @@ mod tests {
         let output = runtime.reconcile(frame(vec![UiEvent::FocusNext]));
         assert_eq!(output.focused, None);
         assert_eq!(output.diagnostics, vec![UiDiagnostic::NoFocusableNode]);
+        assert!(output
+            .display_list
+            .primitives
+            .iter()
+            .all(|primitive| !matches!(primitive, DisplayPrimitive::Rect { .. })));
+        assert!(output
+            .display_list
+            .primitives
+            .iter()
+            .any(|primitive| matches!(primitive, DisplayPrimitive::Text { .. })));
     }
 }

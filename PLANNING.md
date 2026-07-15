@@ -279,9 +279,10 @@ Next unblocked package: `WP-UI-001`, now active
 
 Execution status: `Active`. Implementation maturity: `Partial`; retained UI
 contracts, deterministic fixtures, system-font glyph rasterization, and a
-bounded temporary native recovery-panel raster bridge are implemented. The
-runtime overlay is deterministic/headless only so far; no production renderer
-selection or qualifying milestone evidence has landed.
+bounded temporary native two-stage raster bridge are implemented. The recovery
+panel's local surface was occluded and submitted structural evidence; the
+runtime overlay presented locally. No production renderer selection or
+qualifying milestone evidence has landed.
 
 User-visible result: Meridian gains one native, keyboard-operable recovery
 panel and one runtime overlay from an immutable Meridian-owned display list,
@@ -321,8 +322,8 @@ Implementation slices and failure cases:
   past the Meridian boundary; grapheme navigation remains unfinished;
 - render the recovery panel and runtime overlay through an immutable raster /
   RHI bridge, with device-loss rebuild from the logical document and explicit
-  occluded/unavailable outcomes; only the recovery-panel native bridge has
-  landed, and the runtime-overlay native result remains required;
+  occluded/unavailable outcomes; both native paths now execute, but local
+  recovery-panel presentation was occluded and remains structural-only;
 - add keyboard-only and semantic golden fixtures, DPI/contrast/reduced-motion
   layout fixtures, a headless no-UI-cost trace, and a native smoke where the
   surface supports it.
