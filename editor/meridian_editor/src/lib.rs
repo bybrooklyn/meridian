@@ -1695,7 +1695,6 @@ fn f64_to_f32(value: f64) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use meridian_assets::ArtifactHash;
     use serde_json::Value;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1758,15 +1757,18 @@ mod tests {
     }
 
     #[test]
-    fn compiled_fixture_hash_is_stable() {
+    fn fixture_source_hash_is_stable_across_checkout_line_endings() {
         let fixture = fs::read(
             resolve_project_root(None)
                 .expect("project root")
                 .join(MESH_SOURCE),
         )
         .expect("fixture reads");
+        let imported =
+            meridian_asset_tools::import_fixture_mesh(&fixture, &CancellationToken::new())
+                .expect("fixture imports");
         assert_eq!(
-            ArtifactHash::digest(&fixture).to_string(),
+            imported.metadata.source_hash.to_string(),
             "ae037da0e1bdfb1175812ac7333322c7dea5b7c4032a1c5ad8f532f1d7535569"
         );
     }

@@ -1,5 +1,6 @@
 //! Bounded source import transactions for editor/build tools.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -337,7 +338,8 @@ pub fn import_fixture_mesh(
             max: DEFAULT_MAX_SOURCE_BYTES,
         });
     }
-    let source: FixtureMeshSource = serde_json::from_slice(bytes)
+    let normalized_bytes = normalize_text_line_endings(bytes);
+    let source: FixtureMeshSource = serde_json::from_slice(&normalized_bytes)
         .map_err(|error| ImportError::InvalidJson(error.to_string()))?;
     cancellation_checkpoint(cancellation)?;
     if source.schema != FIXTURE_MESH_SCHEMA || source.version != 1 {
@@ -360,7 +362,7 @@ pub fn import_fixture_mesh(
         .iter()
         .map(|name| SourceId::from_canonical_name(name.trim()))
         .collect::<Vec<_>>();
-    let source_hash = ArtifactHash::digest(bytes);
+    let source_hash = ArtifactHash::digest(&normalized_bytes);
     let vertex_bytes = encode_visual_bytes(&source.vertices, &source.indices);
     let collision_positions = source
         .vertices
@@ -397,6 +399,27 @@ pub fn import_fixture_mesh(
         },
         preserved_unknown: source.unknown,
     })
+}
+
+fn normalize_text_line_endings(bytes: &[u8]) -> Cow<'_, [u8]> {
+    if !bytes.contains(&b'\r') {
+        return Cow::Borrowed(bytes);
+    }
+
+    let mut normalized = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'\r' {
+            normalized.push(b'\n');
+            if bytes.get(index + 1) == Some(&b'\n') {
+                index += 1;
+            }
+        } else {
+            normalized.push(bytes[index]);
+        }
+        index += 1;
+    }
+    Cow::Owned(normalized)
 }
 
 fn resolve_project_path(canonical_root: &Path, relative: &Path) -> Result<PathBuf, ImportError> {
@@ -606,8 +629,15 @@ mod tests {
         let cancellation = CancellationToken::new();
         let first = import_fixture_mesh(&bytes, &cancellation).expect("fixture imports");
         let second = import_fixture_mesh(&bytes, &cancellation).expect("fixture imports");
+        let windows_bytes = bytes
+            .split(|byte| *byte == b'\n')
+            .collect::<Vec<_>>()
+            .join(&b"\r\n"[..]);
+        let windows =
+            import_fixture_mesh(&windows_bytes, &cancellation).expect("CRLF fixture imports");
 
         assert_eq!(first, second);
+        assert_eq!(first, windows);
         assert!(first.preserved_unknown.contains_key("future"));
         assert_eq!(first.visual.vertices.len(), first.collision.positions.len());
         assert_ne!(first.visual.artifact_hash, first.collision.artifact_hash);
