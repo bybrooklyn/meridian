@@ -29,7 +29,7 @@ Non-goals: embedding egui as permanent architecture, duplicating a game UI engin
 - meridian-editor-core: document sessions, selection, commands, undo, play mode.
 - meridian-editor-egui-bootstrap: current temporary shell and migration adapters.
 
-No egui type enters ui-core, editor-core, source documents, commands, or plugins. AccessKit is consumed only by a platform adapter from Meridian semantics. `WP-UI-001` adopts `cosmic-text` under `DEP-UI-001` only as the text shaping, fallback, layout, and rasterization adapter; Meridian-owned text, display-list, semantic, and diagnostic types remain the public boundary. Platform accessibility adapters are a separately scoped MS-03 spike, and `RG-UI-001` selects no production display-list renderer before its MS-02 entry gate.
+No egui type enters ui-core, editor-core, source documents, commands, or plugins. AccessKit is consumed only by a platform adapter from Meridian semantics. `WP-UI-001` adopts `cosmic-text` under `DEP-UI-001` only as the text shaping, fallback, layout, and rasterization adapter, and `unicode-segmentation` under `DEP-UI-002` only for extended-grapheme editing boundaries; Meridian-owned text, display-list, semantic, event, clipboard-policy, and diagnostic types remain the public boundary. Platform accessibility adapters are a separately scoped MS-03 spike, and `RG-UI-001` selects no production display-list renderer before its MS-02 entry gate.
 
 ## 3. Data model
 

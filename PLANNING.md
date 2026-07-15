@@ -284,10 +284,12 @@ panel's local surface was occluded and submitted structural evidence; the
 runtime overlay presented locally. No production renderer selection or
 qualifying milestone evidence has landed.
 
-Disabled-cost evidence so far: the bridge is the opt-in
-`meridian-renderer/ui-raster-bridge` feature selected by `meridian-editor`;
-`cargo tree -p meridian-rt` contains no `meridian-ui` dependency. This is a
-package-graph audit, not a substitute for the remaining runtime trace evidence.
+Disabled-cost evidence: the bridge is the opt-in
+`meridian-renderer/ui-raster-bridge` feature selected only by
+`meridian-editor`. The UI-free `meridian-rt` headless-profile smoke advances a
+real runtime frame while `! cargo tree -p meridian-rt | grep -q meridian-ui`
+proves its package graph selects no UI crate. CI runs both checks. This is a
+profile-scoped no-UI-cost trace, not a claim that an editor build omits UI.
 
 User-visible result: Meridian gains one native, keyboard-operable recovery
 panel and one runtime overlay from an immutable Meridian-owned display list,
@@ -311,10 +313,11 @@ only the Meridian-owned RHI bridge required to present the immutable overlay;
 this plan change only when evidence requires them.
 
 Public contracts: stable `UiNodeId`; retained node/document tree; bounded
-`UiEvent` and semantic command requests; focus/event-route result; immutable
+`UiEvent`, text-input cursor/selection snapshots, capability-gated clipboard
+requests, and semantic command requests; focus/event-route result; immutable
 display-list primitives; owned semantic tree/delta and diagnostics; a text
-layout result without exposed `cosmic_text` or backend types. Runtime and
-editor widget surfaces remain separate.
+layout result without exposed `cosmic_text`, Unicode-segmentation, backend, or
+platform types. Runtime and editor widget surfaces remain separate.
 
 Implementation slices and failure cases:
 
@@ -323,15 +326,18 @@ Implementation slices and failure cases:
   validation, and diagnostics; reject duplicate IDs, missing nodes, unnamed
   focusable nodes, invalid actions, and focus traps before rendering;
 - add the `cosmic-text` adapter for shaping, fallback, line layout, bounded
-  glyph rasterization, and IME composition state without allowing its types
-  past the Meridian boundary; grapheme navigation remains unfinished;
+  glyph rasterization, and IME composition state plus a bounded
+  `unicode-segmentation` editing adapter for extended-grapheme cursoring,
+  selection, insertion/deletion, password masking, and non-password
+  capability-gated copy requests, without allowing either library's types past
+  the Meridian boundary;
 - render the recovery panel and runtime overlay through an immutable raster /
   RHI bridge, with device-loss rebuild from the logical document and explicit
   occluded/unavailable outcomes; both native paths now execute, but local
   recovery-panel presentation was occluded and remains structural-only;
 - add keyboard-only and semantic golden fixtures, DPI/contrast/reduced-motion
-  layout fixtures, a headless no-UI-cost trace, and a native smoke where the
-  surface supports it.
+  layout fixtures, a UI-free runtime profile trace plus package-graph audit,
+  and a native smoke where the surface supports it.
 
 Tests and commands: start with `cargo test -p meridian-ui` and
 `cargo test -p meridian-editor`; add `meridian --ui-headless-smoke` for the

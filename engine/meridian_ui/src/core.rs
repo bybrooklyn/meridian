@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, SwashCache, SwashContent};
 use meridian_core::StableId;
+use unicode_segmentation::UnicodeSegmentation;
 
 const MAX_TEXT_BYTES: usize = 64 * 1024;
 const MAX_GLYPH_RASTER_BYTES: usize = 1024 * 1024;
@@ -117,6 +118,7 @@ pub enum UiWidgetKind {
     Panel,
     Label,
     Button,
+    TextInput,
     Overlay,
 }
 
@@ -134,6 +136,7 @@ pub enum SemanticRole {
     Group,
     Status,
     Button,
+    TextInput,
 }
 
 /// Named semantics and a typed action token declared by a UI node.
@@ -171,6 +174,15 @@ impl UiSemantics {
             action: Some(action.into()),
         }
     }
+
+    #[must_use]
+    pub fn text_input(name: impl Into<String>) -> Self {
+        Self {
+            role: SemanticRole::TextInput,
+            name: name.into(),
+            action: None,
+        }
+    }
 }
 
 /// Rendering style, expressed only in Meridian-owned values.
@@ -180,6 +192,15 @@ pub struct UiStyle {
     pub foreground: UiColor,
     pub padding: f32,
     pub font_size: f32,
+}
+
+/// Policy applied to one retained text-input node.
+///
+/// Password values stay in the private runtime state: they are masked in the
+/// display list and never emitted through semantic or clipboard output.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiTextInputOptions {
+    pub password: bool,
 }
 
 impl UiStyle {
@@ -213,6 +234,7 @@ pub struct UiNode {
     pub style: UiStyle,
     pub semantics: UiSemantics,
     pub text: Option<String>,
+    pub text_input: Option<UiTextInputOptions>,
     pub focusable: bool,
     pub children: Vec<UiNodeId>,
 }
@@ -232,6 +254,7 @@ impl UiNode {
             style: UiStyle::panel(),
             semantics: UiSemantics::group(name),
             text: None,
+            text_input: None,
             focusable: false,
             children,
         }
@@ -246,6 +269,7 @@ impl UiNode {
             style: UiStyle::text(),
             semantics: UiSemantics::status(name),
             text: Some(text.into()),
+            text_input: None,
             focusable: false,
             children: Vec::new(),
         }
@@ -265,6 +289,36 @@ impl UiNode {
             style: UiStyle::panel(),
             semantics: UiSemantics::button(name, action),
             text: Some(text.into()),
+            text_input: None,
+            focusable: true,
+            children: Vec::new(),
+        }
+    }
+
+    /// Creates a focusable retained text input with Meridian-owned editing state.
+    ///
+    /// Password inputs always start empty so a retained document cannot carry a
+    /// password value. Their value can arrive only through a bounded text-input
+    /// event at the runtime boundary.
+    #[must_use]
+    pub fn text_input(
+        id: UiNodeId,
+        name: impl Into<String>,
+        initial_value: impl Into<String>,
+        options: UiTextInputOptions,
+    ) -> Self {
+        Self {
+            id,
+            kind: UiWidgetKind::TextInput,
+            layout: UiLayout::Overlay,
+            style: UiStyle::text(),
+            semantics: UiSemantics::text_input(name),
+            text: Some(if options.password {
+                String::new()
+            } else {
+                initial_value.into()
+            }),
+            text_input: Some(options),
             focusable: true,
             children: Vec::new(),
         }
@@ -286,6 +340,10 @@ pub enum UiDocumentError {
     Unreachable(UiNodeId),
     UnnamedFocusable(UiNodeId),
     MissingButtonAction(UiNodeId),
+    TextInputNotFocusable(UiNodeId),
+    MissingTextInputOptions(UiNodeId),
+    UnexpectedTextInputOptions(UiNodeId),
+    PasswordInitialValue(UiNodeId),
     TextTooLong {
         node: UiNodeId,
         bytes: usize,
@@ -327,6 +385,20 @@ impl UiDocument {
             }
             if node.kind == UiWidgetKind::Button && node.semantics.action.is_none() {
                 return Err(UiDocumentError::MissingButtonAction(*id));
+            }
+            if node.kind == UiWidgetKind::TextInput && !node.focusable {
+                return Err(UiDocumentError::TextInputNotFocusable(*id));
+            }
+            if node.kind == UiWidgetKind::TextInput && node.text_input.is_none() {
+                return Err(UiDocumentError::MissingTextInputOptions(*id));
+            }
+            if node.kind != UiWidgetKind::TextInput && node.text_input.is_some() {
+                return Err(UiDocumentError::UnexpectedTextInputOptions(*id));
+            }
+            if node.text_input.is_some_and(|options| options.password)
+                && node.text.as_ref().is_some_and(|text| !text.is_empty())
+            {
+                return Err(UiDocumentError::PasswordInitialValue(*id));
             }
             if let Some(text) = &node.text {
                 if text.len() > MAX_TEXT_BYTES {
@@ -432,6 +504,14 @@ pub enum UiEvent {
         text: String,
         cursor: Option<(usize, usize)>,
     },
+    MoveTextCursor {
+        direction: UiTextCursorDirection,
+        extend_selection: bool,
+    },
+    DeleteTextBackward,
+    DeleteTextForward,
+    SelectAllText,
+    CopySelection,
     PointerDown(UiPoint),
     PointerUp(UiPoint),
     AssistiveActivate(UiNodeId),
@@ -457,6 +537,78 @@ pub struct UiEventRoute {
 pub struct UiCommandRequest {
     pub source: UiNodeId,
     pub action: String,
+}
+
+/// A cursor movement expressed in extended-grapheme positions, not UTF-8 bytes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiTextCursorDirection {
+    Backward,
+    Forward,
+    Start,
+    End,
+}
+
+/// A half-open text selection in extended-grapheme positions.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiTextSelection {
+    pub anchor: usize,
+    pub focus: usize,
+}
+
+impl UiTextSelection {
+    #[must_use]
+    pub const fn cursor(position: usize) -> Self {
+        Self {
+            anchor: position,
+            focus: position,
+        }
+    }
+
+    #[must_use]
+    pub const fn start(self) -> usize {
+        if self.anchor < self.focus {
+            self.anchor
+        } else {
+            self.focus
+        }
+    }
+
+    #[must_use]
+    pub const fn end(self) -> usize {
+        if self.anchor > self.focus {
+            self.anchor
+        } else {
+            self.focus
+        }
+    }
+
+    #[must_use]
+    pub const fn is_collapsed(self) -> bool {
+        self.anchor == self.focus
+    }
+}
+
+/// Redacted observable editing state for one retained text-input node.
+///
+/// It intentionally reports no text value, so password text cannot escape
+/// through frame output, semantic output, or diagnostics.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiTextInputSnapshot {
+    pub node: UiNodeId,
+    pub selection: UiTextSelection,
+    pub grapheme_count: usize,
+    pub password: bool,
+    pub has_preedit: bool,
+}
+
+/// A capability-gated request for a platform clipboard adapter.
+///
+/// The adapter must obtain normal clipboard permission before performing it.
+/// Password inputs never generate this request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiClipboardRequest {
+    pub source: UiNodeId,
+    pub text: String,
 }
 
 /// A renderer-neutral visual primitive consumed by the UI render adapter.
@@ -544,6 +696,9 @@ pub enum UiDiagnostic {
     PointerOutsideDocument,
     TextFallbackMetrics { node: UiNodeId },
     TextRasterIncomplete { node: UiNodeId },
+    TextInputNotFocused,
+    TextInputLimitExceeded { node: UiNodeId, maximum: usize },
+    ClipboardDeniedForPassword { node: UiNodeId },
 }
 
 /// Input captured at a stable frame boundary.
@@ -576,6 +731,8 @@ pub struct UiFrameOutput {
     pub semantic_delta: SemanticDelta,
     pub event_routes: Vec<UiEventRoute>,
     pub commands: Vec<UiCommandRequest>,
+    pub clipboard_requests: Vec<UiClipboardRequest>,
+    pub text_inputs: Vec<UiTextInputSnapshot>,
     pub diagnostics: Vec<UiDiagnostic>,
     pub focused: Option<UiNodeId>,
     pub preedit: Option<String>,
@@ -695,6 +852,50 @@ struct UiTextOutput {
     raster: UiTextRaster,
 }
 
+fn grapheme_count(text: &str) -> usize {
+    text.graphemes(true).count()
+}
+
+fn clamp_selection(selection: UiTextSelection, grapheme_count: usize) -> UiTextSelection {
+    UiTextSelection {
+        anchor: selection.anchor.min(grapheme_count),
+        focus: selection.focus.min(grapheme_count),
+    }
+}
+
+fn byte_index_at_grapheme(text: &str, position: usize) -> usize {
+    text.grapheme_indices(true)
+        .nth(position)
+        .map_or(text.len(), |(byte_index, _)| byte_index)
+}
+
+fn selected_text(text: &str, selection: UiTextSelection) -> Option<&str> {
+    let selection = clamp_selection(selection, grapheme_count(text));
+    if selection.is_collapsed() {
+        return None;
+    }
+    let start = byte_index_at_grapheme(text, selection.start());
+    let end = byte_index_at_grapheme(text, selection.end());
+    text.get(start..end)
+}
+
+fn replace_selection(state: &mut UiTextInputState, replacement: &str) -> bool {
+    let selection = clamp_selection(state.selection, grapheme_count(&state.value));
+    let start = byte_index_at_grapheme(&state.value, selection.start());
+    let end = byte_index_at_grapheme(&state.value, selection.end());
+    let retained_bytes = state.value.len().saturating_sub(end.saturating_sub(start));
+    if replacement.len() > MAX_TEXT_BYTES.saturating_sub(retained_bytes) {
+        return false;
+    }
+    state.value.replace_range(start..end, replacement);
+    state.selection = UiTextSelection::cursor(selection.start() + grapheme_count(replacement));
+    true
+}
+
+fn password_mask(text: &str) -> String {
+    "•".repeat(grapheme_count(text))
+}
+
 fn bounded_count_as_f32(value: usize) -> f32 {
     f32::from(u16::try_from(value).unwrap_or(u16::MAX))
 }
@@ -713,26 +914,63 @@ struct UiEmission<'a> {
     diagnostics: &'a mut Vec<UiDiagnostic>,
 }
 
+#[derive(Debug)]
+struct UiTextInputState {
+    value: String,
+    selection: UiTextSelection,
+    preedit: Option<(String, Option<(usize, usize)>)>,
+    password: bool,
+}
+
+impl UiTextInputState {
+    fn snapshot(&self, node: UiNodeId) -> UiTextInputSnapshot {
+        UiTextInputSnapshot {
+            node,
+            selection: self.selection,
+            grapheme_count: grapheme_count(&self.value),
+            password: self.password,
+            has_preedit: self.preedit.is_some(),
+        }
+    }
+}
+
 /// Retained runtime state.  All mutation is applied between immutable outputs.
 #[derive(Debug)]
 pub struct UiRuntime {
     document: UiDocument,
     text: UiTextEngine,
+    text_inputs: BTreeMap<UiNodeId, UiTextInputState>,
     focused: Option<UiNodeId>,
     pointer_capture: Option<UiNodeId>,
-    preedit: Option<String>,
     previous_semantics: Option<SemanticTree>,
 }
 
 impl UiRuntime {
     #[must_use]
     pub fn new(document: UiDocument) -> Self {
+        let text_inputs = document
+            .nodes
+            .values()
+            .filter_map(|node| {
+                node.text_input.map(|options| {
+                    (
+                        node.id,
+                        UiTextInputState {
+                            value: node.text.clone().unwrap_or_default(),
+                            selection: UiTextSelection::default(),
+                            preedit: None,
+                            password: options.password,
+                        },
+                    )
+                })
+            })
+            .collect();
         Self {
             document,
             text: UiTextEngine::default(),
+            text_inputs,
             focused: None,
             pointer_capture: None,
-            preedit: None,
             previous_semantics: None,
         }
     }
@@ -752,9 +990,17 @@ impl UiRuntime {
         );
         let mut routes = Vec::new();
         let mut commands = Vec::new();
+        let mut clipboard_requests = Vec::new();
         let mut diagnostics = Vec::new();
         for event in input.events {
-            self.process_event(event, &layout, &mut routes, &mut commands, &mut diagnostics);
+            self.process_event(
+                event,
+                &layout,
+                &mut routes,
+                &mut commands,
+                &mut clipboard_requests,
+                &mut diagnostics,
+            );
         }
         let mut display_list = DisplayList::default();
         let mut semantic_nodes = Vec::new();
@@ -781,9 +1027,15 @@ impl UiRuntime {
             semantic_delta,
             event_routes: routes,
             commands,
+            clipboard_requests,
+            text_inputs: self
+                .text_inputs
+                .iter()
+                .map(|(node, state)| state.snapshot(*node))
+                .collect(),
             diagnostics,
             focused: self.focused,
-            preedit: self.preedit.clone(),
+            preedit: self.focused_preedit(),
         }
     }
 
@@ -839,6 +1091,7 @@ impl UiRuntime {
         layout: &BTreeMap<UiNodeId, UiRect>,
         routes: &mut Vec<UiEventRoute>,
         commands: &mut Vec<UiCommandRequest>,
+        clipboard_requests: &mut Vec<UiClipboardRequest>,
         diagnostics: &mut Vec<UiDiagnostic>,
     ) {
         match event {
@@ -854,8 +1107,18 @@ impl UiRuntime {
                 self.dispatch(target, routes);
                 self.activate(target, commands);
             }
-            UiEvent::TextCommit(_) => self.preedit = None,
-            UiEvent::ImePreedit { text, .. } => self.preedit = Some(text),
+            UiEvent::TextCommit(text) => self.commit_text(&text, routes, diagnostics),
+            UiEvent::ImePreedit { text, cursor } => {
+                self.set_preedit(text, cursor, routes, diagnostics);
+            }
+            UiEvent::MoveTextCursor {
+                direction,
+                extend_selection,
+            } => self.move_text_cursor(direction, extend_selection, routes, diagnostics),
+            UiEvent::DeleteTextBackward => self.delete_text(true, routes, diagnostics),
+            UiEvent::DeleteTextForward => self.delete_text(false, routes, diagnostics),
+            UiEvent::SelectAllText => self.select_all_text(routes, diagnostics),
+            UiEvent::CopySelection => self.copy_selection(routes, clipboard_requests, diagnostics),
             UiEvent::PointerDown(point) => {
                 let target = self.hit_test(point, layout);
                 self.pointer_capture = target;
@@ -883,6 +1146,192 @@ impl UiRuntime {
                 }
             }
         }
+    }
+
+    fn focused_text_input(&self, diagnostics: &mut Vec<UiDiagnostic>) -> Option<UiNodeId> {
+        let target = self.focused.filter(|id| self.text_inputs.contains_key(id));
+        if target.is_none() {
+            diagnostics.push(UiDiagnostic::TextInputNotFocused);
+        }
+        target
+    }
+
+    fn commit_text(
+        &mut self,
+        text: &str,
+        routes: &mut Vec<UiEventRoute>,
+        diagnostics: &mut Vec<UiDiagnostic>,
+    ) {
+        let Some(target) = self.focused_text_input(diagnostics) else {
+            return;
+        };
+        self.dispatch(target, routes);
+        let state = self
+            .text_inputs
+            .get_mut(&target)
+            .expect("focused text input has retained state");
+        if !replace_selection(state, text) {
+            diagnostics.push(UiDiagnostic::TextInputLimitExceeded {
+                node: target,
+                maximum: MAX_TEXT_BYTES,
+            });
+            return;
+        }
+        state.preedit = None;
+    }
+
+    fn set_preedit(
+        &mut self,
+        text: String,
+        cursor: Option<(usize, usize)>,
+        routes: &mut Vec<UiEventRoute>,
+        diagnostics: &mut Vec<UiDiagnostic>,
+    ) {
+        let Some(target) = self.focused_text_input(diagnostics) else {
+            return;
+        };
+        self.dispatch(target, routes);
+        if text.len() > MAX_TEXT_BYTES {
+            diagnostics.push(UiDiagnostic::TextInputLimitExceeded {
+                node: target,
+                maximum: MAX_TEXT_BYTES,
+            });
+            return;
+        }
+        self.text_inputs
+            .get_mut(&target)
+            .expect("focused text input has retained state")
+            .preedit = Some((text, cursor));
+    }
+
+    fn move_text_cursor(
+        &mut self,
+        direction: UiTextCursorDirection,
+        extend_selection: bool,
+        routes: &mut Vec<UiEventRoute>,
+        diagnostics: &mut Vec<UiDiagnostic>,
+    ) {
+        let Some(target) = self.focused_text_input(diagnostics) else {
+            return;
+        };
+        self.dispatch(target, routes);
+        let state = self
+            .text_inputs
+            .get_mut(&target)
+            .expect("focused text input has retained state");
+        let count = grapheme_count(&state.value);
+        let selection = clamp_selection(state.selection, count);
+        let origin = if !extend_selection && !selection.is_collapsed() {
+            match direction {
+                UiTextCursorDirection::Backward | UiTextCursorDirection::Start => selection.start(),
+                UiTextCursorDirection::Forward | UiTextCursorDirection::End => selection.end(),
+            }
+        } else {
+            selection.focus
+        };
+        let destination = match direction {
+            UiTextCursorDirection::Backward => origin.saturating_sub(1),
+            UiTextCursorDirection::Forward => origin.saturating_add(1).min(count),
+            UiTextCursorDirection::Start => 0,
+            UiTextCursorDirection::End => count,
+        };
+        state.selection = if extend_selection {
+            UiTextSelection {
+                anchor: selection.anchor,
+                focus: destination,
+            }
+        } else {
+            UiTextSelection::cursor(destination)
+        };
+    }
+
+    fn delete_text(
+        &mut self,
+        backward: bool,
+        routes: &mut Vec<UiEventRoute>,
+        diagnostics: &mut Vec<UiDiagnostic>,
+    ) {
+        let Some(target) = self.focused_text_input(diagnostics) else {
+            return;
+        };
+        self.dispatch(target, routes);
+        let state = self
+            .text_inputs
+            .get_mut(&target)
+            .expect("focused text input has retained state");
+        let count = grapheme_count(&state.value);
+        let selection = clamp_selection(state.selection, count);
+        if selection.is_collapsed() {
+            state.selection = if backward {
+                UiTextSelection {
+                    anchor: selection.focus.saturating_sub(1),
+                    focus: selection.focus,
+                }
+            } else {
+                UiTextSelection {
+                    anchor: selection.focus,
+                    focus: selection.focus.saturating_add(1).min(count),
+                }
+            };
+        } else {
+            state.selection = selection;
+        }
+        if !state.selection.is_collapsed() {
+            let _ = replace_selection(state, "");
+        }
+        state.preedit = None;
+    }
+
+    fn select_all_text(
+        &mut self,
+        routes: &mut Vec<UiEventRoute>,
+        diagnostics: &mut Vec<UiDiagnostic>,
+    ) {
+        let Some(target) = self.focused_text_input(diagnostics) else {
+            return;
+        };
+        self.dispatch(target, routes);
+        let state = self
+            .text_inputs
+            .get_mut(&target)
+            .expect("focused text input has retained state");
+        state.selection = UiTextSelection {
+            anchor: 0,
+            focus: grapheme_count(&state.value),
+        };
+    }
+
+    fn copy_selection(
+        &mut self,
+        routes: &mut Vec<UiEventRoute>,
+        clipboard_requests: &mut Vec<UiClipboardRequest>,
+        diagnostics: &mut Vec<UiDiagnostic>,
+    ) {
+        let Some(target) = self.focused_text_input(diagnostics) else {
+            return;
+        };
+        self.dispatch(target, routes);
+        let state = self
+            .text_inputs
+            .get(&target)
+            .expect("focused text input has retained state");
+        if state.password {
+            diagnostics.push(UiDiagnostic::ClipboardDeniedForPassword { node: target });
+            return;
+        }
+        if let Some(text) = selected_text(&state.value, state.selection) {
+            clipboard_requests.push(UiClipboardRequest {
+                source: target,
+                text: text.to_owned(),
+            });
+        }
+    }
+
+    fn focused_preedit(&self) -> Option<String> {
+        self.focused
+            .and_then(|target| self.text_inputs.get(&target))
+            .filter(|state| !state.password)
+            .and_then(|state| state.preedit.as_ref().map(|(text, _)| text.clone()))
     }
 
     fn move_focus(&mut self, forward: bool, diagnostics: &mut Vec<UiDiagnostic>) {
@@ -965,7 +1414,18 @@ impl UiRuntime {
                 color: background,
             });
         }
-        if let Some(text) = &node.text {
+        let rendered_text = self
+            .text_inputs
+            .get(&id)
+            .map(|state| {
+                if state.password {
+                    password_mask(&state.value)
+                } else {
+                    state.value.clone()
+                }
+            })
+            .or_else(|| node.text.clone());
+        if let Some(text) = rendered_text {
             let text_bounds = UiRect::new(
                 UiPoint {
                     x: bounds.origin.x + node.style.padding,
@@ -977,7 +1437,7 @@ impl UiRuntime {
                 ),
             );
             let text_output = self.text.layout(
-                text,
+                &text,
                 text_bounds.size.width,
                 node.style.font_size,
                 emission.scale_factor,
@@ -995,7 +1455,7 @@ impl UiRuntime {
             emission.display.primitives.push(DisplayPrimitive::Text {
                 node: id,
                 bounds: text_bounds,
-                text: text.clone(),
+                text,
                 color: foreground,
                 layout: text_output.layout,
                 raster: text_output.raster,
@@ -1212,5 +1672,149 @@ mod tests {
             .primitives
             .iter()
             .any(|primitive| matches!(primitive, DisplayPrimitive::Text { .. })));
+    }
+
+    fn text_input_document(initial_value: &str, password: bool) -> (UiDocument, UiNodeId) {
+        let input = UiNodeId::new(0x300);
+        let document = UiDocument::new(
+            input,
+            vec![UiNode::text_input(
+                input,
+                "Project title",
+                initial_value,
+                UiTextInputOptions { password },
+            )],
+        )
+        .expect("text-input fixture is valid");
+        (document, input)
+    }
+
+    #[test]
+    fn text_input_edits_on_grapheme_boundaries_and_preserves_ime_composition() {
+        let (document, input) = text_input_document("a👩‍🔬e\u{301}", false);
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(frame(vec![
+            UiEvent::FocusNext,
+            UiEvent::MoveTextCursor {
+                direction: UiTextCursorDirection::Forward,
+                extend_selection: false,
+            },
+            UiEvent::MoveTextCursor {
+                direction: UiTextCursorDirection::Forward,
+                extend_selection: false,
+            },
+            UiEvent::MoveTextCursor {
+                direction: UiTextCursorDirection::Backward,
+                extend_selection: true,
+            },
+            UiEvent::CopySelection,
+            UiEvent::TextCommit("x".to_owned()),
+            UiEvent::ImePreedit {
+                text: "é".to_owned(),
+                cursor: Some((1, 1)),
+            },
+        ]));
+
+        assert_eq!(output.clipboard_requests.len(), 1);
+        assert_eq!(output.clipboard_requests[0].source, input);
+        assert_eq!(output.clipboard_requests[0].text, "👩‍🔬");
+        assert_eq!(output.preedit.as_deref(), Some("é"));
+        assert_eq!(
+            output.text_inputs,
+            vec![UiTextInputSnapshot {
+                node: input,
+                selection: UiTextSelection::cursor(2),
+                grapheme_count: 3,
+                password: false,
+                has_preedit: true,
+            }]
+        );
+        assert_eq!(
+            runtime
+                .text_inputs
+                .get(&input)
+                .map(|state| state.value.as_str()),
+            Some("axe\u{301}")
+        );
+
+        let output = runtime.reconcile(frame(vec![
+            UiEvent::TextCommit("!".to_owned()),
+            UiEvent::DeleteTextBackward,
+        ]));
+        assert_eq!(output.preedit, None);
+        assert_eq!(
+            runtime
+                .text_inputs
+                .get(&input)
+                .map(|state| state.value.as_str()),
+            Some("axe\u{301}")
+        );
+    }
+
+    #[test]
+    fn password_input_masks_rendering_and_denies_clipboard_output() {
+        let (document, input) = text_input_document("must-not-persist", true);
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(frame(vec![
+            UiEvent::FocusNext,
+            UiEvent::TextCommit("s3cr3t".to_owned()),
+            UiEvent::SelectAllText,
+            UiEvent::CopySelection,
+            UiEvent::ImePreedit {
+                text: "replacement".to_owned(),
+                cursor: None,
+            },
+        ]));
+
+        assert!(output.clipboard_requests.is_empty());
+        assert_eq!(output.preedit, None);
+        assert!(output
+            .diagnostics
+            .contains(&UiDiagnostic::ClipboardDeniedForPassword { node: input }));
+        assert!(output
+            .display_list
+            .primitives
+            .iter()
+            .all(|primitive| match primitive {
+                DisplayPrimitive::Text { text, .. } => text != "s3cr3t",
+                _ => true,
+            }));
+        assert_eq!(
+            output.text_inputs,
+            vec![UiTextInputSnapshot {
+                node: input,
+                selection: UiTextSelection {
+                    anchor: 0,
+                    focus: 6
+                },
+                grapheme_count: 6,
+                password: true,
+                has_preedit: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn text_input_rejects_over_limit_commits_without_mutating_state() {
+        let (document, input) = text_input_document("safe", false);
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(frame(vec![
+            UiEvent::FocusNext,
+            UiEvent::TextCommit("a".repeat(MAX_TEXT_BYTES + 1)),
+        ]));
+
+        assert!(output
+            .diagnostics
+            .contains(&UiDiagnostic::TextInputLimitExceeded {
+                node: input,
+                maximum: MAX_TEXT_BYTES,
+            }));
+        assert_eq!(
+            runtime
+                .text_inputs
+                .get(&input)
+                .map(|state| state.value.as_str()),
+            Some("safe")
+        );
     }
 }

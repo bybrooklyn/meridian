@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 cosmic-text.workspace = true
 meridian-core = { path = "../meridian_core" }
+unicode-segmentation.workspace = true
 
 [lints]
 workspace = true

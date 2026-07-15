@@ -59,6 +59,9 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p meridian-editor --bin meridian -- --headless-smoke
 cargo run -p meridian-editor --bin meridian -- --smoke
+cargo run -p meridian-editor --bin meridian -- --ui-headless-smoke
+cargo run -p meridian-rt --example headless_profile_smoke
+! cargo tree -p meridian-rt | grep -q meridian-ui
 ~~~
 
 ## License
