@@ -26,6 +26,8 @@ pub const BUILD_PROTOCOL_VERSION: u16 = 1;
 pub const MAX_CARGO_JSON_LINE_BYTES: usize = 1_048_576;
 /// Maximum accepted `cargo metadata` payload before JSON parsing allocates its fields.
 pub const MAX_CARGO_METADATA_BYTES: usize = 8 * 1_024 * 1_024;
+/// Maximum retained Cargo stderr payload for one failed process invocation.
+pub const MAX_CARGO_STDERR_BYTES: usize = 16 * 1_024;
 /// Maximum serialized service snapshot accepted before JSON parsing.
 pub const MAX_BUILD_SNAPSHOT_BYTES: usize = 1_048_576;
 /// Maximum accepted Cargo manifest or lockfile input for this initial service.
@@ -717,6 +719,8 @@ pub enum BuildEventPayload {
     Lifecycle,
     /// A Cargo JSON message associated with a running operation.
     Cargo(CargoMessage),
+    /// A bounded process-level Cargo failure diagnostic, carried in [`BuildEvent::diagnostic`].
+    ProcessDiagnostic,
 }
 
 /// Versioned event emitted by the build service.
@@ -810,6 +814,32 @@ impl BuildService {
             50,
             diagnostic,
             BuildEventPayload::Cargo(message),
+        )
+    }
+
+    /// Records a bounded Cargo process-failure diagnostic while an operation is running.
+    ///
+    /// Unlike [`Self::record_cargo_message`], this represents Cargo stderr from
+    /// an unsuccessful process status rather than a Cargo JSON message.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the operation is absent or not running.
+    pub fn record_process_diagnostic(
+        &mut self,
+        operation_id: OperationId,
+        diagnostic: BuildDiagnostic,
+    ) -> Result<BuildEvent, BuildError> {
+        let diagnostic = sanitize_process_diagnostic(diagnostic)?;
+        let operation = self.operation_mut(operation_id)?;
+        if operation.phase != BuildPhase::Running {
+            return Err(BuildError::CargoMessageOutsideRunning(operation.phase));
+        }
+        operation.emit_with_diagnostic(
+            BuildPhase::Running,
+            50,
+            Some(diagnostic),
+            BuildEventPayload::ProcessDiagnostic,
         )
     }
 
@@ -1198,6 +1228,20 @@ impl DurableBuildService {
         message: CargoMessage,
     ) -> Result<BuildEvent, BuildError> {
         self.persist(|service| service.record_cargo_message(operation_id, message))
+    }
+
+    /// Records and durably stores one Cargo process-failure diagnostic.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the operation is not running or its resulting state
+    /// cannot be persisted without losing the previous durable state.
+    pub fn record_process_diagnostic(
+        &mut self,
+        operation_id: OperationId,
+        diagnostic: BuildDiagnostic,
+    ) -> Result<BuildEvent, BuildError> {
+        self.persist(|service| service.record_process_diagnostic(operation_id, diagnostic))
     }
 
     /// Validates and durably records one external worker event.
@@ -1610,6 +1654,12 @@ pub struct CargoRunOutcome {
     pub status: CargoRunStatus,
     /// Bounded Cargo messages parsed from stdout.
     pub messages: Vec<CargoMessage>,
+    /// Redacted Cargo process failure detail when stderr is available.
+    ///
+    /// This is distinct from compiler diagnostics in the JSON stream. It is
+    /// only present for a non-success process status and has not been treated
+    /// as an artifact or a persistent build record.
+    pub process_diagnostic: Option<BuildDiagnostic>,
 }
 
 /// Cargo process outcome represented without `ExitStatus` as a public API.
@@ -1665,6 +1715,11 @@ pub struct CargoMetadataOutcome {
     pub snapshot: Option<CargoMetadataSnapshot>,
     /// BLAKE3 hash of the exact bounded metadata payload used by the identity.
     pub content_hash: Option<String>,
+    /// Redacted Cargo process failure detail when stderr is available.
+    ///
+    /// This is only present for a non-success metadata process status and is
+    /// not a source of build identity.
+    pub process_diagnostic: Option<BuildDiagnostic>,
 }
 
 /// Runs a structured Cargo check or build and parses its bounded JSON message stream.
@@ -1690,6 +1745,7 @@ pub fn run_cargo_json(
         return Ok(CargoRunOutcome {
             status: CargoRunStatus::Cancelled,
             messages: Vec::new(),
+            process_diagnostic: None,
         });
     }
 
@@ -1702,53 +1758,35 @@ pub fn run_cargo_json(
         .envs(invocation.environment.values())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     let mut child = command
         .spawn()
         .map_err(|error| BuildError::CargoSpawn(error.to_string()))?;
-    let stdout = child.stdout.take().ok_or(BuildError::MissingCargoStdout)?;
-    let (sender, receiver) = mpsc::channel();
-    let reader = thread::spawn(move || read_cargo_lines(stdout, sender));
-    let mut messages = Vec::new();
-
-    loop {
-        if cancellation.is_cancelled() {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = reader.join();
+    let streams = match collect_cargo_json_streams(&mut child, cancellation)? {
+        CargoStreamOutcome::Completed(streams) => streams,
+        CargoStreamOutcome::Cancelled => {
             return Ok(CargoRunOutcome {
                 status: CargoRunStatus::Cancelled,
                 messages: Vec::new(),
+                process_diagnostic: None,
             });
         }
-        match receiver.recv_timeout(Duration::from_millis(20)) {
-            Ok(Ok(line)) => {
-                if let Some(message) = parse_cargo_json_line(&line)? {
-                    messages.push(message);
-                }
-            }
-            Ok(Err(error)) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = reader.join();
-                return Err(error);
-            }
-            Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => break,
-        }
-    }
-
-    reader.join().map_err(|_| BuildError::CargoReaderPanicked)?;
+    };
     let status = child
         .wait()
         .map_err(|error| BuildError::CargoWait(error.to_string()))?;
+    let status = if status.success() {
+        CargoRunStatus::Succeeded
+    } else {
+        CargoRunStatus::Failed(status.code())
+    };
     Ok(CargoRunOutcome {
-        status: if status.success() {
-            CargoRunStatus::Succeeded
-        } else {
-            CargoRunStatus::Failed(status.code())
+        process_diagnostic: match status {
+            CargoRunStatus::Succeeded | CargoRunStatus::Cancelled => None,
+            CargoRunStatus::Failed(_) => cargo_process_failure_diagnostic(&streams.stderr),
         },
-        messages,
+        status,
+        messages: streams.messages,
     })
 }
 
@@ -1773,6 +1811,7 @@ pub fn run_cargo_metadata(
             status: CargoRunStatus::Cancelled,
             snapshot: None,
             content_hash: None,
+            process_diagnostic: None,
         });
     }
 
@@ -1785,33 +1824,21 @@ pub fn run_cargo_metadata(
         .envs(invocation.environment.values())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     let mut child = command
         .spawn()
         .map_err(|error| BuildError::CargoSpawn(error.to_string()))?;
-    let stdout = child.stdout.take().ok_or(BuildError::MissingCargoStdout)?;
-    let (sender, receiver) = mpsc::channel();
-    let reader = thread::spawn(move || {
-        let _ = sender.send(read_bounded_stream(stdout, MAX_CARGO_METADATA_BYTES));
-    });
-    let bytes = loop {
-        if cancellation.is_cancelled() {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = reader.join();
+    let streams = match collect_cargo_metadata_streams(&mut child, cancellation)? {
+        CargoMetadataStreamOutcome::Completed(streams) => streams,
+        CargoMetadataStreamOutcome::Cancelled => {
             return Ok(CargoMetadataOutcome {
                 status: CargoRunStatus::Cancelled,
                 snapshot: None,
                 content_hash: None,
+                process_diagnostic: None,
             });
         }
-        match receiver.recv_timeout(Duration::from_millis(20)) {
-            Ok(result) => break result?,
-            Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => return Err(BuildError::CargoReaderPanicked),
-        }
     };
-    reader.join().map_err(|_| BuildError::CargoReaderPanicked)?;
     let status = child
         .wait()
         .map_err(|error| BuildError::CargoWait(error.to_string()))?;
@@ -1820,15 +1847,17 @@ pub fn run_cargo_metadata(
             status: CargoRunStatus::Failed(status.code()),
             snapshot: None,
             content_hash: None,
+            process_diagnostic: cargo_process_failure_diagnostic(&streams.stderr),
         });
     }
-    let text = String::from_utf8(bytes).map_err(|_| BuildError::CargoOutputNotUtf8)?;
+    let text = String::from_utf8(streams.bytes).map_err(|_| BuildError::CargoOutputNotUtf8)?;
     let snapshot = parse_cargo_metadata(&text)?;
     let content_hash = blake3::hash(text.as_bytes()).to_hex().to_string();
     Ok(CargoMetadataOutcome {
         status: CargoRunStatus::Succeeded,
         snapshot: Some(snapshot),
         content_hash: Some(content_hash),
+        process_diagnostic: None,
     })
 }
 
@@ -2045,6 +2074,189 @@ fn map_artifact(raw: RawCargoMessage) -> Result<CargoMessage, BuildError> {
     }))
 }
 
+struct CargoStreams {
+    messages: Vec<CargoMessage>,
+    stderr: String,
+}
+
+enum CargoStreamOutcome {
+    Completed(CargoStreams),
+    Cancelled,
+}
+
+fn collect_cargo_json_streams(
+    child: &mut std::process::Child,
+    cancellation: &BuildCancellation,
+) -> Result<CargoStreamOutcome, BuildError> {
+    let stdout = child.stdout.take().ok_or(BuildError::MissingCargoStdout)?;
+    let stderr = child.stderr.take().ok_or(BuildError::MissingCargoStderr)?;
+    let (stdout_sender, stdout_receiver) = mpsc::channel();
+    let mut stdout_reader = Some(thread::spawn(move || {
+        read_cargo_lines(stdout, stdout_sender);
+    }));
+    let (stderr_sender, stderr_receiver) = mpsc::channel();
+    let mut stderr_reader = Some(thread::spawn(move || {
+        let _ = stderr_sender.send(read_cargo_stderr(stderr));
+    }));
+    let mut messages = Vec::new();
+    let mut stdout_closed = false;
+    let mut stderr_closed = false;
+    let mut process_stderr = None;
+
+    while !stdout_closed || !stderr_closed {
+        if cancellation.is_cancelled() {
+            stop_cargo_process(child, stdout_reader.take(), stderr_reader.take());
+            return Ok(CargoStreamOutcome::Cancelled);
+        }
+        if !stderr_closed {
+            match stderr_receiver.try_recv() {
+                Ok(result) => {
+                    process_stderr = match result {
+                        Ok(stderr) => Some(stderr),
+                        Err(error) => {
+                            stop_cargo_process(child, stdout_reader.take(), stderr_reader.take());
+                            return Err(error);
+                        }
+                    };
+                    stderr_closed = true;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    stop_cargo_process(child, stdout_reader.take(), stderr_reader.take());
+                    return Err(BuildError::CargoReaderPanicked);
+                }
+            }
+        }
+        if stdout_closed {
+            thread::sleep(Duration::from_millis(20));
+            continue;
+        }
+        match stdout_receiver.recv_timeout(Duration::from_millis(20)) {
+            Ok(Ok(line)) => {
+                let message = match parse_cargo_json_line(&line) {
+                    Ok(message) => message,
+                    Err(error) => {
+                        stop_cargo_process(child, stdout_reader.take(), stderr_reader.take());
+                        return Err(error);
+                    }
+                };
+                if let Some(message) = message {
+                    messages.push(message);
+                }
+            }
+            Ok(Err(error)) => {
+                stop_cargo_process(child, stdout_reader.take(), stderr_reader.take());
+                return Err(error);
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => stdout_closed = true,
+        }
+    }
+
+    let stdout_reader = stdout_reader
+        .take()
+        .ok_or(BuildError::CargoReaderPanicked)?;
+    let stderr_reader = stderr_reader
+        .take()
+        .ok_or(BuildError::CargoReaderPanicked)?;
+    stdout_reader
+        .join()
+        .map_err(|_| BuildError::CargoReaderPanicked)?;
+    stderr_reader
+        .join()
+        .map_err(|_| BuildError::CargoReaderPanicked)?;
+    Ok(CargoStreamOutcome::Completed(CargoStreams {
+        messages,
+        stderr: process_stderr.ok_or(BuildError::CargoReaderPanicked)?,
+    }))
+}
+
+struct CargoMetadataStreams {
+    bytes: Vec<u8>,
+    stderr: String,
+}
+
+enum CargoMetadataStreamOutcome {
+    Completed(CargoMetadataStreams),
+    Cancelled,
+}
+
+fn collect_cargo_metadata_streams(
+    child: &mut std::process::Child,
+    cancellation: &BuildCancellation,
+) -> Result<CargoMetadataStreamOutcome, BuildError> {
+    let stdout = child.stdout.take().ok_or(BuildError::MissingCargoStdout)?;
+    let stderr = child.stderr.take().ok_or(BuildError::MissingCargoStderr)?;
+    let (stdout_sender, stdout_receiver) = mpsc::channel();
+    let mut stdout_reader = Some(thread::spawn(move || {
+        let _ = stdout_sender.send(read_bounded_stream(stdout, MAX_CARGO_METADATA_BYTES));
+    }));
+    let (stderr_sender, stderr_receiver) = mpsc::channel();
+    let mut stderr_reader = Some(thread::spawn(move || {
+        let _ = stderr_sender.send(read_cargo_stderr(stderr));
+    }));
+    let mut metadata_bytes = None;
+    let mut process_stderr = None;
+
+    while metadata_bytes.is_none() || process_stderr.is_none() {
+        if cancellation.is_cancelled() {
+            stop_cargo_process(child, stdout_reader.take(), stderr_reader.take());
+            return Ok(CargoMetadataStreamOutcome::Cancelled);
+        }
+        if metadata_bytes.is_none() {
+            match stdout_receiver.recv_timeout(Duration::from_millis(20)) {
+                Ok(result) => match result {
+                    Ok(bytes) => metadata_bytes = Some(bytes),
+                    Err(error) => {
+                        stop_cargo_process(child, stdout_reader.take(), stderr_reader.take());
+                        return Err(error);
+                    }
+                },
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => {
+                    stop_cargo_process(child, stdout_reader.take(), stderr_reader.take());
+                    return Err(BuildError::CargoReaderPanicked);
+                }
+            }
+        }
+        if process_stderr.is_none() {
+            match stderr_receiver.try_recv() {
+                Ok(result) => match result {
+                    Ok(stderr) => process_stderr = Some(stderr),
+                    Err(error) => {
+                        stop_cargo_process(child, stdout_reader.take(), stderr_reader.take());
+                        return Err(error);
+                    }
+                },
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    stop_cargo_process(child, stdout_reader.take(), stderr_reader.take());
+                    return Err(BuildError::CargoReaderPanicked);
+                }
+            }
+        }
+    }
+
+    let stdout_reader = stdout_reader
+        .take()
+        .ok_or(BuildError::CargoReaderPanicked)?;
+    let stderr_reader = stderr_reader
+        .take()
+        .ok_or(BuildError::CargoReaderPanicked)?;
+    stdout_reader
+        .join()
+        .map_err(|_| BuildError::CargoReaderPanicked)?;
+    stderr_reader
+        .join()
+        .map_err(|_| BuildError::CargoReaderPanicked)?;
+    Ok(CargoMetadataStreamOutcome::Completed(
+        CargoMetadataStreams {
+            bytes: metadata_bytes.ok_or(BuildError::CargoReaderPanicked)?,
+            stderr: process_stderr.ok_or(BuildError::CargoReaderPanicked)?,
+        },
+    ))
+}
+
 #[allow(clippy::needless_pass_by_value)]
 fn read_cargo_lines(mut stdout: impl Read, sender: mpsc::Sender<Result<String, BuildError>>) {
     let mut bytes = Vec::with_capacity(512);
@@ -2069,6 +2281,99 @@ fn read_cargo_lines(mut stdout: impl Read, sender: mpsc::Sender<Result<String, B
                 break;
             }
         }
+    }
+}
+
+fn read_cargo_stderr(mut stderr: impl Read) -> Result<String, BuildError> {
+    let mut output = Vec::with_capacity(512);
+    let mut buffer = [0_u8; 8_192];
+    loop {
+        let read = stderr
+            .read(&mut buffer)
+            .map_err(|error| BuildError::CargoRead(error.to_string()))?;
+        if read == 0 {
+            return String::from_utf8(output).map_err(|_| BuildError::CargoStderrNotUtf8);
+        }
+        let length = output.len().saturating_add(read);
+        if length > MAX_CARGO_STDERR_BYTES {
+            return Err(BuildError::CargoStderrTooLarge(length));
+        }
+        output.extend_from_slice(&buffer[..read]);
+    }
+}
+
+fn cargo_process_failure_diagnostic(stderr: &str) -> Option<BuildDiagnostic> {
+    let rendered = stderr.trim();
+    if rendered.is_empty() {
+        return None;
+    }
+    let rendered = redact_sensitive_assignments(rendered);
+    let summary = rendered
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map_or_else(
+            || "Cargo process failed".to_owned(),
+            bounded_diagnostic_summary,
+        );
+    Some(BuildDiagnostic {
+        code: None,
+        severity: DiagnosticSeverity::Error,
+        message: summary,
+        rendered: Some(rendered),
+    })
+}
+
+fn sanitize_process_diagnostic(
+    mut diagnostic: BuildDiagnostic,
+) -> Result<BuildDiagnostic, BuildError> {
+    if let Some(code) = &diagnostic.code {
+        validate_text("Cargo process diagnostic code", code)?;
+    }
+    validate_text("Cargo process diagnostic message", &diagnostic.message)?;
+    diagnostic.message = redact_sensitive_assignments(&diagnostic.message);
+    if let Some(rendered) = &diagnostic.rendered {
+        validate_process_stderr(rendered)?;
+        diagnostic.rendered = Some(redact_sensitive_assignments(rendered));
+    }
+    Ok(diagnostic)
+}
+
+fn validate_process_stderr(value: &str) -> Result<(), BuildError> {
+    if value.is_empty() {
+        return Err(BuildError::EmptyField("Cargo process diagnostic stderr"));
+    }
+    if value.len() > MAX_CARGO_STDERR_BYTES {
+        return Err(BuildError::CargoStderrTooLarge(value.len()));
+    }
+    if value.contains('\0') {
+        return Err(BuildError::NulByte("Cargo process diagnostic stderr"));
+    }
+    Ok(())
+}
+
+fn bounded_diagnostic_summary(input: &str) -> String {
+    if input.len() <= MAX_FIELD_BYTES {
+        return input.to_owned();
+    }
+    let mut end = MAX_FIELD_BYTES.saturating_sub("...".len());
+    while !input.is_char_boundary(end) {
+        end = end.saturating_sub(1);
+    }
+    format!("{}...", &input[..end])
+}
+
+fn stop_cargo_process(
+    child: &mut std::process::Child,
+    stdout_reader: Option<thread::JoinHandle<()>>,
+    stderr_reader: Option<thread::JoinHandle<()>>,
+) {
+    let _ = child.kill();
+    let _ = child.wait();
+    if let Some(reader) = stdout_reader {
+        let _ = reader.join();
+    }
+    if let Some(reader) = stderr_reader {
+        let _ = reader.join();
     }
 }
 
@@ -2350,6 +2655,8 @@ pub enum BuildError {
     CargoSpawn(String),
     /// Cargo stdout pipe was unavailable after a successful spawn.
     MissingCargoStdout,
+    /// Cargo stderr pipe was unavailable after a successful spawn.
+    MissingCargoStderr,
     /// Cargo stdout reader terminated unexpectedly.
     CargoReaderPanicked,
     /// Cargo process could not be waited on.
@@ -2358,8 +2665,12 @@ pub enum BuildError {
     CargoRead(String),
     /// Cargo emitted a line larger than the declared protocol limit.
     CargoOutputTooLarge(usize),
+    /// Cargo process stderr exceeded the retained diagnostic limit.
+    CargoStderrTooLarge(usize),
     /// Cargo output was not valid UTF-8 JSON text.
     CargoOutputNotUtf8,
+    /// Cargo process stderr was not valid UTF-8 text.
+    CargoStderrNotUtf8,
     /// Cargo emitted malformed JSON.
     MalformedCargoJson(String),
     /// Required Cargo JSON field was absent.
@@ -2544,6 +2855,7 @@ impl Display for BuildError {
             }
             Self::CargoSpawn(message) => write!(formatter, "failed to start Cargo: {message}"),
             Self::MissingCargoStdout => formatter.write_str("Cargo stdout pipe was unavailable"),
+            Self::MissingCargoStderr => formatter.write_str("Cargo stderr pipe was unavailable"),
             Self::CargoReaderPanicked => formatter.write_str("Cargo stdout reader panicked"),
             Self::CargoWait(message) => {
                 write!(formatter, "failed while waiting for Cargo: {message}")
@@ -2557,7 +2869,14 @@ impl Display for BuildError {
                     "Cargo JSON line exceeds {MAX_CARGO_JSON_LINE_BYTES} bytes ({length} bytes)"
                 )
             }
+            Self::CargoStderrTooLarge(length) => {
+                write!(
+                    formatter,
+                    "Cargo stderr exceeds {MAX_CARGO_STDERR_BYTES} bytes ({length} bytes)"
+                )
+            }
             Self::CargoOutputNotUtf8 => formatter.write_str("Cargo JSON output is not UTF-8"),
+            Self::CargoStderrNotUtf8 => formatter.write_str("Cargo stderr is not UTF-8"),
             Self::MalformedCargoJson(message) => {
                 write!(formatter, "malformed Cargo JSON: {message}")
             }
@@ -2943,6 +3262,81 @@ mod tests {
         cancellation.cancel();
         let result = run_cargo_json(&invocation, &cancellation).expect("cancelled outcome");
         assert_eq!(result.status, CargoRunStatus::Cancelled);
+    }
+
+    #[test]
+    fn cargo_process_failure_is_bounded_and_redacted() {
+        let invocation = CargoInvocation::new(
+            env!("CARGO_MANIFEST_DIR"),
+            CargoCommand::Check,
+            vec!["-p".to_owned(), "missing-token=abc".to_owned()],
+            CargoEnvironment::from_host(),
+        )
+        .expect("invocation");
+        let result = run_cargo_json(&invocation, &BuildCancellation::default())
+            .expect("Cargo process failure is a result, not an adapter failure");
+        assert!(matches!(result.status, CargoRunStatus::Failed(_)));
+        let diagnostic = result.process_diagnostic.expect("Cargo stderr diagnostic");
+        let rendered = diagnostic.rendered.expect("rendered diagnostic");
+        assert!(rendered.contains("missing-token=[REDACTED]"));
+        assert!(!rendered.contains("missing-token=abc"));
+
+        let mut service = BuildService::default();
+        service.submit(request(2)).expect("queued");
+        service
+            .transition(OperationId::new(2), BuildPhase::Resolving, 5)
+            .expect("resolving");
+        service
+            .transition(OperationId::new(2), BuildPhase::Ready, 10)
+            .expect("ready");
+        service
+            .transition(OperationId::new(2), BuildPhase::Running, 20)
+            .expect("running");
+        let event = service
+            .record_process_diagnostic(
+                OperationId::new(2),
+                BuildDiagnostic {
+                    code: None,
+                    severity: DiagnosticSeverity::Error,
+                    message: "token=abc".to_owned(),
+                    rendered: Some("password=hunter2".to_owned()),
+                },
+            )
+            .expect("process diagnostic event");
+        assert!(matches!(
+            event.payload,
+            BuildEventPayload::ProcessDiagnostic
+        ));
+        assert_eq!(
+            event
+                .diagnostic
+                .as_ref()
+                .map(|value| value.message.as_str()),
+            Some("token=[REDACTED]")
+        );
+        assert_eq!(
+            event.diagnostic.and_then(|value| value.rendered).as_deref(),
+            Some("password=[REDACTED]")
+        );
+    }
+
+    #[test]
+    fn metadata_process_failure_returns_a_typed_diagnostic() {
+        let invocation = CargoInvocation::new(
+            env!("CARGO_MANIFEST_DIR"),
+            CargoCommand::Metadata,
+            vec!["--unknown-token=abc".to_owned()],
+            CargoEnvironment::from_host(),
+        )
+        .expect("invocation");
+        let result = run_cargo_metadata(&invocation, &BuildCancellation::default())
+            .expect("Cargo process failure is a result, not an adapter failure");
+        assert!(matches!(result.status, CargoRunStatus::Failed(_)));
+        let diagnostic = result
+            .process_diagnostic
+            .expect("Cargo metadata stderr diagnostic");
+        let rendered = diagnostic.rendered.expect("rendered diagnostic");
+        assert!(rendered.contains("unexpected argument"));
     }
 
     fn cargo_graph_nodes() -> (BuildNode, BuildNode) {

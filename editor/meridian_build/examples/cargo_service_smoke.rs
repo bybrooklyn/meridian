@@ -5,8 +5,9 @@ use std::path::{Path, PathBuf};
 
 use meridian_build::{
     hash_file_bounded, run_cargo_json, run_cargo_metadata, BuildCancellation, BuildGraph,
-    BuildIdentityInput, BuildNode, BuildNodeId, BuildPhase, BuildRequest, BuildService,
-    CargoCommand, CargoEnvironment, CargoInvocation, CargoRunStatus,
+    BuildGraphSchedule, BuildIdentityInput, BuildNode, BuildNodeId, BuildPhase, BuildRequest,
+    BuildService, CargoCommand, CargoEnvironment, CargoInvocation, CargoMetadataOutcome,
+    CargoRunStatus,
 };
 use meridian_core::{OperationId, TraceId};
 
@@ -35,24 +36,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         )?,
         &BuildCancellation::default(),
     )?;
-    let metadata_hash = match (metadata.status, metadata.content_hash) {
-        (CargoRunStatus::Succeeded, Some(hash)) => {
-            let _ = schedule.finish(&metadata_node.id, BuildPhase::Succeeded)?;
-            hash
-        }
-        (CargoRunStatus::Failed(code), _) => {
-            let _ = schedule.finish(&metadata_node.id, BuildPhase::Failed)?;
-            return Err(format!("cargo metadata failed with status {code:?}").into());
-        }
-        (CargoRunStatus::Cancelled, _) => {
-            let _ = schedule.finish(&metadata_node.id, BuildPhase::Cancelled)?;
-            return Err("cargo metadata was cancelled".into());
-        }
-        (CargoRunStatus::Succeeded, None) => {
-            let _ = schedule.finish(&metadata_node.id, BuildPhase::Failed)?;
-            return Err("cargo metadata did not return a hash".into());
-        }
-    };
+    let metadata_hash = metadata_hash_or_error(metadata, &mut schedule, &metadata_node.id)?;
     let identity = BuildIdentityInput {
         source_checkpoint: "local-cargo-service-smoke".to_owned(),
         resolved_profile: "check".to_owned(),
@@ -81,6 +65,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     for message in outcome.messages {
         service.record_cargo_message(OperationId::new(1), message)?;
     }
+    if let Some(diagnostic) = outcome.process_diagnostic {
+        service.record_process_diagnostic(OperationId::new(1), diagnostic)?;
+    }
     match outcome.status {
         CargoRunStatus::Succeeded => {
             let event = service.transition(OperationId::new(1), BuildPhase::Succeeded, 100)?;
@@ -98,6 +85,37 @@ fn main() -> Result<(), Box<dyn Error>> {
         CargoRunStatus::Cancelled => {
             let _ = schedule.finish(&root_node_id, BuildPhase::Cancelled)?;
             Err("Cargo check was unexpectedly cancelled".into())
+        }
+    }
+}
+
+fn metadata_hash_or_error(
+    metadata: CargoMetadataOutcome,
+    schedule: &mut BuildGraphSchedule,
+    metadata_node_id: &BuildNodeId,
+) -> Result<String, Box<dyn Error>> {
+    match (
+        metadata.status,
+        metadata.content_hash,
+        metadata.process_diagnostic,
+    ) {
+        (CargoRunStatus::Succeeded, Some(hash), _) => {
+            let _ = schedule.finish(metadata_node_id, BuildPhase::Succeeded)?;
+            Ok(hash)
+        }
+        (CargoRunStatus::Failed(code), _, diagnostic) => {
+            let _ = schedule.finish(metadata_node_id, BuildPhase::Failed)?;
+            let detail =
+                diagnostic.map_or_else(String::new, |value| format!(": {}", value.message));
+            Err(format!("cargo metadata failed with status {code:?}{detail}").into())
+        }
+        (CargoRunStatus::Cancelled, _, _) => {
+            let _ = schedule.finish(metadata_node_id, BuildPhase::Cancelled)?;
+            Err("cargo metadata was cancelled".into())
+        }
+        (CargoRunStatus::Succeeded, None, _) => {
+            let _ = schedule.finish(metadata_node_id, BuildPhase::Failed)?;
+            Err("cargo metadata did not return a hash".into())
         }
     }
 }

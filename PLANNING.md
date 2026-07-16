@@ -410,16 +410,18 @@ game format, or `game/` path may change.
 Deliverables and public contracts: the editor-only `meridian-build` crate now
 provides Meridian-owned `BuildId`, `BuildRequest`, `BuildNode`, lifecycle/event/
 diagnostic types, cooperative cancellation, bounded file hashing, a structured
-Cargo metadata/check/build JSON adapter, and the `meridian-build --cargo-check`
-or `--cargo-build` helper CLI. Cargo and rustc types remain internal; arguments
-remain arrays and Cargo JSON remains the diagnostic protocol. A bounded versioned, host-selected local
+Cargo metadata/check/build JSON adapter, bounded redacted Cargo process-failure
+diagnostics, and the `meridian-build --cargo-check` or `--cargo-build` helper
+CLI. Cargo and rustc types remain internal; arguments remain arrays and Cargo
+JSON remains the compiler-diagnostic protocol; a separate bounded stderr record
+is present only for an unsuccessful Cargo process. A bounded versioned, host-selected local
 state store publishes a synced temporary snapshot through a same-directory
 rename; `DurableBuildService` persists each accepted mutation, restores
 interrupted work as `WorkerLost`, and rejects malformed, oversized, symlinked,
 or non-regular state files. `BuildGraph` validates declared dependencies,
 requested-root/BuildId agreement, duplicate inputs/environment, cycles, and
 unreachable nodes; its deterministic local scheduler starts a Cargo metadata
-node before the dependent Cargo-check node and blocks dependents after terminal
+node before the dependent Cargo-check or Cargo-build node and blocks dependents after terminal
 failure. Concurrent/resource-aware scheduling, durable cache/provenance,
 non-Cargo nodes, and cross-checkout metadata normalization remain unimplemented.
 The build adapter reports Cargo artifact messages but does not yet hash, validate,
@@ -432,7 +434,7 @@ visualization, or Creator Editor Alpha completion.
 Tests: deterministic identity; invalid lifecycle transitions; stale BuildId or
 sequence rejection; cancellation before process spawn; malformed Cargo JSON;
 compiler diagnostic/artifact mapping; typed full Cargo metadata parsing;
-secret-like diagnostic redaction; durable snapshot publication/reopen and
+secret-like JSON and process-stderr diagnostic redaction; durable snapshot publication/reopen and
 `WorkerLost` recovery; graph order, invalid-edge, cycle, unreachable-node, and
 blocked-dependent fixtures; and a structured local Cargo smoke and helper-CLI
 check/build that never invoke a shell.
@@ -444,10 +446,12 @@ run.
 Captures/traces/recovery evidence: local deterministic event timelines cover
 queued through terminal states; cancellation-before-spawn and malformed-event
 tests pass. The durable local store reopens interrupted work as `WorkerLost`,
-persists that recovery before exposing it, and rejects late success. Process
-supervision, child-process-group termination, durable artifact provenance, and
+persists that recovery before exposing it, and rejects late success. The adapter
+drains stdout and bounded stderr concurrently so failed local Cargo runs return
+a typed redacted process diagnostic. Process supervision, child-process-group
+termination, durable artifact provenance, and
 atomic artifact publication remain required before package completion. The local
-graph proof is only Cargo metadata -> check; it makes no parallelism, resource,
+graph proof is only Cargo metadata -> check/build; it makes no parallelism, resource,
 cache, or non-Cargo adapter claim. Cargo build output is observable but not yet
 an atomically published Meridian artifact.
 
@@ -477,7 +481,7 @@ Meridian public boundary, a command is shell-concatenated, a stale/cancelled
 operation can publish an artifact, untrusted output is accepted without bounds,
 or an engine/runtime crate gains a build-service dependency.
 
-Known limits and unsupported rows: only local Cargo JSON metadata/check flows
+Known limits and unsupported rows: only local Cargo JSON metadata/check/build flows
 are in scope initially. The metadata hash is a local Cargo payload hash rather
 than a cross-checkout-normalized reproducibility identity. The portable state
 store is project-host-selected local recovery, not a remote, signing, artifact,

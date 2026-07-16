@@ -22,7 +22,8 @@ Non-goals: replacing Cargo or rust-analyzer, creating separate Meridian Studio/I
 - meridian-project: project/workspace/profile source documents and Cargo mapping.
 - meridian-build: current bounded editor-only service foundation for deterministic
   local BuildIds, typed operation/event state, bounded Cargo metadata and
-  redacted Cargo JSON mapping, structured Cargo checks/builds, cancellation, a
+  redacted Cargo JSON mapping, bounded redacted Cargo process-failure stderr,
+  structured Cargo checks/builds, cancellation, a
   helper CLI, and a host-selected local durable state store. The store snapshots each
   accepted `DurableBuildService` mutation through a synced temporary sibling and
   same-directory rename, then persists `WorkerLost` recovery before returning it
@@ -31,7 +32,10 @@ Non-goals: replacing Cargo or rust-analyzer, creating separate Meridian Studio/I
   Concurrent/resource-aware DAG scheduling, cross-checkout identity
   normalization, cache/provenance persistence, and worker supervision remain
   planned. Cargo build artifact messages are observable only; hash/schema/tool
-  validation and atomic artifact publication remain unimplemented.
+  validation and atomic artifact publication remain unimplemented. The current
+  adapter concurrently drains stdout and bounded stderr; stderr becomes a typed
+  process-failure diagnostic only for a non-success Cargo status, not a compiler
+  artifact or persistent log.
 - meridian-build-protocol: versioned editor/service/worker messages.
 - meridian-cargo: cargo metadata, JSON messages, rustc artifacts, tests.
 - meridian-ide: language-server/session, code intelligence, debugger, test, profiler, and source-navigation contracts used inside Meridian.
