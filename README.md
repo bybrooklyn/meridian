@@ -66,7 +66,7 @@ cargo run -p meridian-rt --example headless_profile_smoke
 cargo run -p meridian-build --example cargo_service_smoke
 cargo run -p meridian-build --example artifact_event_smoke
 cargo run -p meridian-build --bin meridian-build -- --cargo-build --workspace . --source-checkpoint local-cargo-build --toolchain local --target host -- -p meridian-core
-cargo run -p meridian-build --bin meridian-build -- --cargo-test-no-run --workspace . --source-checkpoint local-cargo-test-no-run --toolchain local --target host -- -p meridian-build
+cargo run -p meridian-build --bin meridian-build -- --cargo-test-no-run --workspace . --source-checkpoint local-cargo-test-no-run --toolchain local --target host -- -p meridian-core
 ~~~
 
 ## License

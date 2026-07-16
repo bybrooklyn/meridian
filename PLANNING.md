@@ -506,10 +506,11 @@ Known limits and unsupported rows: only local Cargo JSON metadata, check, build,
 and test-compilation flows are in scope initially; test compilation uses Cargo
 `--no-run`, so test-harness execution remains unsupported by this JSON adapter.
 When this helper is itself launched through `cargo run` on Windows, its Cargo
-build request must not relink the running `meridian-build.exe`; the documented
-and CI proof therefore builds the independent `meridian-core` library target.
-An installed or separately hosted service is not that launch mode, but
-self-rebuild orchestration is not claimed by this bounded slice.
+build or test-compilation request must not relink the running
+`meridian-build.exe`; the documented and CI proofs therefore target the
+independent `meridian-core` library. An installed or separately hosted service
+is not that launch mode, but self-rebuild orchestration is not claimed by this
+bounded slice.
 The metadata hash is a local Cargo payload hash rather
 than a cross-checkout-normalized reproducibility identity. The local state and
 artifact stores are host-selected foundations, not remote, signing, provider, or
