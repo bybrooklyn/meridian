@@ -66,6 +66,7 @@ BuildId = hash(
   source_checkpoint,
   resolved_project_profile,
   cargo_metadata_and_lock,
+  command_arguments,
   toolchain_versions,
   target_and_capabilities,
   environment_allowlist,

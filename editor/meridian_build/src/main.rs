@@ -44,6 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         source_checkpoint: arguments.source_checkpoint,
         resolved_profile: format!("cargo-{}", arguments.cargo_command.as_str()),
         cargo_metadata_and_lock: format!("metadata:{metadata_hash};lock:{lock_hash}"),
+        command_arguments: arguments.cargo_arguments.clone(),
         toolchain_version: arguments.toolchain,
         target_and_capabilities: arguments.target,
         environment_allowlist: environment.identity_values(),

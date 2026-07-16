@@ -22,6 +22,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         source_checkpoint: "artifact-event-smoke".to_owned(),
         resolved_profile: "cargo-build".to_owned(),
         cargo_metadata_and_lock: "smoke-metadata-and-lock".to_owned(),
+        command_arguments: Vec::new(),
         toolchain_version: "cargo-example".to_owned(),
         target_and_capabilities: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
         environment_allowlist: BTreeMap::new(),

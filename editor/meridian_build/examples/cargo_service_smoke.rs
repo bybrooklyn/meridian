@@ -41,6 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         source_checkpoint: "local-cargo-service-smoke".to_owned(),
         resolved_profile: "check".to_owned(),
         cargo_metadata_and_lock: format!("metadata:{metadata_hash};lock:{lock_hash}"),
+        command_arguments: vec!["-p".to_owned(), "meridian-build".to_owned()],
         toolchain_version: "workspace-cargo".to_owned(),
         target_and_capabilities: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
         environment_allowlist: environment.identity_values(),

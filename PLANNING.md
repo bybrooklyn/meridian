@@ -414,8 +414,9 @@ Cargo metadata/check/build/test-compilation JSON adapter, bounded redacted Cargo
 process-failure diagnostics, and the `meridian-build --cargo-check`,
 `--cargo-build`, or `--cargo-test-no-run` helper CLI. Cargo and rustc types
 remain internal; arguments remain arrays and Cargo
-JSON remains the compiler-diagnostic protocol; a separate bounded stderr record
-is present only for an unsuccessful Cargo process. A bounded versioned, host-selected local
+JSON remains the compiler-diagnostic protocol; ordered command arguments are
+also declared BuildId inputs. A separate bounded stderr record is present only
+for an unsuccessful Cargo process. A bounded versioned, host-selected local
 state store publishes a synced temporary snapshot through a same-directory
 rename; `DurableBuildService` persists each accepted mutation, restores
 interrupted work as `WorkerLost`, and rejects malformed, oversized, symlinked,

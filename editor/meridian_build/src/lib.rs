@@ -79,6 +79,14 @@ impl BuildId {
             "cargo-metadata-and-lock",
             &input.cargo_metadata_and_lock,
         );
+        hash_field(
+            &mut hasher,
+            "command-argument-count",
+            &input.command_arguments.len().to_string(),
+        );
+        for argument in &input.command_arguments {
+            hash_field(&mut hasher, "command-argument", argument);
+        }
         hash_field(&mut hasher, "toolchain", &input.toolchain_version);
         hash_field(&mut hasher, "target", &input.target_and_capabilities);
         for (name, value) in &input.environment_allowlist {
@@ -116,6 +124,8 @@ pub struct BuildIdentityInput {
     pub resolved_profile: String,
     /// Content hash of resolved Cargo metadata and lockfile inputs.
     pub cargo_metadata_and_lock: String,
+    /// Ordered, structured adapter arguments that affect the requested command.
+    pub command_arguments: Vec<String>,
     /// Declared Rust/Cargo toolchain version.
     pub toolchain_version: String,
     /// Target triple plus selected capability profile.
@@ -3019,6 +3029,12 @@ fn validate_identity(input: &BuildIdentityInput) -> Result<(), BuildError> {
         "Cargo metadata and lock hash",
         &input.cargo_metadata_and_lock,
     )?;
+    if input.command_arguments.len() > MAX_ARGUMENTS {
+        return Err(BuildError::TooManyArguments(input.command_arguments.len()));
+    }
+    for argument in &input.command_arguments {
+        validate_text("build command argument", argument)?;
+    }
     validate_text("toolchain version", &input.toolchain_version)?;
     validate_text("target and capabilities", &input.target_and_capabilities)?;
     if input.root_node_ids.is_empty() {
@@ -3657,6 +3673,7 @@ mod tests {
             source_checkpoint: "abc123".to_owned(),
             resolved_profile: "debug".to_owned(),
             cargo_metadata_and_lock: "lock-hash".to_owned(),
+            command_arguments: Vec::new(),
             toolchain_version: "rustc 1.90.0".to_owned(),
             target_and_capabilities: "aarch64-apple-darwin/default".to_owned(),
             environment_allowlist: BTreeMap::new(),
@@ -3725,6 +3742,25 @@ mod tests {
         assert_ne!(
             BuildId::derive(&first).expect("first"),
             BuildId::derive(&second).expect("second")
+        );
+    }
+
+    #[test]
+    fn identity_changes_when_ordered_command_arguments_change() {
+        let mut first = identity();
+        first.command_arguments = vec!["-p".to_owned(), "meridian-core".to_owned()];
+        let mut second = first.clone();
+        second.command_arguments = vec!["-p".to_owned(), "meridian-build".to_owned()];
+        assert_ne!(
+            BuildId::derive(&first).expect("first"),
+            BuildId::derive(&second).expect("second")
+        );
+
+        let mut reordered = first.clone();
+        reordered.command_arguments.reverse();
+        assert_ne!(
+            BuildId::derive(&first).expect("first"),
+            BuildId::derive(&reordered).expect("reordered")
         );
     }
 
