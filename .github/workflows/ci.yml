@@ -33,6 +33,7 @@ jobs:
       - run: cargo run -p meridian-rt --example headless_profile_smoke
       - run: cargo run -p meridian-build --example cargo_service_smoke
       - run: cargo run -p meridian-build --bin meridian-build -- --cargo-build --workspace . --source-checkpoint ci-cargo-build --toolchain ci --target host -- -p meridian-build
+      - run: cargo run -p meridian-build --bin meridian-build -- --cargo-test-no-run --workspace . --source-checkpoint ci-cargo-test-no-run --toolchain ci --target host -- -p meridian-build
       - name: Verify minimal runtime has no UI dependency
         shell: bash
         run: |

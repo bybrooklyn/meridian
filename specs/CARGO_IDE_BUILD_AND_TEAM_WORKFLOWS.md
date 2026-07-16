@@ -23,7 +23,7 @@ Non-goals: replacing Cargo or rust-analyzer, creating separate Meridian Studio/I
 - meridian-build: current bounded editor-only service foundation for deterministic
   local BuildIds, typed operation/event state, bounded Cargo metadata and
   redacted Cargo JSON mapping, bounded redacted Cargo process-failure stderr,
-  structured Cargo checks/builds, cancellation, a
+  structured Cargo checks/builds/test compilation, cancellation, a
   helper CLI, and a host-selected local durable state store. The store snapshots each
   accepted `DurableBuildService` mutation through a synced temporary sibling and
   same-directory rename, then persists `WorkerLost` recovery before returning it

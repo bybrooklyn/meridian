@@ -410,9 +410,10 @@ game format, or `game/` path may change.
 Deliverables and public contracts: the editor-only `meridian-build` crate now
 provides Meridian-owned `BuildId`, `BuildRequest`, `BuildNode`, lifecycle/event/
 diagnostic types, cooperative cancellation, bounded file hashing, a structured
-Cargo metadata/check/build JSON adapter, bounded redacted Cargo process-failure
-diagnostics, and the `meridian-build --cargo-check` or `--cargo-build` helper
-CLI. Cargo and rustc types remain internal; arguments remain arrays and Cargo
+Cargo metadata/check/build/test-compilation JSON adapter, bounded redacted Cargo
+process-failure diagnostics, and the `meridian-build --cargo-check`,
+`--cargo-build`, or `--cargo-test-no-run` helper CLI. Cargo and rustc types
+remain internal; arguments remain arrays and Cargo
 JSON remains the compiler-diagnostic protocol; a separate bounded stderr record
 is present only for an unsuccessful Cargo process. A bounded versioned, host-selected local
 state store publishes a synced temporary snapshot through a same-directory
@@ -481,8 +482,10 @@ Meridian public boundary, a command is shell-concatenated, a stale/cancelled
 operation can publish an artifact, untrusted output is accepted without bounds,
 or an engine/runtime crate gains a build-service dependency.
 
-Known limits and unsupported rows: only local Cargo JSON metadata/check/build flows
-are in scope initially. The metadata hash is a local Cargo payload hash rather
+Known limits and unsupported rows: only local Cargo JSON metadata, check, build,
+and test-compilation flows are in scope initially; test compilation uses Cargo
+`--no-run`, so test-harness execution remains unsupported by this JSON adapter.
+The metadata hash is a local Cargo payload hash rather
 than a cross-checkout-normalized reproducibility identity. The portable state
 store is project-host-selected local recovery, not a remote, signing, artifact,
 or provider store. The current graph scheduler is single-host, dependency-only,
@@ -493,7 +496,7 @@ rust-analyzer, remote execution, signing, and deployment remain planned.
 Reviewers/sign-offs: Definition of Ready was reviewed against the current
 workspace and MS-02 evidence. The current local implementation slice passes its
 focused tests, durable-recovery tests, warning-denied lint, structured Cargo
-smoke, and helper-CLI Cargo check. Completion requires fresh registered evidence
+smoke, and helper-CLI Cargo check/build/test-compilation. Completion requires fresh registered evidence
 and the mandatory package sign-off before this package may close.
 
 Next unblocked package: `WP-BLD-001` remains active until it closes; only then

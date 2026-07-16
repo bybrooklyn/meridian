@@ -158,6 +158,9 @@ fn cargo_root_node(
     match command {
         CargoCommand::Check => BuildNode::cargo_check(BuildNodeId::new("cargo-check")?, toolchain),
         CargoCommand::Build => BuildNode::cargo_build(BuildNodeId::new("cargo-build")?, toolchain),
+        CargoCommand::TestNoRun => {
+            BuildNode::cargo_test_no_run(BuildNodeId::new("cargo-test-no-run")?, toolchain)
+        }
         CargoCommand::Metadata => unreachable!("CLI root operation excludes cargo metadata"),
     }
 }
@@ -177,6 +180,7 @@ impl CliArguments {
         let cargo_command = match arguments.next().as_deref() {
             Some("--cargo-check") => CargoCommand::Check,
             Some("--cargo-build") => CargoCommand::Build,
+            Some("--cargo-test-no-run") => CargoCommand::TestNoRun,
             _ => return Err(CliError::Usage),
         };
         let mut workspace = None;
@@ -229,7 +233,7 @@ impl std::fmt::Display for CliError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Usage => formatter.write_str(
-                "usage: meridian-build <--cargo-check|--cargo-build> --workspace <path> --source-checkpoint <id> --toolchain <version> --target <target> [-- <cargo arguments>]",
+                "usage: meridian-build <--cargo-check|--cargo-build|--cargo-test-no-run> --workspace <path> --source-checkpoint <id> --toolchain <version> --target <target> [-- <cargo arguments>]",
             ),
             Self::MissingArgument(flag) => write!(formatter, "missing required argument {flag}"),
             Self::UnknownArgument(argument) => write!(formatter, "unknown argument {argument}"),

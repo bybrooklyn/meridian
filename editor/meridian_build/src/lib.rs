@@ -165,6 +165,8 @@ pub enum BuildNodeKind {
     CargoCheck,
     /// Run a Cargo build and consume its JSON message stream.
     CargoBuild,
+    /// Compile Cargo test targets without executing a test harness.
+    CargoTestNoRun,
 }
 
 /// A typed graph node with declared immutable inputs and dependencies.
@@ -241,6 +243,30 @@ impl BuildNode {
         Ok(Self {
             id,
             kind: BuildNodeKind::CargoBuild,
+            input_hashes: Vec::new(),
+            tool_id_version,
+            declared_environment: Vec::new(),
+            dependencies: Vec::new(),
+        })
+    }
+
+    /// Builds a Cargo test-compilation node using the declared Cargo tool identity.
+    ///
+    /// The node uses Cargo's `test --no-run` mode so its observable output remains
+    /// the machine-readable compiler-message protocol rather than test-harness text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the ID or declared tool version is invalid.
+    pub fn cargo_test_no_run(
+        id: BuildNodeId,
+        tool_id_version: impl Into<String>,
+    ) -> Result<Self, BuildError> {
+        let tool_id_version = tool_id_version.into();
+        validate_text("tool ID and version", &tool_id_version)?;
+        Ok(Self {
+            id,
+            kind: BuildNodeKind::CargoTestNoRun,
             input_hashes: Vec::new(),
             tool_id_version,
             declared_environment: Vec::new(),
@@ -1497,6 +1523,8 @@ pub enum CargoCommand {
     Check,
     /// Run `cargo build` with Cargo's machine-readable JSON message protocol.
     Build,
+    /// Compile `cargo test --no-run` with Cargo's machine-readable JSON message protocol.
+    TestNoRun,
 }
 
 impl CargoCommand {
@@ -1507,6 +1535,7 @@ impl CargoCommand {
             Self::Metadata => "metadata",
             Self::Check => "check",
             Self::Build => "build",
+            Self::TestNoRun => "test",
         }
     }
 }
@@ -1620,12 +1649,18 @@ impl CargoInvocation {
                 "--locked".to_owned(),
                 "--format-version=1".to_owned(),
             ],
-            CargoCommand::Check | CargoCommand::Build => vec![
-                self.command.as_str().to_owned(),
-                "--locked".to_owned(),
-                "--quiet".to_owned(),
-                "--message-format=json".to_owned(),
-            ],
+            CargoCommand::Check | CargoCommand::Build | CargoCommand::TestNoRun => {
+                let mut arguments = vec![
+                    self.command.as_str().to_owned(),
+                    "--locked".to_owned(),
+                    "--quiet".to_owned(),
+                    "--message-format=json".to_owned(),
+                ];
+                if self.command == CargoCommand::TestNoRun {
+                    arguments.push("--no-run".to_owned());
+                }
+                arguments
+            }
         };
         arguments.extend(self.arguments.iter().cloned());
         CargoCommandPlan {
@@ -1722,7 +1757,7 @@ pub struct CargoMetadataOutcome {
     pub process_diagnostic: Option<BuildDiagnostic>,
 }
 
-/// Runs a structured Cargo check or build and parses its bounded JSON message stream.
+/// Runs a structured Cargo check, build, or test compilation and parses its bounded JSON stream.
 ///
 /// # Errors
 ///
@@ -1734,7 +1769,7 @@ pub fn run_cargo_json(
 ) -> Result<CargoRunOutcome, BuildError> {
     if !matches!(
         invocation.command,
-        CargoCommand::Check | CargoCommand::Build
+        CargoCommand::Check | CargoCommand::Build | CargoCommand::TestNoRun
     ) {
         return Err(BuildError::UnexpectedCargoCommand {
             expected: CargoCommand::Check,
@@ -3220,9 +3255,10 @@ mod tests {
 
     #[test]
     fn structured_cargo_plan_clears_ambient_protocol_overrides() {
-        for (command, expected_subcommand) in [
-            (CargoCommand::Check, "check"),
-            (CargoCommand::Build, "build"),
+        for (command, expected_subcommand, expects_no_run) in [
+            (CargoCommand::Check, "check", false),
+            (CargoCommand::Build, "build", false),
+            (CargoCommand::TestNoRun, "test", true),
         ] {
             let invocation = CargoInvocation::new(
                 "/workspace",
@@ -3237,6 +3273,10 @@ mod tests {
                 .arguments
                 .iter()
                 .any(|argument| argument == "--message-format=json"));
+            assert_eq!(
+                plan.arguments.iter().any(|argument| argument == "--no-run"),
+                expects_no_run
+            );
         }
         assert!(matches!(
             CargoInvocation::new(
