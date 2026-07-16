@@ -47,7 +47,9 @@ const MAX_CARGO_TARGETS: usize = 256;
 const MAX_CARGO_TARGET_KINDS: usize = 64;
 const MAX_OPERATIONS: usize = 1_024;
 const MAX_SNAPSHOT_TEMPORARY_ATTEMPTS: usize = 16;
+#[cfg(unix)]
 const CARGO_CANCELLATION_GRACE: Duration = Duration::from_millis(250);
+#[cfg(unix)]
 const CARGO_CANCELLATION_POLL: Duration = Duration::from_millis(10);
 static NEXT_SNAPSHOT_TEMPORARY_ID: AtomicU64 = AtomicU64::new(0);
 
