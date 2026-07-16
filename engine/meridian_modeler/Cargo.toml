@@ -1,0 +1,15 @@
+[package]
+name = "meridian-modeler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+meridian-alluvium = { path = "../meridian_alluvium" }
+meridian-core = { path = "../meridian_core" }
+meridian-save = { path = "../meridian_save" }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

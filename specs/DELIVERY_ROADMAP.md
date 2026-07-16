@@ -31,8 +31,8 @@ Every milestone review records:
 | Runtime and platform | CORE, RUN | clocks, tasks, diagnostics, input, platform lifecycle, recovery | implemented foundations; platform matrix incomplete |
 | RHI and Penumbra | RHI, PEN | capability-driven GPU abstraction and Meridian-owned renderer | direct PBR/shadow/diffuse-IBL foundation; production Forward+ incomplete |
 | Creator experience | UI, EDT | Meridian UI and an accessible, recoverable editor | MS-02 UI core proof and Creator Editor Alpha foundation are qualified; milestone review remains |
-| Data and production | DAT, BLD, MDL, DCC | source authority, imports, worlds, packages, saves, build graph, native modeling, optional DCC tools | partial data foundations; modeler and most production tooling planned |
-| World authoring and simulation | PHY, ISO, BAS, VEG, PRC, TOR | Cairn, Isobar, Basalt, vegetation, Alluvium, and coupled simulation | physics wrapper transitional; named environmental crates scaffold; Alluvium `WP-PRC-001` is active and partial |
+| Data and production | DAT, BLD, MDL, DCC | source authority, imports, worlds, packages, saves, build graph, native modeling, optional DCC tools | partial data foundations; `WP-MDL-001` is active for its bounded editable-model foundation |
+| World authoring and simulation | PHY, ISO, BAS, VEG, PRC, TOR | Cairn, Isobar, Basalt, vegetation, Alluvium, and coupled simulation | physics wrapper transitional; named environmental crates scaffold; Alluvium `WP-PRC-001` is `ImplementedFoundation` |
 | Game and media | GAM, FWK, ANI, NAV, PRJ, AUD | Rust-first gameplay, optional Luau, reusable frameworks, animation/navigation, Project Meridian, Wavefront | game external; Wavefront scaffold; other domains planned |
 | Rendering languages and 2D | SHD, TWO | one ShaderIr plus dedicated first-class 2D paths | planned; current WGSL/3D foundations do not implement them |
 | Ecosystem and online | VCS, SYN, NET, COL, MOD, AGT | version control, sync, networking, Collective, modding, typed agents | planned, research, or deferred |

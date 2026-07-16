@@ -3,7 +3,7 @@
 - Status: Adopted
 - Date: 2026-07-15
 - Spec version: v0.4
-- Implementation status: Partial; `WP-PRC-001` is active pending its own CI evidence
+- Implementation status: ImplementedFoundation; `WP-PRC-001` passed its CI evidence gate
 - Owners: future `meridian-alluvium`, editor/build, data, and procedural workstreams
 - Amends: ADR-0008, ADR-0009, ADR-0011, ADR-0014
 - Supersedes: none
@@ -21,7 +21,7 @@ Alluvium owns recipes, typed graph and field evaluation, cache/invalidation, gen
 
 The editor/build capability is core Meridian functionality, not an optional proprietary plug-in. Runtime-safe evaluation remains content-triggered and capability-scoped. A baked-only project does not ship the editor, graph compiler, preview cache, or runtime evaluator and incurs no recurring Alluvium runtime cost.
 
-The first implementation package may create `meridian-alluvium`. No marker crate is created by the v0.4 documentation amendment. Internal modules use descriptive names. Third-party foundations remain behind Meridian seams and are replaced only through measured research gates and an ADR.
+`WP-PRC-001` created `meridian-alluvium` as the bounded textual scalar-reference foundation. Internal modules use descriptive names. Third-party foundations remain behind Meridian seams and are replaced only through measured research gates and an ADR.
 
 Project Meridian supplies the first private proving requirements. Engine documents and evidence contain only sanitized functional contracts, generated surrogates, and controlled hashes; AMI content, proprietary recipes, seeds, hero overrides, and assets remain private.
 
@@ -48,6 +48,7 @@ Project Meridian supplies the first private proving requirements. Engine documen
 - [v0.4 migration ledger](../../migrations/V0_4_ALLUVIUM_AMENDMENT.md)
 - [Source data authority](ADR-0011-data-authority.md)
 - [Repository split](ADR-0003-repository-split.md)
+- GitHub Actions run `29511174569` passed governance and Linux, Windows, and macOS workspace rows for `9c88cc152878b1eb22f18c236c00ad1abd984fa5`.
 
 ## Status Review
 

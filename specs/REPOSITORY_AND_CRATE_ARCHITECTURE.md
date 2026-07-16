@@ -99,10 +99,18 @@ wgpu, Rapier, egui, and AccessKit types MUST stop at their adapter crates. Exist
 
 ### 4.4 Authoring and product
 
-- meridian-editor-core: document sessions, selection, commands, undo, play mode.
+- meridian-editor-core: document sessions, selection, typed command
+  transactions, checkpoints, undo/redo, play-mode fork/apply/discard, and
+  durable recovery for Creator Editor Alpha.
+- meridian-ui-editor: Meridian-native accessible panel declarations and
+  retained documents for project, hierarchy, viewport, inspector/history,
+  asset/import/build, recipe, modeler, diagnostics, and recovery surfaces. It
+  presents domain-owned source and commands without taking their authority.
 - meridian-editor: the native application composition currently named by crate
   history; its executable is `meridian` and user-facing title is **Meridian**.
-  MS-01 native/headless integration exists; Creator Editor Alpha remains planned.
+  MS-01 native/headless integration and the MS-03 Creator Alpha foundation
+  exist; only this crate composes editor-core, UI, source import, Alluvium,
+  modeler, build, and runtime-facing adapters.
 - meridian-editor-egui-bootstrap: temporary shell only; deletable when Meridian UI migration gates pass.
 - meridian-build: editor-only build-service foundation with Meridian-owned
   BuildId/request/event contracts, bounded Cargo JSON mapping and process-failure
@@ -117,14 +125,20 @@ wgpu, Rapier, egui, and AccessKit types MUST stop at their adapter crates. Exist
 - meridian-ponder.
 - future Rust gameplay module/reflection/reload components under `WP-GAM-001`.
 - future optional meridian-luau and generated gameplay bindings under `WP-GAM-002`.
-- future native model-document/kernel/tool modules under `WP-MDL-001`; no placeholder crate is created by v0.5.
+- meridian-modeler: MS-03 partial native editable-model foundation with
+  versioned source, stable mesh-element identity, immutable revisions,
+  generation-checked selection, bounded primitive/transform/split operations,
+  topology lineage, semantic undo/recovery, and a derived Penumbra preview
+  descriptor. UVs, broad topology tools, modifiers, collision/LOD, and
+  interchange remain later `WP-MDL-001` scope.
 - future animation, navigation, framework, dedicated 2D, and Collective modules only when their first real work packages start.
 - future `meridian-marquee`: post-capture promotional campaigns, deterministic variants, claims, approvals, and local export manifests. The name is reserved; no crate exists until a post-1.0 planning review creates a real package.
 - meridian-spec: documentation-governance CLI under editor/; no runtime or game
   crate may depend on it.
-- future meridian-alluvium: typed procedural recipe/field evaluation,
-  incremental cache, generated identity, overrides, provenance, and cooking.
-  The name is reserved; no crate exists until `WP-PRC-001` begins real work.
+- meridian-alluvium: `WP-PRC-001` implemented foundation for typed procedural
+  recipe/field evaluation, incremental cache, generated identity, overrides,
+  provenance, licensing, and cooking. It remains editor/build architecture;
+  baked-only player profiles do not depend on it.
 - external Project Meridian game crates and content, consumed through published Meridian APIs after that integration is activated.
 
 Alluvium is core editor/build architecture, not an optional proprietary plug-in.

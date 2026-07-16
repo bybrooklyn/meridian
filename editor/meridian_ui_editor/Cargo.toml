@@ -8,6 +8,7 @@ license.workspace = true
 meridian-alluvium = { path = "../../engine/meridian_alluvium" }
 meridian-core = { path = "../../engine/meridian_core" }
 meridian-editor-core = { path = "../meridian_editor_core" }
+meridian-modeler = { path = "../../engine/meridian_modeler" }
 meridian-ui = { path = "../../engine/meridian_ui" }
 
 [lints]

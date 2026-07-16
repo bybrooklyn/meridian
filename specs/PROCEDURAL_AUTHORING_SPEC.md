@@ -4,19 +4,20 @@
 
 Status: version 0.5 normative architecture, 2026-07-15.
 
-Architecture status: `Adopted` by [ADR-0017](../docs/architecture/decisions/ADR-0017-alluvium.md). Documentation maturity: `ResearchReady`. Implementation maturity: `Partial`.
+Architecture status: `Adopted` by [ADR-0017](../docs/architecture/decisions/ADR-0017-alluvium.md). Documentation maturity: `ResearchReady`. Implementation maturity: `ImplementedFoundation`.
 
 Governing IDs: `REQ-PRC-001` through `REQ-PRC-010`; `WP-PRC-001` through
 `WP-PRC-010`; `RG-PRC-001`; `RG-PRC-002`; post-1.0 `PRG-REL-001`.
 
-Current implementation status: `WP-PRC-001` is active after qualified Editor
-evidence. The in-progress source delivery adds `meridian-alluvium`: canonical
-pretty JSON `meridian.procedural-recipe/v1` `.mproc` source, strict scalar
-reference evaluation, stable generated IDs, cache integrity recovery, dirty
-reports, retained override outcomes, provenance/license audit, structured CLI
-commands, and a basic semantic inspector. It has no CI evidence yet and does
-not implement graph authoring, domain adapters, runtime-safe evaluation, or a
-production corpus.
+Current implementation status: `WP-PRC-001` is `ImplementedFoundation` after
+GitHub Actions run `29511174569` passed governance and Linux, Windows, and
+macOS workspace rows for `9c88cc152878b1eb22f18c236c00ad1abd984fa5`. Its
+`meridian-alluvium` crate provides canonical pretty JSON
+`meridian.procedural-recipe/v1` `.mproc` source, strict scalar reference
+evaluation, stable generated IDs, cache integrity recovery, dirty reports,
+retained override outcomes, provenance/license audit, structured CLI commands,
+and a basic semantic inspector. It does not implement graph authoring, domain
+adapters, runtime-safe evaluation, or a production corpus.
 
 ## 1. Authority and Position
 

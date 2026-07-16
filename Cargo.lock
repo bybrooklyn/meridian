@@ -1696,6 +1696,7 @@ dependencies = [
  "meridian-diagnostics",
  "meridian-editor-core",
  "meridian-input",
+ "meridian-modeler",
  "meridian-package",
  "meridian-platform",
  "meridian-renderer",
@@ -1732,6 +1733,17 @@ dependencies = [
 [[package]]
 name = "meridian-isobar"
 version = "0.1.0"
+
+[[package]]
+name = "meridian-modeler"
+version = "0.1.0"
+dependencies = [
+ "meridian-alluvium",
+ "meridian-core",
+ "meridian-save",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "meridian-package"
@@ -1856,6 +1868,7 @@ dependencies = [
  "meridian-alluvium",
  "meridian-core",
  "meridian-editor-core",
+ "meridian-modeler",
  "meridian-ui",
 ]
 

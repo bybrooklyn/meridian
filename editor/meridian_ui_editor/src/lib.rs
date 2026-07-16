@@ -6,6 +6,7 @@
 
 use meridian_alluvium::ProceduralRecipe;
 use meridian_editor_core::EditorSession;
+use meridian_modeler::{ModelDocument, ModelSelection, PenumbraPreview};
 use meridian_ui::{UiDocument, UiDocumentError, UiLayout, UiNode, UiNodeId};
 
 /// Stable Creator Editor panel identifiers.
@@ -167,12 +168,21 @@ const CREATOR_ALPHA_PANELS: &[EditorPanel] = &[
     EditorPanel {
         id: EditorPanelId::Modeler,
         title: "Modeler",
-        commands: &["model.inspect-source", "model.select"],
-        query_dependencies: &["model.document"],
+        commands: &[
+            "model.inspect-source",
+            "model.create-primitive",
+            "model.transform",
+            "model.split-edge",
+            "model.undo",
+            "model.redo",
+            "model.recover",
+        ],
+        query_dependencies: &["model.document", "model.selection", "model.preview"],
         layout_hint: "right-bottom",
         permission: "",
         serialization_version: 1,
-        unavailable_state: "Editable model source is unavailable until WP-MDL-001.",
+        unavailable_state:
+            "Select editable model source to inspect stable elements and semantic history.",
     },
     EditorPanel {
         id: EditorPanelId::Diagnostics,
@@ -301,6 +311,91 @@ pub fn recipe_inspector_document(recipe: &ProceduralRecipe) -> Result<UiDocument
     )
 }
 
+/// Builds the keyboard-accessible native-model source inspector. Actions are
+/// semantic commands only; callers submit their typed transactions to the
+/// modeler source boundary and never mutate source while constructing UI.
+///
+/// # Errors
+///
+/// Returns an error when the retained semantic tree is invalid.
+pub fn model_inspector_document(
+    document: &ModelDocument,
+    selection: &ModelSelection,
+    preview: &PenumbraPreview,
+) -> Result<UiDocument, UiDocumentError> {
+    let root = UiNodeId::new(20_000);
+    let source = UiNodeId::new(20_001);
+    let selection_status = UiNodeId::new(20_002);
+    let create = UiNodeId::new(20_003);
+    let transform = UiNodeId::new(20_004);
+    let split = UiNodeId::new(20_005);
+    let undo = UiNodeId::new(20_006);
+    let redo = UiNodeId::new(20_007);
+    let recover = UiNodeId::new(20_008);
+    let source_details = format!(
+        "{} revision {}: {} object(s), preview object {} with {} derived triangle index value(s).",
+        document.label,
+        document.document_generation,
+        document.objects.len(),
+        preview.object_id,
+        preview.triangle_indices.len(),
+    );
+    let selection_details = format!(
+        "{} selected {:?} element(s) at generation {}.",
+        selection.ids.len(),
+        selection.kind,
+        selection.document_generation,
+    );
+    UiDocument::new(
+        root,
+        vec![
+            UiNode::label(source, "Editable model source", source_details),
+            UiNode::label(selection_status, "Model selection", selection_details),
+            UiNode::button(
+                create,
+                "Create primitive",
+                "model.create-primitive",
+                "create primitive",
+            ),
+            UiNode::button(
+                transform,
+                "Transform selected object",
+                "model.transform",
+                "transform selected object",
+            ),
+            UiNode::button(
+                split,
+                "Split selected edge",
+                "model.split-edge",
+                "split selected edge",
+            ),
+            UiNode::button(undo, "Undo model edit", "model.undo", "undo model edit"),
+            UiNode::button(redo, "Redo model edit", "model.redo", "redo model edit"),
+            UiNode::button(
+                recover,
+                "Recover model source",
+                "model.recover",
+                "recover model source",
+            ),
+            UiNode::container(
+                root,
+                "Native model inspector",
+                UiLayout::VerticalStack { gap: 6.0 },
+                vec![
+                    source,
+                    selection_status,
+                    create,
+                    transform,
+                    split,
+                    undo,
+                    redo,
+                    recover,
+                ],
+            ),
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use meridian_core::StableId;
@@ -346,6 +441,36 @@ mod tests {
             UiNodeId::new(10_004),
         ] {
             let node = document.node(id).expect("action");
+            assert_eq!(node.kind, UiWidgetKind::Button);
+            assert!(node.focusable);
+            assert!(node.semantics.action.is_some());
+        }
+    }
+
+    #[test]
+    fn model_inspector_exposes_keyboard_semantic_source_actions() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("repository root");
+        let document = meridian_modeler::ModelDocument::read_source(
+            root.join("examples/creator-alpha/models/public-box.model.json"),
+        )
+        .expect("public editable model");
+        let object = document.objects.first().expect("public object");
+        let selection = meridian_modeler::ModelSelection::new(
+            &document,
+            meridian_modeler::ModelElementKind::Object,
+            [object.id],
+        )
+        .expect("object selection");
+        let preview = document
+            .penumbra_preview(object.id)
+            .expect("derived preview");
+        let inspector = model_inspector_document(&document, &selection, &preview)
+            .expect("valid model inspector");
+        for id in [20_003_u128, 20_004, 20_005, 20_006, 20_007, 20_008] {
+            let node = inspector.node(UiNodeId::new(id)).expect("model action");
             assert_eq!(node.kind, UiWidgetKind::Button);
             assert!(node.focusable);
             assert!(node.semantics.action.is_some());

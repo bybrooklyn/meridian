@@ -4,10 +4,18 @@
 
 Status: version 0.5 normative architecture, 2026-07-15.
 
-Architecture status: `Adopted` by ADR-0022. Documentation maturity: `ResearchReady`. Implementation maturity: `Planned`.
+Architecture status: `Adopted` by ADR-0022. Documentation maturity: `ResearchReady`. Implementation maturity: `Partial`.
 Governing IDs: `REQ-MDL-001` through `REQ-MDL-004`; `WP-MDL-001`; `WP-MDL-002`; `PRG-MDL-001`.
 
-Current implementation status: Meridian has no native editable mesh document, modeling kernel, modeler viewport/tools, modifier stack, UV editor, rigging tools, or Blender companion. A basic native modeler must pass before the Project Meridian prototype gate.
+Current implementation status: `WP-MDL-001` is active after qualified
+Alluvium evidence. Its MS-03 delivery is limited to a native editable-model
+source, stable vertex/edge/face identity and lineage, immutable revisions,
+generation-checked selection, primitive creation, transforms, one bounded
+topology operation, semantic undo/recovery, an accessible inspector, and a
+derived Penumbra preview contract. UVs, broad topology tools, modifiers,
+collision/LOD, rigging, interchange, and Blender companion work remain later
+scope. A basic native modeler must pass before the Project Meridian prototype
+gate.
 
 ## 1. Authority and Product Goal
 

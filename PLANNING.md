@@ -291,8 +291,9 @@ encoding remain provisional. Compression, signing, patches, encryption,
 Forward+, specular IBL, Meridian UI, Creator Editor workflows, and game content
 remain outside MS-01.
 
-`MS-01` and `MS-02` are closed. `WP-BLD-001` and `WP-EDT-001` are qualified
-MS-03 prerequisites; `WP-PRC-001` is the sole active sequential package.
+`MS-01` and `MS-02` are closed. `WP-BLD-001`, `WP-EDT-001`, and
+`WP-PRC-001` are qualified MS-03 prerequisites; `WP-MDL-001` is the sole
+active sequential package.
 Penumbra Stage 1 then proceeds through `WP-PEN-003` and
 `WP-PEN-010`, with `WP-PEN-009` as bounded parallel image-quality work and
 `WP-PEN-011` as the later executable/calibrated forest corpus. `RG-PEN-001`
@@ -777,9 +778,9 @@ runtime, BLD-helper, and dependency-audit rows. The workspace suite includes
 the Creator Alpha process journey. Native review, screenshots, and the
 keyboard/accessibility checklist remain milestone integration evidence.
 
-Next unblocked package: `WP-PRC-001`, active below.
+Next unblocked package: `WP-MDL-001`, active below.
 
-## 13. Active package — WP-PRC-001 / MS-03 Alluvium foundation
+## 13. Closed package — WP-PRC-001 / MS-03 Alluvium foundation
 
 Work package: `WP-PRC-001`
 
@@ -787,15 +788,15 @@ User-visible result: a creator can keep a public canonical `.mproc` recipe as
 source, validate, inspect, preview, bake, audit, explain, diff, and recover its
 derived cache through the same typed Meridian contracts.
 
-Status: `Active`; implementation maturity: `Partial`
+Status: `ImplementedFoundation`; implementation maturity: `ImplementedFoundation`
 
 Requirements: `REQ-PRC-001`, `REQ-PRC-002`, `REQ-PRC-003`, `REQ-PRC-004`,
 `REQ-PRC-005`, `REQ-PRC-008`, `REQ-CORE-001`, `REQ-CORE-002`
 
-Dependencies and Definition of Ready: `WP-DAT-002` and the now-qualified
-`WP-EDT-001` provide source identity/import and the required basic inspector.
+Dependencies and Definition of Ready: `WP-DAT-002` and the qualified
+`WP-EDT-001` provided source identity/import and the required basic inspector.
 The source delivery adds no external dependency, private content, runtime
-authority, worker, or renderer edge. `WP-PRC-001` is the sole active package.
+authority, worker, or renderer edge.
 
 Files/crates/formats changed: `meridian-alluvium` owns `meridian.procedural-
 recipe/v1` pretty canonical JSON, strict scalar evaluation, stable generated
@@ -817,20 +818,81 @@ Stop/rollback rule: stop if a cache or generated output becomes source
 authority, IDs depend on array order, an override disappears silently, a
 license failure bakes output, or a runtime/editor dependency enters the crate.
 
-Known limits and unsupported rows: local source/test evidence only until this
-delivery has its own full CI run; no visual-quality or production-performance
-claim is made.
+Reviewers/sign-offs: GitHub Actions run `29511174569` for
+`9c88cc152878b1eb22f18c236c00ad1abd984fa5` passed governance plus Linux,
+Windows, and macOS format, workspace check/test, warning-denied clippy, editor
+headless/UI-headless smokes, runtime profile smoke, BLD helper/artifact smokes,
+and minimal-runtime dependency audit. The workspace suite includes recipe
+canonicalization/migration, deterministic and dirty evaluation, cache recovery,
+override outcomes, structured CLI/UI parity, and the public Creator Alpha
+recipe journey.
 
-Next unblocked package: `WP-PRC-001` remains active until its CI evidence is
-recorded; only then may `WP-MDL-001` activate.
+Known limits and unsupported rows: CI is headless; no native presented-surface,
+visual-quality, production-performance, graph-authoring, domain-adapter, or
+runtime-safe-evaluation claim is made.
 
-## 14. Evidence policy
+Next unblocked package: `WP-MDL-001`, active below.
+
+## 14. Active package — WP-MDL-001 / MS-03 native modeler foundation
+
+Work package: `WP-MDL-001`
+
+User-visible result: a creator can create one editable public primitive, select
+its stable source elements, transform it, perform one bounded topology change,
+undo or redo semantic edits, recover an accepted revision, inspect every action
+by keyboard, and view a derived Penumbra preview without making that preview
+source authority.
+
+Status: `Active`; implementation maturity: `Partial`
+
+Requirements: `REQ-MDL-001`, the MS-03 subset of `REQ-MDL-002` and
+`REQ-MDL-003`, and `REQ-CORE-001`
+
+Dependencies and Definition of Ready: `WP-DAT-002`, `WP-UI-001`,
+`WP-EDT-001`, and `WP-PRC-001` are qualified. The package owns only a
+Meridian-native source-document/modeling kernel and editor composition; it adds
+no runtime, physics, animation, game, private-content, external-DCC, or new
+third-party dependency edge. `WP-MDL-001` is the sole active package.
+
+Files/crates/formats changed: this source delivery adds `meridian-modeler` for
+a versioned editable-model document, immutable revisions, stable element IDs,
+topology mapping, semantic transactions, recovery records, and a derived
+Penumbra-preview descriptor. `meridian-ui-editor` exposes a text-first,
+keyboard-accessible model inspector. `meridian-editor` and the public Creator
+Alpha fixture exercise the same typed source boundary.
+
+Explicit non-goals: UVs, normals tooling beyond the primitive invariant,
+material authoring, broad topology tools, modifiers, collision/LOD, sculpting,
+rigging, external interchange, Blender integration, GPU mesh ownership, and
+production Penumbra rendering. Those remain `WP-MDL-002`, MS-05, or later
+work. `WP-MDL-001` remains `Partial` after this MS-03 delivery.
+
+Tests: source schema and topology invariants; stable vertex/edge/face lineage;
+stale selection rejection; primitive creation and transforms; bounded topology
+map; semantic undo/redo and recovery; source-versus-preview authority;
+Alluvium override-migration seam; accessible inspector actions; and the public
+Creator Alpha process journey.
+
+Stop/rollback rule: stop and redesign if a renderer mesh becomes editable
+source, a topology edit silently changes or loses a stable ID, stale selection
+mutates a revision, undo replays UI events rather than semantic source changes,
+or a preview/cache replaces the accepted source revision.
+
+Known limits and unsupported rows: local evidence only until this delivery has
+its own full CI run. Native presented-surface screenshots and a keyboard/
+accessibility review remain required MS-03 integration evidence after the
+modeler source gate.
+
+Next unblocked package: `WP-MDL-001` remains active until its CI evidence is
+recorded; the milestone cannot close before the separate native review.
+
+## 15. Evidence policy
 
 Every run records source checkpoint, BuildId when available, corpus/build hashes, hardware, OS, backend, driver, capability profile, settings, cache/warmup state, distributions rather than averages alone, memory, artifacts, and missing features. Occluded structural evidence cannot satisfy visual quality. Unavailable hardware or capabilities are `NotRun`, `UnsupportedPlatform`, or `UnsupportedCapability`, never Pass.
 
 No benchmark report may generalize beyond its measured workload/profile. No uncalibrated number becomes a release gate.
 
-## 15. Mandatory package sign-off
+## 16. Mandatory package sign-off
 
 ~~~text
 Work package:

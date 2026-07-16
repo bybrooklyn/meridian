@@ -12,7 +12,8 @@ use std::time::{Duration, Instant};
 
 use meridian_alluvium::{
     dirty_report, explain as explain_generated, license_audit, parse_stable_id, AlluviumEngine,
-    EvaluationBudget, EvaluationMode, EvaluationRequest, ProceduralRecipe, RECIPE_SCHEMA,
+    EvaluationBudget, EvaluationMode, EvaluationRequest, GeneratedOverride, OverrideAction,
+    OverrideStatus, ProceduralRecipe, RECIPE_SCHEMA,
 };
 use meridian_asset_tools::{
     decode_compiled_visual, AssetImportDatabase, CompiledVisualFacet, ImportedFixtureMesh,
@@ -37,6 +38,11 @@ use meridian_editor_core::{
 };
 use meridian_input::{
     Action, ButtonControl, InputActionMap, InputState, KeyCode, NativeInputEvent,
+};
+use meridian_modeler::{
+    Edge, Millimetres3, ModelCommand, ModelDocument, ModelElementKind, ModelRecoveryStore,
+    ModelSelection, ModelSession, ModelTransaction, PrimitiveCreate, QuadPrimitive,
+    QuadPrimitiveIds, SplitEdge, TopologyMap, Vertex,
 };
 use meridian_package::{MountedPackage, PackageBuilder, PackageChunk, PackageLimits};
 use meridian_platform::{
@@ -63,9 +69,11 @@ use meridian_streaming::{
 use meridian_tasks::{TaskClass, TaskContext};
 use meridian_ui::{
     recovery_panel_document, runtime_overlay_document, DisplayList, SemanticDelta, UiDiagnostic,
-    UiEvent, UiFrameInput, UiRuntime, UiSize,
+    UiDocument, UiEvent, UiFrameInput, UiRuntime, UiSize,
 };
-use meridian_ui_editor::{creator_alpha_document, recipe_inspector_document};
+use meridian_ui_editor::{
+    creator_alpha_document, model_inspector_document, recipe_inspector_document,
+};
 use meridian_world::{CompiledWorldCell, SpatialDatabase};
 use meridian_world_tools::compile_world_source;
 use serde::{Deserialize, Serialize};
@@ -98,6 +106,7 @@ pub enum RunMode {
     UiHeadlessSmoke,
     UiSmoke,
     CreatorAlphaSmoke,
+    CreatorAlphaUiSmoke,
     AlluviumCommand,
 }
 
@@ -161,6 +170,7 @@ impl MeridianOptions {
                 "--ui-headless-smoke" => options.set_mode(RunMode::UiHeadlessSmoke)?,
                 "--ui-smoke" => options.set_mode(RunMode::UiSmoke)?,
                 "--creator-alpha-smoke" => options.set_mode(RunMode::CreatorAlphaSmoke)?,
+                "--creator-alpha-ui-smoke" => options.set_mode(RunMode::CreatorAlphaUiSmoke)?,
                 "alluvium" => {
                     options.set_mode(RunMode::AlluviumCommand)?;
                     options.alluvium = Some(parse_alluvium_command(&mut arguments)?);
@@ -184,11 +194,14 @@ impl MeridianOptions {
                 _ => return Err(MeridianArgumentError::UnknownArgument(argument)),
             }
         }
-        if options.mode == RunMode::CreatorAlphaSmoke {
+        if matches!(
+            options.mode,
+            RunMode::CreatorAlphaSmoke | RunMode::CreatorAlphaUiSmoke
+        ) {
             if options.project.is_none() {
                 return Err(MeridianArgumentError::CreatorAlphaProjectRequired);
             }
-            if options.evidence.is_none() {
+            if options.mode == RunMode::CreatorAlphaSmoke && options.evidence.is_none() {
                 return Err(MeridianArgumentError::CreatorAlphaEvidenceRequired);
             }
         }
@@ -322,7 +335,7 @@ impl Display for MeridianArgumentError {
             }
             Self::ConflictingModes => formatter.write_str("smoke modes are mutually exclusive"),
             Self::CreatorAlphaProjectRequired => {
-                formatter.write_str("--creator-alpha-smoke requires --project PATH")
+                formatter.write_str("Creator Alpha smoke modes require --project PATH")
             }
             Self::CreatorAlphaEvidenceRequired => {
                 formatter.write_str("--creator-alpha-smoke requires --evidence PATH")
@@ -340,7 +353,7 @@ impl Error for MeridianArgumentError {}
 
 #[must_use]
 pub const fn usage() -> &'static str {
-    "Meridian\n\nUsage: meridian [--smoke | --headless-smoke | --ui-headless-smoke | --ui-smoke | --creator-alpha-smoke --project PATH --evidence PATH] [--project PATH] [--capture PATH] [--evidence PATH] [--frames N]\n       meridian alluvium <inspect|validate|migrate|preview|bake|dirty|explain|diff|provenance|license-audit> <recipe.mproc> [required command option]"
+    "Meridian\n\nUsage: meridian [--smoke | --headless-smoke | --ui-headless-smoke | --ui-smoke | --creator-alpha-smoke --project PATH --evidence PATH | --creator-alpha-ui-smoke --project PATH] [--project PATH] [--capture PATH] [--evidence PATH] [--frames N]\n       meridian alluvium <inspect|validate|migrate|preview|bake|dirty|explain|diff|provenance|license-audit> <recipe.mproc> [required command option]"
 }
 
 /// Runs the requested Meridian application mode.
@@ -362,6 +375,9 @@ pub fn run(options: &MeridianOptions) -> AppResult<()> {
     if options.mode == RunMode::CreatorAlphaSmoke {
         return run_creator_alpha_smoke(options);
     }
+    if options.mode == RunMode::CreatorAlphaUiSmoke {
+        return run_creator_alpha_ui_smoke(options);
+    }
     let project_root = resolve_project_root(options.project.as_deref())?;
     let evidence_root = options.evidence.as_deref().map_or_else(
         || match options.mode {
@@ -370,6 +386,7 @@ pub fn run(options: &MeridianOptions) -> AppResult<()> {
             RunMode::UiHeadlessSmoke
             | RunMode::UiSmoke
             | RunMode::CreatorAlphaSmoke
+            | RunMode::CreatorAlphaUiSmoke
             | RunMode::AlluviumCommand => {
                 unreachable!("handled above")
             }
@@ -571,6 +588,33 @@ fn run_ui_native_smoke() -> AppResult<()> {
     Ok(())
 }
 
+/// Renders the Creator Alpha retained workspace through Meridian's native UI
+/// raster bridge. This is a review surface, not headless milestone evidence.
+fn run_creator_alpha_ui_smoke(options: &MeridianOptions) -> AppResult<()> {
+    let project_root =
+        resolve_creator_alpha_project(options.project.as_deref().ok_or_else(|| {
+            io::Error::other("Creator Alpha project argument was not retained for UI smoke")
+        })?)?;
+    let manifest_path = project_root.join(CREATOR_ALPHA_MANIFEST);
+    let manifest: CreatorAlphaManifest = serde_json::from_slice(&fs::read(manifest_path)?)?;
+    validate_creator_alpha_manifest(&project_root, &manifest)?;
+    let imported_source = import_creator_alpha_source(&project_root, &manifest.imported_asset)?;
+    let (session, _) = run_creator_alpha_editor_journey(&manifest, &imported_source)?;
+    let workspace = creator_alpha_document(&session)
+        .map_err(|error| io::Error::other(format!("Creator Alpha UI invalid: {error:?}")))?;
+    run_platform(
+        PlatformConfig {
+            title: "Meridian Creator Alpha review smoke".to_owned(),
+            initial_size: WindowSize::new(1280, 800),
+            resizable: true,
+            visible: true,
+            event_loop_mode: EventLoopMode::Poll,
+        },
+        UiNativeSmokeApplication::creator_alpha(workspace)?,
+    )?;
+    Ok(())
+}
+
 #[derive(Debug, Deserialize)]
 struct CreatorAlphaManifest {
     schema: String,
@@ -602,6 +646,8 @@ struct CreatorAlphaBuildInput<'a> {
     imported_source_count: usize,
     placement_count: usize,
     editable_model: &'a str,
+    model_document_generation: u64,
+    model_preview_triangle_count: usize,
     procedural_recipe: &'a str,
 }
 
@@ -620,6 +666,7 @@ struct CreatorAlphaEvidence<'a> {
     recovery: CheckStatus,
     semantic_workspace: CheckStatus,
     procedural: CreatorAlphaProceduralEvidence,
+    modeler: CreatorAlphaModelerEvidence,
     build: CreatorAlphaBuildEvidence,
     limitations: Vec<&'static str>,
 }
@@ -632,6 +679,22 @@ struct CreatorAlphaProceduralEvidence {
     generated_placement_count: usize,
     semantic_inspector: CheckStatus,
     license_audit: CheckStatus,
+}
+
+#[derive(Serialize)]
+struct CreatorAlphaModelerEvidence {
+    source_document_id: String,
+    source_generation: u64,
+    source_object_count: usize,
+    source_vertex_count: usize,
+    source_edge_count: usize,
+    source_face_count: usize,
+    preview_triangle_count: usize,
+    topology_lineage: CheckStatus,
+    override_migration: CheckStatus,
+    semantic_undo_recovery: CheckStatus,
+    semantic_inspector: CheckStatus,
+    penumbra_preview: CheckStatus,
 }
 
 #[derive(Serialize)]
@@ -674,6 +737,9 @@ fn run_creator_alpha_smoke(options: &MeridianOptions) -> AppResult<()> {
     journey.push("recover");
     let procedural = run_creator_alpha_procedural_journey(&project_root, &manifest)?;
     journey.extend(["recipe-validate", "recipe-preview", "recipe-bake"]);
+    let (modeler, modeler_journey) =
+        run_creator_alpha_modeler_journey(&project_root, &manifest, &evidence_root)?;
+    journey.extend(modeler_journey);
 
     let build_input_path = evidence_root.join("creator-alpha-build-input.json");
     write_atomic(
@@ -685,6 +751,8 @@ fn run_creator_alpha_smoke(options: &MeridianOptions) -> AppResult<()> {
             imported_source_count: recovered.document().sources.len(),
             placement_count: recovered.document().placements.len(),
             editable_model: &manifest.editable_model,
+            model_document_generation: modeler.source_generation,
+            model_preview_triangle_count: modeler.preview_triangle_count,
             procedural_recipe: &manifest.procedural_recipe,
         })?,
     )?;
@@ -705,9 +773,11 @@ fn run_creator_alpha_smoke(options: &MeridianOptions) -> AppResult<()> {
         recovery: CheckStatus::Pass,
         semantic_workspace,
         procedural,
+        modeler,
         build,
         limitations: vec![
-            "Native editable-model operations are delivered by the partial WP-MDL-001 package.",
+            "WP-MDL-001 remains a partial native-modeler foundation; UVs, broad topology tools, modifiers, collision/LOD, and interchange are not implemented here.",
+            "The Penumbra preview descriptor is structural source-to-preview evidence, not a visible native-review or visual-quality claim.",
             "This local smoke is not cross-platform qualification or visible native-review evidence.",
         ],
     };
@@ -762,6 +832,234 @@ fn run_creator_alpha_procedural_journey(
         generated_placement_count: bake.field.samples.len(),
         semantic_inspector,
         license_audit: CheckStatus::Pass,
+    })
+}
+
+fn run_creator_alpha_modeler_journey(
+    project_root: &Path,
+    manifest: &CreatorAlphaManifest,
+    evidence_root: &Path,
+) -> AppResult<(CreatorAlphaModelerEvidence, Vec<&'static str>)> {
+    let (mut session, source_object_id, source_edge) =
+        prepare_creator_alpha_model_session(project_root, manifest)?;
+    let topology = split_creator_alpha_model_edge(&mut session, source_object_id, &source_edge)?;
+    session.undo()?;
+    session.redo()?;
+    let evidence = recover_creator_alpha_model_session(
+        evidence_root,
+        &session,
+        source_object_id,
+        source_edge.id,
+        &topology,
+    )?;
+    Ok((
+        evidence,
+        vec![
+            "model-open",
+            "model-create-primitive",
+            "model-transform",
+            "model-split-edge",
+            "model-undo",
+            "model-redo",
+            "model-recover",
+            "model-inspect",
+            "model-preview",
+        ],
+    ))
+}
+
+fn prepare_creator_alpha_model_session(
+    project_root: &Path,
+    manifest: &CreatorAlphaManifest,
+) -> AppResult<(ModelSession, StableId, Edge)> {
+    let model_path = project_root.join(validated_project_relative_path(&manifest.editable_model)?);
+    let source = ModelDocument::read_source(&model_path)?;
+    let source_object = source
+        .objects
+        .first()
+        .ok_or_else(|| io::Error::other("Creator Alpha editable model has no source object"))?;
+    let source_object_id = source_object.id;
+    let source_edge = source_object
+        .edges
+        .first()
+        .cloned()
+        .ok_or_else(|| io::Error::other("Creator Alpha editable model has no source edge"))?;
+    let mut session = ModelSession::open(source)?;
+
+    session.apply(ModelTransaction::new(
+        "Create public quad primitive",
+        ModelCommand::CreatePrimitive(creator_alpha_public_quad()),
+    ))?;
+
+    session.select(ModelElementKind::Object, [source_object_id])?;
+    session.apply(
+        ModelTransaction::new(
+            "Translate public editable box",
+            ModelCommand::TranslateObject {
+                object_id: source_object_id,
+                translation_mm: Millimetres3 { x: 250, y: 0, z: 0 },
+            },
+        )
+        .with_selection(session.selection().clone()),
+    )?;
+    Ok((session, source_object_id, source_edge))
+}
+
+fn creator_alpha_public_quad() -> PrimitiveCreate {
+    PrimitiveCreate::Quad(QuadPrimitive {
+        ids: QuadPrimitiveIds {
+            object: StableId::new(1_301),
+            vertices: [
+                StableId::new(1_302),
+                StableId::new(1_303),
+                StableId::new(1_304),
+                StableId::new(1_305),
+            ],
+            edges: [
+                StableId::new(1_306),
+                StableId::new(1_307),
+                StableId::new(1_308),
+                StableId::new(1_309),
+            ],
+            face: StableId::new(1_310),
+        },
+        label: "Creator Alpha public quad".to_owned(),
+        origin_mm: Millimetres3 {
+            x: 2_000,
+            y: 0,
+            z: 0,
+        },
+        half_extent_mm: 250,
+    })
+}
+
+fn split_creator_alpha_model_edge(
+    session: &mut ModelSession,
+    source_object_id: StableId,
+    source_edge: &Edge,
+) -> AppResult<TopologyMap> {
+    session.select(ModelElementKind::Edge, [source_edge.id])?;
+    let topology = session
+        .apply(
+            ModelTransaction::new(
+                "Split public box edge",
+                ModelCommand::SplitEdge(SplitEdge {
+                    object_id: source_object_id,
+                    edge_id: source_edge.id,
+                    new_vertex: Vertex {
+                        id: StableId::new(1_251),
+                        position_mm: Millimetres3 {
+                            x: 0,
+                            y: -500,
+                            z: -500,
+                        },
+                    },
+                    replacement_edges: [
+                        Edge {
+                            id: StableId::new(1_252),
+                            start: source_edge.start,
+                            end: StableId::new(1_251),
+                        },
+                        Edge {
+                            id: StableId::new(1_253),
+                            start: StableId::new(1_251),
+                            end: source_edge.end,
+                        },
+                    ],
+                }),
+            )
+            .with_selection(session.selection().clone()),
+        )?
+        .topology_map
+        .ok_or_else(|| io::Error::other("model split did not emit a topology map"))?;
+    let generated_override = GeneratedOverride {
+        target: source_edge.id,
+        expected_source: None,
+        action: OverrideAction::Suppress,
+    };
+    let reconciliation =
+        topology.reconcile_generated_override(&generated_override, session.current().document());
+    if reconciliation.status != OverrideStatus::Conflicted {
+        return Err(
+            io::Error::other("model split did not retain Alluvium override conflict").into(),
+        );
+    }
+    Ok(topology)
+}
+
+fn recover_creator_alpha_model_session(
+    evidence_root: &Path,
+    session: &ModelSession,
+    source_object_id: StableId,
+    source_edge_id: StableId,
+    topology: &TopologyMap,
+) -> AppResult<CreatorAlphaModelerEvidence> {
+    let recovery_store = ModelRecoveryStore::new(evidence_root.join("modeler-recovery.state"));
+    recovery_store.save(session)?;
+    let recovered = recovery_store.load()?;
+    if recovered.current() != session.current() {
+        return Err(io::Error::other("model recovery changed accepted source revision").into());
+    }
+
+    let selection = ModelSelection::new(
+        recovered.current().document(),
+        ModelElementKind::Object,
+        [source_object_id],
+    )?;
+    let before_preview = recovered.current().document().clone();
+    let preview = recovered
+        .current()
+        .document()
+        .penumbra_preview(source_object_id)?;
+    if !preview.is_derived() || recovered.current().document() != &before_preview {
+        return Err(
+            io::Error::other("derived Penumbra preview changed model source authority").into(),
+        );
+    }
+    let inspector = model_inspector_document(recovered.current().document(), &selection, &preview)
+        .map_err(|error| io::Error::other(format!("model inspector invalid: {error:?}")))?;
+    let semantic_inspector = CheckStatus::from_bool(
+        [20_003_u128, 20_004, 20_005, 20_006, 20_007, 20_008]
+            .iter()
+            .all(|id| {
+                inspector
+                    .node(meridian_ui::UiNodeId::new(*id))
+                    .is_some_and(|node| node.focusable && node.semantics.action.is_some())
+            }),
+    );
+    if semantic_inspector != CheckStatus::Pass {
+        return Err(io::Error::other("model inspector semantic actions were unavailable").into());
+    }
+
+    let document = recovered.current().document();
+    let (source_vertex_count, source_edge_count, source_face_count) =
+        model_element_counts(document);
+    Ok(CreatorAlphaModelerEvidence {
+        source_document_id: document.document_id.to_string(),
+        source_generation: document.document_generation,
+        source_object_count: document.objects.len(),
+        source_vertex_count,
+        source_edge_count,
+        source_face_count,
+        preview_triangle_count: preview.triangle_indices.len() / 3,
+        topology_lineage: CheckStatus::from_bool(
+            topology.lineage_for(source_edge_id)
+                == Some(&[StableId::new(1_252), StableId::new(1_253)][..]),
+        ),
+        override_migration: CheckStatus::Pass,
+        semantic_undo_recovery: CheckStatus::Pass,
+        semantic_inspector,
+        penumbra_preview: CheckStatus::Pass,
+    })
+}
+
+fn model_element_counts(document: &ModelDocument) -> (usize, usize, usize) {
+    document.objects.iter().fold((0, 0, 0), |counts, object| {
+        (
+            counts.0 + object.vertices.len(),
+            counts.1 + object.edges.len(),
+            counts.2 + object.faces.len(),
+        )
     })
 }
 
@@ -1903,11 +2201,13 @@ fn suffixed_path(path: &Path, suffix: &str) -> PathBuf {
 enum UiSmokeStage {
     Recovery,
     RuntimeOverlay,
+    CreatorAlpha,
 }
 
 struct UiNativeSmokeApplication {
     recovery_runtime: UiRuntime,
     overlay_runtime: UiRuntime,
+    creator_alpha_runtime: Option<UiRuntime>,
     display_list: DisplayList,
     logical_viewport: UiSize,
     scale_factor: f32,
@@ -1928,6 +2228,7 @@ impl UiNativeSmokeApplication {
         let mut application = Self {
             recovery_runtime: UiRuntime::new(recovery_document),
             overlay_runtime: UiRuntime::new(overlay_document),
+            creator_alpha_runtime: None,
             display_list: DisplayList::default(),
             logical_viewport: UiSize::new(960.0, 540.0),
             scale_factor: 1.0,
@@ -1939,6 +2240,29 @@ impl UiNativeSmokeApplication {
             surface_attempts: 0,
         };
         application.refresh_display(WindowSize::new(960, 540), 1.0);
+        Ok(application)
+    }
+
+    fn creator_alpha(document: UiDocument) -> AppResult<Self> {
+        let recovery_document = recovery_panel_document()
+            .map_err(|error| io::Error::other(format!("recovery UI fixture invalid: {error:?}")))?;
+        let overlay_document = runtime_overlay_document()
+            .map_err(|error| io::Error::other(format!("runtime UI fixture invalid: {error:?}")))?;
+        let mut application = Self {
+            recovery_runtime: UiRuntime::new(recovery_document),
+            overlay_runtime: UiRuntime::new(overlay_document),
+            creator_alpha_runtime: Some(UiRuntime::new(document)),
+            display_list: DisplayList::default(),
+            logical_viewport: UiSize::new(1280.0, 800.0),
+            scale_factor: 1.0,
+            physical_size: WindowSize::new(1280, 800),
+            stage: UiSmokeStage::CreatorAlpha,
+            rhi: None,
+            renderer: None,
+            structural_fallback_submitted: false,
+            surface_attempts: 0,
+        };
+        application.refresh_display(WindowSize::new(1280, 800), 1.0);
         Ok(application)
     }
 
@@ -1958,6 +2282,13 @@ impl UiNativeSmokeApplication {
         self.display_list = match self.stage {
             UiSmokeStage::Recovery => self.recovery_runtime.reconcile(input).display_list,
             UiSmokeStage::RuntimeOverlay => self.overlay_runtime.reconcile(input).display_list,
+            UiSmokeStage::CreatorAlpha => {
+                self.creator_alpha_runtime
+                    .as_mut()
+                    .expect("Creator Alpha UI stage owns its runtime")
+                    .reconcile(input)
+                    .display_list
+            }
         };
     }
 
@@ -2044,7 +2375,10 @@ impl UiNativeSmokeApplication {
     }
 
     fn advance_stage(&mut self, context: &mut PlatformContext<'_>) -> AppResult<()> {
-        if self.stage == UiSmokeStage::RuntimeOverlay {
+        if matches!(
+            self.stage,
+            UiSmokeStage::RuntimeOverlay | UiSmokeStage::CreatorAlpha
+        ) {
             context.exit();
             return Ok(());
         }
@@ -2819,7 +3153,22 @@ mod tests {
             })
         ));
         assert!(matches!(
+            MeridianOptions::parse([
+                "--creator-alpha-ui-smoke",
+                "--project",
+                "examples/creator-alpha"
+            ]),
+            Ok(MeridianOptions {
+                mode: RunMode::CreatorAlphaUiSmoke,
+                ..
+            })
+        ));
+        assert!(matches!(
             MeridianOptions::parse(["--creator-alpha-smoke", "--evidence", "target/evidence"]),
+            Err(MeridianArgumentError::CreatorAlphaProjectRequired)
+        ));
+        assert!(matches!(
+            MeridianOptions::parse(["--creator-alpha-ui-smoke"]),
             Err(MeridianArgumentError::CreatorAlphaProjectRequired)
         ));
         assert!(matches!(

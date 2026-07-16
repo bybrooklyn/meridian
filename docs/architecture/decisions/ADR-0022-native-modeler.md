@@ -3,7 +3,7 @@
 - Status: Adopted
 - Date: 2026-07-15
 - Spec version: v0.5
-- Implementation status: Planned
+- Implementation status: Partial; `WP-MDL-001` is active for its MS-03 bounded foundation
 - Owners: modeler, editor, assets, build, Alluvium
 - Amends: ADR-0009, ADR-0011, ADR-0017
 - Supersedes: none

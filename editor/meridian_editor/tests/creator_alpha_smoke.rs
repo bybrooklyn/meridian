@@ -39,9 +39,15 @@ fn public_creator_alpha_journey_is_reproducible() {
     )
     .expect("evidence is JSON");
     assert_eq!(summary["outcome"], "LocalPass");
-    assert_eq!(summary["journey"].as_array().expect("journey").len(), 12);
+    assert_eq!(summary["journey"].as_array().expect("journey").len(), 21);
     assert_eq!(summary["procedural"]["generated_placement_count"], 3);
     assert_eq!(summary["procedural"]["license_audit"], "pass");
+    assert_eq!(summary["modeler"]["topology_lineage"], "pass");
+    assert_eq!(summary["modeler"]["override_migration"], "pass");
+    assert_eq!(summary["modeler"]["semantic_undo_recovery"], "pass");
+    assert_eq!(summary["modeler"]["semantic_inspector"], "pass");
+    assert_eq!(summary["modeler"]["penumbra_preview"], "pass");
+    assert_eq!(summary["modeler"]["preview_triangle_count"], 14);
     assert_eq!(summary["build"]["worker_count"], 1);
     assert!(summary["build"]["artifact_hash"].as_str().is_some());
     fs::remove_dir_all(evidence).expect("remove temporary evidence");
