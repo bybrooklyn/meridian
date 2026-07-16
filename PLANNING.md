@@ -7,8 +7,9 @@ Status: `MS-01` and `WP-REL-002` passed qualification on GitHub Actions run
 and macOS workspace/headless-smoke rows passed. All named MS-01 implementation
 packages are closed with fresh evidence. `WP-UI-001` is an
 `ImplementedFoundation` and MS-02 is `Pass` from cross-platform CI evidence.
-`WP-BLD-001` is the sole active package; its Definition of Ready and bounded
-first implementation slice are recorded below.
+`WP-BLD-001` is `ImplementedFoundation` after cross-platform GitHub Actions
+evidence. `WP-EDT-001` is the sole active package; its Definition of Ready and
+bounded Creator Alpha implementation slice are recorded below.
 
 ## 1. Authority and stop rule
 
@@ -31,7 +32,8 @@ media, cost-prediction, or competitive-validation system.
 | Assets/world/streaming/save | `ImplementedFoundation` / `Partial` | one bounded public source family imports transactionally, packages, worker-streams, activates, saves, recovers, and reconstructs; production schemas/compression/signing remain incomplete |
 | Cairn | `Transitional` | current Rapier wrapper and grounded controller are evidence; Meridian-owned Cairn internals are not implemented |
 | Meridian UI | `ImplementedFoundation` | retained layout, text input, semantics, deterministic fixtures, an opt-in raster bridge, and local native/headless smokes are qualified for the MS-02 core proof; Creator Editor workflows remain planned |
-| Creator Editor, audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | the `meridian-editor` package now owns the MS-01 **Meridian** executable, not Creator Editor Alpha |
+| Creator Editor | `Partial` | `meridian-editor-core` owns source sessions/transactions/history/Play/recovery; `meridian-ui-editor` owns accessible panel declarations; Creator Alpha is active and awaits CI evidence |
+| Audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | implementation remains outside the current Creator Editor package |
 | Alluvium | `Planned` | current v0.5 authority preserves the v0.4 adoption, requirements, packages, gates, and risks; no crate, evaluator, recipe parser, inspector, cook path, or corpus exists |
 | Native modeler, Rust gameplay, Luau, animation, navigation, frameworks, first-class 2D, Meridian Shader Language, Collective | `Planned` or `Deferred` | specifications and registries exist; no product implementation claim |
 | Torsant, networking, XR, modding, agents, VCS/sync | `Planned`, `Research`, or `Deferred` | no production implementation claim |
@@ -176,7 +178,7 @@ Deliverables:
 
 Closure evidence: `EV-GOV-20260715-005`; review: `REV-GOV-20260715-003`.
 
-Explicit limits: no Marquee crate, media/PDF adapter, campaign UI, service integration, promotional output, calibration, quality evidence, commit, or push. `WP-BLD-001` remains the sole active package.
+Explicit limits: no Marquee crate, media/PDF adapter, campaign UI, service integration, promotional output, calibration, quality evidence, commit, or push. Marquee remains deferred; the current active package is recorded in section 12.
 
 ## 7.2 Closed documentation package — WP-GOV-006
 
@@ -217,7 +219,7 @@ Closure evidence: `EV-GOV-20260716-001`; review:
 Explicit limits: no renderer/simulation implementation, comparator adapter,
 competitive fixture calibration, optimization, public claim, commit, push, or
 remote CI run. `PRG-REL-001` cannot satisfy, block, or promote MS-00 through
-MS-10. `WP-BLD-001` remains the sole active package.
+MS-10. The current active package is recorded in section 12.
 
 ## 8. Closed package — WP-PEN-007
 
@@ -289,8 +291,9 @@ encoding remain provisional. Compression, signing, patches, encryption,
 Forward+, specular IBL, Meridian UI, Creator Editor workflows, and game content
 remain outside MS-01.
 
-`MS-01` and `MS-02` are closed. `WP-BLD-001` is the sole active MS-03 critical
-path package. Penumbra Stage 1 then proceeds through `WP-PEN-003` and
+`MS-01` and `MS-02` are closed. `WP-BLD-001` is the qualified MS-03 local-Cargo
+prerequisite and `WP-EDT-001` is the sole active MS-03 critical-path package.
+Penumbra Stage 1 then proceeds through `WP-PEN-003` and
 `WP-PEN-010`, with `WP-PEN-009` as bounded parallel image-quality work and
 `WP-PEN-011` as the later executable/calibrated forest corpus. `RG-PEN-001`
 cannot open before MS-05.
@@ -336,7 +339,7 @@ unavailable, so the capture remains explicitly Offscreen; no production visual
 quality or calibrated benchmark claim
 Reviewers/sign-offs: GitHub Actions completed all required automated rows;
 separate human release approval is not recorded
-Next unblocked package: `WP-BLD-001`, now active
+Next unblocked package: `WP-EDT-001`, now active
 
 ## 10. Closed package — WP-UI-001 / MS-02 Meridian UI core proof
 
@@ -432,10 +435,10 @@ Qualification and sign-off: source checkpoint `fb8323f`; `EV-UI-20260715-001`
 is `Pass`. GitHub Actions run `29457181283` completed governance and Linux,
 Windows, and macOS format/check/test/clippy, UI-headless, UI-free runtime, and
 dependency-audit rows successfully. The qualification is headless and no local
-capture establishes visual quality. `WP-BLD-001` is the next unblocked package
-and is active below.
+capture establishes visual quality. `WP-BLD-001` subsequently qualified as the
+local-Cargo prerequisite; `WP-EDT-001` is active below.
 
-## 11. Active package — WP-BLD-001 / MS-03 observable build foundation
+## 11. Closed package — WP-BLD-001 / MS-03 observable build foundation
 
 Work package: `WP-BLD-001`
 
@@ -445,7 +448,7 @@ diagnostic, artifact, cancellation, and stale-result outcomes instead of
 scraped terminal text. The first slice proves the service contract with Cargo
 metadata and JSON-message fixtures; it does not claim a complete Creator Editor.
 
-Status: `Active`; implementation maturity: `Partial`
+Status: `ImplementedFoundation`; implementation maturity: `ImplementedFoundation`
 
 Source checkpoint and BuildId: entry checkpoint `b1c87c3`; BuildId becomes a
 Meridian-owned deterministic hash only after the first implementation slice
@@ -581,12 +584,12 @@ that child can run to completion. Unix cancellation uses fixed `/bin/kill`
 system `taskkill.exe /PID /T /F` tree path. Neither uses a shell or inherits the
 host environment. If a platform tree terminator cannot run, the service kills
 and reaps the direct Cargo child and records a typed warning rather than
-claiming descendant recovery. Actual Windows execution of this path remains
-`NotRun` until an authorized commit and push can run CI. The prepared Windows
-CI smoke discovers the installed C++ toolchain through `vswhere`, invokes its
-fixed `VsDevCmd.bat -arch=amd64 -host_arch=amd64` setup, and only then snapshots
-the explicit Cargo environment; that configuration is not execution evidence
-until it runs on the authorized source checkpoint. The durable local store
+claiming descendant recovery. GitHub Actions run `29505405013` for source
+checkpoint `becef55486d434460c3afebfb96e734655dfcb09` exercised the configured
+Windows Visual Studio developer environment and passed workspace tests,
+warning-denied clippy, helper smokes, bounded Cargo build, and independent
+Cargo test-artifact smoke. That row does not turn the Unix process-group
+cancellation fixture into a Windows cancellation claim. The durable local store
 reopens interrupted work as
 `WorkerLost`, persists that recovery before exposing it, and rejects late
 success. It also rejects unsupported event protocol versions, malformed Cargo
@@ -689,23 +692,98 @@ rust-analyzer, remote execution, signing, and deployment are planned
 `WP-BLD-002` work.
 
 Reviewers/sign-offs: Definition of Ready was reviewed against the current
-workspace and MS-02 evidence. The current local implementation slice passes its
-focused tests, durable-recovery tests, warning-denied lint, structured Cargo
-smoke, and helper-CLI Cargo check/build/test-compilation. `EV-BLD-20260715-001`
-records the fresh local recovery/build evidence and its explicit Windows-CI
-limitation. Completion still requires the authorized Windows evidence and the
-mandatory package sign-off before this package may close.
+workspace and MS-02 evidence. `EV-BLD-20260715-001` records local
+recovery/build evidence. `EV-BLD-20260716-002` records GitHub Actions run
+`29505405013` for `becef55486d434460c3afebfb96e734655dfcb09`: governance plus
+Linux, Windows, and macOS workspace rows passed, including the configured
+Windows BLD helper/build/artifact proof. The package is closed at its bounded
+local-Cargo foundation scope; `WP-BLD-002` remains planned.
 
-Next unblocked package: `WP-BLD-001` remains active until it closes; only then
-may `WP-EDT-001` activate.
+Next unblocked package: `WP-EDT-001`, active below.
 
-## 12. Evidence policy
+## 12. Active package — WP-EDT-001 / MS-03 Creator Editor Alpha
+
+Work package: `WP-EDT-001`
+
+User-visible result: a creator can open the public generic Creator Alpha
+project, transactionally import its source through the DAT-owned adapter, edit a world placement through typed
+transactions, undo/redo, enter isolated Play and explicitly apply or discard
+its diff, recover a durable session, inspect an accessible Meridian-native
+workspace, and submit a request-bound one-worker local Cargo build artifact.
+
+Status: `Active`; implementation maturity: `Partial`
+
+Requirements: `REQ-EDT-001`, `REQ-CORE-001`
+
+Dependencies and Definition of Ready: `WP-UI-001`, `WP-DAT-004`, and
+`WP-BLD-001` are `ImplementedFoundation` with registered evidence. The current
+workspace, public `examples/creator-alpha/` source, existing Meridian UI
+semantics, durable save boundary, and BLD command/event/artifact seam were
+inspected. No private game input, new UI toolkit, external crate, remote
+service, or platform credential is required. `WP-EDT-001` is the sole active
+package and can stop without changing runtime/game authority.
+
+Files/crates/formats changed: `meridian-editor-core` owns versioned
+source-authoritative project sessions, typed transactions/inverses/checkpoints,
+generation-checked selection, Play forks, and durable recovery.
+`meridian-ui-editor` owns declarative accessible panel contracts for project,
+hierarchy, viewport, inspector/history, asset/import/build, recipe, modeler,
+diagnostics, and recovery. `meridian-editor` only composes those boundaries and
+the existing native/runtime smoke. The public sample stores generic JSON source
+only; it introduces no private format or game content.
+
+Deliverables and public contracts: `meridian --creator-alpha-smoke --project
+<path> --evidence <path>` requires caller-owned project and evidence paths and
+executes open → import → edit → undo → redo → Play apply → Play discard →
+recover → build. It rejects missing arguments and untrusted absolute, parent,
+or non-regular project source references before use. Its local evidence records
+the durable BLD state, BuildId, bound artifact hash, worker count, source
+generation, and explicit limitations. All UI actions are semantic focusable
+Meridian buttons; project mutation remains in typed editor-core commands, never
+in UI callbacks.
+
+Tests: editor-core transaction inverse, invalid metadata rollback, checkpoints,
+stable-ID collisions, stale selection, Play isolation/apply/discard, and
+save-backed recovery; UI panel/action semantic fixtures; parser coverage; and a
+process-level Creator Alpha smoke that verifies the request-bound artifact. The
+next validation step is the complete package gate and GitHub Actions matrix.
+
+Accessibility and recovery: inspector/history actions are focusable semantic
+buttons with named commands. The workspace declares recovery and diagnostics
+panels. A stale recovered local selection is cleared rather than blocking source
+recovery; the source document/history remain durable and generation checked.
+
+Security/provenance: sample source paths must remain project-relative regular
+files; the DAT-owned importer derives imported source identity/hash and the
+editor preserves its resulting identity/path/hash as source authority.
+Cargo remains behind the BLD-owned typed, bounded, explicit-environment seam.
+No engine/runtime crate depends on editor-core, UI-editor, or BLD crates.
+
+Explicit non-goals: Alluvium recipe evaluation and inspector parity,
+editable-model operations/topology lineage, native presented-surface review,
+platform accessibility adapters, docking, full asset import, and MS-03 closure.
+Those boundaries remain for `WP-PRC-001`, partial `WP-MDL-001`, or the mandatory
+post-package review.
+
+Stop/rollback rule: stop and redesign if a UI type enters editor-core/source
+commands, a derived preview becomes source authority, a Play change applies
+without explicit diff, a stale selection mutates source, recovery loses a valid
+source document, or a Cargo/build type crosses into runtime crates.
+
+Reviewers/sign-offs: local targeted tests, warning-denied clippy, and the
+process smoke pass. Cross-platform CI, native review, screenshots, and the
+keyboard/accessibility checklist are not yet evidence; this package cannot
+close or activate `WP-PRC-001` until its CI evidence is registered.
+
+Next unblocked package: `WP-EDT-001` remains active until it closes.
+
+## 13. Evidence policy
 
 Every run records source checkpoint, BuildId when available, corpus/build hashes, hardware, OS, backend, driver, capability profile, settings, cache/warmup state, distributions rather than averages alone, memory, artifacts, and missing features. Occluded structural evidence cannot satisfy visual quality. Unavailable hardware or capabilities are `NotRun`, `UnsupportedPlatform`, or `UnsupportedCapability`, never Pass.
 
 No benchmark report may generalize beyond its measured workload/profile. No uncalibrated number becomes a release gate.
 
-## 13. Mandatory package sign-off
+## 14. Mandatory package sign-off
 
 ~~~text
 Work package:

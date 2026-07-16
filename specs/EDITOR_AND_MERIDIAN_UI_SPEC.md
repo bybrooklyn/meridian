@@ -8,6 +8,16 @@ Documentation maturity: `ImplementationReady`. Implementation maturity:
 `ImplementedFoundation`. Governing IDs: `REQ-UI-001`, `REQ-EDT-001`, `WP-UI-001`,
 `WP-EDT-001`, `RG-UI-001`.
 
+Current package truth: `WP-EDT-001` is active after the qualified BLD prerequisite.
+`meridian-editor-core` now owns the UI-free Creator Alpha project session,
+typed transactions/inverses/checkpoints, generation-checked selection, Play
+fork/apply/discard, and durable recovery. `meridian-ui-editor` declares the
+accessible project, hierarchy, viewport, inspector/history, asset/import/build,
+recipe, modeler, diagnostics, and recovery panels; `meridian-editor` composes
+them. The public Creator Alpha smoke has local journey evidence only. It does
+not close the package, qualify a presented native surface, or implement the
+Alluvium/modeler packages that follow.
+
 Research anchors: [AccessKit](https://accesskit.dev/) and [AccessKit Rust API](https://docs.rs/accesskit) inform accessibility adapter boundaries; [OpenXR 1.1](https://registry.khronos.org/OpenXR/specs/1.1/html/xrspec.html) informs later XR panel timing and composition boundaries. Meridian owns UI IR, semantics, layout, commands, and persistence.
 
 ## 1. Goals and non-goals

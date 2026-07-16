@@ -1680,8 +1680,10 @@ dependencies = [
  "meridian-asset-tools",
  "meridian-assets",
  "meridian-benchmark",
+ "meridian-build",
  "meridian-core",
  "meridian-diagnostics",
+ "meridian-editor-core",
  "meridian-input",
  "meridian-package",
  "meridian-platform",
@@ -1692,8 +1694,19 @@ dependencies = [
  "meridian-streaming",
  "meridian-tasks",
  "meridian-ui",
+ "meridian-ui-editor",
  "meridian-world",
  "meridian-world-tools",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "meridian-editor-core"
+version = "0.1.0"
+dependencies = [
+ "meridian-core",
+ "meridian-save",
  "serde",
  "serde_json",
 ]
@@ -1823,6 +1836,15 @@ dependencies = [
  "cosmic-text",
  "meridian-core",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "meridian-ui-editor"
+version = "0.1.0"
+dependencies = [
+ "meridian-core",
+ "meridian-editor-core",
+ "meridian-ui",
 ]
 
 [[package]]

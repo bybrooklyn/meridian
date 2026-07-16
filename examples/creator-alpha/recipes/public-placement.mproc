@@ -1,0 +1,20 @@
+{
+  "schema": "meridian.procedural-recipe/v1",
+  "version": 1,
+  "id": 1301,
+  "label": "Deterministic public placement",
+  "seed": 17,
+  "parameters": {
+    "count": 3,
+    "spacing_mm": 2000
+  },
+  "operation": {
+    "kind": "scalar-grid-placement",
+    "source_id": 1002,
+    "origin_mm": [0, 0, 0]
+  },
+  "provenance": {
+    "license": "CC0-1.0",
+    "source": "Meridian public Creator Alpha sample"
+  }
+}

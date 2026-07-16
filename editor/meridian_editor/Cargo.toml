@@ -12,6 +12,7 @@ path = "src/main.rs"
 meridian-asset-tools = { path = "../meridian_asset_tools" }
 meridian-assets = { path = "../../engine/meridian_assets" }
 meridian-benchmark = { path = "../meridian_benchmark" }
+meridian-build = { path = "../meridian_build" }
 meridian-core = { path = "../../engine/meridian_core" }
 meridian-diagnostics = { path = "../../engine/meridian_diagnostics" }
 meridian-input = { path = "../../engine/meridian_input" }
@@ -26,6 +27,8 @@ meridian-tasks = { path = "../../engine/meridian_tasks" }
 meridian-ui = { path = "../../engine/meridian_ui" }
 meridian-world = { path = "../../engine/meridian_world" }
 meridian-world-tools = { path = "../meridian_world_tools" }
+meridian-editor-core = { path = "../meridian_editor_core" }
+meridian-ui-editor = { path = "../meridian_ui_editor" }
 serde.workspace = true
 serde_json.workspace = true
 

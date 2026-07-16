@@ -5,8 +5,9 @@ use std::fmt::{self, Display, Formatter};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::num::NonZeroUsize;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use meridian_asset_tools::{
@@ -17,9 +18,18 @@ use meridian_assets::{
     SourceId, UncompressedDecoder,
 };
 use meridian_benchmark::{has_multiple_pixel_values, write_capture_png};
+use meridian_build::{
+    ArtifactStore, BuildGraph, BuildIdentityInput, BuildNode, BuildNodeId, BuildPhase,
+    BuildRequest, BuildServiceStore, CargoBuildSupervisor, CargoCommand, CargoEnvironment,
+    CargoInvocation, CargoRunStatus, DurableBuildService,
+};
 use meridian_core::{FrameId, MonotonicNs, OperationId, RuntimeEpoch, StableId, TraceId};
 use meridian_diagnostics::{
     DiagnosticEvent, DiagnosticSeverity, DiagnosticTimeline, RecoveryAction, RedactionClass,
+};
+use meridian_editor_core::{
+    CommandMetadata, EditorCommand, EditorRecoveryStore, EditorSession, ImportedSource,
+    ProjectDocument, Translation, WorldPlacement,
 };
 use meridian_input::{
     Action, ButtonControl, InputActionMap, InputState, KeyCode, NativeInputEvent,
@@ -51,15 +61,20 @@ use meridian_ui::{
     recovery_panel_document, runtime_overlay_document, DisplayList, SemanticDelta, UiDiagnostic,
     UiEvent, UiFrameInput, UiRuntime, UiSize,
 };
+use meridian_ui_editor::creator_alpha_document;
 use meridian_world::{CompiledWorldCell, SpatialDatabase};
 use meridian_world_tools::compile_world_source;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 const MESH_SOURCE: &str = "assets_source/ms01/fixture_triangle.json";
 const WORLD_SOURCE: &str = "assets_source/ms01/world_cell.json";
 const DEFAULT_EVIDENCE: &str = "target/meridian-evidence/ms01";
 const DEFAULT_CAPTURE: &str = "visible-source-frame.png";
+const CREATOR_ALPHA_MANIFEST: &str = "creator-alpha.project.json";
+const CREATOR_ALPHA_SCHEMA: &str = "meridian.creator-alpha/v1";
+const CREATOR_ALPHA_EVIDENCE_SCHEMA: &str = "meridian.creator-alpha-evidence/v1";
+const CREATOR_ALPHA_BUILD_TIMEOUT: Duration = Duration::from_mins(1);
 const VISUAL_ASSET_NAME: &str = "fixtures/ms01/public-triangle.visual";
 const COLLISION_ASSET_NAME: &str = "fixtures/ms01/public-triangle.collision";
 const CELL_ASSET_NAME: &str = "fixtures/ms01/world-cell-0-0-0";
@@ -67,6 +82,7 @@ const SAVE_COMPONENT: &str = "meridian.ms01.position";
 const EVIDENCE_CAPACITY: usize = 512;
 const UI_SMOKE_MAX_PRESENT_ATTEMPTS: u8 = 3;
 static NEXT_DEFAULT_EVIDENCE_ID: AtomicU64 = AtomicU64::new(0);
+static NEXT_CREATOR_BUILD_ID: AtomicU64 = AtomicU64::new(0);
 
 type AppResult<T> = Result<T, Box<dyn Error>>;
 
@@ -77,6 +93,7 @@ pub enum RunMode {
     HeadlessSmoke,
     UiHeadlessSmoke,
     UiSmoke,
+    CreatorAlphaSmoke,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -120,6 +137,7 @@ impl MeridianOptions {
                 "--headless-smoke" => options.set_mode(RunMode::HeadlessSmoke)?,
                 "--ui-headless-smoke" => options.set_mode(RunMode::UiHeadlessSmoke)?,
                 "--ui-smoke" => options.set_mode(RunMode::UiSmoke)?,
+                "--creator-alpha-smoke" => options.set_mode(RunMode::CreatorAlphaSmoke)?,
                 "--project" => options.project = Some(next_path(&mut arguments, "--project")?),
                 "--capture" => options.capture = Some(next_path(&mut arguments, "--capture")?),
                 "--evidence" => options.evidence = Some(next_path(&mut arguments, "--evidence")?),
@@ -136,6 +154,14 @@ impl MeridianOptions {
                 }
                 "--help" | "-h" => return Err(MeridianArgumentError::HelpRequested),
                 _ => return Err(MeridianArgumentError::UnknownArgument(argument)),
+            }
+        }
+        if options.mode == RunMode::CreatorAlphaSmoke {
+            if options.project.is_none() {
+                return Err(MeridianArgumentError::CreatorAlphaProjectRequired);
+            }
+            if options.evidence.is_none() {
+                return Err(MeridianArgumentError::CreatorAlphaEvidenceRequired);
             }
         }
         Ok(options)
@@ -167,6 +193,8 @@ pub enum MeridianArgumentError {
     InvalidFrameCount(String),
     FrameCountOutOfRange(u32),
     ConflictingModes,
+    CreatorAlphaProjectRequired,
+    CreatorAlphaEvidenceRequired,
     HelpRequested,
 }
 
@@ -180,6 +208,12 @@ impl Display for MeridianArgumentError {
                 write!(formatter, "frame count {value} is outside 1..=10000")
             }
             Self::ConflictingModes => formatter.write_str("smoke modes are mutually exclusive"),
+            Self::CreatorAlphaProjectRequired => {
+                formatter.write_str("--creator-alpha-smoke requires --project PATH")
+            }
+            Self::CreatorAlphaEvidenceRequired => {
+                formatter.write_str("--creator-alpha-smoke requires --evidence PATH")
+            }
             Self::HelpRequested => formatter.write_str(usage()),
         }
     }
@@ -189,7 +223,7 @@ impl Error for MeridianArgumentError {}
 
 #[must_use]
 pub const fn usage() -> &'static str {
-    "Meridian\n\nUsage: meridian [--smoke | --headless-smoke | --ui-headless-smoke | --ui-smoke] [--project PATH] [--capture PATH] [--evidence PATH] [--frames N]"
+    "Meridian\n\nUsage: meridian [--smoke | --headless-smoke | --ui-headless-smoke | --ui-smoke | --creator-alpha-smoke --project PATH --evidence PATH] [--project PATH] [--capture PATH] [--evidence PATH] [--frames N]"
 }
 
 /// Runs the requested Meridian application mode.
@@ -205,12 +239,17 @@ pub fn run(options: &MeridianOptions) -> AppResult<()> {
     if options.mode == RunMode::UiSmoke {
         return run_ui_native_smoke();
     }
+    if options.mode == RunMode::CreatorAlphaSmoke {
+        return run_creator_alpha_smoke(options);
+    }
     let project_root = resolve_project_root(options.project.as_deref())?;
     let evidence_root = options.evidence.as_deref().map_or_else(
         || match options.mode {
             RunMode::Smoke | RunMode::HeadlessSmoke => default_evidence_root(&project_root),
             RunMode::Interactive => project_root.join(DEFAULT_EVIDENCE),
-            RunMode::UiHeadlessSmoke | RunMode::UiSmoke => unreachable!("handled above"),
+            RunMode::UiHeadlessSmoke | RunMode::UiSmoke | RunMode::CreatorAlphaSmoke => {
+                unreachable!("handled above")
+            }
         },
         |path| resolve_output_path(&project_root, Some(path), Path::new(DEFAULT_EVIDENCE)),
     );
@@ -308,6 +347,466 @@ fn run_ui_native_smoke() -> AppResult<()> {
         UiNativeSmokeApplication::new()?,
     )?;
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct CreatorAlphaManifest {
+    schema: String,
+    project_id: StableId,
+    imported_asset: CreatorAlphaImportRequest,
+    placement: CreatorAlphaPlacement,
+    editable_model: String,
+    procedural_recipe: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreatorAlphaImportRequest {
+    label: String,
+    source_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreatorAlphaPlacement {
+    id: StableId,
+    label: String,
+    translation: Translation,
+}
+
+#[derive(Serialize)]
+struct CreatorAlphaBuildInput<'a> {
+    schema: &'static str,
+    project_id: String,
+    document_generation: u64,
+    imported_source_count: usize,
+    placement_count: usize,
+    editable_model: &'a str,
+    procedural_recipe: &'a str,
+}
+
+#[derive(Serialize)]
+struct CreatorAlphaEvidence<'a> {
+    schema: &'static str,
+    milestone: &'static str,
+    package: &'static str,
+    outcome: &'static str,
+    project_manifest: &'a str,
+    source_authority: &'static str,
+    journey: Vec<&'static str>,
+    document_generation: u64,
+    imported_source_count: usize,
+    placement_count: usize,
+    recovery: CheckStatus,
+    semantic_workspace: CheckStatus,
+    build: CreatorAlphaBuildEvidence,
+    limitations: Vec<&'static str>,
+}
+
+#[derive(Serialize)]
+struct CreatorAlphaBuildEvidence {
+    build_id: String,
+    artifact_hash: String,
+    artifact_bytes: u64,
+    event_count: usize,
+    durable_state: String,
+    worker_count: usize,
+}
+
+/// Runs the public, generic Creator Alpha journey against caller-selected source
+/// and evidence directories.
+///
+/// The path intentionally exercises editor commands, source authority, undo/redo,
+/// isolated Play apply/discard, durable recovery, semantic UI construction, and
+/// a real bounded Cargo build with an artifact bound to the build request.
+fn run_creator_alpha_smoke(options: &MeridianOptions) -> AppResult<()> {
+    let project_root = resolve_creator_alpha_project(
+        options
+            .project
+            .as_deref()
+            .ok_or_else(|| io::Error::other("Creator Alpha project argument was not retained"))?,
+    )?;
+    let evidence_root = resolve_output_path(
+        &project_root,
+        options.evidence.as_deref(),
+        Path::new("target/meridian-evidence/creator-alpha"),
+    );
+    fs::create_dir_all(&evidence_root)?;
+    let manifest_path = project_root.join(CREATOR_ALPHA_MANIFEST);
+    let manifest_bytes = fs::read(&manifest_path)?;
+    let manifest: CreatorAlphaManifest = serde_json::from_slice(&manifest_bytes)?;
+    validate_creator_alpha_manifest(&project_root, &manifest)?;
+    let imported_source = import_creator_alpha_source(&project_root, &manifest.imported_asset)?;
+
+    let (session, mut journey) = run_creator_alpha_editor_journey(&manifest, &imported_source)?;
+    let (recovered, semantic_workspace) = recover_creator_alpha_session(&evidence_root, &session)?;
+    journey.push("recover");
+
+    let build_input_path = evidence_root.join("creator-alpha-build-input.json");
+    write_atomic(
+        &build_input_path,
+        &serde_json::to_vec_pretty(&CreatorAlphaBuildInput {
+            schema: "meridian.creator-alpha-build-input/v1",
+            project_id: recovered.document().id.to_string(),
+            document_generation: recovered.document().generation,
+            imported_source_count: recovered.document().sources.len(),
+            placement_count: recovered.document().placements.len(),
+            editable_model: &manifest.editable_model,
+            procedural_recipe: &manifest.procedural_recipe,
+        })?,
+    )?;
+    let build = run_creator_alpha_build(&manifest_bytes, &evidence_root, &build_input_path)?;
+    journey.push("build");
+
+    let evidence = CreatorAlphaEvidence {
+        schema: CREATOR_ALPHA_EVIDENCE_SCHEMA,
+        milestone: "MS-03",
+        package: "WP-EDT-001",
+        outcome: "LocalPass",
+        project_manifest: CREATOR_ALPHA_MANIFEST,
+        source_authority: "imported source and editable world placement remain project source; derived previews are not source authority",
+        journey,
+        document_generation: recovered.document().generation,
+        imported_source_count: recovered.document().sources.len(),
+        placement_count: recovered.document().placements.len(),
+        recovery: CheckStatus::Pass,
+        semantic_workspace,
+        build,
+        limitations: vec![
+            "Alluvium evaluation is delivered by WP-PRC-001, not this Editor Alpha package.",
+            "Native editable-model operations are delivered by the partial WP-MDL-001 package.",
+            "This local smoke is not cross-platform qualification or visible native-review evidence.",
+        ],
+    };
+    write_atomic(
+        &evidence_root.join("creator-alpha-evidence.json"),
+        &serde_json::to_vec_pretty(&evidence)?,
+    )?;
+    println!(
+        "Meridian Creator Alpha smoke passed: source edit, undo/redo, Play apply/discard, durable recovery, semantic workspace, and request-bound build artifact verified at {}",
+        evidence_root.display()
+    );
+    Ok(())
+}
+
+fn run_creator_alpha_editor_journey(
+    manifest: &CreatorAlphaManifest,
+    imported_source: &ImportedSource,
+) -> AppResult<(EditorSession, Vec<&'static str>)> {
+    let mut session = EditorSession::open(ProjectDocument::new(manifest.project_id))?;
+    let mut journey = vec!["open"];
+    commit_creator_command(
+        &mut session,
+        EditorCommand::RegisterImportedSource(imported_source.clone()),
+        "Register imported source",
+    )?;
+    journey.push("import");
+    let placement = WorldPlacement {
+        id: manifest.placement.id,
+        source_id: imported_source.id,
+        label: manifest.placement.label.clone(),
+        translation: manifest.placement.translation,
+    };
+    commit_creator_command(
+        &mut session,
+        EditorCommand::PlaceObject(placement.clone()),
+        "Place editable world object",
+    )?;
+    session.select([placement.id])?;
+    let edited_translation = Translation {
+        x_mm: 1_000,
+        ..placement.translation
+    };
+    commit_creator_command(
+        &mut session,
+        EditorCommand::SetPlacementTranslation {
+            placement_id: placement.id,
+            translation: edited_translation,
+        },
+        "Edit placement",
+    )?;
+    journey.extend(["edit", "undo", "redo"]);
+    session.undo()?;
+    session.redo()?;
+
+    session.start_play()?;
+    session.set_play_translation(
+        placement.id,
+        Translation {
+            y_mm: 250,
+            ..edited_translation
+        },
+    )?;
+    if session.apply_play()?.len() != 1 {
+        return Err(
+            io::Error::other("Creator Alpha Play apply produced an unexpected diff").into(),
+        );
+    }
+    session.start_play()?;
+    session.set_play_translation(
+        placement.id,
+        Translation {
+            z_mm: 500,
+            ..session.document().placements[&placement.id].translation
+        },
+    )?;
+    session.discard_play()?;
+    journey.extend(["play-apply", "play-stop-discard"]);
+    Ok((session, journey))
+}
+
+fn recover_creator_alpha_session(
+    evidence_root: &Path,
+    session: &EditorSession,
+) -> AppResult<(EditorSession, CheckStatus)> {
+    let recovery_store = EditorRecoveryStore::new(evidence_root.join("editor-recovery.state"));
+    recovery_store.save(session)?;
+    let recovered = recovery_store.load()?;
+    if recovered.document() != session.document() {
+        return Err(io::Error::other(
+            "Creator Alpha recovery did not restore authoritative source",
+        )
+        .into());
+    }
+    let workspace = creator_alpha_document(&recovered)
+        .map_err(|error| io::Error::other(format!("Creator Alpha UI invalid: {error:?}")))?;
+    let semantic_workspace = CheckStatus::from_bool(workspace.root().stable_id().get() == 1);
+    if semantic_workspace != CheckStatus::Pass {
+        return Err(io::Error::other("Creator Alpha workspace root changed unexpectedly").into());
+    }
+    Ok((recovered, semantic_workspace))
+}
+
+fn commit_creator_command(
+    session: &mut EditorSession,
+    command: EditorCommand,
+    label: &str,
+) -> AppResult<()> {
+    let affected_ids = match &command {
+        EditorCommand::RegisterImportedSource(source) => vec![source.id],
+        EditorCommand::RemoveImportedSource { source_id } => vec![*source_id],
+        EditorCommand::PlaceObject(placement) => vec![placement.id, placement.source_id],
+        EditorCommand::SetPlacementTranslation { placement_id, .. }
+        | EditorCommand::RemovePlacement { placement_id } => vec![*placement_id],
+    };
+    let transaction = meridian_editor_core::EditorTransaction {
+        command,
+        metadata: CommandMetadata::local(label, affected_ids),
+    };
+    session.preview(&transaction)?;
+    session.commit(transaction)?;
+    Ok(())
+}
+
+fn resolve_creator_alpha_project(requested: &Path) -> AppResult<PathBuf> {
+    let root = requested.canonicalize()?;
+    if !root.is_dir() || !root.join(CREATOR_ALPHA_MANIFEST).is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "Creator Alpha project must contain creator-alpha.project.json",
+        )
+        .into());
+    }
+    Ok(root)
+}
+
+fn validate_creator_alpha_manifest(
+    project_root: &Path,
+    manifest: &CreatorAlphaManifest,
+) -> AppResult<()> {
+    if manifest.schema != CREATOR_ALPHA_SCHEMA {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Creator Alpha manifest has an unsupported schema",
+        )
+        .into());
+    }
+    if manifest.imported_asset.label.trim().is_empty() || manifest.placement.label.trim().is_empty()
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Creator Alpha import and placement labels must be nonempty",
+        )
+        .into());
+    }
+    for path in [
+        manifest.imported_asset.source_path.as_str(),
+        manifest.editable_model.as_str(),
+        manifest.procedural_recipe.as_str(),
+    ] {
+        let path = validated_project_relative_path(path)?;
+        let source_path = project_root.join(path);
+        let metadata = fs::symlink_metadata(&source_path)?;
+        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Creator Alpha manifest references a non-regular public source file",
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn import_creator_alpha_source(
+    project_root: &Path,
+    request: &CreatorAlphaImportRequest,
+) -> AppResult<ImportedSource> {
+    let mut database = AssetImportDatabase::default();
+    let snapshot = database.import_files_transaction(
+        project_root,
+        &[PathBuf::from(&request.source_path)],
+        &CancellationToken::new(),
+    )?;
+    let imported = snapshot
+        .meshes
+        .values()
+        .next()
+        .ok_or_else(|| io::Error::other("Creator Alpha import produced no source"))?;
+    Ok(ImportedSource {
+        id: imported.metadata.source_id.stable_id(),
+        label: request.label.clone(),
+        source_path: request.source_path.clone(),
+        source_hash: imported.metadata.source_hash.to_string(),
+    })
+}
+
+fn validated_project_relative_path(value: &str) -> AppResult<&Path> {
+    let path = Path::new(value);
+    if path.as_os_str().is_empty()
+        || path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Creator Alpha source path must be a project-relative normal path",
+        )
+        .into());
+    }
+    Ok(path)
+}
+
+fn run_creator_alpha_build(
+    manifest_bytes: &[u8],
+    evidence_root: &Path,
+    build_input: &Path,
+) -> AppResult<CreatorAlphaBuildEvidence> {
+    let node_id = BuildNodeId::new("creator-alpha-editor-check")?;
+    let node = BuildNode::cargo_check(node_id.clone(), "cargo-local")?;
+    let graph = BuildGraph::new(vec![node.clone()], vec![node_id.clone()])?;
+    let environment = CargoEnvironment::from_host();
+    let identity = BuildIdentityInput {
+        source_checkpoint: ArtifactHash::digest(manifest_bytes).to_string(),
+        resolved_profile: "creator-alpha-smoke".to_owned(),
+        cargo_metadata_and_lock: "workspace-cargo-metadata-and-lock-v1".to_owned(),
+        build_graph_contract: graph.contract_hash(),
+        command_arguments: vec!["-p".to_owned(), "meridian-editor-core".to_owned()],
+        toolchain_version: "cargo-local".to_owned(),
+        target_and_capabilities: format!(
+            "{}-{}-default",
+            std::env::consts::ARCH,
+            std::env::consts::OS
+        ),
+        environment_allowlist: environment.identity_values(),
+        root_node_ids: vec![node_id.as_str().to_owned()],
+    };
+    let sequence = NEXT_CREATOR_BUILD_ID.fetch_add(1, Ordering::Relaxed);
+    let operation_id = OperationId::new(50_000_u64.saturating_add(sequence));
+    let request = BuildRequest::new_with_graph(
+        &identity,
+        operation_id,
+        TraceId::new(60_000_u64.saturating_add(sequence)),
+        node,
+        &graph,
+    )?;
+    let state_path = evidence_root.join(format!(
+        "creator-alpha-build-{}-{sequence}.state",
+        std::process::id()
+    ));
+    let recovery = DurableBuildService::open(BuildServiceStore::new(&state_path)?)?;
+    if !recovery.recovery_events.is_empty() {
+        return Err(
+            io::Error::other("new Creator Alpha build state unexpectedly recovered work").into(),
+        );
+    }
+    let mut service = recovery.service;
+    service.submit(request.clone())?;
+    service.transition(operation_id, BuildPhase::Resolving, 10)?;
+    service.transition(operation_id, BuildPhase::Ready, 25)?;
+    service.transition(operation_id, BuildPhase::Running, 50)?;
+
+    let invocation = CargoInvocation::new(
+        workspace_root()?,
+        CargoCommand::Check,
+        identity.command_arguments.clone(),
+        environment,
+    )?;
+    let artifact_store = ArtifactStore::new(evidence_root.join("build-artifacts"))?;
+    let mut supervisor = CargoBuildSupervisor::try_new()?;
+    let worker_count = supervisor.worker_count().get();
+    supervisor.submit(&service, &request, invocation)?;
+    let started_at = Instant::now();
+    loop {
+        if let Some(result) = supervisor.poll_with(&mut service, |service, operation, _messages| {
+            let publication = artifact_store.publish_file_for_request(
+                &request,
+                "meridian.creator-alpha-build-input/v1",
+                build_input,
+            )?;
+            Ok(vec![
+                service.record_published_artifact(operation, publication)?
+            ])
+        }) {
+            let completion = result?;
+            if completion.status() != CargoRunStatus::Succeeded {
+                return Err(
+                    io::Error::other("Creator Alpha bounded Cargo build did not succeed").into(),
+                );
+            }
+            let artifact_event = completion
+                .events()
+                .iter()
+                .find(|event| event.artifact_hash.is_some())
+                .ok_or_else(|| io::Error::other("Creator Alpha build did not bind an artifact"))?;
+            let artifact_hash = artifact_event
+                .artifact_hash
+                .clone()
+                .ok_or_else(|| io::Error::other("Creator Alpha artifact hash was unavailable"))?;
+            let artifact_bytes = fs::metadata(build_input)?.len();
+            return Ok(CreatorAlphaBuildEvidence {
+                build_id: request.build_id.to_string(),
+                artifact_hash,
+                artifact_bytes,
+                event_count: completion.events().len(),
+                durable_state: state_path.display().to_string(),
+                worker_count,
+            });
+        }
+        if started_at.elapsed() > CREATOR_ALPHA_BUILD_TIMEOUT {
+            let _ = supervisor.cancel(&mut service, operation_id)?;
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "Creator Alpha bounded Cargo build exceeded its timeout",
+            )
+            .into());
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn workspace_root() -> AppResult<PathBuf> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| io::Error::other("cannot locate Meridian workspace root"))?
+        .to_path_buf();
+    if !root.join("Cargo.toml").is_file() {
+        return Err(io::Error::other("Meridian workspace root has no Cargo.toml").into());
+    }
+    Ok(root)
 }
 
 fn resolve_project_root(requested: Option<&Path>) -> AppResult<PathBuf> {
@@ -2009,6 +2508,31 @@ mod tests {
                 mode: RunMode::UiSmoke,
                 ..
             })
+        ));
+        assert!(matches!(
+            MeridianOptions::parse([
+                "--creator-alpha-smoke",
+                "--project",
+                "examples/creator-alpha",
+                "--evidence",
+                "target/evidence"
+            ]),
+            Ok(MeridianOptions {
+                mode: RunMode::CreatorAlphaSmoke,
+                ..
+            })
+        ));
+        assert!(matches!(
+            MeridianOptions::parse(["--creator-alpha-smoke", "--evidence", "target/evidence"]),
+            Err(MeridianArgumentError::CreatorAlphaProjectRequired)
+        ));
+        assert!(matches!(
+            MeridianOptions::parse([
+                "--creator-alpha-smoke",
+                "--project",
+                "examples/creator-alpha"
+            ]),
+            Err(MeridianArgumentError::CreatorAlphaEvidenceRequired)
         ));
     }
 

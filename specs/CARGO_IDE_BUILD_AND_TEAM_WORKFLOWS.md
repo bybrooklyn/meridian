@@ -5,8 +5,8 @@
 version 0.5 · 2026-07-15 · Normative · Current Cargo workspace foundation, build service Partial
 
 Documentation maturity: `ImplementationReady`. Implementation maturity:
-`Partial` with current Cargo/CI foundations and a bounded `meridian-build`
-service/CLI slice. Governing IDs: `REQ-BLD-001`,
+`ImplementedFoundation` for the bounded `WP-BLD-001` local Cargo service and
+CLI slice; broader build graph and team-service work remains planned. Governing IDs: `REQ-BLD-001`,
 `WP-BLD-001`, `WP-BLD-002`.
 
 ## 1. Goals and non-goals
@@ -83,12 +83,17 @@ After `PRG-PRM-001` activates, Marquee reuses BLD-owned bounded jobs, cancellati
   child and emits a typed warning rather than claiming that descendants were
   terminated. A Unix induced test
   proves cancellation of a Cargo build script that inherits a `/bin/sleep 60`
-  child; actual Windows execution evidence remains `NotRun` until authorized CI.
+  child. GitHub Actions run `29505405013` for
+  `becef55486d434460c3afebfb96e734655dfcb09` passed the configured Windows
+  workspace, helper-smoke, bounded Cargo-build, and independent test-artifact
+  rows after entering the Visual Studio developer environment. That evidence
+  does not convert Unix process-group cancellation into a Windows-specific
+  cancellation claim.
   The prepared Windows CI smoke discovers the installed C++ toolchain through
   `vswhere`, invokes that installation's `VsDevCmd.bat` for amd64 host/target,
   and then lets the adapter snapshot only its explicit environment allowlist.
-  This configuration is not a passing Windows-evidence claim until the
-  authorized source checkpoint runs it.
+  The configuration is exercised by the passing Windows source checkpoint above;
+  it remains an explicit local-process setup rather than ambient inheritance.
   A helper launched through `cargo run` on Windows cannot relink its own active
   `meridian-build.exe`; the documented structural build and test-compilation
   proofs therefore target the independent `meridian-core` library. The

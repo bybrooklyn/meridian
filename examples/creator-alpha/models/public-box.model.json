@@ -1,0 +1,22 @@
+{
+  "schema": "meridian.editable-model/v1",
+  "version": 1,
+  "document_id": 1201,
+  "label": "Public editable box",
+  "coordinate_system": "right-handed-y-up-millimetres",
+  "objects": [
+    {
+      "id": 1202,
+      "label": "Public box",
+      "vertices": [
+        { "id": 1211, "position_mm": [-500, -500, -500] },
+        { "id": 1212, "position_mm": [500, -500, -500] },
+        { "id": 1213, "position_mm": [500, 500, -500] },
+        { "id": 1214, "position_mm": [-500, 500, -500] }
+      ],
+      "faces": [
+        { "id": 1221, "vertices": [1211, 1212, 1213, 1214] }
+      ]
+    }
+  ]
+}

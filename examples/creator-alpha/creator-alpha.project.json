@@ -1,0 +1,19 @@
+{
+  "schema": "meridian.creator-alpha/v1",
+  "project_id": 1001,
+  "imported_asset": {
+    "label": "Public triangle source",
+    "source_path": "assets/public-triangle.mesh.json"
+  },
+  "placement": {
+    "id": 1003,
+    "label": "Public triangle placement",
+    "translation": {
+      "x_mm": 0,
+      "y_mm": 0,
+      "z_mm": 0
+    }
+  },
+  "editable_model": "models/public-box.model.json",
+  "procedural_recipe": "recipes/public-placement.mproc"
+}
