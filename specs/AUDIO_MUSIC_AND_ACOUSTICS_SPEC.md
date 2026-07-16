@@ -1,6 +1,6 @@
 # Wavefront Audio, Music, Voice, and Acoustics Specification
 
-[Master index](MERIDIAN_MASTER_SPEC.md) · [ADR-0020](../docs/architecture/decisions/ADR-0020-wavefront-and-collective.md) · [Collective](COLLECTIVE_ONLINE_SERVICES_SPEC.md) · [Runtime/tasks](CORE_RUNTIME_TASKS_AND_PLATFORM_SPEC.md) · [Assets/world/save/package formats](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Isobar](ISOBAR_WEATHER_AND_ATMOSPHERE_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md) · [Delivery roadmap](DELIVERY_ROADMAP.md)
+[Master index](MERIDIAN_MASTER_SPEC.md) · [ADR-0020](../docs/architecture/decisions/ADR-0020-wavefront-and-collective.md) · [Collective](COLLECTIVE_ONLINE_SERVICES_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [Runtime/tasks](CORE_RUNTIME_TASKS_AND_PLATFORM_SPEC.md) · [Assets/world/save/package formats](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Isobar](ISOBAR_WEATHER_AND_ATMOSPHERE_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md) · [Delivery roadmap](DELIVERY_ROADMAP.md)
 
 Status: version 0.5 normative architecture for planned audio work, 2026-07-15.
 
@@ -63,6 +63,7 @@ Planned ownership:
 | Audio editor panels/tools | `editor/meridian_editor` and future audio tools | planned | Editor may depend on engine audio schemas. |
 | Project Meridian cues | external private game repository | planned | Game content never owns engine mixer policy. |
 | The Alluvium Engine | Generated acoustic material/region/portal/obstruction source facets and provenance | planned | Audio retains live propagation, mixer, voice, and device authority. |
+| Marquee | Approved offline audio processing, loudness reports, trailer mixes, and captions through future adapters | deferred post-1.0 | Wavefront retains decode/DSP/loudness semantics; Marquee owns campaign/export state only. |
 
 Allowed dependencies:
 
@@ -78,6 +79,7 @@ Invalid dependencies:
 - Invalid: a consumer-game crate depending on `cpal` to open an output device directly.
 - Invalid: `meridian-audio` public APIs exposing `cpal::Device`, decoder objects, platform handles, or editor widget types.
 - Invalid: Collective or a provider SDK writing directly to the Wavefront callback or opening a microphone without a Wavefront permission transaction.
+- Invalid: Marquee opening a microphone, accessing callback-owned state, or treating an AI-generated voice/music/sound artifact as an approved promotion source.
 
 Dependency direction:
 

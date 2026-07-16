@@ -36,11 +36,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         )?,
         &BuildCancellation::default(),
     )?;
-    let metadata_hash = metadata_hash_or_error(metadata, &mut schedule, &metadata_node.id)?;
+    let metadata_identity = metadata_identity_or_error(metadata, &mut schedule, &metadata_node.id)?;
     let identity = BuildIdentityInput {
         source_checkpoint: "local-cargo-service-smoke".to_owned(),
         resolved_profile: "check".to_owned(),
-        cargo_metadata_and_lock: format!("metadata:{metadata_hash};lock:{lock_hash}"),
+        cargo_metadata_and_lock: format!("workspace-metadata:{metadata_identity};lock:{lock_hash}"),
+        build_graph_contract: graph.contract_hash(),
         command_arguments: vec!["-p".to_owned(), "meridian-build".to_owned()],
         toolchain_version: "workspace-cargo".to_owned(),
         target_and_capabilities: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
@@ -50,7 +51,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     graph.validate_identity(&identity)?;
     let _ = schedule.start(&root.id)?;
     let root_node_id = root.id.clone();
-    let request = BuildRequest::new(&identity, OperationId::new(1), TraceId::new(1), root)?;
+    let request = BuildRequest::new_with_graph(
+        &identity,
+        OperationId::new(1),
+        TraceId::new(1),
+        root,
+        &graph,
+    )?;
     let mut service = BuildService::default();
     service.submit(request)?;
     service.transition(OperationId::new(1), BuildPhase::Resolving, 5)?;
@@ -90,14 +97,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
-fn metadata_hash_or_error(
+fn metadata_identity_or_error(
     metadata: CargoMetadataOutcome,
     schedule: &mut BuildGraphSchedule,
     metadata_node_id: &BuildNodeId,
 ) -> Result<String, Box<dyn Error>> {
     match (
         metadata.status,
-        metadata.content_hash,
+        metadata.workspace_identity_hash,
         metadata.process_diagnostic,
     ) {
         (CargoRunStatus::Succeeded, Some(hash), _) => {
@@ -116,7 +123,7 @@ fn metadata_hash_or_error(
         }
         (CargoRunStatus::Succeeded, None, _) => {
             let _ = schedule.finish(metadata_node_id, BuildPhase::Failed)?;
-            Err("cargo metadata did not return a hash".into())
+            Err("cargo metadata did not return a workspace identity hash".into())
         }
     }
 }

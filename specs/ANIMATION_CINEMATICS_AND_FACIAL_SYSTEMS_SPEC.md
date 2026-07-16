@@ -1,6 +1,6 @@
 # Animation, Cinematics, and Facial Systems Specification
 
-[Master index](MERIDIAN_MASTER_SPEC.md) · [Assets and worlds](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Gameplay](GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Penumbra](RENDERING_AND_GRAPHICS_SPEC.md) · [Delivery](DELIVERY_ROADMAP.md)
+[Master index](MERIDIAN_MASTER_SPEC.md) · [Assets and worlds](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Gameplay](GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Penumbra](RENDERING_AND_GRAPHICS_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [Delivery](DELIVERY_ROADMAP.md)
 
 Status: version 0.5 normative architecture, 2026-07-15.
 
@@ -33,6 +33,7 @@ Non-goals before 1.0 include a proprietary motion-capture service, neural facial
 | Penumbra | immutable pose/palette/morph snapshot | GPU buffers, deformation execution, visibility, presentation |
 | Audio/Wavefront | sample-accurate cue request and marker | mixing, device time, spatial output |
 | Saves/network | stable graph state and clip/event cursor | transaction, replication, rollback transport |
+| Marquee | imports approved rendered clips and audio after manual capture | in-engine sequencing, camera/game control, animation state, or source performance authority |
 
 Forbidden edges include renderer handles in animation source documents, gameplay rules hidden inside clip events, animation jobs mutating physics directly, editor widgets as serialization authority, and network packets containing transient pointers or backend-specific pose layouts.
 
@@ -83,6 +84,8 @@ ingest source with provenance
 ```
 
 Cinematic sequences request gameplay, camera, animation, audio, UI, and world actions through typed bindings. They cannot seize ownership of those systems or hide required gameplay state in editor-only timelines.
+
+ANI owns in-engine sequencing and shot execution. Marquee owns only deterministic post-capture promotion timelines over imported media. A Marquee campaign cannot invoke a `CinematicSequence`, move a camera, start gameplay, or automatically capture footage.
 
 ## 5. Time, Threads, Memory, and Lifetime
 

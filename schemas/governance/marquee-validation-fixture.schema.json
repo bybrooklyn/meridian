@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Marquee public validation fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["campaign", "capture_policy", "game_navigation", "publishing_policy", "service_credentials", "private_project_content", "sources", "claims", "profiles", "approval_invalidation", "ai", "artifacts"],
+  "properties": {
+    "campaign": {"type": "string", "minLength": 1},
+    "capture_policy": {"const": "ManualImportOnly"},
+    "game_navigation": {"const": false},
+    "publishing_policy": {"const": "ExportOnly"},
+    "service_credentials": {"const": false},
+    "private_project_content": {"const": false},
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "classification", "hash", "rights", "consent", "spoiler", "embargo", "locales", "provenance", "transform_policy", "approved"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "classification": {"enum": ["GameplayCapture", "StagedEngineRender", "Composite", "ExternalArt", "LicensedStock", "LogoBrandAsset", "Audio", "AuthoredCopy"]},
+          "hash": {"type": "string", "pattern": "^blake3:.+"},
+          "rights": {"type": "string", "minLength": 1},
+          "consent": {"type": "string", "minLength": 1},
+          "spoiler": {"type": "string", "minLength": 1},
+          "embargo": {"type": "string", "minLength": 1},
+          "locales": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 2}},
+          "provenance": {"type": "string", "minLength": 1},
+          "transform_policy": {"type": "string", "minLength": 1},
+          "approved": {"const": true}
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "approved_source", "build_id", "build_id_current", "source_hash_current", "evidence", "locale", "expiry_current"],
+        "properties": {
+          "text": {"type": "string", "minLength": 1},
+          "approved_source": {"type": "string", "minLength": 1},
+          "build_id": {"type": "string", "minLength": 1},
+          "build_id_current": {"const": true},
+          "source_hash_current": {"const": true},
+          "evidence": {"type": "string", "minLength": 1},
+          "locale": {"type": "string", "minLength": 2},
+          "expiry_current": {"const": true}
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "revision", "official_source_url", "verification_date", "stale", "localization_checked", "provenance"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "revision": {"type": "integer", "minimum": 1},
+          "official_source_url": {"type": "string", "pattern": "^https://"},
+          "verification_date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+          "stale": {"const": false},
+          "localization_checked": {"const": true},
+          "provenance": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "approval_invalidation": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {"enum": ["Source", "SourceHash", "Claim", "BuildId", "Template", "Locale", "ExportProfile", "AiSuggestion", "ToolVersion", "Approval", "Font", "TransformRecipe"]}
+    },
+    "ai": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "cloud_opt_in", "exact_data_disclosure", "generated_image", "generated_video", "generated_voice", "generated_music", "generated_sound", "modified_media", "suggestions_authoritative", "human_review_required"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "cloud_opt_in": {"type": "boolean"},
+        "exact_data_disclosure": {"const": true},
+        "generated_image": {"const": false},
+        "generated_video": {"const": false},
+        "generated_voice": {"const": false},
+        "generated_music": {"const": false},
+        "generated_sound": {"const": false},
+        "modified_media": {"const": false},
+        "suggestions_authoritative": {"const": false},
+        "human_review_required": {"const": true}
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "represented_as_final", "source_hash_current", "claim_current", "build_id_current", "profile_current", "tool_version_current"],
+        "properties": {
+          "state": {"enum": ["Draft", "ReleaseReady"]},
+          "represented_as_final": {"type": "boolean"},
+          "source_hash_current": {"const": true},
+          "claim_current": {"const": true},
+          "build_id_current": {"const": true},
+          "profile_current": {"const": true},
+          "tool_version_current": {"const": true},
+          "approval": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["human", "current", "exact_inputs"],
+            "properties": {
+              "human": {"const": true},
+              "current": {"const": true},
+              "exact_inputs": {"const": true}
+            }
+          }
+        },
+        "allOf": [
+          {"if": {"properties": {"state": {"const": "Draft"}}}, "then": {"properties": {"represented_as_final": {"const": false}}}},
+          {"if": {"properties": {"state": {"const": "ReleaseReady"}}}, "then": {"required": ["approval"], "properties": {"represented_as_final": {"const": true}}}}
+        ]
+      }
+    }
+  }
+}

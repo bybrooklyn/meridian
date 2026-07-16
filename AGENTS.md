@@ -1,6 +1,6 @@
 # Meridian Repository Agent Policy
 
-version 0.5 · 2026-07-15
+version 0.5 · 2026-07-16
 
 This file governs coding and documentation work. [The v0.5 master specification](specs/MERIDIAN_MASTER_SPEC.md) is the architecture index; [the delivery roadmap](specs/DELIVERY_ROADMAP.md) owns milestone order; [implementation planning](specs/IMPLEMENTATION_PLANNING_SPEC.md) owns package readiness, completion, concurrency, and replanning; [PLANNING.md](PLANNING.md) owns current evidence and the active bounded work package.
 
@@ -23,7 +23,7 @@ dependency-validated Cargo graph. The production
 Penumbra Forward+ path, Creator Editor, Alluvium, native modeler,
 Rust gameplay modules, optional Luau, animation, navigation, frameworks,
 first-class 2D, Meridian Shader Language, Wavefront runtime, Collective,
-Isobar, Basalt, Torsant, native backends, game prototype, and post-1.0 programs
+Isobar, Basalt, Torsant, native backends, game prototype, Marquee, and other post-1.0 programs
 remain incomplete.
 
 `WP-UI-001` is `ImplementedFoundation` and MS-02 passed qualification on
@@ -56,6 +56,15 @@ of Ready.
 - The native modeler is core, Blender remains optional, and topology-changing edits preserve or explicitly orphan stable element identity.
 - Wavefront owns audio/device/DSP behavior; Collective owns modular online-service policy/provider seams; NET owns transport/replication. No hosted Meridian service is assumed.
 - First-class 2D uses dedicated Penumbra and Cairn paths. NAV owns traversability/queries, not game decisions. Text and graph shaders share one ShaderIr.
+- Marquee is a deferred post-1.0 local promotional export system. It imports manual approved captures, never publishes or manages accounts, and permits optional AI only for non-authoritative text/analysis suggestions; no audiovisual AI generation or modification.
+- `PRG-REL-001` is deferred until after MS-10. It may seek and prove only
+  workload/version/profile-specific performance or quality leadership through
+  matched, raw, expiring evidence; it cannot guarantee global superiority or
+  block/promote a milestone.
+- Penumbra owns shared environmental media rendering; Isobar and Torsant retain
+  sparse/multirate simulation authority and transfer dynamic surface-water
+  ownership through a typed handoff; Alluvium owns authored combustion/fluid
+  facets and derived cost predictions, not live state.
 - `PRG-*` records are post-1.0 only and cannot satisfy, block, or promote `MS-*` milestones. Domain codes are governance IDs, not mandatory code names.
 
 ## 5. Delivery discipline

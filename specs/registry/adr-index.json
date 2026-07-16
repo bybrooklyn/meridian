@@ -26,6 +26,9 @@
     {"id":"ADR-0021","status":"Adopted","path":"docs/architecture/decisions/ADR-0021-first-class-two-dimensional.md"},
     {"id":"ADR-0022","status":"Adopted","path":"docs/architecture/decisions/ADR-0022-native-modeler.md"},
     {"id":"ADR-0023","status":"Adopted","path":"docs/architecture/decisions/ADR-0023-meridian-shader-language.md"},
-    {"id":"ADR-0024","status":"Adopted","path":"docs/architecture/decisions/ADR-0024-post-one-programs.md"}
+    {"id":"ADR-0024","status":"Adopted","path":"docs/architecture/decisions/ADR-0024-post-one-programs.md"},
+    {"id":"ADR-0025","status":"Adopted","path":"docs/architecture/decisions/ADR-0025-marquee-promotional-media.md"},
+    {"id":"ADR-0026","status":"Adopted","path":"docs/architecture/decisions/ADR-0026-environmental-performance-contracts.md"},
+    {"id":"ADR-0027","status":"Adopted","path":"docs/architecture/decisions/ADR-0027-competitive-performance-quality-program.md"}
   ]
 }

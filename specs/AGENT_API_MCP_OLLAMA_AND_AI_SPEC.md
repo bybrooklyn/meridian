@@ -1,6 +1,6 @@
 # Agent API, MCP, Ollama, and AI Specification
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Commands/UI](EDITOR_AND_MERIDIAN_UI_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Security](SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Migration](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Commands/UI](EDITOR_AND_MERIDIAN_UI_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [Security](SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md)
 
 version 0.5 · 2026-07-15 · Normative architecture · Deferred to MS-08/MS-09
 
@@ -10,6 +10,8 @@ Documentation maturity: `ImplementationReady`. Implementation maturity:
 ## 1. Principles
 
 Agents are optional clients of Meridian’s typed command/query system. They receive no private engine backdoor, ambient project access, secret access, shell authority, or capability to waive tests/reviews. The engine, editor, game, build, VCS, and documentation work completely without AI.
+
+Marquee defines a narrower post-1.0 AI profile: optional providers may draft text or return analysis/metadata suggestions, but may not generate or alter image, video, voice, music, or sound. Marquee suggestions remain untrusted until explicit human approval; cloud use discloses exactly what campaign data leaves the machine. This restriction is machine-validated and cannot be widened by an ordinary capability grant.
 
 For Alluvium, agents may create or edit textual recipes, parameters,
 constraints, tests, and candidate sets only through normal typed commands. An
@@ -156,6 +158,8 @@ Agents cannot approve their own trust expansion. External messages, PRs, deploym
 ## 14. Zero-cost behavior
 
 When agent features are disabled: no provider dependencies/processes, MCP listener, embedding index, model downloads, network requests, agent panels, recurring tasks, or package chunks. Typed commands remain because humans/tools use them independently.
+
+When Marquee AI is disabled, it additionally creates no campaign panel, analysis task, allocation, listener, network request, AI-assist record, or export content. Deterministic manual promotional workflows remain available.
 
 ## 15. Tests and evaluation
 

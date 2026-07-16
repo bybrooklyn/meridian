@@ -37,6 +37,7 @@
     {"domain":"MDL","spec":"specs/NATIVE_MODELING_AND_DCC_SPEC.md","documentation":"ResearchReady","implementation":"Planned","requirements":["REQ-MDL-001","REQ-MDL-002","REQ-MDL-003","REQ-MDL-004"]},
     {"domain":"COL","spec":"specs/COLLECTIVE_ONLINE_SERVICES_SPEC.md","documentation":"ResearchReady","implementation":"Planned","requirements":["REQ-COL-001","REQ-COL-002","REQ-COL-003","REQ-COL-004"]},
     {"domain":"WRL","spec":"specs/DISTRIBUTED_WORLDS_AND_MMO_SPEC.md","documentation":"ResearchReady","implementation":"Deferred","requirements":["REQ-WRL-001","REQ-WRL-002","REQ-WRL-003"]},
-    {"domain":"INT","spec":"specs/INTEGRITY_ANTI_CHEAT_AND_MODERATION_SPEC.md","documentation":"ResearchReady","implementation":"Deferred","requirements":["REQ-INT-001","REQ-INT-002","REQ-INT-003"]}
+    {"domain":"INT","spec":"specs/INTEGRITY_ANTI_CHEAT_AND_MODERATION_SPEC.md","documentation":"ResearchReady","implementation":"Deferred","requirements":["REQ-INT-001","REQ-INT-002","REQ-INT-003"]},
+    {"domain":"PRM","spec":"specs/MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md","documentation":"ResearchReady","implementation":"Deferred","requirements":["REQ-PRM-001","REQ-PRM-002","REQ-PRM-003","REQ-PRM-004","REQ-PRM-005","REQ-PRM-006"]}
   ]
 }

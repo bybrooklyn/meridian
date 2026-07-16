@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 blake3.workspace = true
 meridian-core = { path = "../../engine/meridian_core" }
+meridian-tasks = { path = "../../engine/meridian_tasks" }
 serde.workspace = true
 serde_json.workspace = true
 

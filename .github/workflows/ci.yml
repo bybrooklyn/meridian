@@ -34,7 +34,23 @@ jobs:
       - run: cargo run -p meridian-build --example cargo_service_smoke
       - run: cargo run -p meridian-build --example artifact_event_smoke
       - run: cargo run -p meridian-build --bin meridian-build -- --cargo-build --workspace . --source-checkpoint ci-cargo-build --toolchain ci --target host -- -p meridian-core
-      - run: cargo run -p meridian-build --bin meridian-build -- --cargo-test-no-run --workspace . --source-checkpoint ci-cargo-test-no-run --toolchain ci --target host --artifact-store target/meridian-ci-artifacts --cargo-output-root target/meridian-ci-cargo-test -- -p meridian-core --target-dir target/meridian-ci-cargo-test
+      - name: Compile Cargo test artifact smoke on Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          @echo off
+          set "VSINSTALL="
+          for /f "usebackq delims=" %%I in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%I"
+          if not defined VSINSTALL (
+            echo Visual Studio C++ tools were not found
+            exit /b 1
+          )
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=amd64 -host_arch=amd64
+          if errorlevel 1 exit /b %errorlevel%
+          cargo run -p meridian-build --bin meridian-build -- --cargo-test-no-run --workspace . --source-checkpoint ci-cargo-test-no-run --toolchain ci --target host --artifact-store target/meridian-ci-artifacts --cargo-output-root target/meridian-ci-cargo-test -- -p meridian-core --target-dir target/meridian-ci-cargo-test
+      - name: Compile Cargo test artifact smoke outside Windows
+        if: runner.os != 'Windows'
+        run: cargo run -p meridian-build --bin meridian-build -- --cargo-test-no-run --workspace . --source-checkpoint ci-cargo-test-no-run --toolchain ci --target host --artifact-store target/meridian-ci-artifacts --cargo-output-root target/meridian-ci-cargo-test -- -p meridian-core --target-dir target/meridian-ci-cargo-test
       - name: Verify minimal runtime has no UI dependency
         shell: bash
         run: |

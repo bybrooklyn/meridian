@@ -344,6 +344,29 @@ Penumbra, vegetation, and audio consume one immutable Isobar snapshot. Basalt
 may contribute terrain shelter and surface data through an explicit versioned
 input; Isobar does not read renderer state.
 
+### 13.1 Planned environmental convergence contracts
+
+Illustrative only; these types and schemas are not implemented.
+
+~~~text
+ParticipatingMediaSourceSnapshot {
+  source_id, owner, epoch, bounds, representation,
+  extinction, scattering, emission, phase, velocity,
+  temporal_validity, quality_priority, budget_class
+}
+
+SurfaceFluidHandoff {
+  region_id, source_epoch, target_epoch,
+  owner: IsobarCoarse | TorsantDynamic,
+  initial_or_settled_state,
+  mass_or_depth_error, stale_after, fallback
+}
+~~~
+
+Penumbra owns participating-media GPU residency, lighting, shadow, temporal,
+and compositing behavior. Isobar and Torsant retain source/simulation meaning.
+Exactly one system advances dynamic surface water for a region and epoch.
+
 ## 14. Alluvium terrain and vegetation recipe
 
 ~~~yaml
@@ -382,6 +405,39 @@ Torsant has no crate or required opening-slice schema in v0.5. A future first
 implementation package must define versioned fire/fluid/thermal source events,
 solver tiers, coupling latency, recovery, and zero-cost-disabled behavior before
 adding `meridian-torsant`.
+
+### 14.1 Planned material facets and runtime-cost manifest
+
+Illustrative only; no schema or predictor is implemented.
+
+~~~yaml
+schema: meridian.runtime-cost-manifest/v1
+build_id: blake3:qualified-build
+profile: public-standard-client
+calibration:
+  version: uncalibrated-example
+  corpus: public-representative-forest
+  uncertainty: required
+regions:
+  - id: region.public.forest-edge
+    predicted:
+      geometry_residency: required-metric
+      texture_residency: required-metric
+      participating_media_pages: required-metric
+      pipelines: required-metric
+      weather_tiles: required-metric
+      torsant_tiles: not-enabled
+    causes:
+      - recipe.public.representative_forest
+      - material.public.wet-soil
+    downgrade:
+      - reduce-participating-media-tier
+      - reduce-vegetation-tier
+~~~
+
+Runtime evidence records observed values and prediction error. It does not
+silently rewrite this derived manifest or treat an uncalibrated prediction as a
+budget guarantee.
 
 ## 15. Gameplay State Flow
 
@@ -515,3 +571,91 @@ IndexEntry {
 ~~~
 
 Chunks compress and verify independently. Mounting reads bounded superblock/index data; it does not decompress one giant stream.
+
+## 22. Planned Marquee campaign and export manifest
+
+Illustrative only; no Marquee schema or runtime type is implemented.
+
+~~~yaml
+schema: meridian.promotion-campaign/v1
+campaign_id: public-generic-launch
+build_id: blake3:qualified-build
+state: Draft
+sources:
+  - id: capture-001
+    class: GameplayCapture
+    hash: blake3:source
+    rights: project-owned
+    consent: not-applicable
+    spoiler: none
+    embargo: none
+    transform_policy: crop-grade-overlay-transcode
+claims:
+  - text: "Keyboard and controller supported"
+    source: qualified-feature-record
+    build_id: blake3:qualified-build
+    locale: en-US
+    expires: 2027-07-15
+profiles:
+  - id: generic-16x9
+    revision: 1
+    official_source_url: https://example.invalid/profile-authority
+    verified: 2026-07-15
+ai:
+  mode: TextAnalysisOnly
+  generated_media: false
+  modified_media: false
+  human_review_required: true
+publishing: ExportOnly
+capture: ManualImportOnly
+~~~
+
+`ReleaseReady` additionally requires an approval record over the exact BuildId, source/claim/profile/template/tool hashes, locale set, and AI suggestions. Export writes local files and a `PromotionManifest`; it does not contact a service.
+
+## 23. Planned competitive baseline and claim
+
+Illustrative only; `PRG-REL-001` is deferred until after MS-10 and no comparison
+or superiority evidence exists.
+
+~~~yaml
+schema: meridian.competitive-baseline/v1
+study: public-forest-iso-quality
+claim_class: IsoQualityPerformance
+meridian_build_id: blake3:qualified-build
+comparator:
+  product: exact-public-product-name
+  version: exact-version
+  access_basis: documented-and-authorized
+hardware_profile: exact-record-reference
+corpus_hash: blake3:public-licensed-corpus
+camera_input_hash: blake3:recording
+feature_parity:
+  status: review-required
+settings:
+  internal_resolution: exact
+  output_resolution: exact
+  upscaler: exact
+  frame_generation: exact
+  dynamic_resolution: exact
+warmup:
+  cold: required
+  warm: required
+  first_use: required
+quality:
+  structural: required
+  reference: as-applicable
+  blinded_perceptual: required
+  temporal: required
+evidence:
+  raw_samples: required
+  captures: required
+  lower_tiers: required
+claim:
+  wording: pending-independent-review
+  expires_at: required
+  retraction_state: Draft
+~~~
+
+An impossible parity row produces `Inconclusive`. A new comparator version,
+Meridian BuildId, driver, corpus, material setting, or quality method produces a
+new immutable record rather than modifying the result.

@@ -14,7 +14,7 @@
         "additionalProperties": false,
         "required": ["id", "title", "domain", "status", "work_packages", "evidence_classes"],
         "properties": {
-          "id": {"type": "string", "pattern": "^REQ-(CORE|GOV|RUN|RHI|PEN|UI|EDT|DAT|PHY|GAM|PRJ|AUD|ISO|BAS|VEG|PRC|TOR|DCC|BLD|VCS|SYN|XR|NET|MOD|AGT|SEC|REL|ANI|NAV|FWK|TWO|SHD|MDL|COL|WRL|INT)-[0-9]{3}$"},
+          "id": {"type": "string", "pattern": "^REQ-(CORE|GOV|RUN|RHI|PEN|UI|EDT|DAT|PHY|GAM|PRJ|AUD|ISO|BAS|VEG|PRC|TOR|DCC|BLD|VCS|SYN|XR|NET|MOD|AGT|SEC|REL|ANI|NAV|FWK|TWO|SHD|MDL|COL|WRL|INT|PRM)-[0-9]{3}$"},
           "title": {"type": "string", "minLength": 1},
           "domain": {"type": "string"},
           "status": {"enum": ["Normative", "Deprecated"]},

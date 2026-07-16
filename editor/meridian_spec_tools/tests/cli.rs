@@ -1,6 +1,26 @@
 use std::path::Path;
 use std::process::Command;
 
+fn marquee_fixture_is_valid(name: &str) -> bool {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let schema: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            root.join("../../schemas/governance/marquee-validation-fixture.schema.json"),
+        )
+        .expect("read Marquee fixture schema"),
+    )
+    .expect("parse Marquee fixture schema");
+    let instance: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("tests/fixtures/marquee_cases").join(name))
+            .expect("read Marquee fixture"),
+    )
+    .expect("parse Marquee fixture");
+    jsonschema::validator_for(&schema)
+        .expect("compile Marquee fixture schema")
+        .validate(&instance)
+        .is_ok()
+}
+
 fn run(root: impl AsRef<Path>, args: &[&str]) -> (bool, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_meridian-spec"))
         .args(args)
@@ -33,6 +53,12 @@ fn broken_links_and_fences_are_rejected() {
     assert!(!ok, "{output}");
     assert!(output.contains("broken-link"), "{output}");
     assert!(output.contains("bad-fence"), "{output}");
+}
+
+#[test]
+fn ignored_website_tree_is_not_a_documentation_source() {
+    let (ok, output) = run("tests/fixtures/ignored_website", &["validate", "docs"]);
+    assert!(ok, "{output}");
 }
 
 #[test]
@@ -245,4 +271,99 @@ fn list_unmapped_and_explain_use_registry_ids() {
     );
     assert!(!ok, "{output}");
     assert!(output.contains("unknown-id"), "{output}");
+}
+
+#[test]
+fn valid_marquee_public_fixture_is_accepted() {
+    assert!(marquee_fixture_is_valid("valid.json"));
+}
+
+#[test]
+fn invalid_marquee_policy_and_evidence_fixtures_are_rejected() {
+    for name in [
+        "invalid_ai_capture_publish.json",
+        "invalid_approval_stale.json",
+        "invalid_source_private.json",
+        "invalid_draft_mapping.json",
+    ] {
+        assert!(
+            !marquee_fixture_is_valid(name),
+            "{name} unexpectedly passed"
+        );
+    }
+}
+
+#[test]
+fn marquee_programs_cannot_leak_into_milestones() {
+    let (ok, output) = run(
+        "tests/fixtures/marquee_program_milestone",
+        &["validate", "workloads"],
+    );
+    assert!(!ok, "{output}");
+    assert!(output.contains("program-milestone-leak"), "{output}");
+}
+
+#[test]
+fn marquee_requirements_need_the_registered_program() {
+    let (ok, output) = run(
+        "tests/fixtures/marquee_missing_program",
+        &["validate", "workloads"],
+    );
+    assert!(!ok, "{output}");
+    assert!(output.contains("orphan-requirement"), "{output}");
+    assert!(output.contains("PRG-PRM-001"), "{output}");
+}
+
+#[test]
+fn marquee_packages_cannot_activate_before_post_one_review() {
+    let (ok, output) = run(
+        "tests/fixtures/marquee_premature_package",
+        &["validate", "workloads"],
+    );
+    assert!(!ok, "{output}");
+    assert!(output.contains("premature-marquee-package"), "{output}");
+}
+
+#[test]
+fn marquee_policy_requires_every_approval_invalidator() {
+    let (ok, output) = run(
+        "tests/fixtures/marquee_incomplete_invalidation",
+        &["validate", "workloads"],
+    );
+    assert!(!ok, "{output}");
+    assert!(
+        output.contains("incomplete-marquee-approval-invalidation"),
+        "{output}"
+    );
+}
+
+#[test]
+fn duplicate_marquee_maturity_records_are_rejected() {
+    let (ok, output) = run(
+        "tests/fixtures/marquee_duplicate_maturity",
+        &["validate", "maturity"],
+    );
+    assert!(!ok, "{output}");
+    assert!(output.contains("duplicate-maturity"), "{output}");
+}
+
+#[test]
+fn missing_marquee_maturity_record_is_rejected() {
+    let (ok, output) = run(
+        "tests/fixtures/marquee_missing_maturity",
+        &["validate", "maturity"],
+    );
+    assert!(!ok, "{output}");
+    assert!(
+        output.contains("domain PRM has no maturity record"),
+        "{output}"
+    );
+}
+
+#[test]
+fn missing_marquee_amendment_ledger_is_rejected() {
+    let (ok, output) = run("tests/fixtures/marquee_missing_ledger", &["list-unmapped"]);
+    assert!(!ok, "{output}");
+    assert!(output.contains("missing-migration-ledger"), "{output}");
+    assert!(output.contains("Marquee amendment ledger"), "{output}");
 }

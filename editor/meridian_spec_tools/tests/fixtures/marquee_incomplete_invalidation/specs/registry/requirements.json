@@ -1,0 +1,6 @@
+{
+  "version": "0.5",
+  "records": [
+    {"id":"REQ-PRM-001","title":"fixture","domain":"PRM","status":"Normative","work_packages":[],"evidence_classes":["test"]}
+  ]
+}

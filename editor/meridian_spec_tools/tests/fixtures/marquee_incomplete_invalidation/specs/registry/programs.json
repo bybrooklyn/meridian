@@ -1,0 +1,6 @@
+{
+  "version": "0.5",
+  "records": [
+    {"id":"PRG-PRM-001","title":"fixture","domain":"PRM","status":"Deferred","horizon":"Post1.0","requirements":["REQ-PRM-001"],"entry_gates":[],"success_evidence":[],"may_satisfy_milestones":false}
+  ]
+}

@@ -1,6 +1,6 @@
 # Asset, World, Save, and Package Formats
 
-[Master index](MERIDIAN_MASTER_SPEC.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Navigation](NAVIGATION_AND_AI_INFRASTRUCTURE_SPEC.md) · [Migration register](SPEC_MIGRATION_AND_CONTRADICTIONS.md)
+[Master index](MERIDIAN_MASTER_SPEC.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [Navigation](NAVIGATION_AND_AI_INFRASTRUCTURE_SPEC.md) · [Migration register](SPEC_MIGRATION_AND_CONTRADICTIONS.md)
 
 Status: normative specification, version 0.5, 2026-07-15.
 
@@ -88,6 +88,7 @@ package, not a monolithic compressed blob and not the editable source of truth.
 | The Alluvium Engine | Recipe source, generation dependencies, seeds, generated identity, override reconciliation, provenance, and cook requests | Asset/package identity authority, live subsystem state, or hidden artifact-only source |
 | Meridian native modeler | Editable model documents, stable mesh-element lineage, modeling operations and source facets | Asset-family identity, world-instance authority, runtime render/collision resources |
 | Animation and navigation | Versioned source/derived facets and stable handoff IDs | Asset catalog, source-world authority, or private importer state |
+| Marquee | Campaign references, deterministic promotion recipes, approvals, and export manifests | Original-media identity, rights/provenance authority, BuildId qualification, or project branding |
 
 ### 5.2 Invalid Dependencies
 
@@ -104,6 +105,7 @@ package, not a monolithic compressed blob and not the editable source of truth.
   canonical identity.
 - Alluvium recipes and overrides use stable source IDs and artifact hashes;
   `.mfield` data and generated outputs cannot become the only editable authority.
+- Marquee references DAT-owned immutable originals and provenance. It cannot rewrite source hashes, infer rights, or promote a derived crop/transcode into original source authority.
 
 ## 6. Identity Domains
 

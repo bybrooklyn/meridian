@@ -5,13 +5,14 @@
 version 0.5 · 2026-07-15 · Normative
 
 Documentation maturity: `ImplementationReady`. Governing IDs:
-`REQ-CORE-001` through `REQ-CORE-004`, `REQ-GOV-001` through `REQ-GOV-003`.
+`REQ-CORE-001` through `REQ-CORE-004`, `REQ-GOV-001` through `REQ-GOV-003`,
+and `REQ-REL-001` through `REQ-REL-004`.
 
 ## 1. Product definition
 
-Meridian is a local-first, data-oriented engine and one user-facing creator application for games and interactive applications. It combines runtime, editor, IDE, native modeler, The Alluvium Engine procedural authoring, asset pipeline, build service, documentation, version control, collaboration, optional agents, packaging, and deployment behind coherent typed contracts. The application is named **Meridian**; helper processes and CLI tools do not create separate Studio or IDE products. Project Meridian is the first proving game and supplies concrete quality gates without becoming an engine dependency.
+Meridian is a local-first, data-oriented engine and one user-facing creator application for games and interactive applications. It combines runtime, editor, IDE, native modeler, The Alluvium Engine procedural authoring, asset pipeline, build service, documentation, version control, collaboration, optional agents, packaging, deployment, and the deferred Marquee promotional workspace behind coherent typed contracts. The application is named **Meridian**; helper processes and CLI tools do not create separate Studio or IDE products. Project Meridian is the first proving game and supplies concrete quality gates without becoming an engine dependency.
 
-The target is not feature-count imitation. Meridian differentiates through inspectable data, recovery, progressive disclosure, one semantic command model, zero-cost optional packs, provenance-first ownership, and vertical slices that prove systems together.
+The target is not feature-count imitation. Meridian differentiates through inspectable data, recovery, progressive disclosure, one semantic command model, zero-cost optional packs, provenance-first ownership, and vertical slices that prove systems together. Its long-term performance and quality goal is material workload-specific leadership established through matched evidence, not an unqualified or permanent superiority slogan.
 
 ## 2. Users
 
@@ -63,7 +64,7 @@ Long-horizon scope, implemented only through later milestones and work packages:
 - local/cloud agent integrations under capabilities;
 - native backend experiments and advanced GI/geometry.
 
-Post-1.0 programs, not 1.0 milestone requirements: advanced sculpting/retopology/hair/cloth/character modeling; facial/performance-capture production; completion of all six official framework families; funded hosted-scale Collective work; distributed worlds/MMO; advanced integrity/anti-cheat; native VCS storage/history; and optional shader-compiler internalization.
+Post-1.0 programs, not 1.0 milestone requirements: advanced sculpting/retopology/hair/cloth/character modeling; facial/performance-capture production; completion of all six official framework families; funded hosted-scale Collective work; distributed worlds/MMO; advanced integrity/anti-cheat; native VCS storage/history; optional shader-compiler internalization; Marquee local promotional-media authoring/export; and competitive performance/quality leadership through `PRG-REL-001`.
 
 ## 5. Non-goals
 
@@ -78,6 +79,7 @@ Post-1.0 programs, not 1.0 milestone requirements: advanced sculpting/retopology
 - preserving compatibility with a third-party implementation API during an ownership migration;
 - claiming deterministic equivalence, security, accessibility, performance, or competitor superiority without evidence;
 - treating AI output as trusted or allowing agents to bypass user-visible commands.
+- letting Marquee navigate a game for captures, publish to services, manage accounts, generate websites, or use AI to generate or alter audiovisual media.
 
 ## 6. Progressive disclosure
 
@@ -117,7 +119,7 @@ CI verifies a minimal build by examining dependencies, symbols, package chunks, 
 
 ## 8. Local-first and external tools
 
-Blender, Git hosting, Steam, EOS, Ollama, cloud models, external profilers, and proprietary SDKs are integrations, never prerequisites for core authoring. Meridian's native modeler and Alluvium provide first-party modeling and procedural authoring through editor, CLI, and headless workflows. Cargo remains authoritative for Rust projects, but Meridian provides safe IDE, build, and manifest workflows. External interchange reports preserved, approximated, and omitted semantics; lossless round-trip is claimed only where tested.
+Blender, Git hosting, Steam, EOS, Ollama, cloud models, external profilers, and proprietary SDKs are integrations, never prerequisites for core authoring. Meridian's native modeler and Alluvium provide first-party modeling and procedural authoring through editor, CLI, and headless workflows. Cargo remains authoritative for Rust projects, but Meridian provides safe IDE, build, and manifest workflows. Future Marquee target profiles describe local files, never account or publishing integrations. External interchange reports preserved, approximated, and omitted semantics; lossless round-trip is claimed only where tested.
 
 ## 9. Truthfulness and evidence
 
@@ -146,6 +148,12 @@ Semantics originate in Meridian UI and gameplay intent. Platform adapters such a
 ## 12. Performance philosophy
 
 Budgets are hierarchical: frame, subsystem, pass/job, asset/cell, and operation. The engine measures CPU, GPU, memory, IO, audio, build, network, latency, and recovery. Quality tiers choose algorithms and content, not merely constants. A fallback is a supported behavior with tests and diagnostics.
+
+Competitive evaluation separates iso-quality performance, iso-cost quality, and
+matched-workflow throughput. It includes first-use stalls, temporal quality,
+lower tiers, power where supported, accessibility, recovery, debugging, and
+maintenance. One workload, device, average, capture, or private game cannot
+establish general superiority; claims bind exact evidence and expire.
 
 Any numeric target copied from version 0.1 remains provisional until [validation](TESTING_BENCHMARKS_AND_VALIDATION.md) records hardware, OS, build, scene/corpus, sample count, statistical rule, and accepted variance.
 

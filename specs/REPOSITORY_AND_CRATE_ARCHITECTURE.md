@@ -119,6 +119,7 @@ wgpu, Rapier, egui, and AccessKit types MUST stop at their adapter crates. Exist
 - future optional meridian-luau and generated gameplay bindings under `WP-GAM-002`.
 - future native model-document/kernel/tool modules under `WP-MDL-001`; no placeholder crate is created by v0.5.
 - future animation, navigation, framework, dedicated 2D, and Collective modules only when their first real work packages start.
+- future `meridian-marquee`: post-capture promotional campaigns, deterministic variants, claims, approvals, and local export manifests. The name is reserved; no crate exists until a post-1.0 planning review creates a real package.
 - meridian-spec: documentation-governance CLI under editor/; no runtime or game
   crate may depend on it.
 - future meridian-alluvium: typed procedural recipe/field evaluation,
@@ -131,7 +132,7 @@ Its domain adapters and runtime-safe evaluator remain capability-scoped. A
 baked-only shipping profile depends on generated asset/world/package facets,
 not on editor, graph compiler, preview cache, or runtime Alluvium code.
 
-The `ANI`, `NAV`, `FWK`, `TWO`, `SHD`, `MDL`, `COL`, `WRL`, and `INT` identifiers are governance domains, not mandatory crate names. Wavefront and Collective are subsystem/product names; current crate names remain until an implementation package has a concrete migration reason. WRL and INT are post-1.0 authorities and create no placeholder crates.
+The `ANI`, `NAV`, `FWK`, `TWO`, `SHD`, `MDL`, `COL`, `WRL`, `INT`, and `PRM` identifiers are governance domains, not mandatory crate names. Wavefront, Collective, and Marquee are subsystem/product names; current crate names remain until an implementation package has a concrete migration reason. WRL, INT, and PRM are post-1.0 authorities and create no placeholder crates.
 
 ## 5. Contract shape
 
@@ -262,7 +263,7 @@ Architecture acceptance requires one minimal headless runtime, one editor build,
 - MS-03, MS-08, and MS-09: build service, VCS, sync, and agents use common commands.
 - MS-08/MS-09: re-run modularity audit against shipping profiles.
 - MS-03/MS-05/MS-08/MS-09: add modeler, animation, navigation, framework, 2D, ShaderIr, optional Luau, and Collective modules only through their typed packages and forbidden-edge tests.
-- Post-1.0: WRL/INT and advanced MDL/ANI/FWK/COL/VCS/SHD programs remain outside the MS graph and create code only after their entry gates.
+- Post-1.0: WRL/INT/PRM and advanced MDL/ANI/FWK/COL/VCS/SHD programs remain outside the MS graph and create code only after their entry gates. Marquee remains export-only and depends downward on DAT/BLD/AGT/SEC/REL contracts without entering runtime crates.
 - MS-10: freeze supported format/API compatibility for the release line.
 
 ## 15. End-to-end and failure examples

@@ -1,12 +1,13 @@
 # The Alluvium Engine — Procedural World Authoring and Asset Generation Specification
 
-[Master index](MERIDIAN_MASTER_SPEC.md) · [Migration register](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Assets/world/save/package formats](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Basalt](BASALT_TERRAIN_AND_LARGE_WORLD_GEOMETRY_SPEC.md) · [Vegetation](VEGETATION_ECOSYSTEM_SPEC.md) · [Isobar](ISOBAR_WEATHER_AND_ATMOSPHERE_SPEC.md) · [Torsant](TORSANT_FIRE_FLUIDS_AND_THERMAL_SIMULATION_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md) · [Delivery roadmap](DELIVERY_ROADMAP.md)
+[Master index](MERIDIAN_MASTER_SPEC.md) · [Migration register](SPEC_MIGRATION_AND_CONTRADICTIONS.md) · [Assets/world/save/package formats](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Basalt](BASALT_TERRAIN_AND_LARGE_WORLD_GEOMETRY_SPEC.md) · [Vegetation](VEGETATION_ECOSYSTEM_SPEC.md) · [Isobar](ISOBAR_WEATHER_AND_ATMOSPHERE_SPEC.md) · [Torsant](TORSANT_FIRE_FLUIDS_AND_THERMAL_SIMULATION_SPEC.md) · [Competitive quality](COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md) · [Delivery roadmap](DELIVERY_ROADMAP.md)
 
 Status: version 0.5 normative architecture, 2026-07-15.
 
 Architecture status: `Adopted` by [ADR-0017](../docs/architecture/decisions/ADR-0017-alluvium.md). Documentation maturity: `ResearchReady`. Implementation maturity: `Planned`.
 
-Governing IDs: `REQ-PRC-001` through `REQ-PRC-009`; `WP-PRC-001` through `WP-PRC-010`; `RG-PRC-001`; `RG-PRC-002`.
+Governing IDs: `REQ-PRC-001` through `REQ-PRC-010`; `WP-PRC-001` through
+`WP-PRC-010`; `RG-PRC-001`; `RG-PRC-002`; post-1.0 `PRG-REL-001`.
 
 Current implementation status: Alluvium is not implemented. No Alluvium crate, evaluator, recipe parser, field runtime, editor, cook path, or generated production corpus exists. Existing terrain, vegetation, weather, data, and editor packages are scaffold or foundation work and do not prove this specification. This document defines future contracts and evidence gates only.
 
@@ -341,6 +342,15 @@ One high-level material source may generate visual, physical, acoustic, thermal,
 
 Weathering derives from shared causes—exposure, moisture, drainage, contact, heat, material, age, maintenance, and biological growth—so color, roughness, geometry, friction, absorption, fuel, corrosion, and structural effects remain coherent. Independent random dirt overlays cannot substitute for causal source fields when cross-system behavior depends on them.
 
+Planned post-1.0 source facets include `CombustionMaterialFacet` with ignition
+response, available fuel, burn-rate curve, heat release, smoke/soot/char yield,
+moisture response, and spread class; and `FluidInteractionFacet` with
+permeability, absorption, drainage, buoyancy class, erosion response, wet
+friction, and thermal exchange. Fields use declared units, bounds, defaults,
+provenance, profile applicability, and migration. They are semantic authored
+controls, not engineering-accuracy claims. Torsant validates and consumes them
+without giving Alluvium live solver authority.
+
 ### 11.4 Infrastructure and Structures
 
 Semantic splines may generate connected roads, paths, rivers, drainage, fences, poles, cables, and pipes with terrain shaping, support placement, collision, navigation, streaming, material, and weathering outputs. Procedural structures use authored constraints, modules, egress/accessibility rules, structural facets, and explicit hero-space locks. Story-critical layouts remain manually accepted or authored.
@@ -404,6 +414,19 @@ Required metrics:
 - cook and license-audit time;
 - downstream streaming, draw, physics, simulation, and audio cost attributable to generated content.
 
+Every cooked profile may produce a planned `RuntimeCostManifest` containing
+predicted geometry, texture, participating-media, pipeline, shadow, light,
+vegetation, weather, simulation, upload, streaming, activation, and residency
+demand by region and tier. Each prediction records uncertainty, calibration
+corpus, model/version, unsupported dimensions, causal source IDs, and proposed
+downgrades. It never becomes runtime authority or a fabricated budget gate.
+
+Runtime evidence reconciles predicted and observed cost. The editor explains
+which authored causes contribute to a predicted or observed cost and which
+change would alter quality, gameplay, accessibility, recovery, or provenance.
+Prediction error remains visible calibration evidence rather than being silently
+rewritten after a run.
+
 Unsafe optimized kernels follow Meridian's unsafe policy: documented invariants, smallest scope, reference implementation, differential tests, fuzz/property coverage where applicable, sanitizer-capable paths, and measured benefit.
 
 Core editor/build support is not an optional external pack. Domain adapters and runtime-safe evaluation remain capability-scoped. Projects with baked-only content ship generated artifacts and provenance/package records, not the editor, graph compiler, preview caches, or runtime evaluator. Disabled runtime evaluation creates no threads, tasks, allocations, package chunks, listeners, or recurring work.
@@ -447,6 +470,11 @@ Required unit, property, fixture, integration, and failure tests:
 - typed handoff tests proving Alluvium cannot mutate live subsystem authority;
 - headless/editor/CLI command parity and beginner/accessibility journeys;
 - zero-cost-disabled tests for baked-only shipping profiles.
+- combustion/fluid facet units, bounds, defaults, migration, provenance,
+  coherent cross-facet derivation, and missing-optional-value tests;
+- `RuntimeCostManifest` determinism, source attribution, uncertainty,
+  unsupported-dimension, prediction-versus-observation, stale-calibration, and
+  editor-explanation tests.
 
 Permanent proving workloads use the existing Penumbra corpus where relevant. `PEN-B01`, `PEN-B02`, `PEN-B05`, `PEN-B06`, `PEN-B10`, and `PEN-B11` record recipe hashes, Alluvium version, determinism level, evaluation mode, provenance-manifest hash, cache state, generated-content counts, and downstream costs. All remain `DefinitionOnly/Uncalibrated` until executed evidence exists.
 
@@ -469,7 +497,12 @@ Acceptance for `WP-PRC-002` requires a reproducible sanitized forest/field corpu
 | `WP-PRC-009` | ecosystem growth, competition, succession, season, and disturbance | `MS-09` | Research |
 | `WP-PRC-010` | measured dependency replacement and kernel optimization | `MS-09`, `MS-10` | Research |
 
-`MS-05` requires `WP-PRC-001` through `WP-PRC-004` as dependencies of the representative forest corpus. `WP-PEN-011` and `WP-PRJ-001` consume `WP-PRC-002`. This does not activate Alluvium now and does not change the immediate `WP-PEN-008` queue.
+`MS-05` requires `WP-PRC-001` through `WP-PRC-004` as dependencies of the representative forest corpus. `WP-PEN-011` and `WP-PRJ-001` consume `WP-PRC-002`. This does not activate Alluvium now and does not change the active `WP-BLD-001` queue.
+
+After MS-10, `PRG-REL-001` may activate bounded work for combustion/fluid source
+facets and `RuntimeCostManifest` prediction/reconciliation. It does not change
+the current package chain, authorize a runtime solver, or promote Alluvium
+implementation maturity.
 
 ## 18. Examples
 

@@ -1,0 +1,14 @@
+{
+  "campaign": "public-generic",
+  "capture_policy": "AutomaticGameNavigation",
+  "game_navigation": true,
+  "publishing_policy": "UploadAndPublish",
+  "service_credentials": true,
+  "private_project_content": false,
+  "sources": [],
+  "claims": [],
+  "profiles": [],
+  "approval_invalidation": [],
+  "ai": {"enabled":true,"cloud_opt_in":true,"exact_data_disclosure":false,"generated_image":true,"generated_video":true,"generated_voice":true,"generated_music":true,"generated_sound":true,"modified_media":true,"suggestions_authoritative":true,"human_review_required":false},
+  "artifacts": []
+}

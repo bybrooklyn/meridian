@@ -10,7 +10,7 @@
 
 ## Context
 
-Complete official framework families, advanced cinematic character tools, native VCS storage, Collective ecosystem expansion, MMO/distributed-world infrastructure, advanced integrity, and professional modeling are important but cannot honestly become implicit blockers for Project Meridian or Meridian Engine 1.0.
+Complete official framework families, advanced cinematic character tools, native VCS storage, Collective ecosystem expansion, MMO/distributed-world infrastructure, advanced integrity, professional modeling, Marquee, and competitive performance/quality leadership are important but cannot honestly become implicit blockers for Project Meridian or Meridian Engine 1.0.
 
 ## Decision
 

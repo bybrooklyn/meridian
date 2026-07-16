@@ -43,6 +43,26 @@
     {"id":"RISK-WRL-001","status":"Open","title":"Split brain stale epochs or partial migration duplicate world authority","owner":"Distributed worlds lead","program":"PRG-WRL-001"},
     {"id":"RISK-WRL-002","status":"Open","title":"Distributed-world latency reliability egress and operating cost are unsustainable","owner":"Distributed worlds lead","program":"PRG-WRL-001"},
     {"id":"RISK-INT-001","status":"Open","title":"Integrity detection creates false positives inaccessible play or unappealable sanctions","owner":"Integrity lead","program":"PRG-INT-001"},
-    {"id":"RISK-INT-002","status":"Open","title":"Integrity collection becomes invasive vulnerable or incompatible with mods and accessibility tools","owner":"Security lead","program":"PRG-INT-001"}
+    {"id":"RISK-INT-002","status":"Open","title":"Integrity collection becomes invasive vulnerable or incompatible with mods and accessibility tools","owner":"Security lead","program":"PRG-INT-001"},
+    {"id":"RISK-PRM-001","status":"Open","title":"Promotional claims become stale misleading or unsupported by the target build","owner":"Release lead","program":"PRG-PRM-001"},
+    {"id":"RISK-PRM-002","status":"Open","title":"Rights license attribution consent or redistribution state contaminates an export","owner":"Release lead","program":"PRG-PRM-001"},
+    {"id":"RISK-PRM-003","status":"Open","title":"Spoilers embargoed material personal data or private project content leaks","owner":"Security lead","program":"PRG-PRM-001"},
+    {"id":"RISK-PRM-004","status":"Open","title":"Target service profiles drift and produce invalid promotional files","owner":"Promotional systems lead","program":"PRG-PRM-001"},
+    {"id":"RISK-PRM-005","status":"Open","title":"Media PDF font or adapter nondeterminism prevents reproducible output","owner":"Build lead","program":"PRG-PRM-001"},
+    {"id":"RISK-PRM-006","status":"Open","title":"AI crosses the text-analysis boundary hallucinates claims or leaks cloud data","owner":"Agent and security leads","program":"PRG-PRM-001"},
+    {"id":"RISK-PRM-007","status":"Open","title":"Codec font PDF patent license or adapter availability blocks sustainable exports","owner":"Release lead","program":"PRG-PRM-001"},
+    {"id":"RISK-PRM-008","status":"Open","title":"Staged composite or external media is misclassified and misleads viewers","owner":"Product lead","program":"PRG-PRM-001"},
+    {"id":"RISK-PRM-009","status":"Open","title":"Locale and target expansion exceeds memory time storage or human review capacity","owner":"Promotional systems lead","program":"PRG-PRM-001"},
+    {"id":"RISK-PRM-010","status":"Open","title":"Draft output is confused with final or ReleaseReady approval is bypassed","owner":"Release lead","program":"PRG-PRM-001"},
+    {"id":"RISK-REL-001","status":"Open","title":"Comparator settings corpus or quality targets are biased or incomparable","owner":"Release lead","program":"PRG-REL-001"},
+    {"id":"RISK-REL-002","status":"Open","title":"Aggregate throughput hides first-use stutter tail latency memory or lower-tier regressions","owner":"Performance lead","program":"PRG-REL-001"},
+    {"id":"RISK-REL-003","status":"Open","title":"Duplicated environmental fields ownership or rendering paths erase performance gains and create divergence","owner":"Rendering and simulation leads","program":"PRG-REL-001"},
+    {"id":"RISK-REL-004","status":"Open","title":"Cook-time cost predictions drift from runtime traces and mislead creators","owner":"Procedural and performance leads","program":"PRG-REL-001"},
+    {"id":"RISK-REL-005","status":"Open","title":"A scoped benchmark result is generalized into an unsupported superiority guarantee","owner":"Release lead","program":"PRG-REL-001"},
+    {"id":"RISK-REL-006","status":"Open","title":"Comparator versions drivers or profiles change after evidence collection and make a claim stale","owner":"Release lead","program":"PRG-REL-001"},
+    {"id":"RISK-REL-007","status":"Open","title":"Perceptual or temporal quality review is biased underpowered or inaccessible","owner":"Product quality lead","program":"PRG-REL-001"},
+    {"id":"RISK-REL-008","status":"Open","title":"A high-end optimization regresses portability recovery accessibility or maintenance","owner":"Product and platform leads","program":"PRG-REL-001"},
+    {"id":"RISK-REL-009","status":"Open","title":"Competitive optimization consumes more maintenance effort than its user-visible value","owner":"Product lead","program":"PRG-REL-001"},
+    {"id":"RISK-REL-010","status":"Open","title":"Licensing provenance trademark or evidence-retention limits invalidate a study or publication","owner":"Release and security leads","program":"PRG-REL-001"}
   ]
 }

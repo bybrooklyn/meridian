@@ -1,11 +1,12 @@
 # Isobar Weather and Atmosphere Specification
 
-[Master index](MERIDIAN_MASTER_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Rendering](RENDERING_AND_GRAPHICS_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md)
+[Master index](MERIDIAN_MASTER_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Rendering](RENDERING_AND_GRAPHICS_SPEC.md) · [Competitive quality](COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md)
 
 version 0.5 · 2026-07-15 · Normative Isobar architecture
 
 Documentation maturity: `ResearchReady`. Implementation maturity: `Scaffold`.
-Governing IDs: `REQ-ISO-001`, `WP-ISO-001`, `RG-ISO-001`.
+Governing IDs: `REQ-ISO-001`, `REQ-ISO-002`, `WP-ISO-001`, `RG-ISO-001`,
+and post-1.0 `PRG-REL-001`.
 
 Isobar owns weather, wind, atmosphere, visibility, precipitation hooks, and
 surface-environment state contracts. Current implementation status is Planned:
@@ -104,6 +105,30 @@ SurfaceEnvironmentState {
   mud_saturation: f16,
   temperature_c: f16,
 }
+
+EnvironmentalTilePolicy {
+  simulation_clock,
+  presentation_clock,
+  spatial_level,
+  active_bounds,
+  influence_horizon,
+  work_quota,
+  memory_quota,
+  update_debt_limit,
+  deterministic_envelope,
+  downgrade,
+}
+
+SurfaceFluidHandoff {
+  region_id,
+  source_epoch,
+  target_epoch,
+  owner: IsobarCoarse | TorsantDynamic,
+  initial_or_settled_state: SurfaceEnvironmentState,
+  mass_or_depth_error,
+  stale_after,
+  fallback,
+}
 ```
 
 Hot data uses tiled SoA field pages. Cold data contains debug names, source
@@ -148,6 +173,50 @@ Opening-slice pipeline:
 
 No subsystem may create a hidden per-frame feedback loop without declaring
 stability, latency, and downgrade behavior.
+
+### 6.1 Sparse, multirate scheduling
+
+Isobar field pages are hierarchical, sparse where evidence justifies it, and
+updated on typed simulation clocks separate from presentation. Every active
+region declares spatial level, work and memory quota, update-debt limit,
+influence horizon, deterministic envelope, and downgrade. Relevance combines
+visibility, distance, predicted influence, gameplay importance, authored
+priority, and state-change magnitude; camera visibility alone cannot discard an
+offscreen storm that may affect gameplay.
+
+Distant regions may use authored or analytic state, relevant regions coarse
+tiled fields, and bounded local regions higher resolution. Penumbra interpolates
+published state; it does not force Isobar to simulate at render frequency. GPU
+acceleration is optional and must retain a CPU/simple fallback and measured
+transfer/recovery policy.
+
+### 6.2 Surface water authority and Torsant handoff
+
+Without Torsant, Isobar remains authoritative for its coarse wetness and shallow
+surface-environment state. When a region is promoted to dynamic fluid:
+
+1. Isobar publishes an epoch-tagged initial state and stops advancing dynamic
+   water for the handed-off region.
+2. Torsant validates and accepts ownership through a typed barrier.
+3. Torsant advances dynamic fluid while Isobar may continue non-conflicting
+   atmosphere and precipitation source publication.
+4. On demotion, Torsant publishes a settled summary, error/conservation report,
+   and target epoch.
+5. Isobar accepts the summary atomically or retains its last valid coarse state
+   and reports the failed handoff.
+
+Exactly one system advances dynamic water in a region and epoch. Eviction,
+stale state, solver failure, package disablement, and save/load define explicit
+fallbacks; no presentation transition may hide an ownership conflict or
+gameplay discontinuity.
+
+### 6.3 Shared media source publication
+
+Isobar maps fog, cloud, precipitation projection, and atmosphere optical fields
+into Penumbra's planned `ParticipatingMediaSourceSnapshot`. Isobar owns source
+meaning and evolution; Penumbra owns GPU representation, lighting, temporal
+history, and compositing. Isobar never allocates renderer volume hierarchies or
+creates a separate raymarch path.
 
 ## 7. Capability tiers and disabled behavior
 
@@ -204,6 +273,10 @@ Tests:
 - surface page serialization and migration;
 - disabled-pack zero-work tests;
 - cache corruption and recovery.
+- sparse/multirate quota, influence-horizon, update-debt, and downgrade tests;
+- `SurfaceFluidHandoff` promotion, single-owner, demotion, stale/failure,
+  conservation/error, save/load, and disabled-Torsant tests;
+- participating-media source epoch, bounds, budget, and absence tests.
 
 Workloads: PEN-B01, PEN-B02, PEN-B05, PEN-B07, PEN-B10, PEN-B11, and PEN-B15.
 
@@ -213,11 +286,16 @@ forest wind, visibility, fog, and weather evidence; MS-07 validates the opening
 slice; MS-08 may expand regional fields and Torsant/Basalt coupling through
 bounded packages. `RG-ISO-001` owns algorithm selection.
 
+After MS-10, `PRG-REL-001` may competitively optimize the sparse/multirate,
+surface-fluid-handoff, and shared-media contracts. It creates no pre-1.0
+requirement, does not select an algorithm, and cannot promote Isobar maturity.
+
 ## 11. Adopted decisions
 
 [ADR-0008](../docs/architecture/decisions/ADR-0008-isobar-basalt-torsant-boundaries.md)
 owns subsystem boundaries; [ADR-0005](../docs/architecture/decisions/ADR-0005-shared-renderer-systems.md)
-owns path-independent renderer consumption. `RG-ISO-001` requires a future ADR
+owns path-independent renderer consumption; [ADR-0026](../docs/architecture/decisions/ADR-0026-environmental-performance-contracts.md)
+owns sparse/multirate, media, and water-handoff convergence. `RG-ISO-001` requires a future ADR
 when it selects production algorithms.
 
 ## 12. End-to-end, failure, and performance-debug examples

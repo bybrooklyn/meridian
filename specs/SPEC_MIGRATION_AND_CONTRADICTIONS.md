@@ -1,6 +1,6 @@
 # Meridian Specification Migration and Contradiction Register
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [v0.1 heading ledger](../docs/migrations/V0_1_DOCUMENT_MIGRATION.md) · [v0.3 roadmap ledger](../docs/migrations/V0_3_ROADMAP_MIGRATION.md) · [v0.4 Alluvium ledger](../docs/migrations/V0_4_ALLUVIUM_AMENDMENT.md) · [v0.5 general-purpose ledger](../docs/migrations/V0_5_GENERAL_PURPOSE_PLATFORM_AMENDMENT.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [v0.1 heading ledger](../docs/migrations/V0_1_DOCUMENT_MIGRATION.md) · [v0.3 roadmap ledger](../docs/migrations/V0_3_ROADMAP_MIGRATION.md) · [v0.4 Alluvium ledger](../docs/migrations/V0_4_ALLUVIUM_AMENDMENT.md) · [v0.5 general-purpose ledger](../docs/migrations/V0_5_GENERAL_PURPOSE_PLATFORM_AMENDMENT.md) · [v0.5 Marquee ledger](../docs/migrations/V0_5_MARQUEE_AMENDMENT.md) · [v0.5 performance/quality ledger](../docs/migrations/V0_5_PERFORMANCE_QUALITY_AMENDMENT.md)
 
 version 0.5 · 2026-07-15 · Normative migration/history record
 
@@ -60,11 +60,16 @@ documentation to be confused with complete software.
 | AMI benchmark | Private lore/interiors could leak into engine fixtures. | PEN-B04 is a generated redacted functional surrogate. Only private creative authority defines or expands AMI; engine records contain no proprietary content. |
 | Donor code | Renderer/physics donor code could be imported without durable provenance. | No borrowed source before complete `third_party/provenance` record and license/revision/hash/modification/test/exit review. |
 | Ambition claims | Meridian's ambition could become an unmeasured superiority claim. | Architecture and goals may be ambitious; performance/quality/competitor claims require reproducible like-for-like evidence. |
+| Competitive leadership | A request to guarantee superiority could become a permanent global promise or distort the 1.0 roadmap. | `PRG-REL-001` begins only after MS-10; it permits scoped iso-quality, iso-cost, or matched-workflow claims with exact versions, raw evidence, expiry, and retraction. |
+| Environmental rendering duplication | Isobar and Torsant could create separate fog/cloud/smoke/steam volume resources, histories, and raymarches. | Penumbra owns one path-independent `ParticipatingMediaSourceSnapshot` consumption/residency/lighting/temporal/compositing contract; producers retain simulation authority. |
+| Environmental scheduling and water authority | Global/per-frame simulation and overlapping Isobar/Torsant water state could create unbounded cost or double advancement. | Sparse/multirate budgeted tiles plus `SurfaceFluidHandoff` require one dynamic owner per region/epoch and explicit promotion/demotion/recovery. |
+| Environmental material and cost authoring | Fire/fluid behavior could be inferred from pixels and optimization could begin only after runtime failure. | Alluvium authors coherent combustion/fluid facets and derived `RuntimeCostManifest` predictions; Torsant retains live state and runtime traces reconcile predictions. |
 | Procedural authoring | Procedural work was narrow, mostly deferred, and overlapped Basalt source ownership. | Alluvium is adopted as core editor/build procedural authoring. It owns recipes, evaluation, fields, generated identity, overrides, provenance, and cooking; runtime systems retain live authority. |
 | Alluvium runtime cost | “Core” could imply every game ships an evaluator. | Core first-party authoring is always available; baked-only shipping profiles omit editor/compiler/runtime evaluator and incur zero recurring Alluvium cost. |
 | Procedural formats | A definition-only graph example and many possible branded extensions could become accidental commitments. | Logical `meridian.procedural-recipe/v1`; `.mproc` recipe source and `.mfield` derived artifacts are reserved. Other extensions require owning schemas and evidence. |
 | Procedural game boundary | Project Meridian targets could leak AMI facilities, private recipes, seeds, or curation into engine fixtures. | Public engine specs retain sanitized functional targets and hashes only; proprietary recipes and creative constraints remain private. |
 | Creator application identity | Editor, Studio, and IDE wording could imply separate products. | There is one user-facing application named Meridian. Editor, IDE, modeler, graph, profiler, debugger, VCS, build, and Play are workspaces; bounded helpers/CLI are allowed. |
+| Build package scope | A single long-lived BLD package put MS-08 multi-node/remote-service work on the path to the MS-03 local-Cargo prerequisite. | `WP-BLD-001` owns only the bounded MS-03 local-Cargo service seam. `WP-BLD-002` is a separate planned MS-08 package for multi-node result lineage, general artifact/cache policy, service-process/remote-worker supervision, and team profiles. |
 | Native modeling | Blender/DCC assumptions could exclude beginners or make imported binaries the only source. | `MDL` owns a core native editable-model document and beginner modeler with stable element lineage. Blender/OpenUSD/glTF are optional interchange with explicit loss reports. |
 | Animation and navigation | Cross-system behavior lacked dedicated authority. | `ANI` owns animation/pose/retarget/sequencing; `NAV` owns traversability/artifacts/queries. Gameplay/frameworks retain decisions. Advanced facial work is post-1.0. |
 | Official frameworks | Ambition could imply six complete genre stacks before 1.0. | `FWK` delivers shared/selected foundations before 1.0; completion and maintenance of all six families is `PRG-FWK-001`. |
@@ -74,6 +79,7 @@ documentation to be confused with complete software.
 | Online services | Provider adapters, social, analytics, moderation, and sessions could fragment or imply hosted infrastructure. | Collective is one internally modular optional subsystem for those services, provider-neutral and self-hostable. Meridian promises no hosted cloud without funded operations. |
 | Distributed worlds and integrity | MMO/anti-cheat ambition could distort the 1.0 roadmap. | `WRL` and `INT` are separate post-1.0 research authorities with explicit failure/privacy/cost/false-positive gates. |
 | Post-1.0 work | Adding more MS phases would flatten long-horizon programs into 1.0 delivery. | MS-00 through MS-10 remain stable. `PRG-*` records cannot satisfy, block, or promote milestones. |
+| Promotional production | Screenshots, trailers, copy, press material, approvals, and service files existed only as project duties and could leak into renderer/build/service authority. | Marquee (`PRM`) owns post-capture campaigns, deterministic variants, claims, approvals, and local exports under `PRG-PRM-001`. Capture is manual, publishing remains external, and AI is text/analysis-only. |
 | Dependency ownership | “Own everything” could force unnecessary rewrites. | Strategic dependencies are `InternalizeEarly`, `InternalizeEventually`, or `WrapIndefinitelyUnlessNecessary`; replacement requires measured product and maintenance evidence. |
 
 ## 3. Current code classification
@@ -92,6 +98,8 @@ documentation to be confused with complete software.
 | Native modeler, Rust gameplay modules, optional Luau, animation, navigation, frameworks, first-class 2D, Meridian Shader Language, Collective | `Planned` or `Deferred` | Documentation/contracts and registries only; no runtime/editor implementation claim. |
 | Torsant, networking, XR, mods, VCS/sync, agents | `Planned`, `Research`, or `Deferred` | No production implementation claim. |
 | Distributed worlds, advanced integrity, and other `PRG-*` programs | `Deferred` or `Research` | Post-1.0 authority only; no milestone or implementation evidence. |
+| Marquee | `Deferred` | ResearchReady post-1.0 architecture only; no crate, service integration, active package, or promotional-quality evidence. |
+| Competitive performance and quality program | `Deferred` | ResearchReady post-1.0 comparison/claim architecture only; no active package, calibrated comparator corpus, optimization, or superiority evidence. |
 
 ## 4. Historical migration disposition
 
@@ -108,6 +116,8 @@ Both historical ledgers report zero unmapped entries. The
 [v0.4 Alluvium amendment ledger](../docs/migrations/V0_4_ALLUVIUM_AMENDMENT.md)
 maps every prior procedural heading and amendment subject with zero unmapped rows.
 The [v0.5 general-purpose platform ledger](../docs/migrations/V0_5_GENERAL_PURPOSE_PLATFORM_AMENDMENT.md) maps all 40 review areas, 20 resolved decisions, and 6 stale prompt terms: 66 mapped rows and zero unmapped rows.
+The [v0.5 Marquee amendment ledger](../docs/migrations/V0_5_MARQUEE_AMENDMENT.md) maps all promotional decisions and prior headings with zero unmapped rows.
+The [v0.5 competitive performance and environmental quality amendment ledger](../docs/migrations/V0_5_PERFORMANCE_QUALITY_AMENDMENT.md) maps all 11 amendment subjects with zero unmapped rows.
 
 ## 5. Open research, not contradictions
 
@@ -126,6 +136,10 @@ These remain deliberately unresolved behind registered gates:
 - native-modeling kernels, animation compression/retargeting, navigation representation, 2D algorithms, and shader compiler/target implementation behind their adopted seams;
 - VCS lineage, sync conflict models, network transports/providers, Collective providers, mod sandbox, XR extensions, Wavefront propagation, and additional gameplay languages;
 - every post-1.0 `PRG-*` program after its entry gates.
+- Marquee media/audio/PDF adapter selection after MS-10 (`RG-PRM-001`).
+- competitive comparator/method/expiry/automation selection after MS-10
+  (`RG-REL-001`); every performance, quality, and workflow result remains
+  workload/version/profile-specific;
 
 ResearchReady means candidates, seams, corpus, metrics, owner, decision rule,
 and archive policy are specified. It does not mean a candidate is adopted.

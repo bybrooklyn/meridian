@@ -85,7 +85,7 @@ Required result:
 - stable identifier registries and schemas;
 - canonical ADRs and risk/provenance policies;
 - zero-unmapped legacy roadmap, weather-spec, Alluvium, and general-purpose-platform migrations;
-- one maturity record for all 36 domains, post-1.0 `PRG-*` separation, validation-project registry, and dependency strategy;
+- one maturity record for all 37 current domains, post-1.0 `PRG-*` separation, validation-project registry, and dependency strategy;
 - `meridian-spec` validation in CI before the Rust matrix;
 - clean workspace metadata, format, tests, clippy, smoke, links, and publication-hygiene audits.
 
@@ -200,6 +200,11 @@ Required capabilities include mature editor/data/build workflows; selected Wavef
 
 Alpha work includes the selected later Alluvium packages for materials/weathering, infrastructure/structures, native visual authoring, and runtime-safe recipes when independently ready. `WP-GAM-001`, `WP-FWK-001`, `WP-ANI-001`, `WP-NAV-001`, `WP-TWO-001`, `WP-SHD-001`, and `WP-MDL-002` remain separate packages; listing them under Alpha does not make every optional capability a universal profile requirement. Advanced Cairn, DCC integration, VCS, typed agents, Torsant research, and broader Isobar/Basalt/vegetation work remain separately gated.
 
+`WP-BLD-002` continues the MS-03 local-Cargo foundation with multi-node result
+lineage, general artifact/cache policy, service-process/remote-worker
+supervision, and team profiles. It is an MS-08 package and cannot delay the
+`WP-BLD-001` prerequisite for Creator Editor Alpha.
+
 Critical packages: `WP-RHI-002` native Metal and `WP-REL-003` Alpha
 qualification. These are distinct from the current `WP-RHI-001` foundation.
 
@@ -218,6 +223,10 @@ User-visible result: declared 1.0 profiles pass compatibility, certification, re
 
 Unsupported capabilities and platforms remain explicit. A successor renderer path is not required for 1.0. No release claim may rely on an expired waiver, unredacted private corpus, definition-only benchmark, occluded visual result, or uncalibrated provisional threshold.
 
+MS-10 does not require or authorize a competitive-superiority claim.
+`PRG-REL-001` may begin only afterward and only through its independent entry
+gates, matched evidence, and future bounded packages.
+
 ## 16. Penumbra successor and native-backend gates
 
 `RG-PEN-001` compares the production Forward+ path with successor candidates only after MS-05. Promotion requires preregistered material-improvement thresholds, complete feature parity, equal-or-better artistic results, lower-tier stability, native-backend evidence, acceptable shader/pipeline behavior, no material frame-time/memory/debugging regression, and sustainable maintenance cost. A trivial gain cannot justify substantial complexity.
@@ -228,7 +237,7 @@ If a successor is promoted, Forward+ retention, fallback, or removal requires a 
 
 ## 17. Post-1.0 program boundary
 
-MS-10 closes declared Meridian 1.0 profiles. It does not flatten every long-term ambition into the 1.0 critical path. `PRG-MDL-001`, `PRG-ANI-001`, `PRG-FWK-001`, `PRG-COL-001`, `PRG-WRL-001`, `PRG-INT-001`, `PRG-VCS-001`, and `PRG-SHD-001` begin only after their own entry gates. Programs cannot satisfy, block, or promote MS-00 through MS-10, and their `Deferred` or `Research` status is not an implementation claim.
+MS-10 closes declared Meridian 1.0 profiles. It does not flatten every long-term ambition into the 1.0 critical path. `PRG-MDL-001`, `PRG-ANI-001`, `PRG-FWK-001`, `PRG-COL-001`, `PRG-WRL-001`, `PRG-INT-001`, `PRG-VCS-001`, `PRG-SHD-001`, `PRG-PRM-001`, and `PRG-REL-001` begin only after their own entry gates. Programs cannot satisfy, block, or promote MS-00 through MS-10, and their `Deferred` or `Research` status is not an implementation claim. Marquee remains entirely deferred: its future local exports, optional text/analysis AI, and adapter research create no 1.0 obligation. Competitive leadership is likewise deferred: adopted seams and benchmark definitions create no solver, optimization, comparator integration, corpus calibration, or superiority evidence.
 
 ## 18. Change control
 

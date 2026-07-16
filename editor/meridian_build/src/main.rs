@@ -2,99 +2,163 @@
 
 use std::env;
 use std::error::Error;
+use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+use std::time::Duration;
 
 use meridian_build::{
-    hash_file_bounded, run_cargo_json, run_cargo_metadata, ArtifactStore, BuildCancellation,
+    hash_file_bounded, run_cargo_metadata, ArtifactStore, BuildCancellation, BuildEvent,
     BuildGraph, BuildGraphSchedule, BuildIdentityInput, BuildNode, BuildNodeId, BuildPhase,
-    BuildRequest, BuildService, CargoArtifact, CargoCommand, CargoEnvironment, CargoInvocation,
-    CargoMessage, CargoMetadataOutcome, CargoRunStatus,
+    BuildRequest, BuildServiceStore, CargoArtifact, CargoBuildSupervisor, CargoCommand,
+    CargoEnvironment, CargoInvocation, CargoMessage, CargoMetadataOutcome, CargoRunStatus,
+    DurableBuildService,
 };
 use meridian_core::{OperationId, TraceId};
 
+static NEXT_DEFAULT_STATE_ID: AtomicU64 = AtomicU64::new(0);
+
 fn main() -> Result<(), Box<dyn Error>> {
     let arguments = CliArguments::parse(env::args().skip(1))?;
-    let artifact_store = optional_artifact_store(&arguments)?;
-    let lock_hash = hash_file_bounded(&arguments.workspace.join("Cargo.lock"))?;
-    let environment = CargoEnvironment::from_host();
-    let mut metadata_node = BuildNode::cargo_metadata(
-        BuildNodeId::new("cargo-metadata")?,
-        arguments.toolchain.clone(),
-    )?;
-    metadata_node.declared_environment = environment.identity_values().into_keys().collect();
-    let mut root = cargo_root_node(arguments.cargo_command, &arguments.toolchain)?;
-    root.declared_environment = environment.identity_values().into_keys().collect();
-    root.dependencies.push(metadata_node.id.clone());
-    let graph = BuildGraph::new(
-        vec![metadata_node.clone(), root.clone()],
-        vec![root.id.clone()],
-    )?;
-    let mut schedule = graph.schedule();
-    let _ = schedule.start(&metadata_node.id)?;
-    let metadata = run_cargo_metadata(
-        &CargoInvocation::new(
-            &arguments.workspace,
-            CargoCommand::Metadata,
-            Vec::new(),
-            environment.clone(),
-        )?,
-        &BuildCancellation::default(),
-    )?;
-    let metadata_hash = metadata_hash_or_error(metadata, &mut schedule, &metadata_node.id)?;
-    let identity = BuildIdentityInput {
-        source_checkpoint: arguments.source_checkpoint,
-        resolved_profile: format!("cargo-{}", arguments.cargo_command.as_str()),
-        cargo_metadata_and_lock: format!("metadata:{metadata_hash};lock:{lock_hash}"),
-        command_arguments: arguments.cargo_arguments.clone(),
-        toolchain_version: arguments.toolchain,
-        target_and_capabilities: arguments.target,
-        environment_allowlist: environment.identity_values(),
-        root_node_ids: vec![root.id.as_str().to_owned()],
-    };
-    graph.validate_identity(&identity)?;
-    let _ = schedule.start(&root.id)?;
-    let root_node_id = root.id.clone();
-    let request = BuildRequest::new(&identity, OperationId::new(1), TraceId::new(1), root)?;
-    let request_build_id = request.build_id.clone();
-    let request_root_node = request.root_node.clone();
-    let mut service = BuildService::default();
-    print_event(&service.submit(request)?);
-    transition_service_to_running(&mut service)?;
+    let mut prepared = PreparedBuild::prepare(&arguments)?;
+    run_cargo_operation(&arguments, &mut prepared)
+}
 
+struct PreparedBuild {
+    artifact_store: Option<(ArtifactStore, PathBuf)>,
+    environment: CargoEnvironment,
+    root_node_id: BuildNodeId,
+    schedule: BuildGraphSchedule,
+    request: BuildRequest,
+    service: DurableBuildService,
+    state_path: PathBuf,
+    remove_state_after_success: bool,
+}
+
+impl PreparedBuild {
+    fn prepare(arguments: &CliArguments) -> Result<Self, Box<dyn Error>> {
+        let artifact_store = optional_artifact_store(arguments)?;
+        let (state_path, remove_state_after_success) = match &arguments.state {
+            Some(path) => (path.clone(), false),
+            None => (default_state_path(&arguments.workspace)?, true),
+        };
+        let recovery = DurableBuildService::open(BuildServiceStore::new(state_path.clone())?)?;
+        println!("Meridian build state: {}", state_path.display());
+        for event in &recovery.recovery_events {
+            print_event(event);
+        }
+        let lock_hash = hash_file_bounded(&arguments.workspace.join("Cargo.lock"))?;
+        let environment = CargoEnvironment::from_host();
+        let mut metadata_node = BuildNode::cargo_metadata(
+            BuildNodeId::new("cargo-metadata")?,
+            arguments.toolchain.clone(),
+        )?;
+        metadata_node.declared_environment = environment.identity_values().into_keys().collect();
+        let mut root = cargo_root_node(arguments.cargo_command, &arguments.toolchain)?;
+        root.declared_environment = environment.identity_values().into_keys().collect();
+        root.dependencies.push(metadata_node.id.clone());
+        let graph = BuildGraph::new(
+            vec![metadata_node.clone(), root.clone()],
+            vec![root.id.clone()],
+        )?;
+        let mut schedule = graph.schedule();
+        let _ = schedule.start(&metadata_node.id)?;
+        let metadata = run_cargo_metadata(
+            &CargoInvocation::new(
+                &arguments.workspace,
+                CargoCommand::Metadata,
+                Vec::new(),
+                environment.clone(),
+            )?,
+            &BuildCancellation::default(),
+        )?;
+        let metadata_identity =
+            metadata_identity_or_error(metadata, &mut schedule, &metadata_node.id)?;
+        let identity = BuildIdentityInput {
+            source_checkpoint: arguments.source_checkpoint.clone(),
+            resolved_profile: format!("cargo-{}", arguments.cargo_command.as_str()),
+            cargo_metadata_and_lock: format!(
+                "workspace-metadata:{metadata_identity};lock:{lock_hash}"
+            ),
+            build_graph_contract: graph.contract_hash(),
+            command_arguments: arguments.cargo_arguments.clone(),
+            toolchain_version: arguments.toolchain.clone(),
+            target_and_capabilities: arguments.target.clone(),
+            environment_allowlist: environment.identity_values(),
+            root_node_ids: vec![root.id.as_str().to_owned()],
+        };
+        graph.validate_identity(&identity)?;
+        let _ = schedule.start(&root.id)?;
+        let operation_id = recovery.service.service().next_operation_id()?;
+        let request = BuildRequest::new_with_graph(
+            &identity,
+            operation_id,
+            TraceId::new(operation_id.get()),
+            root.clone(),
+            &graph,
+        )?;
+        Ok(Self {
+            artifact_store,
+            environment,
+            root_node_id: root.id,
+            schedule,
+            request,
+            service: recovery.service,
+            state_path,
+            remove_state_after_success,
+        })
+    }
+}
+
+fn run_cargo_operation(
+    arguments: &CliArguments,
+    prepared: &mut PreparedBuild,
+) -> Result<(), Box<dyn Error>> {
+    let publication_request = prepared.request.clone();
+    print_event(&prepared.service.submit(prepared.request.clone())?);
+    transition_service_to_running(&mut prepared.service, prepared.request.operation_id)?;
     let invocation = CargoInvocation::new(
         &arguments.workspace,
         arguments.cargo_command,
-        arguments.cargo_arguments,
-        environment,
+        arguments.cargo_arguments.clone(),
+        prepared.environment.clone(),
     )?;
-    let outcome = run_cargo_json(&invocation, &BuildCancellation::default())?;
-    let mut cargo_executables = Vec::new();
-    for message in outcome.messages {
-        if let CargoMessage::Artifact(artifact) = &message {
-            if artifact.executable.is_some() {
-                cargo_executables.push(artifact.clone());
+    let mut supervisor = CargoBuildSupervisor::try_new()?;
+    supervisor.submit(&prepared.service, &prepared.request, invocation)?;
+    let artifact_store = prepared.artifact_store.take();
+    let completion = loop {
+        if let Some(completion) =
+            supervisor.poll_with(&mut prepared.service, |service, operation_id, messages| {
+                publish_succeeded_executable(
+                    artifact_store.as_ref(),
+                    messages,
+                    &publication_request,
+                    service,
+                    operation_id,
+                )
+            })
+        {
+            break completion?;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    for event in completion.events() {
+        print_event(event);
+    }
+    match completion.status() {
+        CargoRunStatus::Succeeded => {
+            let _ = prepared
+                .schedule
+                .finish(&prepared.root_node_id, BuildPhase::Succeeded)?;
+            if prepared.remove_state_after_success {
+                fs::remove_file(&prepared.state_path)?;
             }
         }
-        print_event(&service.record_cargo_message(OperationId::new(1), message)?);
-    }
-    if let Some(diagnostic) = outcome.process_diagnostic {
-        print_event(&service.record_process_diagnostic(OperationId::new(1), diagnostic)?);
-    }
-    match outcome.status {
-        CargoRunStatus::Succeeded => {
-            publish_succeeded_executable(
-                artifact_store,
-                &cargo_executables,
-                &request_build_id,
-                &request_root_node,
-                &mut service,
-            )?;
-            print_event(&service.transition(OperationId::new(1), BuildPhase::Succeeded, 100)?);
-            let _ = schedule.finish(&root_node_id, BuildPhase::Succeeded)?;
-        }
         CargoRunStatus::Failed(code) => {
-            print_event(&service.transition(OperationId::new(1), BuildPhase::Failed, 100)?);
-            let _ = schedule.finish(&root_node_id, BuildPhase::Failed)?;
+            let _ = prepared
+                .schedule
+                .finish(&prepared.root_node_id, BuildPhase::Failed)?;
             return Err(format!(
                 "cargo {} failed with status {code:?}",
                 arguments.cargo_command.as_str()
@@ -102,13 +166,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             .into());
         }
         CargoRunStatus::Cancelled => {
-            print_event(&service.transition(
-                OperationId::new(1),
-                BuildPhase::CancelRequested,
-                100,
-            )?);
-            print_event(&service.transition(OperationId::new(1), BuildPhase::Cancelled, 100)?);
-            let _ = schedule.finish(&root_node_id, BuildPhase::Cancelled)?;
+            let _ = prepared
+                .schedule
+                .finish(&prepared.root_node_id, BuildPhase::Cancelled)?;
             return Err(format!("cargo {} was cancelled", arguments.cargo_command.as_str()).into());
         }
     }
@@ -116,11 +176,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn transition_service_to_running(
-    service: &mut BuildService,
+    service: &mut DurableBuildService,
+    operation_id: OperationId,
 ) -> Result<(), meridian_build::BuildError> {
-    print_event(&service.transition(OperationId::new(1), BuildPhase::Resolving, 5)?);
-    print_event(&service.transition(OperationId::new(1), BuildPhase::Ready, 15)?);
-    print_event(&service.transition(OperationId::new(1), BuildPhase::Running, 20)?);
+    print_event(&service.transition(operation_id, BuildPhase::Resolving, 5)?);
+    print_event(&service.transition(operation_id, BuildPhase::Ready, 15)?);
+    print_event(&service.transition(operation_id, BuildPhase::Running, 20)?);
     Ok(())
 }
 
@@ -141,33 +202,44 @@ fn optional_artifact_store(
 }
 
 fn publish_succeeded_executable(
-    artifact_store: Option<(ArtifactStore, PathBuf)>,
-    cargo_executables: &[CargoArtifact],
-    build_id: &meridian_build::BuildId,
-    root_node: &BuildNode,
-    service: &mut BuildService,
-) -> Result<(), meridian_build::BuildError> {
+    artifact_store: Option<&(ArtifactStore, PathBuf)>,
+    messages: &[CargoMessage],
+    request: &BuildRequest,
+    service: &mut DurableBuildService,
+    operation_id: OperationId,
+) -> Result<Vec<BuildEvent>, meridian_build::BuildError> {
     let Some((store, output_root)) = artifact_store else {
-        return Ok(());
+        return Ok(Vec::new());
     };
-    let [artifact] = cargo_executables else {
+    let cargo_executables = messages
+        .iter()
+        .filter_map(|message| match message {
+            CargoMessage::Artifact(artifact) if artifact.executable.is_some() => Some(artifact),
+            CargoMessage::Diagnostic(_)
+            | CargoMessage::Artifact(_)
+            | CargoMessage::Finished { .. } => None,
+        })
+        .cloned()
+        .collect::<Vec<CargoArtifact>>();
+    let [artifact] = cargo_executables.as_slice() else {
         return Err(meridian_build::BuildError::CargoArtifactExecutableCount(
             cargo_executables.len(),
         ));
     };
-    let publication = store.publish_cargo_executable(build_id, root_node, artifact, output_root)?;
-    print_event(&service.record_published_artifact(OperationId::new(1), publication)?);
-    Ok(())
+    let publication = store.publish_cargo_executable_for_request(request, artifact, output_root)?;
+    Ok(vec![
+        service.record_published_artifact(operation_id, publication)?
+    ])
 }
 
-fn metadata_hash_or_error(
+fn metadata_identity_or_error(
     metadata: CargoMetadataOutcome,
     schedule: &mut BuildGraphSchedule,
     metadata_node_id: &BuildNodeId,
 ) -> Result<String, Box<dyn Error>> {
     match (
         metadata.status,
-        metadata.content_hash,
+        metadata.workspace_identity_hash,
         metadata.process_diagnostic,
     ) {
         (CargoRunStatus::Succeeded, Some(hash), _) => {
@@ -186,7 +258,7 @@ fn metadata_hash_or_error(
         }
         (CargoRunStatus::Succeeded, None, _) => {
             let _ = schedule.finish(metadata_node_id, BuildPhase::Failed)?;
-            Err("cargo metadata did not return a hash".into())
+            Err("cargo metadata did not return a workspace identity hash".into())
         }
     }
 }
@@ -225,6 +297,19 @@ fn cargo_root_node(
     }
 }
 
+fn default_state_path(workspace: &std::path::Path) -> Result<PathBuf, meridian_build::BuildError> {
+    let directory = workspace.join("target/meridian-build");
+    for _ in 0..16 {
+        let nonce = NEXT_DEFAULT_STATE_ID.fetch_add(1, Ordering::Relaxed);
+        let path = directory.join(format!("state-{}-{nonce}.json", std::process::id()));
+        let store = BuildServiceStore::new(path.clone())?;
+        if !store.exists()? {
+            return Ok(path);
+        }
+    }
+    Err(meridian_build::BuildError::SnapshotTemporaryExhausted)
+}
+
 struct CliArguments {
     cargo_command: CargoCommand,
     workspace: PathBuf,
@@ -232,6 +317,7 @@ struct CliArguments {
     toolchain: String,
     target: String,
     cargo_arguments: Vec<String>,
+    state: Option<PathBuf>,
     artifact_store: Option<PathBuf>,
     cargo_output_root: Option<PathBuf>,
 }
@@ -250,6 +336,7 @@ impl CliArguments {
         let mut toolchain = None;
         let mut target = None;
         let mut cargo_arguments = Vec::new();
+        let mut state = None;
         let mut artifact_store = None;
         let mut cargo_output_root = None;
         while let Some(argument) = arguments.next() {
@@ -260,6 +347,7 @@ impl CliArguments {
                 }
                 "--toolchain" => toolchain = Some(next_value(&mut arguments, "--toolchain")?),
                 "--target" => target = Some(next_value(&mut arguments, "--target")?),
+                "--state" => state = Some(PathBuf::from(next_value(&mut arguments, "--state")?)),
                 "--artifact-store" => {
                     artifact_store = Some(PathBuf::from(next_value(
                         &mut arguments,
@@ -293,6 +381,7 @@ impl CliArguments {
             toolchain: toolchain.ok_or(CliError::MissingArgument("--toolchain"))?,
             target: target.ok_or(CliError::MissingArgument("--target"))?,
             cargo_arguments,
+            state,
             artifact_store,
             cargo_output_root,
         })
@@ -319,7 +408,7 @@ impl std::fmt::Display for CliError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Usage => formatter.write_str(
-                "usage: meridian-build <--cargo-check|--cargo-build|--cargo-test-no-run> --workspace <path> --source-checkpoint <id> --toolchain <version> --target <target> [--artifact-store <path> --cargo-output-root <path>] [-- <cargo arguments>]",
+                "usage: meridian-build <--cargo-check|--cargo-build|--cargo-test-no-run> --workspace <path> --source-checkpoint <id> --toolchain <version> --target <target> [--state <path>] [--artifact-store <path> --cargo-output-root <path>] [-- <cargo arguments>]",
             ),
             Self::MissingArgument(flag) => write!(formatter, "missing required argument {flag}"),
             Self::UnknownArgument(argument) => write!(formatter, "unknown argument {argument}"),
@@ -334,3 +423,51 @@ impl std::fmt::Display for CliError {
 }
 
 impl Error for CliError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_parser_preserves_an_explicit_caller_owned_state_path() {
+        let arguments = CliArguments::parse(
+            [
+                "--cargo-check",
+                "--workspace",
+                ".",
+                "--source-checkpoint",
+                "local",
+                "--toolchain",
+                "workspace",
+                "--target",
+                "host",
+                "--state",
+                "target/caller-owned-state.json",
+                "--",
+                "-p",
+                "meridian-core",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        )
+        .expect("arguments parse");
+        assert_eq!(
+            arguments.state,
+            Some(PathBuf::from("target/caller-owned-state.json"))
+        );
+        assert_eq!(arguments.cargo_arguments, ["-p", "meridian-core"]);
+    }
+
+    #[test]
+    fn default_state_paths_are_unique_under_the_workspace_target_directory() {
+        let workspace = std::env::temp_dir().join(format!(
+            "meridian-build-cli-state-test-{}",
+            std::process::id()
+        ));
+        let first = default_state_path(&workspace).expect("first path");
+        let second = default_state_path(&workspace).expect("second path");
+        assert_ne!(first, second);
+        assert!(first.starts_with(workspace.join("target/meridian-build")));
+        assert!(second.starts_with(workspace.join("target/meridian-build")));
+    }
+}

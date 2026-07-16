@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use meridian_build::{
-    ArtifactStore, BuildEventPayload, BuildIdentityInput, BuildNode, BuildNodeId, BuildPhase,
-    BuildRequest, BuildService,
+    ArtifactStore, BuildEventPayload, BuildGraph, BuildIdentityInput, BuildNode, BuildNodeId,
+    BuildPhase, BuildRequest, BuildService,
 };
 use meridian_core::{OperationId, TraceId};
 
@@ -18,24 +18,28 @@ fn main() -> Result<(), Box<dyn Error>> {
     fs::write(&source, b"Meridian verified artifact event smoke")?;
 
     let node = BuildNode::cargo_build(BuildNodeId::new("cargo-build")?, "cargo-example")?;
+    let graph = BuildGraph::new(vec![node.clone()], vec![node.id.clone()])?;
     let identity = BuildIdentityInput {
         source_checkpoint: "artifact-event-smoke".to_owned(),
         resolved_profile: "cargo-build".to_owned(),
         cargo_metadata_and_lock: "smoke-metadata-and-lock".to_owned(),
+        build_graph_contract: graph.contract_hash(),
         command_arguments: Vec::new(),
         toolchain_version: "cargo-example".to_owned(),
         target_and_capabilities: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
         environment_allowlist: BTreeMap::new(),
         root_node_ids: vec![node.id.as_str().to_owned()],
     };
-    let request = BuildRequest::new(&identity, OperationId::new(1), TraceId::new(1), node)?;
-    let store = ArtifactStore::new(directory.path().join("artifacts"))?;
-    let publication = store.publish_file(
-        &request.build_id,
-        &request.root_node,
-        "meridian-artifact-event-smoke-v1",
-        &source,
+    let request = BuildRequest::new_with_graph(
+        &identity,
+        OperationId::new(1),
+        TraceId::new(1),
+        node,
+        &graph,
     )?;
+    let store = ArtifactStore::new(directory.path().join("artifacts"))?;
+    let publication =
+        store.publish_file_for_request(&request, "meridian-artifact-event-smoke-v1", &source)?;
 
     let mut service = BuildService::default();
     service.submit(request)?;

@@ -8,7 +8,7 @@
 - Supersedes: none
 - Superseded by: none
 
-Amendment notice: [ADR-0017](ADR-0017-alluvium.md) assigns procedural authoring and generated-source ownership to Alluvium. Basalt retains terrain and large-world runtime authority; the remaining Isobar and Torsant boundaries are unchanged.
+Amendment notice: [ADR-0017](ADR-0017-alluvium.md) assigns procedural authoring and generated-source ownership to Alluvium. [ADR-0026](ADR-0026-environmental-performance-contracts.md) adds the shared Penumbra participating-media boundary, sparse/multirate policy, typed surface-fluid authority transfer, and authored material/cost facets. Basalt retains terrain and large-world runtime authority; Isobar and Torsant retain their simulation authority.
 
 ## Context
 

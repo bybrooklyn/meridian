@@ -1,0 +1,14 @@
+{
+  "campaign": "public-generic",
+  "capture_policy": "ManualImportOnly",
+  "game_navigation": false,
+  "publishing_policy": "ExportOnly",
+  "service_credentials": false,
+  "private_project_content": false,
+  "sources": [{"id":"capture-1","classification":"GameplayCapture","hash":"blake3:source","rights":"project-owned","consent":"not-applicable","spoiler":"none","embargo":"none","locales":["en-US"],"provenance":"manual-public-fixture","transform_policy":"deterministic-approved","approved":true}],
+  "claims": [{"text":"Feature claim","approved_source":"feature-record","build_id":"stale-build","build_id_current":false,"source_hash_current":false,"evidence":"old-test","locale":"en-US","expiry_current":false}],
+  "profiles": [{"id":"stale-profile","revision":1,"official_source_url":"https://example.com/profile","verification_date":"2025-01-01","stale":true,"localization_checked":false,"provenance":"public-profile"}],
+  "approval_invalidation": ["Source","SourceHash","Claim","BuildId","Template","Locale","ExportProfile","AiSuggestion","ToolVersion","Approval"],
+  "ai": {"enabled":false,"cloud_opt_in":false,"exact_data_disclosure":true,"generated_image":false,"generated_video":false,"generated_voice":false,"generated_music":false,"generated_sound":false,"modified_media":false,"suggestions_authoritative":false,"human_review_required":true},
+  "artifacts": [{"state":"ReleaseReady","represented_as_final":true,"source_hash_current":false,"claim_current":false,"build_id_current":false,"profile_current":false,"tool_version_current":false}]
+}

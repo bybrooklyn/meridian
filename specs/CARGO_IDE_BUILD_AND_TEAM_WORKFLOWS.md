@@ -1,13 +1,13 @@
 # Cargo, IDE, Build, and Team Workflows
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [ADR-0018](../docs/architecture/decisions/ADR-0018-general-purpose-single-application.md) · [Architecture](REPOSITORY_AND_CRATE_ARCHITECTURE.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Shader language](MERIDIAN_SHADER_LANGUAGE_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [VCS](VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [ADR-0018](../docs/architecture/decisions/ADR-0018-general-purpose-single-application.md) · [Architecture](REPOSITORY_AND_CRATE_ARCHITECTURE.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Shader language](MERIDIAN_SHADER_LANGUAGE_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [VCS](VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md)
 
 version 0.5 · 2026-07-15 · Normative · Current Cargo workspace foundation, build service Partial
 
 Documentation maturity: `ImplementationReady`. Implementation maturity:
 `Partial` with current Cargo/CI foundations and a bounded `meridian-build`
 service/CLI slice. Governing IDs: `REQ-BLD-001`,
-`WP-BLD-001`.
+`WP-BLD-001`, `WP-BLD-002`.
 
 ## 1. Goals and non-goals
 
@@ -17,36 +17,78 @@ Goals: beginners build without terminal knowledge; experts retain Cargo/rustc de
 
 Non-goals: replacing Cargo or rust-analyzer, creating separate Meridian Studio/IDE applications, rewriting TOML destructively, scraping human terminal text as the primary protocol, storing secrets in profiles, or treating remote workers as trusted.
 
+After `PRG-PRM-001` activates, Marquee reuses BLD-owned bounded jobs, cancellation, worker isolation, artifact storage, and reproducibility records. BLD does not own campaign sources, claims, approval policy, export profiles, or service publishing, and current `WP-BLD-001` includes no Marquee implementation.
+
 ## 2. Ownership and processes
 
 - meridian-project: project/workspace/profile source documents and Cargo mapping.
 - meridian-build: current bounded editor-only service foundation for deterministic
-  local BuildIds, typed operation/event state, bounded Cargo metadata and
+  local BuildIds, typed operation/event state, bounded Cargo metadata with a
+  checkout-independent workspace package/manifest/target identity component and
   redacted Cargo JSON mapping, bounded redacted Cargo process-failure stderr,
   structured Cargo checks/builds/test compilation, cancellation, a
-  helper CLI, and a host-selected local durable state store. The store snapshots each
+  helper CLI, and a local durable state store. The CLI creates a unique default
+  state file under workspace `target/meridian-build/`, prints its path before
+  execution, removes only a successful default-owned file, and accepts `--state`
+  for caller-owned recovery. The store snapshots each
   accepted `DurableBuildService` mutation through a synced temporary sibling and
   same-directory rename, then persists `WorkerLost` recovery before returning it
   to the host. `BuildGraph` now rejects invalid/mismatched Cargo dependency
-  graphs and deterministically schedules the local metadata -> check/build proof.
-  Concurrent/resource-aware DAG scheduling, cross-checkout identity
-  normalization, cache/provenance persistence, and worker supervision remain
-  planned. A host-selected `ArtifactStore` can validate/copy one bounded regular
+  graphs, binds its canonical declared contract into `BuildId`, and deterministically
+  schedules the local metadata -> check/build proof.
+  External worker events are structurally revalidated before they can mutate or
+  persist service state: the protocol version, artifact bounds, artifact-hash
+  payload, diagnostic-to-payload correspondence, running-phase lifecycle use,
+  request provenance, and secret redaction must all match the Meridian-owned
+  event contract. This is a local validation boundary,
+  not an authentication or sandbox claim for a worker.
+  `CargoBuildSupervisor` owns one fallibly-created local worker for the bounded Cargo
+  adapter. It admits only one exact registered running request at a time with a matching
+  Cargo root node, retains cancellation, persists completion/cancellation, and
+  maps a task panic or disconnect to `WorkerLost`. It is not a remote-worker
+  protocol or separately supervised service process. Cargo's `build-finished`
+  success value must agree with the persisted `Succeeded` or `Failed` terminal
+  phase; contradictory local worker outcomes, external events, and snapshots
+  are rejected before they can create a durable success claim. Concurrent/resource-aware
+  DAG scheduling, cache policy, complete per-node result lineage, and external
+  service-process/remote-worker supervision are assigned to planned `WP-BLD-002`.
+  They do not enlarge the MS-03-local `WP-BLD-001` completion boundary. A host-selected `ArtifactStore` can validate/copy one bounded regular
   file into a BLAKE3-addressed object and atomically create a BuildId/node
   reference carrying declared schema and tool identity. Cargo-reported
   executable references additionally retain Cargo's package ID and target name.
   A running service can expose that verified hash as a typed artifact event only
-  when the reference matches its BuildId and root node. It does not prove that
-  Cargo produced the source file. The helper can opt in to one Cargo-reported executable
+  when the reference matches its BuildId, root node, and secret-safe request-input
+  manifest. It does not prove that Cargo produced the source file. The helper can opt in to one Cargo-reported executable
   publication only after a successful build or test-compilation command, with
   paired `--artifact-store` and `--cargo-output-root` paths. It requires exactly
   one executable, requires that executable to be listed by Cargo, and rejects
   symlinked, non-regular, oversized, or output-root-escaping paths before an
-  atomic publication/event. General artifact selection, cache policy, and
-  remote provenance remain unimplemented. The current
-  adapter concurrently drains stdout and bounded stderr; stderr becomes a typed
-  process-failure diagnostic only for a non-success Cargo status, not a compiler
-  artifact or persistent log.
+  atomic publication/event. The reference retains the source checkpoint,
+  resolved profile, metadata-plus-lock identity, toolchain/target, sorted roots,
+  canonical graph-contract hash, the complete declared graph manifest, and hashes
+  of ordered command arguments and each allowlisted environment value;
+  it never retains those raw argument or environment values. General artifact
+  selection, cache policy, and build-wide/remote provenance remain unimplemented. The current
+  adapter concurrently drains stdout through a backpressured reader with aggregate
+  byte and line limits, and drains bounded stderr; stderr becomes a typed
+  process-failure diagnostic for a non-success Cargo status, not a compiler
+  artifact or persistent log. A cancellation fallback can instead emit a typed
+  descendant-recovery warning. On Unix each Cargo child starts in its own process
+  group; cancellation invokes the fixed `/bin/kill` program with structured
+  `TERM` and, after a 250 ms bounded grace, `KILL` signals for that child group.
+  On Windows cancellation invokes the explicit
+  `SystemRoot\System32\taskkill.exe /PID <cargo-pid> /T /F` tree terminator.
+  Neither path invokes a command shell or inherits the host environment. If the
+  platform tree terminator cannot run, the service still reaps the direct Cargo
+  child and emits a typed warning rather than claiming that descendants were
+  terminated. A Unix induced test
+  proves cancellation of a Cargo build script that inherits a `/bin/sleep 60`
+  child; actual Windows execution evidence remains `NotRun` until authorized CI.
+  The prepared Windows CI smoke discovers the installed C++ toolchain through
+  `vswhere`, invokes that installation's `VsDevCmd.bat` for amd64 host/target,
+  and then lets the adapter snapshot only its explicit environment allowlist.
+  This configuration is not a passing Windows-evidence claim until the
+  authorized source checkpoint runs it.
   A helper launched through `cargo run` on Windows cannot relink its own active
   `meridian-build.exe`; the documented structural build and test-compilation
   proofs therefore target the independent `meridian-core` library. The
@@ -73,6 +115,7 @@ BuildId = hash(
   source_checkpoint,
   resolved_project_profile,
   cargo_metadata_and_lock,
+  build_graph_contract,
   command_arguments,
   toolchain_versions,
   target_and_capabilities,
@@ -86,6 +129,20 @@ BuildNode {
   resources, sandbox, cache_policy, dependencies
 }
 ~~~
+
+For the current Cargo adapter, the metadata component preserves an exact bounded
+payload hash for traceability and separately hashes the sorted workspace package
+name/version, workspace-relative manifest path, and target contract. The latter
+hash combines with `Cargo.lock` in `BuildId`, so relocating one checkout does
+not alone alter this component. Source checkpoint, toolchain, target, and
+allowlisted host environment remain deliberate local identity inputs; this is
+not yet a full cross-machine reproducibility claim. The current
+`build_graph_contract` is a canonical hash of requested roots and each declared
+node ID, kind, tool, input hashes, environment names, and dependency topology.
+It prevents a changed declared graph from reusing a `BuildId`. New requests and
+request-bound artifact references also retain the canonical declared graph
+manifest. This is not yet a per-node result lineage or complete build-wide
+provenance record.
 
 Node kinds include Cargo check/build/test/doc, Meridian Shader Language parse/IR/target/reflect, asset import/facet/variant, native model validate/modifier/derive/interchange, animation import/compress/build, Alluvium recipe validate/migrate/evaluate/bake/provenance/license-audit, world/UI/logic compile, package, sign, install, launch, benchmark, and evidence assemble.
 
@@ -160,11 +217,20 @@ Large artifacts are immutable and streamed/range-addressed. A worker cannot publ
 
 - command arguments are structured arrays, never shell-concatenated strings;
 - environment variables use allowlists and secret references;
-- Windows Cargo/rustup execution receives only explicit `USERPROFILE` and
-  `SYSTEMROOT` host roots when present; both are local BuildId inputs rather than
-  ambient fallback;
+- Cargo children start with no inherited environment. The explicit common
+  allowlist contains Cargo/rustup roots, temporary-directory roots, and `PATH`.
+  On Windows it also admits the Visual Studio developer-environment linker and
+  SDK search roots (`INCLUDE`, `LIB`, `LIBPATH`, `VCINSTALLDIR`,
+  `VCToolsInstallDir`, `VSINSTALLDIR`, `WindowsSdkDir`,
+  `WindowsSDKVersion`, `UniversalCRTSdkDir`, `UCRTVersion`,
+  `VSCMD_ARG_HOST_ARCH`, `VSCMD_ARG_TGT_ARCH`, and `VSCMD_VER`) when present.
+  Those values are bounded,
+  explicit local BuildId inputs, not ambient fallback or portable provenance;
 - remote workers never receive unrelated project content or signing keys;
 - logs/diagnostics redact secrets;
+- untrusted worker events are revalidated before lifecycle state can advance or
+  enter the durable local snapshot; malformed, mismatched, or unredacted values
+  are rejected rather than rewritten silently;
 - downloaded tools/SDKs have pinned version/hash/license/provenance;
 - signing is a separate least-privilege operation;
 - compiler/build output is treated as untrusted until validated.
@@ -183,6 +249,8 @@ Build service crash recovery reopens the operation database, validates committed
 - lossless TOML round-trip/property corpus and minimal semantic patch;
 - Cargo metadata/JSON fixture versions and malformed events;
 - stale/superseded event rejection;
+- malformed, mismatched, and unredacted external-worker-event rejection before
+  durable acceptance;
 - cancellation at each node lifecycle point;
 - worker crash, protocol mismatch, partial artifact, cache corruption;
 - rust-analyzer restart/document-version races;
@@ -193,12 +261,16 @@ Build service crash recovery reopens the operation database, validates committed
 ## 14. Delivery mapping
 
 MS-01 establishes workspace/CI rules. MS-01/MS-03/MS-04 supply domain artifact
-graph inputs. `WP-PRC-001` integrates Alluvium validation and baking with the
-same observable build graph before MS-05. MS-03/MS-08 deliver build service,
-Cargo/IDE integration, team profiles, and evidence output. MS-08/MS-09 integrate
-source/sync checkpoints, the native modeler, animation, ShaderIr, Rust gameplay,
-and optional Luau build adapters as their packages activate. MS-10 certifies
-reproducibility and selected remote/signing profiles.
+graph inputs. `WP-BLD-001` is the MS-03 local-Cargo prerequisite: one bounded
+observable operation, a verified optional executable, durable local recovery,
+and the editor command/event seam. `WP-PRC-001` integrates Alluvium validation
+and baking with the same observable build graph before MS-05. Planned
+`WP-BLD-002` is the MS-08 continuation for multi-node result lineage, general
+artifact/cache policy, service-process and remote-worker supervision, team
+profiles, and broader evidence output; it cannot block `WP-BLD-001` or MS-03.
+MS-08/MS-09 integrate source/sync checkpoints, the native modeler, animation,
+ShaderIr, Rust gameplay, and optional Luau build adapters as their packages
+activate. MS-10 certifies reproducibility and selected remote/signing profiles.
 
 ## 15. Examples
 

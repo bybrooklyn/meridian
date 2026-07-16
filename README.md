@@ -1,6 +1,6 @@
 # Meridian
 
-Meridian is an experimental general-purpose game and interactive-application engine written in Rust and one integrated creator application named **Meridian**. Penumbra is its renderer, Wavefront its audio system, Collective its optional online-services system, and The Alluvium Engine its procedural world-authoring architecture. These adopted names and specifications are much broader than the current implementation foundations.
+Meridian is an experimental general-purpose game and interactive-application engine written in Rust and one integrated creator application named **Meridian**. Penumbra is its renderer, Wavefront its audio system, Collective its optional online-services system, The Alluvium Engine its procedural world-authoring architecture, and Marquee its deferred post-1.0 promotional export architecture. A separate deferred post-1.0 program defines how Meridian may seek and prove workload-specific performance and quality leadership without making a permanent superiority promise. These adopted names and specifications are much broader than the current implementation foundations.
 
 ## Start here
 
@@ -14,6 +14,8 @@ Meridian is an experimental general-purpose game and interactive-application eng
 - [Rust-first gameplay and optional Luau](specs/GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md)
 - [First-class 2D](specs/TWO_DIMENSIONAL_ENGINE_SPEC.md)
 - [Wavefront audio](specs/AUDIO_MUSIC_AND_ACOUSTICS_SPEC.md) and [Collective online services](specs/COLLECTIVE_ONLINE_SERVICES_SPEC.md)
+- [Marquee promotional media and local export](specs/MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md)
+- [Competitive performance and quality leadership](specs/COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md)
 - [Testing, benchmarks, and evidence policy](specs/TESTING_BENCHMARKS_AND_VALIDATION.md)
 - [Canonical architecture decisions](docs/architecture/decisions/README.md)
 
@@ -46,7 +48,14 @@ is qualified with separately scoped headless and local-native evidence; Creator 
 clustered Forward+, a full build service, Alluvium, the native modeler, Rust gameplay modules, Luau,
 first-class 2D, animation, navigation, official frameworks, Wavefront runtime,
 Collective, Isobar, Basalt, Torsant, the Project Meridian prototype, native
-backends, and post-1.0 programs are not implemented.
+backends, Marquee, and other post-1.0 programs are not implemented.
+
+Marquee is adopted architecture but entirely unimplemented. It will consume manually supplied approved captures, export local promotional files, and allow optional AI only for text/analysis suggestions. It creates no Meridian 1.0 obligation and has no current service integration or promotional-quality evidence.
+
+The competitive performance/quality program is also entirely deferred until
+after MS-10. Its adopted comparison, environmental convergence, stutter,
+cost-prediction, and claim-expiry contracts create no current optimization,
+calibrated comparison, or superiority evidence.
 
 Any passing test count is evidence for covered behavior, not a percentage-
 complete claim.

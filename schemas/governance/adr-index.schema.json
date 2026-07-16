@@ -9,7 +9,7 @@
     "version": {"const": "0.5"},
     "records": {
       "type": "array",
-      "minItems": 25,
+      "minItems": 28,
       "items": {
         "type": "object",
         "additionalProperties": false,

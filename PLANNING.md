@@ -1,6 +1,6 @@
 # Meridian Active Work Plan
 
-version 0.5 · 2026-07-15
+version 0.5 · 2026-07-16
 
 Status: `MS-01` and `WP-REL-002` passed qualification on GitHub Actions run
 `29452928922` for source checkpoint `010db80`: governance plus Linux, Windows,
@@ -14,11 +14,12 @@ first implementation slice are recorded below.
 
 The normative architecture is [the v0.5 master suite](specs/MERIDIAN_MASTER_SPEC.md); delivery order is [the evidence roadmap](specs/DELIVERY_ROADMAP.md); package readiness, completion, and concurrency are governed by [the implementation-planning specification](specs/IMPLEMENTATION_PLANNING_SPEC.md); typed status is under [`specs/registry/`](specs/registry/). This file owns only current evidence, the active bounded package, and the immediate queue.
 
-`WP-GOV-004` is closed with `EV-GOV-20260715-004`. Do not interpret that
+`WP-GOV-006` is closed with `EV-GOV-20260716-001`. Do not interpret that
 documentation package as implementation of Forward+, Meridian UI, Creator
 Editor, Project Meridian content, native graphics backends, or any newly
 specified modeler, gameplay, 2D, animation, navigation, framework, shader,
-online, distributed-world, integrity, or simulation system.
+online, distributed-world, integrity, simulation, Marquee, shared environmental
+media, cost-prediction, or competitive-validation system.
 
 ## 2. Current implementation truth
 
@@ -35,6 +36,8 @@ online, distributed-world, integrity, or simulation system.
 | Native modeler, Rust gameplay, Luau, animation, navigation, frameworks, first-class 2D, Meridian Shader Language, Collective | `Planned` or `Deferred` | specifications and registries exist; no product implementation claim |
 | Torsant, networking, XR, modding, agents, VCS/sync | `Planned`, `Research`, or `Deferred` | no production implementation claim |
 | Distributed worlds, advanced integrity, and other `PRG-*` programs | `Deferred` or `Research` | post-1.0 authority only; no milestone or implementation evidence |
+| Marquee | `Deferred` | ResearchReady post-1.0 architecture; no crate, active package, service integration, or promotional-quality evidence |
+| Competitive performance and quality leadership | `Deferred` | ResearchReady post-1.0 comparison, environmental-convergence, and claim architecture; no calibrated corpus, optimization, comparator integration, or superiority evidence |
 
 The verified local workspace suite proves only its present test boundaries; it does not prove the Creator Editor,
 game, Forward+, weather, terrain, simulation, or release roadmap.
@@ -158,6 +161,63 @@ Explicit non-goals: runtime/editor feature implementation, a Meridian UI
 redesign, benchmark calibration, hosted cloud infrastructure, new placeholder
 crates, commits, or pushes. `WP-PEN-008` was next at this historical closure
 checkpoint and is now closed under MS-01.
+
+## 7.1 Closed documentation package — WP-GOV-005
+
+User-visible result: Marquee is a coherent, machine-governed post-1.0 promotional-material authority without adding a Meridian 1.0 obligation or claiming implementation.
+
+Deliverables:
+
+- canonical Marquee specification and ADR-0025;
+- `PRM` as the 37th current domain with `REQ-PRM-001` through `REQ-PRM-006`;
+- deferred `PRG-PRM-001`, post-MS-10 `RG-PRM-001`, `VAL-PRM-001`, and ten risks;
+- machine-enforced manual-capture, export-only, explicit-human-approval, source-classification, and text/analysis-only AI policy;
+- zero-unmapped in-version amendment ledger and private Project Meridian production-boundary update.
+
+Closure evidence: `EV-GOV-20260715-005`; review: `REV-GOV-20260715-003`.
+
+Explicit limits: no Marquee crate, media/PDF adapter, campaign UI, service integration, promotional output, calibration, quality evidence, commit, or push. `WP-BLD-001` remains the sole active package.
+
+## 7.2 Closed documentation package — WP-GOV-006
+
+User-visible result: Meridian now has an honest post-1.0 plan for pursuing and
+proving workload-specific performance and quality leadership, plus stable seams
+that prevent weather, smoke, fire, fluids, procedural authoring, and rendering
+from duplicating authority or hidden cost.
+
+Deliverables:
+
+- canonical competitive performance and quality specification and ADR-0027;
+- ADR-0026 for one Penumbra participating-media consumption path, sparse and
+  multirate environmental work, typed surface-fluid ownership transfer, and
+  one-way-snapshot default coupling;
+- deferred `PRG-REL-001`, post-MS-10 `RG-REL-001`, `VAL-REL-001`, seven
+  program requirements, and ten explicit risks;
+- separate iso-quality performance, iso-cost quality, and matched-workflow
+  claim classes with immutable exact-version baselines;
+- first-use/stutter, tail latency, memory, lower-tier, recovery, accessibility,
+  security, provenance, workflow, and maintenance evidence rules;
+- Alluvium combustion/fluid material facets and a calibrated
+  `RuntimeCostManifest` that predicts cost without becoming runtime authority;
+- a zero-unmapped v0.5 amendment ledger and cross-spec/registry reconciliation.
+
+Deferred execution after MS-10: freeze the public fixture and legal/evidence
+policy; calibrate structural, reference, blinded perceptual, temporal,
+first-use, and workflow methods; establish unoptimized baselines; measure
+environmental convergence and cook/runtime prediction error; rank bottlenecks
+by user-visible impact; prototype one bounded change behind an owning seam;
+rerun every affected quality tier and non-performance gate; adopt winners via
+owning ADRs, archive losers, and publish only scoped expiring claims. A future
+planning review creates package IDs and dependencies only after those inputs
+are stable.
+
+Closure evidence: `EV-GOV-20260716-001`; review:
+`REV-GOV-20260716-001`.
+
+Explicit limits: no renderer/simulation implementation, comparator adapter,
+competitive fixture calibration, optimization, public claim, commit, push, or
+remote CI run. `PRG-REL-001` cannot satisfy, block, or promote MS-00 through
+MS-10. `WP-BLD-001` remains the sole active package.
 
 ## 8. Closed package — WP-PEN-007
 
@@ -396,36 +456,75 @@ Requirements: `REQ-BLD-001`, `REQ-CORE-002`, `REQ-CORE-004`
 Milestone contribution: MS-03 Creator Editor Alpha critical path and reusable
 MS-08 build/IDE seam.
 
+Scope boundary: `WP-BLD-001` owns the bounded MS-03 local-Cargo prerequisite:
+one observable operation, typed Cargo lifecycle/diagnostics, one optional
+verified executable, durable local recovery, and the command/event seam for
+`WP-EDT-001`. Planned `WP-BLD-002` owns MS-08 continuation work that would
+change the execution model or trust boundary: multi-node result lineage,
+general artifact/cache policy, service-process and remote-worker supervision,
+team profiles, and broad reproducibility evidence. Those capabilities are not
+part of this package and cannot keep its MS-03 prerequisite open.
+
 Entry conditions and dependencies: MS-02 is `Pass`; `WP-BLD-001` has no direct
 package dependency and the current Cargo workspace, lockfile, source fixtures,
 task/cancellation seams, and `meridian-editor` composition have been inspected.
 No private-game input, remote worker, signing key, or named hardware is needed
 for this first bounded slice.
 
-Files/crates/formats changed: new editor-only `meridian-build` crate; workspace
-membership; optional host-selected, versioned local build-state JSON; and
-documentation/registry records. No runtime crate, project manifest, persistent
-game format, or `game/` path may change.
+Files/crates/formats changed: editor-only `meridian-build`, the shared fallible
+`meridian-tasks` worker-pool primitive, workspace membership, optional
+host-selected versioned local build-state JSON, and documentation/registry
+records. No project manifest, persistent game format, or `game/` path may change.
 
 Deliverables and public contracts: the editor-only `meridian-build` crate now
 provides Meridian-owned `BuildId`, `BuildRequest`, `BuildNode`, lifecycle/event/
 diagnostic types, cooperative cancellation, bounded file hashing, a structured
 Cargo metadata/check/build/test-compilation JSON adapter, bounded redacted Cargo
 process-failure diagnostics, and the `meridian-build --cargo-check`,
-`--cargo-build`, or `--cargo-test-no-run` helper CLI. Cargo and rustc types
+`--cargo-build`, or `--cargo-test-no-run` helper CLI. The helper runs every
+operation through the durable service and one fallibly-created local supervisor
+worker; it prints a unique default state path under `target/meridian-build/`,
+retains it after interruption or failure, removes it only after successful
+default-owned completion, and accepts caller-owned `--state PATH` recovery. Cargo and rustc types
 remain internal; arguments remain arrays and Cargo
 JSON remains the compiler-diagnostic protocol; ordered command arguments are
-also declared BuildId inputs. A separate bounded stderr record is present only
-for an unsuccessful Cargo process. A bounded versioned, host-selected local
+also declared BuildId inputs. Cargo metadata retains an exact bounded payload
+hash for traces and derives a separate checkout-independent workspace
+package/manifest/target hash that combines with the lockfile in the BuildId;
+source checkpoint, toolchain, target, and allowlisted host environment remain
+local inputs. `BuildId` also binds a canonical `BuildGraph` contract hash over
+the requested roots and each node's ID, kind, tool, declared input hashes,
+declared environment names, and dependency topology; changing that contract
+cannot reuse the prior identity. New requests and request-bound artifact
+references retain that canonical declared graph plus its contract hash, but not
+per-node result lineage. A separate bounded stderr record is present for an unsuccessful
+Cargo process; cancellation recovery can instead emit a typed descendant-warning.
+A bounded versioned, host-selected local
 state store publishes a synced temporary snapshot through a same-directory
 rename; `DurableBuildService` persists each accepted mutation, restores
 interrupted work as `WorkerLost`, and rejects malformed, oversized, symlinked,
-or non-regular state files. `BuildGraph` validates declared dependencies,
-requested-root/BuildId agreement, duplicate inputs/environment, cycles, and
-unreachable nodes; its deterministic local scheduler starts a Cargo metadata
+or non-regular state files. External worker events are revalidated before they
+can mutate or persist this service: protocol version, Cargo artifact bounds,
+artifact/hash pairing, running-phase payload/lifecycle correspondence,
+request-provenance correspondence, and redaction must match the Meridian-owned
+event contract. This local boundary does not claim
+worker authentication or sandboxing. `BuildGraph` validates declared dependencies,
+the exact requested-root/BuildId graph-contract agreement, duplicate inputs/environment,
+cycles, and unreachable nodes; its deterministic local scheduler starts a Cargo metadata
 node before the dependent Cargo-check or Cargo-build node and blocks dependents after terminal
-failure. Concurrent/resource-aware scheduling, durable cache/provenance,
-non-Cargo nodes, and cross-checkout metadata normalization remain unimplemented.
+failure. Concurrent/resource-aware scheduling, durable cache/provenance, and
+non-Cargo nodes remain unimplemented; the retained graph is input provenance,
+not a complete cache or per-node result record. Those execution-model changes
+are reserved for planned `WP-BLD-002`.
+`CargoBuildSupervisor` is a long-lived, single-worker local coordinator for the
+bounded Cargo adapter. It admits only one exact registered running request at a
+time with a matching Cargo root node, retains cooperative cancellation, polls one outcome
+in deterministic operation-ID order, persists normal completion/cancellation,
+and records a task panic or disconnect as `WorkerLost`. It owns no project source
+state and is not a remote-worker protocol or a separately supervised service process.
+Cargo's `build-finished` result is retained as an operation constraint: it cannot
+contradict the terminal `Succeeded` or `Failed` phase, and a contradictory local
+worker outcome is durably failed without publishing its messages.
 `ArtifactStore` accepts a host-selected bounded regular source file, copies and
 hashes it into a BLAKE3-addressed object, verifies any pre-existing object, and
 atomically creates a non-overwriting BuildId/node reference with declared schema
@@ -446,10 +545,20 @@ Explicit non-goals: a lossless TOML editor, rust-analyzer session, remote
 worker, signing/deployment, Alluvium adapter, editor panels, package graph
 visualization, or Creator Editor Alpha completion.
 
-Tests: deterministic identity; invalid lifecycle transitions; stale BuildId or
-sequence rejection; cancellation before process spawn; malformed Cargo JSON;
-compiler diagnostic/artifact mapping; typed full Cargo metadata parsing;
-secret-like JSON and process-stderr diagnostic redaction; durable snapshot publication/reopen and
+Tests: deterministic identity; invalid lifecycle transitions and progress
+bounds; stale BuildId or
+sequence rejection; cancellation before process spawn and induced Unix
+build-script-child cancellation; malformed Cargo JSON and aggregate-output
+rejection with reader backpressure;
+compiler diagnostic/artifact mapping; typed full Cargo metadata parsing and a
+checkout-relocation fixture for its workspace identity hash;
+graph-contract identity mutation/rejection and request-provenance fixture;
+canonical durable-graph-manifest mutation/rejection and artifact-reference reopen fixture;
+single-worker Cargo-supervisor success, busy/duplicate-submit, and cancellation fixtures;
+secret-like JSON and process-stderr diagnostic redaction; malformed,
+mismatched, and unredacted external-worker-event rejection before durable
+acceptance, including terminal-payload and request-provenance bypass attempts;
+durable snapshot publication/reopen and
 `WorkerLost` recovery; graph order, invalid-edge, cycle, unreachable-node, and
 blocked-dependent fixtures; verified artifact object/reference publication,
 corrupt-object rejection, conflicting-reference rejection, output-root escape
@@ -463,13 +572,36 @@ toolchain only. Remote, sandbox, and named-hardware profiles are explicitly not
 run.
 
 Captures/traces/recovery evidence: local deterministic event timelines cover
-queued through terminal states; cancellation-before-spawn and malformed-event
-tests pass. The durable local store reopens interrupted work as `WorkerLost`,
-persists that recovery before exposing it, and rejects late success. The adapter
-drains stdout and bounded stderr concurrently so failed local Cargo runs return
-a typed redacted process diagnostic. Process supervision, child-process-group
-termination, general Cargo-artifact qualification, and durable build-wide
-provenance remain required before package completion. The local
+queued through terminal states; cancellation-before-spawn, an induced Unix
+Cargo build-script-child cancellation, and malformed-event tests pass. The
+induced fixture writes a marker then starts `/bin/sleep 60`; the adapter places
+Cargo in an isolated Unix process group and bounded cancellation returns before
+that child can run to completion. Unix cancellation uses fixed `/bin/kill`
+`TERM` then `KILL` group signals after a 250 ms grace; Windows uses the explicit
+system `taskkill.exe /PID /T /F` tree path. Neither uses a shell or inherits the
+host environment. If a platform tree terminator cannot run, the service kills
+and reaps the direct Cargo child and records a typed warning rather than
+claiming descendant recovery. Actual Windows execution of this path remains
+`NotRun` until an authorized commit and push can run CI. The prepared Windows
+CI smoke discovers the installed C++ toolchain through `vswhere`, invokes its
+fixed `VsDevCmd.bat -arch=amd64 -host_arch=amd64` setup, and only then snapshots
+the explicit Cargo environment; that configuration is not execution evidence
+until it runs on the authorized source checkpoint. The durable local store
+reopens interrupted work as
+`WorkerLost`, persists that recovery before exposing it, and rejects late
+success. It also rejects unsupported event protocol versions, malformed Cargo
+artifacts, mismatched event diagnostics, and unredacted external diagnostics
+before they can advance or persist operation state; durable rejection leaves
+the prior operation snapshot intact. Non-lifecycle worker payloads must retain
+the running phase, and external artifact events must carry the same durable
+input provenance as the registered request. The adapter drains stdout through a backpressured reader with aggregate byte and
+line limits, and bounded stderr concurrently, so failed local Cargo runs return a typed redacted process diagnostic. The local single-worker
+Cargo supervisor persists normal/cancelled outcomes and maps task loss to
+`WorkerLost`. It also rejects a Cargo `build-finished` value that contradicts
+the terminal lifecycle before publishing worker messages; external events and
+durable snapshots reject the same contradiction. External service-process/remote-worker supervision, general
+Cargo-artifact qualification, and durable build-wide provenance are planned
+`WP-BLD-002` work and do not block this MS-03 package. The local
 graph proof is only Cargo metadata -> check/build; it makes no parallelism, resource,
 cache, or non-Cargo adapter claim. A host-selected `ArtifactStore` can copy one
 bounded regular file into a BLAKE3-addressed object, verify a pre-existing
@@ -481,8 +613,15 @@ test-compilation command, an opt-in paired artifact-store/output-root request
 can select exactly one Cargo-reported executable: it must be listed by Cargo,
 regular, non-symlinked, within the canonical output root, and within the
 existing bounded-file limit. The host records its verified artifact event while
-the matching request is still running; mismatched BuildId or node identity is
-rejected before the hash becomes observable. Zero, multiple, arbitrary, or
+the matching request is still running; mismatched BuildId, node, or secret-safe
+request-input provenance is rejected before the hash becomes observable. The
+reference retains source checkpoint/profile, metadata-plus-lock identity,
+toolchain/target, sorted roots, canonical graph-contract hash, and hashes of arguments and allowlisted
+environment values without retaining the raw argument or environment values.
+New references also retain the canonical declared graph (node IDs, kinds, tools,
+declared input hashes, environment names, and dependency topology); they do not
+yet record a result for every graph node.
+Zero, multiple, arbitrary, or
 oversized Cargo outputs are not published.
 
 Accessibility: the service emits named stages, actionable typed diagnostics,
@@ -491,9 +630,15 @@ consumption; no visible
 panel is claimed by this package.
 
 Security/provenance: command arguments are structured arrays; environment is
-allowlisted; Windows-required `USERPROFILE` and `SYSTEMROOT` are explicit local
-identity inputs rather than ambient fallback; Cargo output is untrusted input;
-paths and diagnostic text are bounded and redacted; no secrets, credentials,
+allowlisted; Cargo children receive no ambient environment. Windows linker and
+SDK context is limited to explicitly allowlisted Visual Studio variables and is
+bounded local identity input rather than ambient fallback; Cargo output is untrusted input;
+the graph-contract identity records only declared environment names and no raw
+environment values; the retained graph manifest uses the same secret-safe fields;
+external worker events are revalidated for protocol/payload/diagnostic
+consistency, running-phase use, and request provenance before durable acceptance;
+paths and diagnostic text are bounded and redacted; aggregate Cargo output and
+every lifecycle progress value are bounded before durable acceptance; no secrets, credentials,
 private-game paths, or shell concatenation are permitted. Artifact roots,
 objects, references, and source files reject direct symlinks; opt-in Cargo
 executable publication additionally requires an explicit non-symlink canonical
@@ -502,8 +647,9 @@ content-addressed name and references never overwrite a different BuildId/node
 result.
 
 Migration/compatibility: Cargo-reported executable references add optional
-package/target provenance. Existing local references deserialize without that
-field and retain no Cargo provenance; the v1 protocol remains additive.
+package/target, graph-contract, and graph-manifest provenance. Existing local
+references deserialize without any optional addition and retain no corresponding
+provenance; the v1 protocol remains additive.
 
 Documentation: the Cargo/IDE/build authority, repository architecture,
 registries, and this package record are the owning sources; they are updated
@@ -529,19 +675,26 @@ separate Cargo target directory, preventing linker contention with the
 helper's active target tree. An installed or separately hosted service is not
 that launch mode, but self-rebuild orchestration is not claimed by this bounded
 slice.
-The metadata hash is a local Cargo payload hash rather
-than a cross-checkout-normalized reproducibility identity. The local state and
+The exact metadata payload hash remains trace-only. Its normalized workspace
+identity excludes checkout roots but does not make the complete BuildId
+cross-machine reproducible: source checkpoint, toolchain, target, and
+allowlisted host environment remain deliberate local inputs. The local state and
 artifact stores are host-selected foundations, not remote, signing, provider, or
-cache-policy stores. The current graph scheduler is single-host, dependency-only,
+cache-policy stores. The identity now detects a changed declared local graph
+contract, and new durable references retain the complete declared graph manifest,
+but build-wide provenance still lacks per-node result lineage. The current graph scheduler is single-host, dependency-only,
 and restricted to the Cargo metadata -> check/build proof. Concurrent/resource-aware
-build-DAG scheduling, long-lived worker restart, lossless manifest editing,
-rust-analyzer, remote execution, signing, and deployment remain planned.
+build-DAG scheduling, external service-process restart, lossless manifest editing,
+rust-analyzer, remote execution, signing, and deployment are planned
+`WP-BLD-002` work.
 
 Reviewers/sign-offs: Definition of Ready was reviewed against the current
 workspace and MS-02 evidence. The current local implementation slice passes its
 focused tests, durable-recovery tests, warning-denied lint, structured Cargo
-smoke, and helper-CLI Cargo check/build/test-compilation. Completion requires fresh registered evidence
-and the mandatory package sign-off before this package may close.
+smoke, and helper-CLI Cargo check/build/test-compilation. `EV-BLD-20260715-001`
+records the fresh local recovery/build evidence and its explicit Windows-CI
+limitation. Completion still requires the authorized Windows evidence and the
+mandatory package sign-off before this package may close.
 
 Next unblocked package: `WP-BLD-001` remains active until it closes; only then
 may `WP-EDT-001` activate.

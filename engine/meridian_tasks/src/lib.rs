@@ -109,13 +109,13 @@ pub struct TaskPool {
 }
 
 impl TaskPool {
-    /// Starts exactly `worker_count` worker threads.
+    /// Tries to start exactly `worker_count` worker threads.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the operating system refuses to start a worker thread.
-    #[must_use]
-    pub fn new(worker_count: NonZeroUsize) -> Self {
+    /// Returns [`TaskError::WorkerStart`] when the host refuses to create a
+    /// worker. Already-started workers are joined before the error is returned.
+    pub fn try_new(worker_count: NonZeroUsize) -> Result<Self, TaskError> {
         let (sender, receiver) = mpsc::channel::<Job>();
         let receiver = Arc::new(Mutex::new(receiver));
         let mut workers = Vec::with_capacity(worker_count.get());
@@ -123,19 +123,36 @@ impl TaskPool {
         for worker_index in 0..worker_count.get() {
             let receiver = Arc::clone(&receiver);
             let name = format!("meridian-worker-{worker_index}");
-            let worker = thread::Builder::new()
+            if let Ok(worker) = thread::Builder::new()
                 .name(name)
                 .spawn(move || worker_loop(&receiver))
-                .expect("Meridian worker thread must start");
-            workers.push(worker);
+            {
+                workers.push(worker);
+            } else {
+                drop(sender);
+                for worker in workers {
+                    let _ = worker.join();
+                }
+                return Err(TaskError::WorkerStart);
+            }
         }
 
-        Self {
+        Ok(Self {
             sender: Some(sender),
             workers,
             next_task_id: AtomicU64::new(0),
             worker_count,
-        }
+        })
+    }
+
+    /// Starts exactly `worker_count` worker threads.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the operating system refuses to start a worker thread.
+    #[must_use]
+    pub fn new(worker_count: NonZeroUsize) -> Self {
+        Self::try_new(worker_count).expect("Meridian worker thread must start")
     }
 
     /// Starts a pool using the host's reported parallelism, reserving at least one worker.
@@ -237,6 +254,7 @@ fn worker_loop(receiver: &Arc<Mutex<Receiver<Job>>>) {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskError {
+    WorkerStart,
     PoolClosed,
     Panicked { task_id: u64 },
     Disconnected { task_id: u64 },
@@ -245,6 +263,7 @@ pub enum TaskError {
 impl Display for TaskError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::WorkerStart => formatter.write_str("Meridian worker thread could not start"),
             Self::PoolClosed => write!(formatter, "Meridian task pool is closed"),
             Self::Panicked { task_id } => write!(formatter, "task {task_id} panicked"),
             Self::Disconnected { task_id } => {

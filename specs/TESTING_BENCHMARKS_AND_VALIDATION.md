@@ -1,12 +1,13 @@
 # Testing, Benchmarks, and Validation
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [Registries](registry/) · [Examples](API_AND_FILE_FORMAT_EXAMPLES.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [Competitive quality](COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md) · [Registries](registry/) · [Examples](API_AND_FILE_FORMAT_EXAMPLES.md)
 
 version 0.5 · 2026-07-15 · Normative evidence authority
 
 Documentation maturity: `ImplementationReady`. Implementation maturity:
-`Partial`. Governing IDs: `REQ-REL-001`, `REQ-GOV-002`, `WP-GOV-001`,
-`WP-GOV-003`, `WP-GOV-004`, `WP-REL-001`, `WP-REL-002`.
+`Partial`. Governing IDs: `REQ-REL-001` through `REQ-REL-004`, `REQ-GOV-002`,
+`WP-GOV-001`, `WP-GOV-003`, `WP-GOV-004`, `WP-REL-001`, `WP-REL-002`,
+`PRG-REL-001`, `RG-REL-001`, and `VAL-REL-001`.
 
 ## 1. Purpose and truth boundary
 
@@ -45,6 +46,7 @@ Evidence status is exactly `Pass`, `Fail`, `NotRun`, `UnsupportedCapability`,
 | Recovered | induced failure plus retained authority, rollback/rebuild, user message, and escape path |
 | Deterministic | declared platform/mode/thread/compiler envelope plus replay/diff |
 | Calibrated | named hardware/software/corpus/profile/statistical method and raw samples |
+| Competitive claim | exact engine/BuildId versions, matched corpus and feature-parity matrix, preregistered claim class/threshold, raw distributions, structural/reference/perceptual evidence as applicable, lower-tier and first-use rows, expiry, and independent review |
 | Milestone complete | all required functional, performance, recovery, security, accessibility, compatibility, documentation, and review rows |
 
 Occluded or minimized GPU evidence may prove six-face upload, pipeline,
@@ -92,6 +94,22 @@ EvidenceRecord {
 Secrets, personal paths, and licensed/private payloads are redacted. Redaction
 preserves stable private source/corpus hashes, authority, and access location
 without copying content into the engine repository.
+
+### 3.1 Competitive evidence records
+
+`CompetitiveBaselineRecord` and `CompetitiveClaim` are planned post-1.0
+contracts owned by
+[the competitive specification](COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md).
+They support only iso-quality performance, iso-cost quality, and
+matched-workflow throughput. Exact engine versions, Meridian BuildId, hardware,
+drivers, backend, internal/output resolution, upscaling, frame generation,
+dynamic resolution, settings, cache/warmup/first-use state, camera/input/workflow
+recordings, corpus hashes, parity differences, raw evidence, review, measurement
+date, expiry, and retraction state are mandatory.
+
+An expired or materially invalidated claim is `Stale` or retracted. A new engine
+version, driver, renderer path, corpus, setting, quality method, or material
+feature-parity change creates a new record rather than mutating the old result.
 
 ## 4. Test portfolio
 
@@ -162,6 +180,14 @@ PEN-B01/PEN-B02 preserve the original forest-workload intent. PEN-B04 is generat
 record only a redacted private authority/hash. It contains no AMI logo,
 document, narrative text, route data, or proprietary asset.
 
+`PEN-B05` reports disabled, opening-hook, regional-field, and advanced-atmosphere
+profiles separately. `PEN-B07` reports disabled, authored-approximation,
+bounded-local, and GPU/research profiles separately. Neither workload may blend
+tiers into one average or treat a missing advanced tier as zero cost. Both record
+simulation versus presentation frequency, sparse/tiled residency, work quota,
+update debt, coupling latency, participating-media cost, temporal quality,
+fallback, and first-use activation.
+
 ## 7. Penumbra report fields
 
 Every workload report records hardware, operating system, backend, driver,
@@ -171,6 +197,9 @@ resource churn, overdraw, shadow/volumetric cost, temporal stability, device
 bottlenecks, visual differences, artifacts, missing features, warmup/cache state,
 source checkpoint, BuildId, corpus/build hashes, Alluvium recipe hashes/version,
 determinism level, evaluation mode, provenance-manifest hash, and raw evidence.
+Reports also record first-use pipeline/resource creation, runtime-creation
+attempts, `RuntimeCostManifest` identity, predicted-versus-observed cost and
+uncertainty where present, and environmental source/residency duplication.
 Fields that do not apply use an explicit `NotApplicable` value; omission is not
 allowed under `penumbra-benchmark-report-v0.5`.
 
@@ -189,6 +218,12 @@ Physics/simulation: canonical body/shape/query/contact/controller; extreme/
 degenerate/CCD/stability/fuzz; declared determinism; Cairn/upstream differential;
 Isobar field continuity; Basalt precision/rebase; vegetation coupling; optional
 Torsant stability/reference and zero-disabled-cost.
+
+Environmental convergence additionally validates sparse/multirate quotas and
+influence horizons, `SurfaceFluidHandoff` single ownership and recovery,
+combustion/fluid facet coherence, shared participating-media source/history/
+downgrade behavior, cost-manifest reconciliation, and absence of undeclared
+duplicate persistent volume hierarchies.
 
 Alluvium: recipe canonicalization/migration; graph types/units/cycles; strict,
 stable, and opportunistic determinism; named random substreams; scalar/SIMD/GPU
@@ -212,7 +247,13 @@ Shader language/modeler: text and graph semantic equivalence into one ShaderIr, 
 
 Collective: offline stripping, local/self-hosted/provider adapters, auth/session state machines, outage/quota/idempotency, privacy/consent/export/deletion, voice-room permissions, block/mute/report, moderation/appeal, secrets, accessibility, and adversarial clients. Mocks cannot prove a production service, and no Meridian-hosted service is assumed.
 
-Distributed worlds and integrity remain post-1.0 definition/research domains. When their programs activate, validation adds authority-epoch migration/split-brain/restore/cost and adversarial/false-positive/privacy/accessibility/mod-compatibility evidence without changing MS-00 through MS-10.
+Distributed worlds, integrity, Marquee, and competitive performance/quality
+leadership remain post-1.0 definition/research domains. When their programs
+activate, validation adds authority-epoch migration/split-brain/restore/cost,
+adversarial/false-positive/privacy/accessibility/mod-compatibility, deterministic
+promotional export/rights/claim/approval/AI-boundary evidence, and matched
+competitive baseline/parity/perceptual/expiry/regression evidence without
+changing MS-00 through MS-10.
 
 Data/formats: current/previous/oldest fixtures; unknown optional/required;
 canonical roundtrip/diff; malformed/oversized/recursive/path/decompression;
@@ -240,8 +281,10 @@ secret/private-content redaction, safe mode, key compromise, and rollback.
 | `VAL-UI-001` | public generic | UI-heavy accessible application and editor fixture |
 | `VAL-RUN-001` | public generic | headless simulation and dedicated server |
 | `VAL-COL-001` | public generic | offline and self-hosted Collective behavior |
+| `VAL-PRM-001` | public generic | deterministic Marquee export, rights, claims, approval, recovery, and AI-disabled behavior |
+| `VAL-REL-001` | public generic | matched competitive performance, quality, first-use, environmental convergence, and workflow evidence |
 
-All seven begin `DefinitionOnly` / `Uncalibrated`. A project becomes executable only through a versioned corpus, source/build hash, exact profile, expected functional outcomes, calibrated metrics, failure/recovery cases, and evidence record. Project Meridian private content never becomes public corpus; only sanitized contracts, IDs, hashes, outcomes, and limits cross repositories.
+All nine begin `DefinitionOnly` / `Uncalibrated`. A project becomes executable only through a versioned corpus, source/build hash, exact profile, expected functional outcomes, calibrated metrics, failure/recovery cases, and evidence record. Project Meridian private content never becomes public corpus; only sanitized contracts, IDs, hashes, outcomes, and limits cross repositories.
 
 These projects prevent one private game from being mistaken for general-purpose engine proof. No single project can prove all domains, and a framework-free/minimal build remains required to prove optionality.
 
@@ -271,6 +314,10 @@ manual escape path.
 - all Alluvium requirements/packages/gates/risks and historical v0.4 migration rows;
 - v0.5 domains, ADRs, programs, validation projects, strategic dependencies, current-version headers, and zero-unmapped migration rows;
 - post-1.0 programs cannot satisfy or block MS milestones or promote implementation maturity;
+- Marquee remains manual-capture, export-only, explicit-human-approved, and text/analysis-only for AI; premature `WP-PRM-*`, service integration, website generation, audiovisual AI, incomplete source classification, and missing amendment mapping fail;
+- `PRG-REL-001` remains post-1.0, comparative claims remain scoped and expiring,
+  and missing parity, raw evidence, first-use, lower-tier, or negative-result rows
+  cannot be converted into a superiority claim;
 - all benchmark report recipe/provenance fields use the v0.5 report contract without promoting planned implementation.
 
 False implementation claims, private leakage, missing IDs, and invalid schemas
@@ -281,6 +328,12 @@ are unwaivable.
 [`registry/dependency-strategy.json`](registry/dependency-strategy.json) records purpose, license, current use, boundary, replacement difficulty, strategic/performance importance, maintenance risk, compatibility, tests, category, alternative, and status for significant foundations. `InternalizeEventually` is not a promise or schedule; wrapping indefinitely is allowed when it remains the best product and maintenance decision.
 
 Performance, memory, latency, build, storage, bandwidth, service-cost, accessibility, and quality budgets are workload/profile contracts. Before calibration they are provisional ranges or required metrics, not fabricated fixed gates. Every calibrated threshold records corpus, target hardware/profile, statistical method, user impact, owner, review date, and downgrade/failure policy. A high-end win cannot hide a lower-tier regression.
+
+Competitive studies additionally preregister claim class, comparator/version,
+feature parity, structural/reference/perceptual quality method, materiality,
+expiry, and renewal triggers. One private game, one high-end device, one static
+capture, one average, or one winning workload cannot establish general engine
+superiority.
 
 ## 13. CI and local gates
 

@@ -1,0 +1,14 @@
+{
+  "campaign": "public-generic",
+  "capture_policy": "ManualImportOnly",
+  "game_navigation": false,
+  "publishing_policy": "ExportOnly",
+  "service_credentials": false,
+  "private_project_content": false,
+  "sources": [{"id":"capture-1","classification":"Composite","hash":"blake3:source","rights":"licensed","consent":"recorded","spoiler":"classified","embargo":"recorded","locales":["en-US"],"provenance":"public-fixture","transform_policy":"deterministic-approved","approved":true}],
+  "claims": [{"text":"Claim","approved_source":"record","build_id":"build","build_id_current":true,"source_hash_current":true,"evidence":"test","locale":"en-US","expiry_current":true}],
+  "profiles": [{"id":"profile","revision":1,"official_source_url":"https://example.com/profile","verification_date":"2026-07-15","stale":false,"localization_checked":true,"provenance":"public-profile"}],
+  "approval_invalidation": ["Source","SourceHash"],
+  "ai": {"enabled":false,"cloud_opt_in":false,"exact_data_disclosure":true,"generated_image":false,"generated_video":false,"generated_voice":false,"generated_music":false,"generated_sound":false,"modified_media":false,"suggestions_authoritative":false,"human_review_required":true},
+  "artifacts": [{"state":"Draft","represented_as_final":true,"source_hash_current":true,"claim_current":true,"build_id_current":true,"profile_current":true,"tool_version_current":true}]
+}

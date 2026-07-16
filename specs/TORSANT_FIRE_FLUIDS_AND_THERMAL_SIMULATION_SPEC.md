@@ -1,12 +1,13 @@
 # Torsant Fire, Fluids, and Thermal Simulation Specification
 
-[Master index](MERIDIAN_MASTER_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Rendering](RENDERING_AND_GRAPHICS_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md)
+[Master index](MERIDIAN_MASTER_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Rendering](RENDERING_AND_GRAPHICS_SPEC.md) · [Competitive quality](COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md)
 
 version 0.5 · 2026-07-15 · Normative Torsant architecture
 
 Documentation maturity: `ResearchReady`. Implementation maturity: `Research`.
-Governing IDs: `REQ-TOR-001`, `WP-TOR-001`, `RG-TOR-001`. No Torsant crate is
-created until its first real implementation package starts.
+Governing IDs: `REQ-TOR-001`, `REQ-TOR-002`, `WP-TOR-001`, `RG-TOR-001`, and
+post-1.0 `PRG-REL-001`. No Torsant crate is created until its first real
+implementation package starts.
 
 Torsant owns optional fire, fluids, smoke, heat, thermal material state, and
 coupled simulation contracts. Current implementation status is Planned/Research:
@@ -95,6 +96,27 @@ FluidSurfaceSnapshot {
   boundary_conditions: [FluidBoundaryRef],
   stability_report: SolverStabilityReport,
 }
+
+CombustionMaterialFacet {
+  ignition_response,
+  available_fuel,
+  burn_rate_curve,
+  heat_release,
+  smoke_yield,
+  soot_or_char_yield,
+  moisture_response,
+  spread_class,
+}
+
+FluidInteractionFacet {
+  permeability,
+  absorption,
+  drainage,
+  buoyancy_class,
+  erosion_response,
+  wet_friction_response,
+  thermal_exchange,
+}
 ```
 
 Snapshots are optional. Consumers must handle absence as a supported disabled
@@ -139,6 +161,53 @@ Isobar publishes wind/moisture snapshot N
 
 No pack may create a hidden per-frame feedback loop. Solver instability disables
 the affected tile/pack and preserves source data.
+
+### 6.1 Sparse, multirate, and bounded execution
+
+Every enabled solver declares simulation and presentation clocks, spatial
+hierarchy, active bounds, influence horizon, work and memory quotas, update-debt
+limit, deterministic envelope, CPU/simple fallback, GPU transfer policy, and
+downgrade. Distant effects may remain authored or analytic, relevant regions use
+coarse tiles, and only bounded interaction or hero regions may activate a local
+solver. Render frequency never implies solver frequency.
+
+Scheduling considers visibility, distance, predicted propagation, gameplay
+importance, source-event severity, and state change. An offscreen fire or fluid
+front cannot be discarded solely because it is not visible. Work beyond a quota
+becomes explicit update debt or downgrade; it cannot create an unbounded frame
+spike.
+
+One-way immutable snapshot coupling is the default. Any two-way fire/weather,
+fluid/terrain, thermal/material, or vegetation feedback loop requires a
+separately preregistered stability, latency, persistence, recovery, and workload
+decision before production use.
+
+### 6.2 Surface-fluid ownership
+
+Torsant accepts dynamic-water authority only through Isobar's typed
+`SurfaceFluidHandoff`. Acceptance validates region, epoch, units, bounds,
+initial state, capacity, and fallback. While Torsant owns the region, Isobar does
+not independently advance dynamic water there. Demotion publishes a settled
+surface summary and conservation/error report for atomic acceptance by Isobar.
+
+Solver failure, eviction, package disablement, save/load, or stale epochs retain
+the last valid state or select the declared coarse fallback. No two systems own
+the same dynamic water region/epoch, and a visual fade cannot conceal an
+authority conflict.
+
+### 6.3 Material and shared-media contracts
+
+Alluvium authors and cooks `CombustionMaterialFacet` and
+`FluidInteractionFacet`; Torsant validates and consumes them while retaining
+live solver authority. The facets are semantic gameplay/visual controls with
+units and bounds, not a claim of engineering-grade material accuracy. Missing
+optional values select a documented conservative tier rather than being inferred
+from rendered pixels.
+
+Torsant maps smoke, steam, flame emission, and heat-haze source fields into
+Penumbra's planned `ParticipatingMediaSourceSnapshot`. Penumbra owns renderer
+residency, lighting, shadows, temporal history, and compositing. Torsant never
+allocates a separate persistent renderer hierarchy or issues render passes.
 
 ## 7. Capability tiers and disabled behavior
 
@@ -196,6 +265,12 @@ Tests:
 - corrupt field cache recovery;
 - deterministic replay envelope for declared deterministic tiers;
 - field dimension/unit validation and fuzzing.
+- sparse/multirate quota, update-debt, influence-horizon, and downgrade tests;
+- surface-fluid promotion, single-owner, demotion, conservation/error,
+  save/load, stale/failure, and disabled-pack tests;
+- combustion/fluid facet migration, bounds, missing-value fallback, and
+  cross-facet coherence tests;
+- shared participating-media source validation, absence, and stale-epoch tests.
 
 Workloads: PEN-B05, PEN-B07, PEN-B11, PEN-B14, and PEN-B15.
 
@@ -204,11 +279,16 @@ may begin in MS-08 through `RG-TOR-001`; only selected, measured, optional
 packages may enter later profiles. MS-10 still requires zero-cost-disabled and
 supported-profile evidence for every included package.
 
+After MS-10, `PRG-REL-001` may competitively validate and optimize these stable
+contracts. It cannot select a solver outside `RG-TOR-001`, make Torsant a 1.0
+dependency, or promote implementation maturity.
+
 ## 11. Adopted decisions
 
 [ADR-0008](../docs/architecture/decisions/ADR-0008-isobar-basalt-torsant-boundaries.md)
 owns subsystem boundaries; [ADR-0014](../docs/architecture/decisions/ADR-0014-optional-capability-packs.md)
-owns zero-cost-disabled behavior. `RG-TOR-001` requires future ADRs for each
+owns zero-cost-disabled behavior; [ADR-0026](../docs/architecture/decisions/ADR-0026-environmental-performance-contracts.md)
+owns sparse/multirate, material, media, and water-handoff convergence. `RG-TOR-001` requires future ADRs for each
 production solver portfolio.
 
 ## 12. End-to-end, failure, and performance-debug examples

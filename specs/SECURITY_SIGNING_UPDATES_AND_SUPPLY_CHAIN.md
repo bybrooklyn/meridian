@@ -1,6 +1,6 @@
 # Security, Signing, Updates, and Supply Chain
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Packages](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Collective](COLLECTIVE_ONLINE_SERVICES_SPEC.md) · [Distributed worlds](DISTRIBUTED_WORLDS_AND_MMO_SPEC.md) · [Integrity](INTEGRITY_ANTI_CHEAT_AND_MODERATION_SPEC.md) · [Agents](AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Packages](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [Collective](COLLECTIVE_ONLINE_SERVICES_SPEC.md) · [Distributed worlds](DISTRIBUTED_WORLDS_AND_MMO_SPEC.md) · [Integrity](INTEGRITY_ANTI_CHEAT_AND_MODERATION_SPEC.md) · [Agents](AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md)
 
 version 0.5 · 2026-07-15 · Normative
 
@@ -125,6 +125,8 @@ Telemetry is local crash capture by default and opt-in for sending. Collective a
 
 Wavefront microphone capture, Collective voice-room policy, and NET transport are separate permissions and trust boundaries. Joining a room cannot open a microphone. Social, messaging, analytics, moderation, and account modules do not activate merely because transport is enabled.
 
+Marquee imports untrusted media, fonts, archives, templates, copy, and adapter output into isolated bounded workers. Campaign exports contain no service credentials or publishing actions. Optional cloud AI requires explicit per-request disclosure and is limited to text/analysis suggestions; audiovisual generation or modification is forbidden. Private campaign sources, spoilers, embargoes, and approvals remain outside public engine evidence.
+
 ## 11. Supply chain
 
 Dependencies and borrowed source require source URL/revision/checksum, license, notices, local modifications, update process, security status, owner, and exit strategy. Cairn fork provenance is mandatory before copying/rewriting implementation. Alluvium donor libraries and generated outputs follow the same policy; generation cannot erase or loosen an input license.
@@ -155,6 +157,7 @@ Interrupted update preserves active version and quarantined resumable chunks. Fa
 - compromised worker/provider/relay simulations;
 - Collective offline stripping, provider outage/exit, consent withdrawal, export/deletion, block/mute/report, moderation appeal, voice permission, and private-data redaction;
 - post-1.0 WRL authority-epoch/split-brain and INT false-positive/evasion/privacy fixtures when those programs activate;
+- post-1.0 Marquee path/archive/media-bomb, rights/consent/embargo, profile-staleness, approval, cloud-disclosure, AI-boundary, and private-leakage fixtures when `PRG-PRM-001` activates;
 - safe-mode/no-network/minimal profile;
 - package/mod/native capability and trust;
 - reproducible build and SBOM/license/provenance;

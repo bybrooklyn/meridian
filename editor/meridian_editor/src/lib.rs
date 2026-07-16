@@ -6,6 +6,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use meridian_asset_tools::{
@@ -65,6 +66,7 @@ const CELL_ASSET_NAME: &str = "fixtures/ms01/world-cell-0-0-0";
 const SAVE_COMPONENT: &str = "meridian.ms01.position";
 const EVIDENCE_CAPACITY: usize = 512;
 const UI_SMOKE_MAX_PRESENT_ATTEMPTS: u8 = 3;
+static NEXT_DEFAULT_EVIDENCE_ID: AtomicU64 = AtomicU64::new(0);
 
 type AppResult<T> = Result<T, Box<dyn Error>>;
 
@@ -204,10 +206,13 @@ pub fn run(options: &MeridianOptions) -> AppResult<()> {
         return run_ui_native_smoke();
     }
     let project_root = resolve_project_root(options.project.as_deref())?;
-    let evidence_root = resolve_output_path(
-        &project_root,
-        options.evidence.as_deref(),
-        Path::new(DEFAULT_EVIDENCE),
+    let evidence_root = options.evidence.as_deref().map_or_else(
+        || match options.mode {
+            RunMode::Smoke | RunMode::HeadlessSmoke => default_evidence_root(&project_root),
+            RunMode::Interactive => project_root.join(DEFAULT_EVIDENCE),
+            RunMode::UiHeadlessSmoke | RunMode::UiSmoke => unreachable!("handled above"),
+        },
+        |path| resolve_output_path(&project_root, Some(path), Path::new(DEFAULT_EVIDENCE)),
     );
     let capture_path = options.capture.as_deref().map_or_else(
         || evidence_root.join(DEFAULT_CAPTURE),
@@ -237,6 +242,13 @@ pub fn run(options: &MeridianOptions) -> AppResult<()> {
         app,
     )?;
     Ok(())
+}
+
+fn default_evidence_root(project_root: &Path) -> PathBuf {
+    let run_id = NEXT_DEFAULT_EVIDENCE_ID.fetch_add(1, Ordering::Relaxed);
+    project_root
+        .join(DEFAULT_EVIDENCE)
+        .join(format!("run-{}-{run_id}", std::process::id()))
 }
 
 fn run_ui_headless_smoke() -> AppResult<()> {
@@ -1998,6 +2010,31 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn implicit_smoke_evidence_paths_are_unique_per_run() {
+        let project = resolve_project_root(None).expect("project root resolves");
+        let first = default_evidence_root(&project);
+        let second = default_evidence_root(&project);
+        assert_ne!(first, second);
+        assert!(first.starts_with(project.join(DEFAULT_EVIDENCE)));
+        assert!(second.starts_with(project.join(DEFAULT_EVIDENCE)));
+    }
+
+    #[test]
+    fn explicit_smoke_evidence_path_remains_caller_owned() {
+        let project = PathBuf::from("/meridian-project");
+        let relative = PathBuf::from("evidence/caller-owned");
+        let absolute = PathBuf::from("/tmp/meridian-evidence");
+        assert_eq!(
+            resolve_output_path(&project, Some(&relative), Path::new(DEFAULT_EVIDENCE)),
+            project.join(relative)
+        );
+        assert_eq!(
+            resolve_output_path(&project, Some(&absolute), Path::new(DEFAULT_EVIDENCE)),
+            absolute
+        );
     }
 
     #[test]

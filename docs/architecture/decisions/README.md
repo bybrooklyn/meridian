@@ -49,6 +49,9 @@ Use the status vocabulary from the master specification:
 | [ADR-0022](ADR-0022-native-modeler.md) | Meridian Native Modeler and Optional Blender Companion | Adopted | Planned |
 | [ADR-0023](ADR-0023-meridian-shader-language.md) | Meridian Shader Language and Shared Shader IR | Adopted | Planned; WGSL remains transitional |
 | [ADR-0024](ADR-0024-post-one-programs.md) | Post-1.0 Programs Do Not Extend the Core Milestone Gate | Adopted | Governance architecture adopted; programs deferred |
+| [ADR-0025](ADR-0025-marquee-promotional-media.md) | Adopt Marquee as a Post-1.0 Promotional Export System | Adopted | ResearchReady architecture; implementation deferred |
+| [ADR-0026](ADR-0026-environmental-performance-contracts.md) | Environmental Performance Contracts | Adopted | Contract architecture adopted; implementation deferred |
+| [ADR-0027](ADR-0027-competitive-performance-quality-program.md) | Competitive Performance and Quality Program | Adopted | ResearchReady program; implementation deferred |
 
 ## Template
 

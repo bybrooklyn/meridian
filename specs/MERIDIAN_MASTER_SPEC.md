@@ -2,7 +2,7 @@
 
 version 0.5 · 2026-07-15 · Normative suite index
 
-Meridian is a general-purpose engine for games and interactive applications. Penumbra is its Meridian-owned renderer. The Alluvium Engine is its adopted procedural world-authoring and asset-generation architecture. Project Meridian is the first proving game, maintained in the separate private `bybrooklyn/project-meridian` repository and never a dependency of this engine repository.
+Meridian is a general-purpose engine for games and interactive applications. Penumbra is its Meridian-owned renderer. The Alluvium Engine is its adopted procedural world-authoring and asset-generation architecture. Marquee is its adopted post-1.0 promotional-material authoring and local-export architecture. `PRG-REL-001` is its deferred post-1.0 program for seeking and proving workload-specific performance and quality leadership without making a permanent superiority promise. Project Meridian is the first proving game, maintained in the separate private `bybrooklyn/project-meridian` repository and never a dependency of this engine repository.
 
 ## 1. Authority order
 
@@ -48,7 +48,7 @@ Evidence status:
 
 The suite uses `REQ-<DOMAIN>-NNN`, `WP-<DOMAIN>-NNN`, `RG-<DOMAIN>-NNN`, `EV-<DOMAIN>-YYYYMMDD-NNN`, `MS-00` through `MS-10`, `PRG-<DOMAIN>-NNN`, `VAL-<DOMAIN>-NNN`, `DEP-<DOMAIN>-NNN`, `PEN-B01` through `PEN-B16`, `WVR-<DOMAIN>-NNN`, and `ADR-NNNN`.
 
-Domains are `CORE`, `GOV`, `RUN`, `RHI`, `PEN`, `UI`, `EDT`, `DAT`, `PHY`, `GAM`, `PRJ`, `AUD`, `ISO`, `BAS`, `VEG`, `PRC`, `TOR`, `DCC`, `BLD`, `VCS`, `SYN`, `XR`, `NET`, `MOD`, `AGT`, `SEC`, `REL`, `ANI`, `NAV`, `FWK`, `TWO`, `SHD`, `MDL`, `COL`, `WRL`, and `INT`.
+The 37 current domains are `CORE`, `GOV`, `RUN`, `RHI`, `PEN`, `UI`, `EDT`, `DAT`, `PHY`, `GAM`, `PRJ`, `AUD`, `ISO`, `BAS`, `VEG`, `PRC`, `TOR`, `DCC`, `BLD`, `VCS`, `SYN`, `XR`, `NET`, `MOD`, `AGT`, `SEC`, `REL`, `ANI`, `NAV`, `FWK`, `TWO`, `SHD`, `MDL`, `COL`, `WRL`, `INT`, and `PRM`.
 
 `WP-*` records deliver MS-00 through MS-10. `PRG-*` records are post-1.0 research or product programs and cannot satisfy, block, or promote an MS milestone. `VAL-*` records identify public generic and private-consumer proving projects; all begin `DefinitionOnly` and `Uncalibrated`. `DEP-*` records govern strategic external foundations and their exit evidence. Domain codes are governance identifiers, not mandatory runtime module, type, or source names.
 
@@ -63,12 +63,20 @@ Full prose remains in Markdown. Registries provide typed identity, ownership, st
 - `REQ-DAT-001`: authoritative editable data MUST be schema-defined, versioned, inspectable, recoverable, mergeable, and distinct from derived caches.
 - `REQ-AGT-001`: editor UI, CLI, Rust tools, MCP, and agents MUST share typed command/query semantics; AI has no privileged backdoor.
 - `REQ-REL-001`: performance, quality, compatibility, and competitor claims MUST be reproducible, scoped, and calibrated.
+- `REQ-REL-002`: competitive claims MUST bind exact versions, matched corpus and
+  feature parity, raw evidence, scope, expiry, renewal, and retraction.
+- `REQ-REL-003`: iso-quality performance, iso-cost quality, and
+  matched-workflow throughput MUST remain separate claim classes with
+  structural/reference/perceptual evidence as applicable.
+- `REQ-REL-004`: first-use stalls, lower-tier regressions, accessibility,
+  recovery, portability, debugging, and maintenance MUST remain visible in any
+  competitive decision.
 - `REQ-SEC-001`: security, provenance, accessibility, diagnostics, undo, and recovery are architecture concerns rather than release polish.
 - `REQ-GOV-003`: every milestone MUST end in a user-visible result and evidence; placeholders cannot complete it.
 - Meridian's user-facing creator environment is one application named **Meridian**. Editor, IDE, modeler, graph, debugger, profiler, and project workflows are modes and workspaces inside it; bounded helper processes and CLI tools remain allowed.
 - Rust is the first gameplay implementation and extension language. Optional Luau follows stable Rust contracts and has zero cost when absent.
 - Wavefront is the audio system. Collective is the optional all-in-one online-services system. Neither requires a Meridian-hosted account or cloud service for offline creation.
-- First-class 2D, the native beginner-friendly modeler, general animation, navigation infrastructure, and selected reusable framework foundations are planned pre-1.0 capabilities at their registered milestones. Advanced family completion, facial production, MMO worlds, and integrity systems are post-1.0 programs.
+- First-class 2D, the native beginner-friendly modeler, general animation, navigation infrastructure, and selected reusable framework foundations are planned pre-1.0 capabilities at their registered milestones. Advanced family completion, facial production, MMO worlds, integrity systems, Marquee promotional exports, and competitive performance/quality leadership are post-1.0 programs.
 
 ## 6. Coordinated documents
 
@@ -96,6 +104,8 @@ Full prose remains in Markdown. Registries provide typed identity, ownership, st
 | Meridian Shader Language and ShaderIr | [MERIDIAN_SHADER_LANGUAGE_SPEC.md](MERIDIAN_SHADER_LANGUAGE_SPEC.md) |
 | Native modeling and optional DCC interchange | [NATIVE_MODELING_AND_DCC_SPEC.md](NATIVE_MODELING_AND_DCC_SPEC.md) |
 | The Alluvium Engine procedural authoring | [PROCEDURAL_AUTHORING_SPEC.md](PROCEDURAL_AUTHORING_SPEC.md) |
+| Marquee promotional media and local export | [MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) |
+| Competitive performance and quality leadership | [COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md](COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md) |
 | Build and IDE | [CARGO_IDE_BUILD_AND_TEAM_WORKFLOWS.md](CARGO_IDE_BUILD_AND_TEAM_WORKFLOWS.md) |
 | VCS and synchronization | [VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md](VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md) |
 | Multiplayer and providers | [MULTIPLAYER_AND_SERVER_SPEC.md](MULTIPLAYER_AND_SERVER_SPEC.md) |
@@ -124,6 +134,12 @@ Runtime domains separate platform/event, fixed simulation, presentation, render 
 
 Penumbra is one Meridian-owned GPU-driven renderer. Clustered Forward+ is its adopted production shading path, while the current implementation remains Partial/Transitional. Shared render graph, GPU scene, material/shader IR, visibility, streaming, lighting, temporal, profiling, and resource systems are path-independent. MS-01 adds bounded asynchronous RGBA8 capture and typed surface outcomes; its passing offscreen artifact is not evidence of presentation or production image quality.
 
+Isobar fog/cloud/atmosphere and Torsant smoke/steam/flame source fields use the
+planned path-independent Penumbra `ParticipatingMediaSourceSnapshot` boundary.
+Penumbra owns renderer residency, lighting, shadow, temporal, compositing, and
+downgrade resources; source systems retain simulation authority. No such shared
+volume implementation currently exists.
+
 `meridian-rhi` remains the abstraction and wgpu the current production backend. Native Metal begins only after MS-07, stable RHI review, and `RG-RHI-001`; Vulkan and Direct3D 12 follow only after mature Metal/common-RHI evidence. wgpu remains available through the transition.
 
 The Meridian Shader Language text frontend and material graphs lower into one canonical `ShaderIr`. WGSL remains a current target language, not permanent high-level source authority. Custom project paths and passes use capability-, trust-, lifetime-, and fallback-declared Penumbra contracts; they do not receive unrestricted backend access.
@@ -151,6 +167,10 @@ live runtime authority. Projects using baked outputs only do not ship an
 Alluvium runtime evaluator. Private game recipes and creative constraints remain
 outside this repository.
 
+Post-1.0 Alluvium work may author coherent combustion/fluid facets and a
+calibrated `RuntimeCostManifest`; runtime systems retain live authority and
+observed traces remain evidence rather than authored truth.
+
 ## 9.2 General-purpose creator platform
 
 Meridian is one application with project, editor, IDE, modeler, shader/material, animation, profiler, build, version-control, and play/debug workspaces. The native modeler is core because first-party creation must not require Blender; Blender and other DCC applications remain optional expert companions. Model source uses stable mesh-element identity and explicit topology lineage so Alluvium generation, overrides, undo, materials, collision, and later animation can survive edits or report recoverable conflicts.
@@ -159,7 +179,7 @@ Gameplay begins with Rust modules, generated reflection, typed commands/events, 
 
 First-class 2D shares runtime, data, build, UI, audio, and diagnostics where semantics match, while Penumbra and Cairn provide dedicated 2D paths. Navigation owns traversability and queries; gameplay/frameworks own decisions. Wavefront owns audio capture, DSP, mixing, acoustics, and device output; Collective owns optional voice-session policy and the broader modular online-service surface.
 
-Post-1.0 `PRG-*` authorities preserve ambitious work without distorting MS-00 through MS-10. Advanced model creation, facial/performance capture, all six framework families, hosted-scale Collective work, distributed worlds, advanced integrity, native VCS storage, and optional compiler internalization require their own entry gates and evidence.
+Post-1.0 `PRG-*` authorities preserve ambitious work without distorting MS-00 through MS-10. Advanced model creation, facial/performance capture, all six framework families, hosted-scale Collective work, distributed worlds, advanced integrity, native VCS storage, optional compiler internalization, Marquee promotional exports, and competitive performance/quality leadership require their own entry gates and evidence. `PRG-REL-001` may begin only after MS-10; it cannot guarantee global superiority and permits only scoped, reproducible, expiring claims. Marquee imports manually supplied approved captures and source media, produces local files only, and permits optional AI solely for non-authoritative text and analysis suggestions.
 
 ## 10. Change and completion control
 

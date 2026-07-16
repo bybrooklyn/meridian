@@ -1644,6 +1644,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "meridian-core",
+ "meridian-tasks",
  "serde",
  "serde_json",
 ]

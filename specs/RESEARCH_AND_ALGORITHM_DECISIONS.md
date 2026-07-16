@@ -1,6 +1,6 @@
 # Research and Algorithm Decisions
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [ADRs](../docs/architecture/decisions/README.md) · [Registry](registry/research-gates.json)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [Competitive quality](COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md) · [ADRs](../docs/architecture/decisions/README.md) · [Registry](registry/research-gates.json)
 
 version 0.5 · 2026-07-15 · Normative research policy
 
@@ -46,6 +46,11 @@ remains in force until a gate passes and an ADR changes it.
 - Optional capability packs have zero disabled cost (`ADR-0014`).
 - Meridian is one user-facing application, Rust gameplay is implemented before optional Luau, Wavefront and Collective have separate authority, 2D is first-class, the native modeler is core, and text/material graphs share one ShaderIr (`ADR-0018` through `ADR-0023`).
 - `MS-00` through `MS-10` remain the 1.0 delivery authority. Advanced ambitions use post-1.0 `PRG-*` records and cannot promote or block milestones (`ADR-0024`).
+- Shared environmental media, sparse/multirate scheduling, surface-fluid
+  handoff, material facets, and cook-time cost semantics use adopted stable
+  boundaries while algorithms remain research (`ADR-0026`).
+- Competitive performance and quality leadership is a post-1.0 evidence program,
+  not a current claim or 1.0 gate (`ADR-0027`).
 
 Research may improve these decisions but cannot describe them as undecided.
 
@@ -63,6 +68,8 @@ Research may improve these decisions but cannot describe them as undecided.
 | RG-PRC-001 | after MS-01 | Alluvium evaluator representation and scalar/SIMD/GPU kernel portfolio |
 | RG-PRC-002 | after MS-05 | measured dependency replacement and deep kernel ownership |
 | RG-SEC-001 | after MS-07 | release cryptography and key-management implementation |
+| RG-REL-001 | after MS-10 | matched competitive baseline, perceptual method, claim expiry, and automation policy |
+| RG-PRM-001 | after MS-10 | Marquee local media, audio, and PDF adapter selection |
 
 Unregistered experiments cannot be cited as roadmap evidence.
 
@@ -188,6 +195,15 @@ where meaningful, visual/reference error, controls, CPU/GPU/memory, streaming,
 determinism, persistence/network fit, accessibility, fallback, and disabled
 cost. PEN-B07 remains definition-only until this work activates.
 
+Isobar and Torsant candidates additionally preserve the adopted
+`EnvironmentalTilePolicy`, `SurfaceFluidHandoff`, and
+`ParticipatingMediaSourceSnapshot` seams. Every candidate reports simulation
+and presentation clocks, hierarchy/residency, influence horizon, work and memory
+quotas, update debt, first-use activation, downgrade, and CPU/simple fallback.
+Two-way coupling is a separate candidate with explicit stability, latency,
+persistence, and recovery evidence; it is never assumed from a one-way snapshot
+prototype.
+
 Hybrid acoustics, deformables, snow/granular, and specialized cross-system
 solver coupling require separately registered gates before implementation.
 Alluvium buildings, ecosystems, terrain, material, and weathering work follows
@@ -228,6 +244,32 @@ SDK availability or popularity is not an adoption decision.
 The strategic dependency authority is [`registry/dependency-strategy.json`](registry/dependency-strategy.json). Categories are `InternalizeEarly`, `InternalizeEventually`, and `WrapIndefinitelyUnlessNecessary`. None is a promise to rewrite. Every replacement preregisters product value, representative workloads, compatibility/migration, license/security, debugging, staffing, and maintenance. Existing permissive foundations remain when they are the best evidence-backed choice.
 
 Distributed-world and advanced-integrity research is confined to `PRG-WRL-001` and `PRG-INT-001` after 1.0 and their entry gates. Distributed scale and anti-cheat claims require adversarial/failure/cost/false-positive evidence; neither is inferred from NET, Collective, SEC, or MS-10 completion.
+
+`RG-PRM-001` opens after MS-10 and compares mature local image, video, audio, and PDF adapters behind stable Marquee contracts. Selection requires cross-platform, deterministic, licensing/patent, sandbox, performance/memory, accessibility, maintenance, and escape-path evidence. It authorizes neither custom Meridian codecs nor service publishing and cannot begin implementation without a separate post-1.0 planning review.
+
+`RG-REL-001` opens after MS-10 and the entry gates in
+[the competitive specification](COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md).
+It selects the initial comparator set, study templates, structural/reference/
+blinded perceptual method, claim-expiry policy, and safe automation boundary
+behind `CompetitiveBaselineRecord` and `CompetitiveClaim`. It cannot select a
+Penumbra, Isobar, Torsant, Alluvium, RHI, or platform algorithm; owning research
+gates retain those decisions.
+
+Each study preregisters exact versions, access/license basis, matched public or
+appropriately licensed corpus, feature parity, hardware, internal/output
+resolution, upscaling/frame-generation/dynamic-resolution state, warmup/cache/
+first use, raw distributions, temporal quality, lower tiers, accessibility,
+recovery, security, maintenance, material threshold, expiry, and stop rule.
+Unfair or impossible parity is `Inconclusive`, not adjusted until Meridian wins.
+
+Official capability anchors reviewed 2026-07-16 include Epic's
+[Nanite](https://dev.epicgames.com/documentation/en-US/unreal-engine/nanite-virtualized-geometry-in-unreal-engine)
+and [Lumen performance](https://dev.epicgames.com/documentation/en-US/unreal-engine/lumen-performance-guide-for-unreal-engine)
+documentation, Unity's [Spatial-Temporal Post-processing](https://docs.unity3d.com/6000.0/Documentation/Manual/urp/stp/stp-upscaler.html)
+and [GPU occlusion culling](https://docs.unity3d.com/6000.0/Documentation/Manual/urp/gpu-culling.html)
+documentation, and Godot's [pipeline compilation](https://docs.godotengine.org/en/stable/tutorials/performance/pipeline_compilations.html)
+documentation. They establish moving capability surfaces only; they do not prove
+comparative quality, performance, support, licensing, or a Meridian decision.
 
 `RG-SEC-001` begins from a threat model and compares implementation libraries,
 algorithms, thresholds, expiry, key storage, canonicalization, compromise,

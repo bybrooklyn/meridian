@@ -6,12 +6,12 @@ use std::env;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use walkdir::WalkDir;
+use walkdir::{DirEntry, WalkDir};
 
 const DOMAINS: &[&str] = &[
     "CORE", "GOV", "RUN", "RHI", "PEN", "UI", "EDT", "DAT", "PHY", "GAM", "PRJ", "AUD", "ISO",
     "BAS", "VEG", "PRC", "TOR", "DCC", "BLD", "VCS", "SYN", "XR", "NET", "MOD", "AGT", "SEC",
-    "REL", "ANI", "NAV", "FWK", "TWO", "SHD", "MDL", "COL", "WRL", "INT",
+    "REL", "ANI", "NAV", "FWK", "TWO", "SHD", "MDL", "COL", "WRL", "INT", "PRM",
 ];
 const VALID_STATUSES: &[&str] = &[
     "Active",
@@ -217,6 +217,7 @@ fn run(config: &Config) -> Result<Vec<Issue>, String> {
             validate_delivery_plan(&context, &mut issues);
             validate_work_package_graph(&context, &mut issues);
             validate_program_boundaries(&context, &mut issues);
+            validate_marquee_policy(&context, &mut issues);
             validate_validation_projects(&context, &mut issues);
             validate_dependency_strategy(&context, &mut issues);
             validate_adrs(&config.root, &context, &mut issues);
@@ -235,6 +236,7 @@ fn run(config: &Config) -> Result<Vec<Issue>, String> {
             validate_delivery_plan(&context, &mut issues);
             validate_work_package_graph(&context, &mut issues);
             validate_program_boundaries(&context, &mut issues);
+            validate_marquee_policy(&context, &mut issues);
             validate_validation_projects(&context, &mut issues);
             validate_dependency_strategy(&context, &mut issues);
             validate_cross_references(&context, &mut issues);
@@ -248,17 +250,17 @@ fn run(config: &Config) -> Result<Vec<Issue>, String> {
 
 fn load_context(root: &Path) -> Result<Context, String> {
     let mut context = Context::default();
-    for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_entry(|entry| should_walk_context_entry(root, entry))
+        .filter_map(Result::ok)
+    {
         if !entry.file_type().is_file() {
             continue;
         }
         let path = entry.into_path();
         let relative = relative(root, &path);
-        if is_under(&relative, "game")
-            || is_under(&relative, "target")
-            || is_under(&relative, ".git")
-            || is_under(&relative, "editor/meridian_spec_tools/tests/fixtures")
-        {
+        if is_excluded_context_path(&relative) {
             continue;
         }
         match path.extension().and_then(|extension| extension.to_str()) {
@@ -279,6 +281,18 @@ fn load_context(root: &Path) -> Result<Context, String> {
         }
     }
     Ok(context)
+}
+
+fn should_walk_context_entry(root: &Path, entry: &DirEntry) -> bool {
+    entry.depth() == 0 || !is_excluded_context_path(&relative(root, entry.path()))
+}
+
+fn is_excluded_context_path(path: &Path) -> bool {
+    is_under(path, "game")
+        || is_under(path, "target")
+        || is_under(path, ".git")
+        || is_under(path, "website")
+        || is_under(path, "editor/meridian_spec_tools/tests/fixtures")
 }
 
 fn read_json(path: &Path) -> Result<JsonDoc, String> {
@@ -994,6 +1008,190 @@ fn validate_program_boundaries(context: &Context, issues: &mut Vec<Issue>) {
     }
 }
 
+fn validate_marquee_policy(context: &Context, issues: &mut Vec<Issue>) {
+    if !has_marquee_records(context) {
+        return;
+    }
+
+    reject_premature_marquee_packages(context, issues);
+
+    let Some(registry) = registry_named(context, "marquee-policy.json") else {
+        push(
+            issues,
+            "missing-marquee-policy",
+            "workloads",
+            Path::new("specs/registry/marquee-policy.json"),
+            "registered PRM authority requires the Marquee policy registry",
+        );
+        return;
+    };
+    let Some(policy) = records_array(&registry.value).next() else {
+        push(
+            issues,
+            "missing-marquee-policy",
+            "workloads",
+            &registry.path,
+            "Marquee policy registry has no record",
+        );
+        return;
+    };
+
+    validate_marquee_operational_boundary(policy, &registry.path, issues);
+    validate_marquee_source_classes(policy, &registry.path, issues);
+    validate_marquee_approval_invalidation(policy, &registry.path, issues);
+    validate_marquee_ai_boundary(policy, &registry.path, issues);
+}
+
+fn has_marquee_records(context: &Context) -> bool {
+    context.records.iter().any(|record| {
+        record.id == "ADR-0025" || record.id == "PRG-PRM-001" || record.id.starts_with("REQ-PRM-")
+    })
+}
+
+fn validate_marquee_operational_boundary(policy: &Value, path: &Path, issues: &mut Vec<Issue>) {
+    if policy.get("capture_policy").and_then(Value::as_str) != Some("ManualImportOnly") {
+        push(
+            issues,
+            "invalid-marquee-capture",
+            "workloads",
+            path,
+            "Marquee must import manually supplied captures and cannot navigate the game",
+        );
+    }
+    if policy.get("publishing_policy").and_then(Value::as_str) != Some("ExportOnly")
+        || policy.get("website_generation").and_then(Value::as_bool) != Some(false)
+        || policy.get("service_integrations").and_then(Value::as_bool) != Some(false)
+    {
+        push(
+            issues,
+            "invalid-marquee-publishing",
+            "workloads",
+            path,
+            "Marquee is export-only and cannot publish, integrate service credentials, or generate websites",
+        );
+    }
+    if policy.get("release_ready_approval").and_then(Value::as_str) != Some("ExplicitHuman") {
+        push(
+            issues,
+            "invalid-marquee-approval",
+            "workloads",
+            path,
+            "ReleaseReady export requires explicit human approval",
+        );
+    }
+}
+
+fn validate_marquee_source_classes(policy: &Value, path: &Path, issues: &mut Vec<Issue>) {
+    let required_sources: BTreeSet<_> = [
+        "GameplayCapture",
+        "StagedEngineRender",
+        "Composite",
+        "ExternalArt",
+        "LicensedStock",
+        "LogoBrandAsset",
+        "Audio",
+        "AuthoredCopy",
+    ]
+    .into_iter()
+    .collect();
+    let actual_sources: BTreeSet<_> = policy
+        .get("source_classes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if actual_sources != required_sources {
+        push(
+            issues,
+            "incomplete-marquee-source-classes",
+            "workloads",
+            path,
+            "Marquee must classify every supported manual source class",
+        );
+    }
+}
+
+fn validate_marquee_approval_invalidation(policy: &Value, path: &Path, issues: &mut Vec<Issue>) {
+    let required_invalidators: BTreeSet<_> = [
+        "Source",
+        "SourceHash",
+        "Claim",
+        "BuildId",
+        "Template",
+        "Locale",
+        "ExportProfile",
+        "AiSuggestion",
+        "ToolVersion",
+        "Approval",
+        "Font",
+        "TransformRecipe",
+    ]
+    .into_iter()
+    .collect();
+    let actual_invalidators: BTreeSet<_> = policy
+        .get("approval_invalidation")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if actual_invalidators != required_invalidators {
+        push(
+            issues,
+            "incomplete-marquee-approval-invalidation",
+            "workloads",
+            path,
+            "Marquee must invalidate ReleaseReady approvals for every normative input",
+        );
+    }
+}
+
+fn validate_marquee_ai_boundary(policy: &Value, path: &Path, issues: &mut Vec<Issue>) {
+    let ai_boundary_is_valid = policy.get("ai").is_some_and(|ai| {
+        ai.get("optional").and_then(Value::as_bool) == Some(true)
+            && ai.get("cloud_opt_in").and_then(Value::as_bool) == Some(true)
+            && ai.get("exact_data_disclosure").and_then(Value::as_bool) == Some(true)
+            && ai.get("may_generate_text").and_then(Value::as_bool) == Some(true)
+            && ai.get("may_analyze_media").and_then(Value::as_bool) == Some(true)
+            && ai.get("may_generate_image").and_then(Value::as_bool) == Some(false)
+            && ai.get("may_generate_video").and_then(Value::as_bool) == Some(false)
+            && ai.get("may_generate_voice").and_then(Value::as_bool) == Some(false)
+            && ai.get("may_generate_music").and_then(Value::as_bool) == Some(false)
+            && ai.get("may_generate_sound").and_then(Value::as_bool) == Some(false)
+            && ai.get("may_modify_media").and_then(Value::as_bool) == Some(false)
+            && ai.get("suggestions_authoritative").and_then(Value::as_bool) == Some(false)
+            && ai.get("human_review_required").and_then(Value::as_bool) == Some(true)
+            && ai.get("zero_cost_when_disabled").and_then(Value::as_bool) == Some(true)
+    });
+    if !ai_boundary_is_valid {
+        push(
+            issues,
+            "invalid-marquee-ai-boundary",
+            "workloads",
+            path,
+            "Marquee AI is optional text/analysis suggestion only and cannot generate or modify media",
+        );
+    }
+}
+
+fn reject_premature_marquee_packages(context: &Context, issues: &mut Vec<Issue>) {
+    for record in &context.records {
+        if record.id.starts_with("WP-PRM-") {
+            push(
+                issues,
+                "premature-marquee-package",
+                "workloads",
+                &record.path,
+                format!(
+                    "{} cannot exist before a post-1.0 planning review",
+                    record.id
+                ),
+            );
+        }
+    }
+}
+
 fn validate_validation_projects(context: &Context, issues: &mut Vec<Issue>) {
     let Some(registry) = registry_named(context, "validation-projects.json") else {
         return;
@@ -1006,6 +1204,7 @@ fn validate_validation_projects(context: &Context, issues: &mut Vec<Issue>) {
         "VAL-UI-001",
         "VAL-RUN-001",
         "VAL-COL-001",
+        "VAL-PRM-001",
     ]
     .into_iter()
     .collect();
@@ -1233,6 +1432,33 @@ fn list_unmapped(context: &Context, issues: &mut Vec<Issue>) {
                 "v0.5 general-purpose migration ledger is missing",
             ),
         }
+    }
+    validate_marquee_migration_ledger(context, issues);
+}
+
+fn validate_marquee_migration_ledger(context: &Context, issues: &mut Vec<Issue>) {
+    if !has_marquee_records(context) {
+        return;
+    }
+    let amendment = context.markdown.iter().find(|doc| {
+        doc.path.file_name().and_then(|value| value.to_str()) == Some("V0_5_MARQUEE_AMENDMENT.md")
+    });
+    match amendment {
+        Some(doc) if doc.text.contains("Total unmapped rows: 0.") => {}
+        Some(doc) => push(
+            issues,
+            "incomplete-migration-ledger",
+            "list-unmapped",
+            &doc.path,
+            "v0.5 Marquee amendment ledger does not report zero total unmapped rows",
+        ),
+        None => push(
+            issues,
+            "missing-migration-ledger",
+            "list-unmapped",
+            Path::new("docs/migrations/V0_5_MARQUEE_AMENDMENT.md"),
+            "v0.5 Marquee amendment ledger is missing",
+        ),
     }
 }
 

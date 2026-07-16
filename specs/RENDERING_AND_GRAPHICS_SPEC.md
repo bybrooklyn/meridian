@@ -1,6 +1,6 @@
 # Penumbra Rendering Architecture Specification
 
-[Master index](MERIDIAN_MASTER_SPEC.md) · [Shader language and IR](MERIDIAN_SHADER_LANGUAGE_SPEC.md) · [First-class 2D](TWO_DIMENSIONAL_ENGINE_SPEC.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Penumbra risk register](PENUMBRA_RISK_REGISTER.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md)
+[Master index](MERIDIAN_MASTER_SPEC.md) · [Shader language and IR](MERIDIAN_SHADER_LANGUAGE_SPEC.md) · [First-class 2D](TWO_DIMENSIONAL_ENGINE_SPEC.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Penumbra risk register](PENUMBRA_RISK_REGISTER.md) · [Competitive quality](COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md) · [Validation](TESTING_BENCHMARKS_AND_VALIDATION.md)
 
 version 0.5 · 2026-07-15 · Canonical Penumbra architecture
 
@@ -9,6 +9,8 @@ Documentation maturity: `ResearchReady`. Architecture status: `Adopted` by
 [ADR-0005](../docs/architecture/decisions/ADR-0005-shared-renderer-systems.md),
 [ADR-0006](../docs/architecture/decisions/ADR-0006-meridian-rhi-wgpu-native-backend.md),
 and [ADR-0007](../docs/architecture/decisions/ADR-0007-material-shader-ir.md).
+[ADR-0026](../docs/architecture/decisions/ADR-0026-environmental-performance-contracts.md)
+also adopts the shared environmental participating-media boundary.
 Implementation maturity: `Partial` / `Transitional`.
 
 This document owns Meridian rendering contracts, Penumbra production-renderer
@@ -61,6 +63,7 @@ Stable requirement IDs:
 | REQ-PEN-003 | Visual quality claims require visible captures; occluded structural smoke proves construction only. | `ImplementedFoundation` capture contract; no production visual-quality claim |
 | REQ-PEN-004 | Diffuse irradiance IBL and specular IBL are separate work packages with separate evidence. | Diffuse implemented foundation; specular planned |
 | REQ-PEN-005 | Renderer-adjacent named systems use the uniform subsystem template before adding runtime work, resources, or feature-pack behavior. | Adopted spec process |
+| REQ-PEN-006 | Isobar and Torsant visual media use one path-independent Penumbra source, residency, lighting, temporal, compositing, and downgrade contract. | Adopted planned contract under `PRG-REL-001`; no implementation evidence |
 
 Adopted decisions are `ADR-0004` through `ADR-0007`. A successor promotion,
 Forward+ disposition after promotion, and each native-backend production entry
@@ -327,6 +330,47 @@ generational runtime handles:
 Simulation publishes immutable snapshots. The render thread never mutates ECS,
 physics, weather, terrain, thermal, world source, or gameplay state.
 
+### 6.5.1 Shared environmental participating media
+
+Planned contract; no volume allocator, renderer path, or producer integration is
+implemented:
+
+```text
+ParticipatingMediaSourceSnapshot {
+  source_id: PersistentId,
+  owner: Isobar | Torsant | OtherRegisteredProducer,
+  epoch: u64,
+  bounds: WorldBounds,
+  representation: Analytic | TiledField | SparseVolume | DenseLocal,
+  extinction: Optional<VolumeFieldRef<Scalar>>,
+  scattering: Optional<VolumeFieldRef<Vec3>>,
+  emission: Optional<VolumeFieldRef<Vec3>>,
+  phase: PhaseFunctionSummary,
+  velocity: Optional<VolumeFieldRef<Vec3>>,
+  temporal_validity: TemporalValidity,
+  quality_priority: QualityPriority,
+  budget_class: RuntimeBudgetClass,
+}
+```
+
+Isobar owns the meaning and evolution of fog, cloud, and atmosphere source
+fields. Torsant owns the meaning and evolution of smoke, steam, flame-emission,
+and heat-haze source fields. Penumbra owns renderer-side representation,
+residency, lighting injection, shadowing, empty-space skipping, temporal history,
+reconstruction, compositing, and fallback. It may fuse compatible sources to
+avoid duplicate volume hierarchies or raymarches, but fusion never merges or
+advances simulation authority.
+
+Every source declares bounds, epoch, validity, priority, and budget class.
+Absent optional sources are supported. Incompatible representations remain
+separate passes with an explicit diagnostic; they cannot silently allocate a
+second persistent hierarchy or bypass the render graph. Temporal history is
+invalidated from source epochs and transforms, not renderer guesses.
+
+`RuntimeCostManifest` may predict source pages, pipelines, history, lighting,
+and compositing demand. Penumbra reconciles that prediction with observed
+runtime evidence and never treats a prediction as resource or quality authority.
+
 ### 6.6 Material facets
 
 Visual material is one facet of a conceptual material asset. The renderer owns
@@ -532,6 +576,7 @@ Persistent render data appears in:
 - shader manifests and shader cache keys;
 - package chunk manifests;
 - benchmark captures;
+- manually requested captures later imported by [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md); Marquee never drives the game or renderer to discover shots;
 - editor viewport layouts and debug presets.
 
 Shader cache keys must include source or graph hash, compiler version, target
@@ -556,6 +601,8 @@ Beginner workflow:
 Expert panels expose graph passes, timing, memory, resource residency, warmup
 state, shader reflection, light clusters, shadow cascades, IBL state, named
 system field overlays, captures, and backend capability rows.
+
+Penumbra owns rendering and capture completion. Marquee is a post-1.0 consumer of manually requested, approved captures and cannot launch, navigate, stage, or control the running game through renderer APIs.
 
 Planned command names are semantic surfaces, not current runnable command
 evidence:
@@ -597,7 +644,7 @@ Security:
 
 - Shaders from packages, mods, or plugins are untrusted input until validated.
 - Native backend escapes require elevated capability.
-- GPU capture files may contain asset data and must follow export permissions.
+- GPU capture files may contain asset data and must follow export permissions. Import into Marquee requires DAT provenance, project approval, spoiler/embargo classification, and a content hash; a staged render remains labeled as staged.
 - Runtime package data must not compile arbitrary shaders unless the package is
   trusted and policy permits.
 - Named-system imports are untrusted and must validate length, count, depth,
@@ -676,6 +723,12 @@ Required tests:
 - diffuse IBL intensity and cube upload validation;
 - snapshot duplicate-ID and stale-frame rejection;
 - named-system snapshot epoch/stale-data rejection;
+- shared participating-media source validation, history invalidation, compatible
+  fusion, incompatible-source diagnostics, budget downgrade, and producer
+  absence tests;
+- proof that enabled Isobar/Torsant sources do not create duplicate undeclared
+  persistent volume hierarchies or runtime pipeline creation during a recorded
+  prewarmed traversal;
 - upload planner capacity and rollback tests;
 - device/surface lost recovery tests where automation permits;
 - headless no-render feature exclusion tests.
@@ -711,6 +764,7 @@ Acceptance evidence for Penumbra baseline:
 | MS-08 | Selected `WP-SHD-001` and `WP-TWO-001` foundations integrate only through Penumbra/RHI contracts. |
 | MS-09 | Native Vulkan/Direct3D 12 only after mature Metal/common-RHI gates; `WP-SHD-002` and selected XR work may activate; XR may activate PEN-B16. |
 | MS-10 | Declared renderer profiles pass release qualification and compatibility. |
+| Post-1.0 | `PRG-REL-001` may optimize and competitively validate shared environmental media only after MS-10 and its independent entry gates; it cannot retroactively satisfy a milestone. |
 
 ## 19. Examples
 

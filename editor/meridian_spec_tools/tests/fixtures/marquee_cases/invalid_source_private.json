@@ -1,0 +1,14 @@
+{
+  "campaign": "private-leak",
+  "capture_policy": "ManualImportOnly",
+  "game_navigation": false,
+  "publishing_policy": "ExportOnly",
+  "service_credentials": false,
+  "private_project_content": true,
+  "sources": [{"id":"bad-source","classification":"Unclassified","hash":"raw","rights":"","consent":"","spoiler":"","embargo":"","locales":[],"provenance":""}],
+  "claims": [],
+  "profiles": [],
+  "approval_invalidation": [],
+  "ai": {"enabled":false,"cloud_opt_in":false,"exact_data_disclosure":true,"generated_image":false,"generated_video":false,"generated_voice":false,"generated_music":false,"generated_sound":false,"modified_media":false,"suggestions_authoritative":false,"human_review_required":true},
+  "artifacts": []
+}
