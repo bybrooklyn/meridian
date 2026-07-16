@@ -425,8 +425,11 @@ unreachable nodes; its deterministic local scheduler starts a Cargo metadata
 node before the dependent Cargo-check or Cargo-build node and blocks dependents after terminal
 failure. Concurrent/resource-aware scheduling, durable cache/provenance,
 non-Cargo nodes, and cross-checkout metadata normalization remain unimplemented.
-The build adapter reports Cargo artifact messages but does not yet hash, validate,
-cache, or atomically publish an artifact pointer.
+`ArtifactStore` accepts a host-selected bounded regular source file, copies and
+hashes it into a BLAKE3-addressed object, verifies any pre-existing object, and
+atomically creates a non-overwriting BuildId/node reference with declared schema
+and tool identity. The build adapter reports Cargo artifact messages but does not yet
+automatically select, validate, or publish them; cache policy remains absent.
 
 Explicit non-goals: a lossless TOML editor, rust-analyzer session, remote
 worker, signing/deployment, Alluvium adapter, editor panels, package graph
@@ -437,8 +440,9 @@ sequence rejection; cancellation before process spawn; malformed Cargo JSON;
 compiler diagnostic/artifact mapping; typed full Cargo metadata parsing;
 secret-like JSON and process-stderr diagnostic redaction; durable snapshot publication/reopen and
 `WorkerLost` recovery; graph order, invalid-edge, cycle, unreachable-node, and
-blocked-dependent fixtures; and a structured local Cargo smoke and helper-CLI
-check/build that never invoke a shell.
+blocked-dependent fixtures; verified artifact object/reference publication,
+corrupt-object rejection, and conflicting-reference rejection; and a structured
+local Cargo smoke and helper-CLI check/build/test-compilation that never invoke a shell.
 
 Benchmarks and hardware: no performance claim in the first slice; local Cargo
 toolchain only. Remote, sandbox, and named-hardware profiles are explicitly not
@@ -450,11 +454,15 @@ tests pass. The durable local store reopens interrupted work as `WorkerLost`,
 persists that recovery before exposing it, and rejects late success. The adapter
 drains stdout and bounded stderr concurrently so failed local Cargo runs return
 a typed redacted process diagnostic. Process supervision, child-process-group
-termination, durable artifact provenance, and
-atomic artifact publication remain required before package completion. The local
+termination, automatic Cargo-artifact qualification, and durable build-wide
+provenance remain required before package completion. The local
 graph proof is only Cargo metadata -> check/build; it makes no parallelism, resource,
-cache, or non-Cargo adapter claim. Cargo build output is observable but not yet
-an atomically published Meridian artifact.
+cache, or non-Cargo adapter claim. A host-selected `ArtifactStore` can copy one
+bounded regular file into a BLAKE3-addressed object, verify a pre-existing
+object, and atomically create a BuildId/node reference with declared schema and
+tool identity. The store verifies copied bytes but does not prove that a Cargo
+invocation produced its source path. Cargo build output is observable but is not yet automatically
+selected, validated, or published into that store.
 
 Accessibility: the service emits named stages, actionable typed diagnostics,
 and cancellation/retry states for later Meridian UI consumption; no visible
@@ -464,7 +472,10 @@ Security/provenance: command arguments are structured arrays; environment is
 allowlisted; Windows-required `USERPROFILE` and `SYSTEMROOT` are explicit local
 identity inputs rather than ambient fallback; Cargo output is untrusted input;
 paths and diagnostic text are bounded and redacted; no secrets, credentials,
-private-game paths, or shell concatenation are permitted.
+private-game paths, or shell concatenation are permitted. Artifact roots,
+objects, references, and source files reject direct symlinks; existing objects
+must hash to their content-addressed name and references never overwrite a
+different BuildId/node result.
 
 Migration/compatibility: no existing public or persistent format changes. The
 new versioned protocol begins at v1 and is additive.
@@ -486,9 +497,9 @@ Known limits and unsupported rows: only local Cargo JSON metadata, check, build,
 and test-compilation flows are in scope initially; test compilation uses Cargo
 `--no-run`, so test-harness execution remains unsupported by this JSON adapter.
 The metadata hash is a local Cargo payload hash rather
-than a cross-checkout-normalized reproducibility identity. The portable state
-store is project-host-selected local recovery, not a remote, signing, artifact,
-or provider store. The current graph scheduler is single-host, dependency-only,
+than a cross-checkout-normalized reproducibility identity. The local state and
+artifact stores are host-selected foundations, not remote, signing, provider, or
+cache-policy stores. The current graph scheduler is single-host, dependency-only,
 and restricted to the Cargo metadata -> check/build proof. Concurrent/resource-aware
 build-DAG scheduling, long-lived worker restart, lossless manifest editing,
 rust-analyzer, remote execution, signing, and deployment remain planned.

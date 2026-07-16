@@ -1173,6 +1173,161 @@ impl BuildServiceStore {
     }
 }
 
+/// Project-hosted content-addressed artifact publication store.
+///
+/// This bounded foundation publishes a fully copied, hashed object before an
+/// non-overwriting BuildId/node reference. It intentionally does not provide cache
+/// eviction, remote transfer, signing, or automatic Cargo-artifact selection.
+pub struct ArtifactStore {
+    root: PathBuf,
+}
+
+/// Non-overwriting reference to one atomically published artifact object.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct PublishedArtifact {
+    /// Caller-supplied build input identity associated with this publication.
+    pub build_id: BuildId,
+    /// Graph node that produced the artifact.
+    pub node_id: BuildNodeId,
+    /// Declared schema or format identity for the artifact bytes.
+    pub schema: String,
+    /// Caller-declared producer tool identity/version from the graph node.
+    pub tool_id_version: String,
+    /// BLAKE3 hash of the exact published object bytes.
+    pub content_hash: String,
+    /// Published object size in bytes.
+    pub byte_length: u64,
+}
+
+impl ArtifactStore {
+    /// Creates a store rooted at a host-selected project-owned directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the root path is empty.
+    pub fn new(root: impl Into<PathBuf>) -> Result<Self, BuildError> {
+        let root = root.into();
+        if root.as_os_str().is_empty() {
+            return Err(BuildError::InvalidArtifactRoot);
+        }
+        Ok(Self { root })
+    }
+
+    /// Returns the host-selected root directory.
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Copies one regular source file into a verified object and atomically
+    /// publishes its BuildId/node reference.
+    ///
+    /// The source must fit the first-slice bounded file limit. Existing object
+    /// and reference paths are validated and never silently overwritten. This
+    /// API records declared BuildId/schema/tool associations; it does not prove
+    /// that a particular Cargo invocation produced the source file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for untrusted paths, source/read/write failures,
+    /// oversized inputs, corrupted existing objects, or conflicting references.
+    pub fn publish_file(
+        &self,
+        build_id: &BuildId,
+        node: &BuildNode,
+        schema: impl Into<String>,
+        source: impl AsRef<Path>,
+    ) -> Result<PublishedArtifact, BuildError> {
+        validate_build_id(build_id)?;
+        validate_build_node(node)?;
+        let schema = schema.into();
+        validate_text("artifact schema", &schema)?;
+        let objects_directory = self.objects_directory()?;
+        let reference_directory = self.reference_directory(build_id)?;
+        let (temporary_object, content_hash, byte_length) =
+            copy_artifact_to_temporary(source.as_ref(), &objects_directory)?;
+        let object_path = objects_directory.join(&content_hash);
+        let object_result =
+            publish_immutable_artifact(&temporary_object, &object_path, &content_hash, byte_length);
+        if let Err(error) = object_result {
+            let _ = fs::remove_file(&temporary_object);
+            return Err(error);
+        }
+        let published = PublishedArtifact {
+            build_id: build_id.clone(),
+            node_id: node.id.clone(),
+            schema,
+            tool_id_version: node.tool_id_version.clone(),
+            content_hash,
+            byte_length,
+        };
+        Self::publish_reference(&reference_directory, &published)?;
+        Ok(published)
+    }
+
+    /// Returns the local object path for a validated content hash.
+    ///
+    /// This method does not claim that the object exists or remains valid; a
+    /// caller must validate it before use across trust boundaries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an invalid object hash or an invalid store root.
+    pub fn object_path(&self, content_hash: &str) -> Result<PathBuf, BuildError> {
+        validate_artifact_hash(content_hash)?;
+        Ok(self.objects_directory()?.join(content_hash))
+    }
+
+    fn objects_directory(&self) -> Result<PathBuf, BuildError> {
+        let directory = self.root.join("objects");
+        ensure_artifact_directory(&self.root)?;
+        ensure_artifact_directory(&directory)?;
+        Ok(directory)
+    }
+
+    fn reference_directory(&self, build_id: &BuildId) -> Result<PathBuf, BuildError> {
+        let root = self.root.join("references");
+        let directory = root.join(build_id.as_str());
+        ensure_artifact_directory(&self.root)?;
+        ensure_artifact_directory(&root)?;
+        ensure_artifact_directory(&directory)?;
+        Ok(directory)
+    }
+
+    fn publish_reference(
+        directory: &Path,
+        published: &PublishedArtifact,
+    ) -> Result<(), BuildError> {
+        let path = directory.join(reference_file_name(&published.node_id));
+        match read_published_reference(&path) {
+            Ok(existing) => {
+                if existing == *published {
+                    return Ok(());
+                }
+                return Err(BuildError::ArtifactReferenceConflict);
+            }
+            Err(BuildError::ArtifactReferenceMissing) => {}
+            Err(error) => return Err(error),
+        }
+        let encoded = serde_json::to_vec(published)
+            .map_err(|error| BuildError::ArtifactSerialization(error.to_string()))?;
+        if encoded.len() > MAX_BUILD_SNAPSHOT_BYTES {
+            return Err(BuildError::ArtifactReferenceTooLarge(encoded.len()));
+        }
+        let temporary = write_artifact_temporary(directory, "reference", &encoded)?;
+        let result = publish_immutable_file(&temporary, &path);
+        if let Err(error) = result {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
+        match read_published_reference(&path) {
+            Ok(existing) if existing == *published => Ok(()),
+            Ok(_) => Err(BuildError::ArtifactReferenceConflict),
+            Err(error) => Err(error),
+        }
+    }
+}
+
 /// Automatically persistent local build service for a project-owned state file.
 ///
 /// Every accepted mutation is persisted before it is reported to the caller.
@@ -1483,6 +1638,259 @@ fn append_execution_order(
         }
     }
     order.push(node_id.clone());
+}
+
+fn ensure_artifact_directory(path: &Path) -> Result<(), BuildError> {
+    fs::create_dir_all(path).map_err(|error| BuildError::ArtifactIo {
+        operation: "create artifact directory",
+        message: error.to_string(),
+    })?;
+    let metadata = fs::symlink_metadata(path).map_err(|error| BuildError::ArtifactIo {
+        operation: "inspect artifact directory",
+        message: error.to_string(),
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(BuildError::ArtifactPathSymlink);
+    }
+    if !metadata.is_dir() {
+        return Err(BuildError::ArtifactPathNotDirectory);
+    }
+    Ok(())
+}
+
+fn copy_artifact_to_temporary(
+    source_path: &Path,
+    directory: &Path,
+) -> Result<(PathBuf, String, u64), BuildError> {
+    validate_regular_artifact_file(source_path)?;
+    let mut source = File::open(source_path).map_err(|error| BuildError::ArtifactIo {
+        operation: "open artifact source",
+        message: error.to_string(),
+    })?;
+    let metadata = source.metadata().map_err(|error| BuildError::ArtifactIo {
+        operation: "inspect opened artifact source",
+        message: error.to_string(),
+    })?;
+    if !metadata.is_file() {
+        return Err(BuildError::ArtifactSourceNotRegular);
+    }
+    let (temporary_path, mut temporary) = create_artifact_temporary(directory, "object")?;
+    let mut hasher = blake3::Hasher::new();
+    let mut byte_length = 0_usize;
+    let mut buffer = [0_u8; 8_192];
+    let copy_result = loop {
+        let read = match source.read(&mut buffer) {
+            Ok(read) => read,
+            Err(error) => break Err(error),
+        };
+        if read == 0 {
+            break Ok(());
+        }
+        byte_length = byte_length.saturating_add(read);
+        if byte_length > MAX_CARGO_INPUT_BYTES {
+            break Err(std::io::Error::other(
+                "artifact input exceeds bounded limit",
+            ));
+        }
+        if let Err(error) = temporary.write_all(&buffer[..read]) {
+            break Err(error);
+        }
+        hasher.update(&buffer[..read]);
+    };
+    if let Err(error) = copy_result.and_then(|()| temporary.sync_all()) {
+        drop(temporary);
+        let _ = fs::remove_file(&temporary_path);
+        if byte_length > MAX_CARGO_INPUT_BYTES {
+            return Err(BuildError::ArtifactTooLarge(byte_length));
+        }
+        return Err(BuildError::ArtifactIo {
+            operation: "copy artifact object",
+            message: error.to_string(),
+        });
+    }
+    drop(temporary);
+    Ok((
+        temporary_path,
+        hasher.finalize().to_hex().to_string(),
+        byte_length as u64,
+    ))
+}
+
+fn publish_immutable_artifact(
+    temporary_path: &Path,
+    object_path: &Path,
+    content_hash: &str,
+    byte_length: u64,
+) -> Result<(), BuildError> {
+    match publish_immutable_file(temporary_path, object_path) {
+        Ok(()) => return Ok(()),
+        Err(BuildError::ArtifactReferenceConflict) => {}
+        Err(error) => return Err(error),
+    }
+    let (existing_hash, existing_length) = hash_artifact_file(object_path)?;
+    if existing_hash == content_hash && existing_length == byte_length {
+        fs::remove_file(temporary_path).map_err(|error| BuildError::ArtifactIo {
+            operation: "remove reused temporary artifact file",
+            message: error.to_string(),
+        })
+    } else {
+        Err(BuildError::ArtifactObjectHashMismatch)
+    }
+}
+
+fn publish_immutable_file(temporary_path: &Path, destination: &Path) -> Result<(), BuildError> {
+    match fs::hard_link(temporary_path, destination) {
+        Ok(()) => fs::remove_file(temporary_path).map_err(|error| BuildError::ArtifactIo {
+            operation: "remove temporary artifact file",
+            message: error.to_string(),
+        }),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err(BuildError::ArtifactReferenceConflict)
+        }
+        Err(error) => Err(BuildError::ArtifactIo {
+            operation: "publish immutable artifact file",
+            message: error.to_string(),
+        }),
+    }
+}
+
+fn hash_artifact_file(path: &Path) -> Result<(String, u64), BuildError> {
+    validate_regular_artifact_file(path)?;
+    let mut file = File::open(path).map_err(|error| BuildError::ArtifactIo {
+        operation: "open published artifact object",
+        message: error.to_string(),
+    })?;
+    let mut hasher = blake3::Hasher::new();
+    let mut byte_length = 0_usize;
+    let mut buffer = [0_u8; 8_192];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| BuildError::ArtifactIo {
+                operation: "read published artifact object",
+                message: error.to_string(),
+            })?;
+        if read == 0 {
+            break;
+        }
+        byte_length = byte_length.saturating_add(read);
+        if byte_length > MAX_CARGO_INPUT_BYTES {
+            return Err(BuildError::ArtifactTooLarge(byte_length));
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok((hasher.finalize().to_hex().to_string(), byte_length as u64))
+}
+
+fn validate_regular_artifact_file(path: &Path) -> Result<(), BuildError> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| BuildError::ArtifactIo {
+        operation: "inspect artifact file",
+        message: error.to_string(),
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(BuildError::ArtifactPathSymlink);
+    }
+    if !metadata.is_file() {
+        return Err(BuildError::ArtifactSourceNotRegular);
+    }
+    Ok(())
+}
+
+fn create_artifact_temporary(directory: &Path, label: &str) -> Result<(PathBuf, File), BuildError> {
+    for _ in 0..MAX_SNAPSHOT_TEMPORARY_ATTEMPTS {
+        let temporary_id = NEXT_SNAPSHOT_TEMPORARY_ID.fetch_add(1, Ordering::Relaxed);
+        let path = directory.join(format!(
+            ".meridian-{label}-{}-{temporary_id}.tmp",
+            std::process::id()
+        ));
+        match OpenOptions::new().create_new(true).write(true).open(&path) {
+            Ok(file) => return Ok((path, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => {
+                return Err(BuildError::ArtifactIo {
+                    operation: "create temporary artifact file",
+                    message: error.to_string(),
+                });
+            }
+        }
+    }
+    Err(BuildError::ArtifactTemporaryExhausted)
+}
+
+fn write_artifact_temporary(
+    directory: &Path,
+    label: &str,
+    contents: &[u8],
+) -> Result<PathBuf, BuildError> {
+    let (path, mut file) = create_artifact_temporary(directory, label)?;
+    let write_result = file.write_all(contents).and_then(|()| file.sync_all());
+    drop(file);
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&path);
+        return Err(BuildError::ArtifactIo {
+            operation: "write artifact reference",
+            message: error.to_string(),
+        });
+    }
+    Ok(path)
+}
+
+fn reference_file_name(node_id: &BuildNodeId) -> String {
+    format!(
+        "{}.json",
+        blake3::hash(node_id.as_str().as_bytes()).to_hex()
+    )
+}
+
+fn read_published_reference(path: &Path) -> Result<PublishedArtifact, BuildError> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(BuildError::ArtifactReferenceMissing);
+        }
+        Err(error) => {
+            return Err(BuildError::ArtifactIo {
+                operation: "inspect artifact reference",
+                message: error.to_string(),
+            });
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(BuildError::ArtifactPathSymlink);
+    }
+    if !metadata.is_file() {
+        return Err(BuildError::ArtifactSourceNotRegular);
+    }
+    let length = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
+    if length > MAX_BUILD_SNAPSHOT_BYTES {
+        return Err(BuildError::ArtifactReferenceTooLarge(length));
+    }
+    let bytes = fs::read(path).map_err(|error| BuildError::ArtifactIo {
+        operation: "read artifact reference",
+        message: error.to_string(),
+    })?;
+    let reference: PublishedArtifact = serde_json::from_slice(&bytes)
+        .map_err(|error| BuildError::MalformedArtifactReference(error.to_string()))?;
+    validate_published_artifact(&reference)?;
+    Ok(reference)
+}
+
+fn validate_published_artifact(reference: &PublishedArtifact) -> Result<(), BuildError> {
+    validate_build_id(&reference.build_id)?;
+    validate_text("published artifact node ID", reference.node_id.as_str())?;
+    validate_text("published artifact schema", &reference.schema)?;
+    validate_text(
+        "published artifact tool ID and version",
+        &reference.tool_id_version,
+    )?;
+    validate_artifact_hash(&reference.content_hash)
+}
+
+fn validate_artifact_hash(content_hash: &str) -> Result<(), BuildError> {
+    if content_hash.len() != 64 || !content_hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(BuildError::InvalidArtifactHash(content_hash.to_owned()));
+    }
+    Ok(())
 }
 
 fn validate_regular_snapshot_metadata(metadata: &fs::Metadata) -> Result<(), BuildError> {
@@ -2768,6 +3176,39 @@ pub enum BuildError {
         /// Platform error detail, treated as untrusted diagnostic text by callers.
         message: String,
     },
+    /// Artifact store root was empty.
+    InvalidArtifactRoot,
+    /// An artifact path resolved through a symlink.
+    ArtifactPathSymlink,
+    /// An artifact path expected to be a directory was not a directory.
+    ArtifactPathNotDirectory,
+    /// An artifact source or reference path was not a regular file.
+    ArtifactSourceNotRegular,
+    /// An artifact source or existing published object exceeded the bounded limit.
+    ArtifactTooLarge(usize),
+    /// Artifact temporary-file creation exhausted collision retries.
+    ArtifactTemporaryExhausted,
+    /// A content hash did not use the required BLAKE3 hexadecimal representation.
+    InvalidArtifactHash(String),
+    /// An existing content-addressed object did not match its object name.
+    ArtifactObjectHashMismatch,
+    /// An existing BuildId/node reference named a different artifact.
+    ArtifactReferenceConflict,
+    /// A requested artifact reference was absent.
+    ArtifactReferenceMissing,
+    /// Artifact reference serialization failed.
+    ArtifactSerialization(String),
+    /// Artifact reference exceeded the bounded local state limit.
+    ArtifactReferenceTooLarge(usize),
+    /// Artifact reference data was malformed or structurally invalid.
+    MalformedArtifactReference(String),
+    /// Artifact-store filesystem operation failed.
+    ArtifactIo {
+        /// Bounded operation label suitable for user-facing diagnostics.
+        operation: &'static str,
+        /// Platform error detail, treated as untrusted diagnostic text by callers.
+        message: String,
+    },
 }
 
 impl Display for BuildError {
@@ -3001,8 +3442,49 @@ impl Display for BuildError {
             Self::SnapshotNotUtf8 => {
                 formatter.write_str("build-service state file is not valid UTF-8")
             }
-            Self::SnapshotIo { operation, message } => {
+            Self::SnapshotIo { operation, message } | Self::ArtifactIo { operation, message } => {
                 write!(formatter, "failed to {operation}: {message}")
+            }
+            Self::InvalidArtifactRoot => {
+                formatter.write_str("artifact-store root directory must not be empty")
+            }
+            Self::ArtifactPathSymlink => {
+                formatter.write_str("artifact path must not resolve through a symlink")
+            }
+            Self::ArtifactPathNotDirectory => {
+                formatter.write_str("artifact path expected to be a directory is not a directory")
+            }
+            Self::ArtifactSourceNotRegular => {
+                formatter.write_str("artifact source or reference path is not a regular file")
+            }
+            Self::ArtifactTooLarge(length) => {
+                write!(
+                    formatter,
+                    "artifact exceeds the {MAX_CARGO_INPUT_BYTES}-byte first-slice limit ({length} bytes)"
+                )
+            }
+            Self::ArtifactTemporaryExhausted => {
+                formatter.write_str("artifact store could not allocate a temporary file")
+            }
+            Self::InvalidArtifactHash(content_hash) => {
+                write!(formatter, "artifact hash {content_hash} is malformed")
+            }
+            Self::ArtifactObjectHashMismatch => {
+                formatter.write_str("existing artifact object does not match its content hash")
+            }
+            Self::ArtifactReferenceConflict => {
+                formatter.write_str("artifact reference already names different content")
+            }
+            Self::ArtifactReferenceMissing => formatter.write_str("artifact reference is missing"),
+            Self::ArtifactSerialization(message) => {
+                write!(formatter, "failed to serialize artifact reference: {message}")
+            }
+            Self::ArtifactReferenceTooLarge(length) => write!(
+                formatter,
+                "artifact reference exceeds the {MAX_BUILD_SNAPSHOT_BYTES}-byte limit ({length} bytes)"
+            ),
+            Self::MalformedArtifactReference(message) => {
+                write!(formatter, "artifact reference is malformed: {message}")
             }
         }
     }
@@ -3508,12 +3990,104 @@ mod tests {
         fn state_path(&self) -> PathBuf {
             self.path.join("build-service-state.json")
         }
+
+        fn artifact_root(&self) -> PathBuf {
+            self.path.join("artifacts")
+        }
+
+        fn artifact_source(&self) -> PathBuf {
+            self.path.join("artifact-input.bin")
+        }
     }
 
     impl Drop for TemporaryDirectory {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.path);
         }
+    }
+
+    #[test]
+    fn artifact_store_publishes_verified_content_and_rejects_reference_conflicts() {
+        let directory = TemporaryDirectory::new();
+        let source = directory.artifact_source();
+        fs::write(&source, b"first published artifact").expect("artifact source writes");
+        let node = BuildNode::cargo_build(
+            BuildNodeId::new("cargo-build").expect("node ID"),
+            "cargo 1.90",
+        )
+        .expect("build node");
+        let mut artifact_identity = identity();
+        artifact_identity.root_node_ids = vec![node.id.as_str().to_owned()];
+        let build_id = BuildId::derive(&artifact_identity).expect("build ID");
+        let store = ArtifactStore::new(directory.artifact_root()).expect("artifact store");
+
+        let published = store
+            .publish_file(&build_id, &node, "cargo-artifact-v1", &source)
+            .expect("artifact publishes");
+        assert_eq!(published.byte_length, 24);
+        assert_eq!(
+            published.content_hash,
+            blake3::hash(b"first published artifact")
+                .to_hex()
+                .to_string()
+        );
+        let object_path = store
+            .object_path(&published.content_hash)
+            .expect("object path");
+        assert_eq!(
+            fs::read(&object_path).expect("published object reads"),
+            b"first published artifact"
+        );
+        assert_eq!(
+            store
+                .publish_file(&build_id, &node, "cargo-artifact-v1", &source)
+                .expect("idempotent publish"),
+            published
+        );
+
+        fs::write(&source, b"conflicting artifact").expect("changed source writes");
+        assert!(matches!(
+            store.publish_file(&build_id, &node, "cargo-artifact-v1", &source),
+            Err(BuildError::ArtifactReferenceConflict)
+        ));
+        assert_eq!(
+            fs::read(&object_path).expect("original object stays immutable"),
+            b"first published artifact"
+        );
+        assert!(fs::read_dir(directory.artifact_root().join("objects"))
+            .expect("objects directory reads")
+            .all(|entry| !entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .ends_with(".tmp")));
+    }
+
+    #[test]
+    fn artifact_store_detects_a_corrupted_existing_object() {
+        let directory = TemporaryDirectory::new();
+        let source = directory.artifact_source();
+        fs::write(&source, b"artifact subject to corruption").expect("artifact source writes");
+        let node = BuildNode::cargo_build(
+            BuildNodeId::new("cargo-build").expect("node ID"),
+            "cargo 1.90",
+        )
+        .expect("build node");
+        let mut artifact_identity = identity();
+        artifact_identity.root_node_ids = vec![node.id.as_str().to_owned()];
+        let build_id = BuildId::derive(&artifact_identity).expect("build ID");
+        let store = ArtifactStore::new(directory.artifact_root()).expect("artifact store");
+        let published = store
+            .publish_file(&build_id, &node, "cargo-artifact-v1", &source)
+            .expect("artifact publishes");
+        let object_path = store
+            .object_path(&published.content_hash)
+            .expect("object path");
+        fs::write(&object_path, b"corrupt").expect("object corruption writes");
+        assert!(matches!(
+            store.publish_file(&build_id, &node, "cargo-artifact-v1", &source),
+            Err(BuildError::ArtifactObjectHashMismatch)
+        ));
     }
 
     #[test]
