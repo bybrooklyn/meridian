@@ -49,8 +49,10 @@ Non-goals: replacing Cargo or rust-analyzer, creating separate Meridian Studio/I
   artifact or persistent log.
   A helper launched through `cargo run` on Windows cannot relink its own active
   `meridian-build.exe`; the documented structural build and test-compilation
-  proofs therefore target the independent `meridian-core` library. Self-rebuild
-  orchestration remains outside this bounded slice.
+  proofs therefore target the independent `meridian-core` library. The
+  test-compilation proof also uses an explicit separate Cargo target directory,
+  so its linker does not contend with the helper's active target tree.
+  Self-rebuild orchestration remains outside this bounded slice.
 - meridian-build-protocol: versioned editor/service/worker messages.
 - meridian-cargo: cargo metadata, JSON messages, rustc artifacts, tests.
 - meridian-ide: language-server/session, code intelligence, debugger, test, profiler, and source-navigation contracts used inside Meridian.
