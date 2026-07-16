@@ -446,7 +446,8 @@ secret-like JSON and process-stderr diagnostic redaction; durable snapshot publi
 blocked-dependent fixtures; verified artifact object/reference publication,
 corrupt-object rejection, conflicting-reference rejection, and request-bound
 artifact-event fixture; and a structured
-local Cargo smoke and helper-CLI check/build/test-compilation that never invoke a shell.
+local Cargo smoke, verified artifact-event smoke, and helper-CLI
+check/build/test-compilation that never invoke a shell.
 
 Benchmarks and hardware: no performance claim in the first slice; local Cargo
 toolchain only. Remote, sandbox, and named-hardware profiles are explicitly not
