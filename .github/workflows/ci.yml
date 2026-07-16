@@ -26,7 +26,23 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --all -- --check
       - run: cargo check --workspace --all-targets
-      - run: cargo test --workspace
+      - name: Run workspace tests on Windows with Visual C++ environment
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          @echo off
+          set "VSINSTALL="
+          for /f "usebackq delims=" %%I in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%I"
+          if not defined VSINSTALL (
+            echo Visual Studio C++ tools were not found
+            exit /b 1
+          )
+          call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=amd64 -host_arch=amd64
+          if errorlevel 1 exit /b %errorlevel%
+          cargo test --workspace
+      - name: Run workspace tests outside Windows
+        if: runner.os != 'Windows'
+        run: cargo test --workspace
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo run -p meridian-editor --bin meridian -- --headless-smoke --frames 4
       - run: cargo run -p meridian-editor --bin meridian -- --ui-headless-smoke
