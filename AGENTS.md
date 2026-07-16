@@ -31,10 +31,10 @@ GitHub Actions run `29457181283` for `fb8323f`: governance plus Linux, Windows,
 and macOS workspace, UI-headless, UI-free runtime, and dependency-audit rows
 passed. `WP-BLD-001` is `ImplementedFoundation` after GitHub Actions run
 `29505405013` for `becef55486d434460c3afebfb96e734655dfcb09` passed governance
-and the Linux, Windows, and macOS workspace/BLD rows. `WP-EDT-001` is the sole
-active package. Alluvium architecture is adopted but implementation remains
-`Planned`; do not activate a PRC package unless PLANNING records its Definition
-of Ready after Editor evidence passes.
+and the Linux, Windows, and macOS workspace/BLD rows. `WP-EDT-001` is
+`ImplementedFoundation` after GitHub Actions run `29508496428` for `ec2a6334`.
+`WP-PRC-001` is the sole active package. Alluvium implementation is partial
+until its own evidence gate passes.
 
 ## 3. Repository and private-game boundary
 

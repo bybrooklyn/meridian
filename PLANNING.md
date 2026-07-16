@@ -7,9 +7,9 @@ Status: `MS-01` and `WP-REL-002` passed qualification on GitHub Actions run
 and macOS workspace/headless-smoke rows passed. All named MS-01 implementation
 packages are closed with fresh evidence. `WP-UI-001` is an
 `ImplementedFoundation` and MS-02 is `Pass` from cross-platform CI evidence.
-`WP-BLD-001` is `ImplementedFoundation` after cross-platform GitHub Actions
-evidence. `WP-EDT-001` is the sole active package; its Definition of Ready and
-bounded Creator Alpha implementation slice are recorded below.
+`WP-BLD-001` and `WP-EDT-001` are `ImplementedFoundation` after cross-platform
+GitHub Actions evidence. `WP-PRC-001` is the sole active package; its
+Definition of Ready and bounded Alluvium implementation slice are recorded below.
 
 ## 1. Authority and stop rule
 
@@ -32,9 +32,9 @@ media, cost-prediction, or competitive-validation system.
 | Assets/world/streaming/save | `ImplementedFoundation` / `Partial` | one bounded public source family imports transactionally, packages, worker-streams, activates, saves, recovers, and reconstructs; production schemas/compression/signing remain incomplete |
 | Cairn | `Transitional` | current Rapier wrapper and grounded controller are evidence; Meridian-owned Cairn internals are not implemented |
 | Meridian UI | `ImplementedFoundation` | retained layout, text input, semantics, deterministic fixtures, an opt-in raster bridge, and local native/headless smokes are qualified for the MS-02 core proof; Creator Editor workflows remain planned |
-| Creator Editor | `Partial` | `meridian-editor-core` owns source sessions/transactions/history/Play/recovery; `meridian-ui-editor` owns accessible panel declarations; Creator Alpha is active and awaits CI evidence |
+| Creator Editor | `ImplementedFoundation` | Creator Alpha source/session/transaction/Play/recovery/UI/build foundation is qualified; milestone integration review remains |
 | Audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | implementation remains outside the current Creator Editor package |
-| Alluvium | `Planned` | current v0.5 authority preserves the v0.4 adoption, requirements, packages, gates, and risks; no crate, evaluator, recipe parser, inspector, cook path, or corpus exists |
+| Alluvium | `Partial` | active `WP-PRC-001` source delivery provides canonical text recipes, strict scalar evaluation, derived-cache recovery, CLI, and basic inspector; CI qualification and production/domain work remain open |
 | Native modeler, Rust gameplay, Luau, animation, navigation, frameworks, first-class 2D, Meridian Shader Language, Collective | `Planned` or `Deferred` | specifications and registries exist; no product implementation claim |
 | Torsant, networking, XR, modding, agents, VCS/sync | `Planned`, `Research`, or `Deferred` | no production implementation claim |
 | Distributed worlds, advanced integrity, and other `PRG-*` programs | `Deferred` or `Research` | post-1.0 authority only; no milestone or implementation evidence |
@@ -291,8 +291,8 @@ encoding remain provisional. Compression, signing, patches, encryption,
 Forward+, specular IBL, Meridian UI, Creator Editor workflows, and game content
 remain outside MS-01.
 
-`MS-01` and `MS-02` are closed. `WP-BLD-001` is the qualified MS-03 local-Cargo
-prerequisite and `WP-EDT-001` is the sole active MS-03 critical-path package.
+`MS-01` and `MS-02` are closed. `WP-BLD-001` and `WP-EDT-001` are qualified
+MS-03 prerequisites; `WP-PRC-001` is the sole active sequential package.
 Penumbra Stage 1 then proceeds through `WP-PEN-003` and
 `WP-PEN-010`, with `WP-PEN-009` as bounded parallel image-quality work and
 `WP-PEN-011` as the later executable/calibrated forest corpus. `RG-PEN-001`
@@ -701,7 +701,7 @@ local-Cargo foundation scope; `WP-BLD-002` remains planned.
 
 Next unblocked package: `WP-EDT-001`, active below.
 
-## 12. Active package — WP-EDT-001 / MS-03 Creator Editor Alpha
+## 12. Closed package — WP-EDT-001 / MS-03 Creator Editor Alpha
 
 Work package: `WP-EDT-001`
 
@@ -711,7 +711,7 @@ transactions, undo/redo, enter isolated Play and explicitly apply or discard
 its diff, recover a durable session, inspect an accessible Meridian-native
 workspace, and submit a request-bound one-worker local Cargo build artifact.
 
-Status: `Active`; implementation maturity: `Partial`
+Status: `ImplementedFoundation`; implementation maturity: `ImplementedFoundation`
 
 Requirements: `REQ-EDT-001`, `REQ-CORE-001`
 
@@ -770,20 +770,67 @@ commands, a derived preview becomes source authority, a Play change applies
 without explicit diff, a stale selection mutates source, recovery loses a valid
 source document, or a Cargo/build type crosses into runtime crates.
 
-Reviewers/sign-offs: local targeted tests, warning-denied clippy, and the
-process smoke pass. Cross-platform CI, native review, screenshots, and the
-keyboard/accessibility checklist are not yet evidence; this package cannot
-close or activate `WP-PRC-001` until its CI evidence is registered.
+Reviewers/sign-offs: GitHub Actions run `29508496428` for
+`ec2a6334dd19506b1d2b353e60557ef13d86b153` passed governance plus Linux,
+Windows, and macOS format, workspace test, warning-denied clippy, editor,
+runtime, BLD-helper, and dependency-audit rows. The workspace suite includes
+the Creator Alpha process journey. Native review, screenshots, and the
+keyboard/accessibility checklist remain milestone integration evidence.
 
-Next unblocked package: `WP-EDT-001` remains active until it closes.
+Next unblocked package: `WP-PRC-001`, active below.
 
-## 13. Evidence policy
+## 13. Active package — WP-PRC-001 / MS-03 Alluvium foundation
+
+Work package: `WP-PRC-001`
+
+User-visible result: a creator can keep a public canonical `.mproc` recipe as
+source, validate, inspect, preview, bake, audit, explain, diff, and recover its
+derived cache through the same typed Meridian contracts.
+
+Status: `Active`; implementation maturity: `Partial`
+
+Requirements: `REQ-PRC-001`, `REQ-PRC-002`, `REQ-PRC-003`, `REQ-PRC-004`,
+`REQ-PRC-005`, `REQ-PRC-008`, `REQ-CORE-001`, `REQ-CORE-002`
+
+Dependencies and Definition of Ready: `WP-DAT-002` and the now-qualified
+`WP-EDT-001` provide source identity/import and the required basic inspector.
+The source delivery adds no external dependency, private content, runtime
+authority, worker, or renderer edge. `WP-PRC-001` is the sole active package.
+
+Files/crates/formats changed: `meridian-alluvium` owns `meridian.procedural-
+recipe/v1` pretty canonical JSON, strict scalar evaluation, stable generated
+IDs, derived cache integrity/recovery, dirty reports, retained overrides, and
+provenance/license policy. `meridian-ui-editor` provides a semantic text-first
+inspector; `meridian alluvium` exposes structured command parity. The public
+Creator Alpha sample is the generic fixture only.
+
+Explicit non-goals: visual graph editing, terrain/vegetation/weather adapters,
+runtime-safe evaluation, GPU/SIMD kernels, production corpus, or modeler
+semantics. Derived outputs never become source authority.
+
+Tests: canonical round-trip/migration, deterministic scalar evaluation,
+cancellation/budget, precise dirty report, corrupt-cache recovery, override
+applied/conflicted/orphaned outcomes, license audit, all structured commands,
+semantic inspector actions, and Creator Alpha preview/bake parity.
+
+Stop/rollback rule: stop if a cache or generated output becomes source
+authority, IDs depend on array order, an override disappears silently, a
+license failure bakes output, or a runtime/editor dependency enters the crate.
+
+Known limits and unsupported rows: local source/test evidence only until this
+delivery has its own full CI run; no visual-quality or production-performance
+claim is made.
+
+Next unblocked package: `WP-PRC-001` remains active until its CI evidence is
+recorded; only then may `WP-MDL-001` activate.
+
+## 14. Evidence policy
 
 Every run records source checkpoint, BuildId when available, corpus/build hashes, hardware, OS, backend, driver, capability profile, settings, cache/warmup state, distributions rather than averages alone, memory, artifacts, and missing features. Occluded structural evidence cannot satisfy visual quality. Unavailable hardware or capabilities are `NotRun`, `UnsupportedPlatform`, or `UnsupportedCapability`, never Pass.
 
 No benchmark report may generalize beyond its measured workload/profile. No uncalibrated number becomes a release gate.
 
-## 14. Mandatory package sign-off
+## 15. Mandatory package sign-off
 
 ~~~text
 Work package:

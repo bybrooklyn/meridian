@@ -1,20 +1,31 @@
 {
   "schema": "meridian.procedural-recipe/v1",
-  "version": 1,
-  "id": 1301,
+  "schema_version": 1,
+  "recipe_version": 1,
+  "id": "00000000000000000000000000000515",
   "label": "Deterministic public placement",
-  "seed": 17,
-  "parameters": {
-    "count": 3,
-    "spacing_mm": 2000
-  },
+  "default_seed": 17,
+  "determinism": "strict",
   "operation": {
-    "kind": "scalar-grid-placement",
-    "source_id": 1002,
-    "origin_mm": [0, 0, 0]
+    "source_id": "000000000000000000000000000003ea",
+    "count": 3,
+    "spacing_mm": 2000,
+    "origin_mm": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
   },
+  "dependencies": [],
   "provenance": {
+    "origin": "Meridian public Creator Alpha sample",
     "license": "CC0-1.0",
-    "source": "Meridian public Creator Alpha sample"
-  }
+    "attribution": null
+  },
+  "license_policy": {
+    "shipping_allowed": true,
+    "allowed_licenses": ["CC0-1.0"]
+  },
+  "overrides": [],
+  "migration_history": []
 }

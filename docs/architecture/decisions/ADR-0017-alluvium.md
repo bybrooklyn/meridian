@@ -3,7 +3,7 @@
 - Status: Adopted
 - Date: 2026-07-15
 - Spec version: v0.4
-- Implementation status: Planned
+- Implementation status: Partial; `WP-PRC-001` is active pending its own CI evidence
 - Owners: future `meridian-alluvium`, editor/build, data, and procedural workstreams
 - Amends: ADR-0008, ADR-0009, ADR-0011, ADR-0014
 - Supersedes: none

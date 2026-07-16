@@ -1,0 +1,14 @@
+[package]
+name = "meridian-alluvium"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+meridian-assets = { path = "../meridian_assets" }
+meridian-core = { path = "../meridian_core" }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

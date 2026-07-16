@@ -10,6 +10,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use meridian_alluvium::{
+    dirty_report, explain as explain_generated, license_audit, parse_stable_id, AlluviumEngine,
+    EvaluationBudget, EvaluationMode, EvaluationRequest, ProceduralRecipe, RECIPE_SCHEMA,
+};
 use meridian_asset_tools::{
     decode_compiled_visual, AssetImportDatabase, CompiledVisualFacet, ImportedFixtureMesh,
 };
@@ -61,7 +65,7 @@ use meridian_ui::{
     recovery_panel_document, runtime_overlay_document, DisplayList, SemanticDelta, UiDiagnostic,
     UiEvent, UiFrameInput, UiRuntime, UiSize,
 };
-use meridian_ui_editor::creator_alpha_document;
+use meridian_ui_editor::{creator_alpha_document, recipe_inspector_document};
 use meridian_world::{CompiledWorldCell, SpatialDatabase};
 use meridian_world_tools::compile_world_source;
 use serde::{Deserialize, Serialize};
@@ -94,6 +98,23 @@ pub enum RunMode {
     UiHeadlessSmoke,
     UiSmoke,
     CreatorAlphaSmoke,
+    AlluviumCommand,
+}
+
+/// Text-first Alluvium commands. Every variant returns structured JSON and uses
+/// the same recipe contracts as the editor-facing inspector.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AlluviumCommand {
+    Inspect { recipe: PathBuf },
+    Validate { recipe: PathBuf },
+    Migrate { recipe: PathBuf, schema: u32 },
+    Preview { recipe: PathBuf, region: String },
+    Bake { recipe: PathBuf, profile: String },
+    Dirty { recipe: PathBuf, since: PathBuf },
+    Explain { recipe: PathBuf, object: String },
+    Diff { recipe: PathBuf, against: PathBuf },
+    Provenance { recipe: PathBuf, output: String },
+    LicenseAudit { recipe: PathBuf, target: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -103,6 +124,7 @@ pub struct MeridianOptions {
     pub capture: Option<PathBuf>,
     pub evidence: Option<PathBuf>,
     pub frames: u32,
+    pub alluvium: Option<AlluviumCommand>,
 }
 
 impl Default for MeridianOptions {
@@ -113,6 +135,7 @@ impl Default for MeridianOptions {
             capture: None,
             evidence: None,
             frames: 120,
+            alluvium: None,
         }
     }
 }
@@ -138,6 +161,11 @@ impl MeridianOptions {
                 "--ui-headless-smoke" => options.set_mode(RunMode::UiHeadlessSmoke)?,
                 "--ui-smoke" => options.set_mode(RunMode::UiSmoke)?,
                 "--creator-alpha-smoke" => options.set_mode(RunMode::CreatorAlphaSmoke)?,
+                "alluvium" => {
+                    options.set_mode(RunMode::AlluviumCommand)?;
+                    options.alluvium = Some(parse_alluvium_command(&mut arguments)?);
+                    break;
+                }
                 "--project" => options.project = Some(next_path(&mut arguments, "--project")?),
                 "--capture" => options.capture = Some(next_path(&mut arguments, "--capture")?),
                 "--evidence" => options.evidence = Some(next_path(&mut arguments, "--evidence")?),
@@ -164,6 +192,9 @@ impl MeridianOptions {
                 return Err(MeridianArgumentError::CreatorAlphaEvidenceRequired);
             }
         }
+        if options.mode == RunMode::AlluviumCommand && options.alluvium.is_none() {
+            return Err(MeridianArgumentError::AlluviumCommandRequired);
+        }
         Ok(options)
     }
 
@@ -173,6 +204,86 @@ impl MeridianOptions {
         }
         self.mode = mode;
         Ok(())
+    }
+}
+
+fn parse_alluvium_command(
+    arguments: &mut impl Iterator<Item = String>,
+) -> Result<AlluviumCommand, MeridianArgumentError> {
+    let command = arguments
+        .next()
+        .ok_or(MeridianArgumentError::AlluviumCommandRequired)?;
+    let recipe = next_path(arguments, "<recipe.mproc>")?;
+    let parsed = match command.as_str() {
+        "inspect" => AlluviumCommand::Inspect { recipe },
+        "validate" => AlluviumCommand::Validate { recipe },
+        "migrate" => AlluviumCommand::Migrate {
+            recipe,
+            schema: next_alluvium_option(&command, arguments, "--to")?
+                .parse()
+                .map_err(|_| {
+                    MeridianArgumentError::AlluviumSyntax(
+                        "--to must be an integer schema version".to_owned(),
+                    )
+                })?,
+        },
+        "preview" => AlluviumCommand::Preview {
+            recipe,
+            region: next_alluvium_option(&command, arguments, "--region")?,
+        },
+        "bake" => AlluviumCommand::Bake {
+            recipe,
+            profile: next_alluvium_option(&command, arguments, "--profile")?,
+        },
+        "dirty" => AlluviumCommand::Dirty {
+            recipe,
+            since: PathBuf::from(next_alluvium_option(&command, arguments, "--since")?),
+        },
+        "explain" => AlluviumCommand::Explain {
+            recipe,
+            object: next_alluvium_option(&command, arguments, "--object")?,
+        },
+        "diff" => AlluviumCommand::Diff {
+            recipe,
+            against: PathBuf::from(next_alluvium_option(&command, arguments, "--against")?),
+        },
+        "provenance" => AlluviumCommand::Provenance {
+            recipe,
+            output: next_alluvium_option(&command, arguments, "--output")?,
+        },
+        "license-audit" => AlluviumCommand::LicenseAudit {
+            recipe,
+            target: next_alluvium_option(&command, arguments, "--target")?,
+        },
+        _ => {
+            return Err(MeridianArgumentError::AlluviumSyntax(format!(
+                "unknown Alluvium command: {command}"
+            )))
+        }
+    };
+    if let Some(unexpected) = arguments.next() {
+        return Err(MeridianArgumentError::AlluviumSyntax(format!(
+            "unexpected Alluvium argument: {unexpected}"
+        )));
+    }
+    Ok(parsed)
+}
+
+fn next_alluvium_option(
+    command: &str,
+    arguments: &mut impl Iterator<Item = String>,
+    expected: &'static str,
+) -> Result<String, MeridianArgumentError> {
+    match arguments.next().as_deref() {
+        Some(value) if value == expected => arguments
+            .next()
+            .ok_or(MeridianArgumentError::MissingValue(expected)),
+        Some(value) => Err(MeridianArgumentError::AlluviumSyntax(format!(
+            "{command} expected {expected}, found {value}"
+        ))),
+        None => Err(MeridianArgumentError::AlluviumSyntax(format!(
+            "{command} requires {expected}"
+        ))),
     }
 }
 
@@ -195,6 +306,8 @@ pub enum MeridianArgumentError {
     ConflictingModes,
     CreatorAlphaProjectRequired,
     CreatorAlphaEvidenceRequired,
+    AlluviumCommandRequired,
+    AlluviumSyntax(String),
     HelpRequested,
 }
 
@@ -214,6 +327,10 @@ impl Display for MeridianArgumentError {
             Self::CreatorAlphaEvidenceRequired => {
                 formatter.write_str("--creator-alpha-smoke requires --evidence PATH")
             }
+            Self::AlluviumCommandRequired => {
+                formatter.write_str("alluvium requires a structured command")
+            }
+            Self::AlluviumSyntax(detail) => write!(formatter, "Alluvium command syntax: {detail}"),
             Self::HelpRequested => formatter.write_str(usage()),
         }
     }
@@ -223,7 +340,7 @@ impl Error for MeridianArgumentError {}
 
 #[must_use]
 pub const fn usage() -> &'static str {
-    "Meridian\n\nUsage: meridian [--smoke | --headless-smoke | --ui-headless-smoke | --ui-smoke | --creator-alpha-smoke --project PATH --evidence PATH] [--project PATH] [--capture PATH] [--evidence PATH] [--frames N]"
+    "Meridian\n\nUsage: meridian [--smoke | --headless-smoke | --ui-headless-smoke | --ui-smoke | --creator-alpha-smoke --project PATH --evidence PATH] [--project PATH] [--capture PATH] [--evidence PATH] [--frames N]\n       meridian alluvium <inspect|validate|migrate|preview|bake|dirty|explain|diff|provenance|license-audit> <recipe.mproc> [required command option]"
 }
 
 /// Runs the requested Meridian application mode.
@@ -233,6 +350,9 @@ pub const fn usage() -> &'static str {
 /// Returns source, package, streaming, save, platform, rendering, capture, or
 /// evidence IO failures without claiming milestone completion.
 pub fn run(options: &MeridianOptions) -> AppResult<()> {
+    if let Some(command) = &options.alluvium {
+        return run_alluvium_command(command);
+    }
     if options.mode == RunMode::UiHeadlessSmoke {
         return run_ui_headless_smoke();
     }
@@ -247,7 +367,10 @@ pub fn run(options: &MeridianOptions) -> AppResult<()> {
         || match options.mode {
             RunMode::Smoke | RunMode::HeadlessSmoke => default_evidence_root(&project_root),
             RunMode::Interactive => project_root.join(DEFAULT_EVIDENCE),
-            RunMode::UiHeadlessSmoke | RunMode::UiSmoke | RunMode::CreatorAlphaSmoke => {
+            RunMode::UiHeadlessSmoke
+            | RunMode::UiSmoke
+            | RunMode::CreatorAlphaSmoke
+            | RunMode::AlluviumCommand => {
                 unreachable!("handled above")
             }
         },
@@ -281,6 +404,105 @@ pub fn run(options: &MeridianOptions) -> AppResult<()> {
         app,
     )?;
     Ok(())
+}
+
+fn run_alluvium_command(command: &AlluviumCommand) -> AppResult<()> {
+    let output = match command {
+        AlluviumCommand::Inspect { recipe } => {
+            let recipe = read_alluvium_recipe(recipe)?;
+            json!({"command":"inspect", "schema":recipe.schema, "recipe":recipe})
+        }
+        AlluviumCommand::Validate { recipe } => {
+            let recipe = read_alluvium_recipe(recipe)?;
+            json!({"command":"validate", "valid":true, "recipe_id":recipe.id.to_string()})
+        }
+        AlluviumCommand::Migrate { recipe, schema } => {
+            if *schema != 1 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "only schema version 1 is supported",
+                )
+                .into());
+            }
+            let source = fs::read_to_string(recipe)?;
+            let raw: ProceduralRecipe = serde_json::from_str(&source)?;
+            let migrated = raw.migrate_one_step()?;
+            let canonical_json = migrated.canonical_json()?;
+            json!({"command":"migrate", "schema":RECIPE_SCHEMA, "recipe":migrated, "canonical_json":canonical_json})
+        }
+        AlluviumCommand::Preview { recipe, region } => {
+            let recipe = read_alluvium_recipe(recipe)?;
+            let result = evaluate_alluvium(&recipe, EvaluationMode::Preview)?;
+            json!({"command":"preview", "region":region, "result":result})
+        }
+        AlluviumCommand::Bake { recipe, profile } => {
+            let recipe = read_alluvium_recipe(recipe)?;
+            let audit = license_audit(&recipe, profile)?;
+            if !audit.accepted {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "authoritative bake rejected by license policy",
+                )
+                .into());
+            }
+            let result = evaluate_alluvium(&recipe, EvaluationMode::Bake)?;
+            json!({"command":"bake", "profile":profile, "license_audit":audit, "result":result})
+        }
+        AlluviumCommand::Dirty { recipe, since } => {
+            let recipe = read_alluvium_recipe(recipe)?;
+            let previous = read_alluvium_recipe(since)?;
+            json!({"command":"dirty", "report":dirty_report(&previous, &recipe)})
+        }
+        AlluviumCommand::Explain { recipe, object } => {
+            let recipe = read_alluvium_recipe(recipe)?;
+            let object_id = parse_stable_id(object)?;
+            json!({"command":"explain", "object":explain_generated(&recipe, object_id)?})
+        }
+        AlluviumCommand::Diff { recipe, against } => {
+            let recipe = read_alluvium_recipe(recipe)?;
+            let previous = read_alluvium_recipe(against)?;
+            json!({"command":"diff", "report":dirty_report(&previous, &recipe), "equal":previous == recipe})
+        }
+        AlluviumCommand::Provenance { recipe, output } => {
+            let recipe = read_alluvium_recipe(recipe)?;
+            let output_id = parse_stable_id(output)?;
+            json!({"command":"provenance", "output":explain_generated(&recipe, output_id)?, "provenance":recipe.provenance, "dependencies":recipe.dependencies})
+        }
+        AlluviumCommand::LicenseAudit { recipe, target } => {
+            let recipe = read_alluvium_recipe(recipe)?;
+            json!({"command":"license-audit", "audit":license_audit(&recipe, target)?})
+        }
+    };
+    println!("{}", serde_json::to_string_pretty(&output)?);
+    Ok(())
+}
+
+fn read_alluvium_recipe(path: &Path) -> AppResult<ProceduralRecipe> {
+    if path.extension().and_then(|extension| extension.to_str()) != Some("mproc") {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Alluvium recipe paths must use the .mproc extension",
+        )
+        .into());
+    }
+    Ok(ProceduralRecipe::from_json(&fs::read_to_string(path)?)?)
+}
+
+fn evaluate_alluvium(
+    recipe: &ProceduralRecipe,
+    mode: EvaluationMode,
+) -> AppResult<meridian_alluvium::EvaluationResult> {
+    let mut engine = AlluviumEngine::default();
+    Ok(engine.evaluate(
+        recipe,
+        EvaluationRequest {
+            mode,
+            budget: EvaluationBudget {
+                max_objects: usize::try_from(recipe.operation.count)?,
+            },
+            cancelled: false,
+        },
+    )?)
 }
 
 fn default_evidence_root(project_root: &Path) -> PathBuf {
@@ -397,8 +619,19 @@ struct CreatorAlphaEvidence<'a> {
     placement_count: usize,
     recovery: CheckStatus,
     semantic_workspace: CheckStatus,
+    procedural: CreatorAlphaProceduralEvidence,
     build: CreatorAlphaBuildEvidence,
     limitations: Vec<&'static str>,
+}
+
+#[derive(Serialize)]
+struct CreatorAlphaProceduralEvidence {
+    recipe_id: String,
+    preview_cache_key: String,
+    bake_cache_key: String,
+    generated_placement_count: usize,
+    semantic_inspector: CheckStatus,
+    license_audit: CheckStatus,
 }
 
 #[derive(Serialize)]
@@ -439,6 +672,8 @@ fn run_creator_alpha_smoke(options: &MeridianOptions) -> AppResult<()> {
     let (session, mut journey) = run_creator_alpha_editor_journey(&manifest, &imported_source)?;
     let (recovered, semantic_workspace) = recover_creator_alpha_session(&evidence_root, &session)?;
     journey.push("recover");
+    let procedural = run_creator_alpha_procedural_journey(&project_root, &manifest)?;
+    journey.extend(["recipe-validate", "recipe-preview", "recipe-bake"]);
 
     let build_input_path = evidence_root.join("creator-alpha-build-input.json");
     write_atomic(
@@ -469,9 +704,9 @@ fn run_creator_alpha_smoke(options: &MeridianOptions) -> AppResult<()> {
         placement_count: recovered.document().placements.len(),
         recovery: CheckStatus::Pass,
         semantic_workspace,
+        procedural,
         build,
         limitations: vec![
-            "Alluvium evaluation is delivered by WP-PRC-001, not this Editor Alpha package.",
             "Native editable-model operations are delivered by the partial WP-MDL-001 package.",
             "This local smoke is not cross-platform qualification or visible native-review evidence.",
         ],
@@ -485,6 +720,49 @@ fn run_creator_alpha_smoke(options: &MeridianOptions) -> AppResult<()> {
         evidence_root.display()
     );
     Ok(())
+}
+
+fn run_creator_alpha_procedural_journey(
+    project_root: &Path,
+    manifest: &CreatorAlphaManifest,
+) -> AppResult<CreatorAlphaProceduralEvidence> {
+    let recipe_path = project_root.join(validated_project_relative_path(
+        &manifest.procedural_recipe,
+    )?);
+    let recipe = read_alluvium_recipe(&recipe_path)?;
+    let inspector = recipe_inspector_document(&recipe)
+        .map_err(|error| io::Error::other(format!("Alluvium inspector invalid: {error:?}")))?;
+    let semantic_inspector = CheckStatus::from_bool(
+        [10_002_u128, 10_003, 10_004]
+            .iter()
+            .all(|id| inspector.node(meridian_ui::UiNodeId::new(*id)).is_some()),
+    );
+    if semantic_inspector != CheckStatus::Pass {
+        return Err(
+            io::Error::other("Alluvium inspector semantic actions were unavailable").into(),
+        );
+    }
+    let preview = evaluate_alluvium(&recipe, EvaluationMode::Preview)?;
+    let audit = license_audit(&recipe, "creator-alpha-public")?;
+    if !audit.accepted {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Creator Alpha recipe license audit failed",
+        )
+        .into());
+    }
+    let bake = evaluate_alluvium(&recipe, EvaluationMode::Bake)?;
+    if preview.field.samples != bake.field.samples {
+        return Err(io::Error::other("Alluvium preview and strict bake diverged").into());
+    }
+    Ok(CreatorAlphaProceduralEvidence {
+        recipe_id: recipe.id.to_string(),
+        preview_cache_key: preview.cache_key,
+        bake_cache_key: bake.cache_key,
+        generated_placement_count: bake.field.samples.len(),
+        semantic_inspector,
+        license_audit: CheckStatus::Pass,
+    })
 }
 
 fn run_creator_alpha_editor_journey(
@@ -2494,6 +2772,24 @@ mod tests {
         assert!(matches!(
             MeridianOptions::parse(["--frames", "0"]),
             Err(MeridianArgumentError::FrameCountOutOfRange(0))
+        ));
+        assert!(matches!(
+            MeridianOptions::parse([
+                "alluvium",
+                "preview",
+                "examples/creator-alpha/recipes/public-placement.mproc",
+                "--region",
+                "0,0,0:6000,0,0"
+            ]),
+            Ok(MeridianOptions {
+                mode: RunMode::AlluviumCommand,
+                alluvium: Some(AlluviumCommand::Preview { .. }),
+                ..
+            })
+        ));
+        assert!(matches!(
+            MeridianOptions::parse(["alluvium", "bake", "recipe.mproc"]),
+            Err(MeridianArgumentError::AlluviumSyntax(_))
         ));
         assert!(matches!(
             MeridianOptions::parse(["--ui-headless-smoke"]),

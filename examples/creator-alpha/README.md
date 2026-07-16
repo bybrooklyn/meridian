@@ -13,7 +13,7 @@ cargo run -p meridian-editor -- --creator-alpha-smoke \
   --evidence target/meridian-evidence/creator-alpha/manual
 ```
 
-The recipe and editable-model source are intentionally public source inputs. Their
-semantic execution is added by `WP-PRC-001` and the partial `WP-MDL-001` package;
-the Editor Alpha smoke verifies their project-relative provenance but does not
-claim that those later domain operations are complete.
+The recipe and editable-model source are intentionally public source inputs.
+`WP-PRC-001` evaluates the recipe through the strict scalar reference path and
+the smoke verifies its source/provenance/license/inspector journey. The partial
+`WP-MDL-001` package still owns editable-model semantics.

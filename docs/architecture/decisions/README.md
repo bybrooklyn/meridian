@@ -41,7 +41,7 @@ Use the status vocabulary from the master specification:
 | [ADR-0014](ADR-0014-optional-capability-packs.md) | Optional Capability Packs | Adopted | Policy implemented in specs; verification partial |
 | [ADR-0015](ADR-0015-security-update-trust.md) | Security and Update Trust | Adopted | Policy adopted; release implementation planned |
 | [ADR-0016](ADR-0016-redacted-private-benchmark-policy.md) | Redacted Private Benchmark Policy | Adopted | Policy adopted; calibrated corpus planned |
-| [ADR-0017](ADR-0017-alluvium.md) | The Alluvium Engine | Adopted | Planned architecture; no implementation crate |
+| [ADR-0017](ADR-0017-alluvium.md) | The Alluvium Engine | Adopted | Partial `WP-PRC-001` source delivery; CI evidence pending |
 | [ADR-0018](ADR-0018-general-purpose-single-application.md) | General-Purpose Engine and Single Meridian Application | Adopted | Planned architecture; existing foundations only |
 | [ADR-0019](ADR-0019-rust-first-luau-after.md) | Rust-First Gameplay, Optional Luau Afterward | Adopted | Planned |
 | [ADR-0020](ADR-0020-wavefront-and-collective.md) | Wavefront Audio and Collective Online Boundaries | Adopted | Wavefront scaffold; Collective deferred |

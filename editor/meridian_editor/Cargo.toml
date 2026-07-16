@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 meridian-asset-tools = { path = "../meridian_asset_tools" }
+meridian-alluvium = { path = "../../engine/meridian_alluvium" }
 meridian-assets = { path = "../../engine/meridian_assets" }
 meridian-benchmark = { path = "../meridian_benchmark" }
 meridian-build = { path = "../meridian_build" }

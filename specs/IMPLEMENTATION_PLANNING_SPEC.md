@@ -210,7 +210,7 @@ The machine-readable companion is
 | MS-00 | current repository | `WP-GOV-001` -> `WP-GOV-002` -> `WP-GOV-003` -> `WP-GOV-004` | ADRs, docs, private boundary, program/validation/dependency registries | locally passing v0.5 suite |
 | MS-01 | MS-00 | `WP-PEN-007` -> `WP-PEN-008` -> `WP-RUN-004` -> `WP-REL-002` | runtime lifecycle; source/import/stream/save | minimal observable application |
 | MS-02 | MS-01 contracts | `WP-UI-001` | accessibility adapters, fixtures, diagnostics | accessible native panel and overlay |
-| MS-03 | MS-02 plus data/build seams | `WP-BLD-001` -> `WP-EDT-001` -> `WP-MDL-001` | import/browser, recovery, accessibility, Alluvium text/headless/basic inspector | Creator Editor Alpha plus native-modeler baseline |
+| MS-03 | MS-02 plus data/build seams | `WP-BLD-001` -> `WP-EDT-001` -> `WP-PRC-001` -> `WP-MDL-001` | import/browser, recovery, accessibility, Alluvium text/headless/basic inspector | Creator Editor Alpha plus native-modeler baseline |
 | MS-04 | MS-01 instrumentation | `WP-PEN-003` -> `WP-PEN-010` | renderer foundations, shadows/IBL, Alluvium/Isobar/Basalt/vegetation | production-shaped Penumbra scene |
 | MS-05 | MS-04 | `WP-PEN-010` -> `WP-PEN-011` | `WP-PRC-001` through `WP-PRC-004`, `WP-MDL-001`, terrain, vegetation, weather, streaming, quality tiers | measured representative forest and accepted native model sources |
 | MS-06 | MS-03 and MS-05 | `WP-GAM-001` -> `WP-PRJ-001` | Cairn, Wavefront, Rust gameplay, save, accessibility | reproducible private Rust prototype |

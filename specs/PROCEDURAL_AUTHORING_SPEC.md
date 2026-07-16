@@ -4,12 +4,19 @@
 
 Status: version 0.5 normative architecture, 2026-07-15.
 
-Architecture status: `Adopted` by [ADR-0017](../docs/architecture/decisions/ADR-0017-alluvium.md). Documentation maturity: `ResearchReady`. Implementation maturity: `Planned`.
+Architecture status: `Adopted` by [ADR-0017](../docs/architecture/decisions/ADR-0017-alluvium.md). Documentation maturity: `ResearchReady`. Implementation maturity: `Partial`.
 
 Governing IDs: `REQ-PRC-001` through `REQ-PRC-010`; `WP-PRC-001` through
 `WP-PRC-010`; `RG-PRC-001`; `RG-PRC-002`; post-1.0 `PRG-REL-001`.
 
-Current implementation status: Alluvium is not implemented. No Alluvium crate, evaluator, recipe parser, field runtime, editor, cook path, or generated production corpus exists. Existing terrain, vegetation, weather, data, and editor packages are scaffold or foundation work and do not prove this specification. This document defines future contracts and evidence gates only.
+Current implementation status: `WP-PRC-001` is active after qualified Editor
+evidence. The in-progress source delivery adds `meridian-alluvium`: canonical
+pretty JSON `meridian.procedural-recipe/v1` `.mproc` source, strict scalar
+reference evaluation, stable generated IDs, cache integrity recovery, dirty
+reports, retained override outcomes, provenance/license audit, structured CLI
+commands, and a basic semantic inspector. It has no CI evidence yet and does
+not implement graph authoring, domain adapters, runtime-safe evaluation, or a
+production corpus.
 
 ## 1. Authority and Position
 
@@ -486,7 +493,7 @@ Acceptance for `WP-PRC-002` requires a reproducible sanitized forest/field corpu
 
 | Package | Result | Milestone | Status |
 |---|---|---|---|
-| `WP-PRC-001` | typed recipe, field, strict evaluator, cache, identity, overrides, provenance, text/headless/basic inspector | `MS-03`, `MS-05` | Planned |
+| `WP-PRC-001` | typed recipe, field, strict evaluator, cache, identity, overrides, provenance, text/headless/basic inspector | `MS-03`, `MS-05` | Active |
 | `WP-PRC-002` | Project Meridian environmental proving recipes and sanitized corpus | `MS-05` | Planned |
 | `WP-PRC-003` | Alluvium–Basalt terrain and field production integration | `MS-05`, `MS-08` | Planned |
 | `WP-PRC-004` | vegetation and ecosystem production integration | `MS-05`, `MS-08` | Planned |
@@ -497,7 +504,7 @@ Acceptance for `WP-PRC-002` requires a reproducible sanitized forest/field corpu
 | `WP-PRC-009` | ecosystem growth, competition, succession, season, and disturbance | `MS-09` | Research |
 | `WP-PRC-010` | measured dependency replacement and kernel optimization | `MS-09`, `MS-10` | Research |
 
-`MS-05` requires `WP-PRC-001` through `WP-PRC-004` as dependencies of the representative forest corpus. `WP-PEN-011` and `WP-PRJ-001` consume `WP-PRC-002`. This does not activate Alluvium now and does not change the active `WP-BLD-001` queue.
+`MS-05` requires `WP-PRC-001` through `WP-PRC-004` as dependencies of the representative forest corpus. `WP-PEN-011` and `WP-PRJ-001` consume `WP-PRC-002`. The active `WP-PRC-001` source delivery does not activate later packages or change the sequential MS-03 modeler gate.
 
 After MS-10, `PRG-REL-001` may activate bounded work for combustion/fluid source
 facets and `RuntimeCostManifest` prediction/reconciliation. It does not change

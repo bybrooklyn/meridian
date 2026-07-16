@@ -4,6 +4,7 @@
 //! selections, history, recipes, and model documents remain owned by their
 //! respective Meridian domain crates.
 
+use meridian_alluvium::ProceduralRecipe;
 use meridian_editor_core::EditorSession;
 use meridian_ui::{UiDocument, UiDocumentError, UiLayout, UiNode, UiNodeId};
 
@@ -146,12 +147,22 @@ const CREATOR_ALPHA_PANELS: &[EditorPanel] = &[
     EditorPanel {
         id: EditorPanelId::Recipe,
         title: "Recipe",
-        commands: &["procedural.validate", "procedural.preview"],
-        query_dependencies: &["procedural.recipe"],
+        commands: &[
+            "procedural.validate",
+            "procedural.preview",
+            "procedural.bake",
+            "procedural.license-audit",
+        ],
+        query_dependencies: &[
+            "procedural.recipe",
+            "procedural.cache",
+            "procedural.provenance",
+        ],
         layout_hint: "right-bottom",
         permission: "",
         serialization_version: 1,
-        unavailable_state: "Alluvium recipe source is unavailable until WP-PRC-001.",
+        unavailable_state:
+            "Select a text recipe to inspect its typed parameters and derived output.",
     },
     EditorPanel {
         id: EditorPanelId::Modeler,
@@ -246,6 +257,50 @@ pub fn creator_alpha_document(session: &EditorSession) -> Result<UiDocument, UiD
     UiDocument::new(root, nodes)
 }
 
+/// Builds the keyboard-accessible, text-first Alluvium inspector. It exposes
+/// recipe source and typed scalar parameters but never mutates recipe source;
+/// callers route actions through the shared Alluvium command adapter.
+///
+/// # Errors
+///
+/// Returns an error when the generated retained document violates UI semantics.
+pub fn recipe_inspector_document(recipe: &ProceduralRecipe) -> Result<UiDocument, UiDocumentError> {
+    let root = UiNodeId::new(10_000);
+    let details = UiNodeId::new(10_001);
+    let validate = UiNodeId::new(10_002);
+    let preview = UiNodeId::new(10_003);
+    let bake = UiNodeId::new(10_004);
+    let source = format!(
+        "{}: {} placements every {} mm, strict source ID {}.",
+        recipe.label, recipe.operation.count, recipe.operation.spacing_mm, recipe.id
+    );
+    UiDocument::new(
+        root,
+        vec![
+            UiNode::label(details, "Alluvium recipe details", source),
+            UiNode::button(
+                validate,
+                "Validate recipe",
+                "procedural.validate",
+                "validate recipe",
+            ),
+            UiNode::button(
+                preview,
+                "Preview recipe",
+                "procedural.preview",
+                "preview recipe",
+            ),
+            UiNode::button(bake, "Bake recipe", "procedural.bake", "bake recipe"),
+            UiNode::container(
+                root,
+                "Alluvium recipe inspector",
+                UiLayout::VerticalStack { gap: 6.0 },
+                vec![details, validate, preview, bake],
+            ),
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use meridian_core::StableId;
@@ -272,6 +327,25 @@ mod tests {
         let document = creator_alpha_document(&session).expect("valid UI document");
         for id in [UiNodeId::new(132), UiNodeId::new(142), UiNodeId::new(143)] {
             let node = document.node(id).expect("declared action");
+            assert_eq!(node.kind, UiWidgetKind::Button);
+            assert!(node.focusable);
+            assert!(node.semantics.action.is_some());
+        }
+    }
+
+    #[test]
+    fn recipe_inspector_is_keyboard_accessible_without_recipe_mutation() {
+        let recipe = meridian_alluvium::ProceduralRecipe::from_json(include_str!(
+            "../../../examples/creator-alpha/recipes/public-placement.mproc"
+        ))
+        .expect("public recipe");
+        let document = recipe_inspector_document(&recipe).expect("valid inspector");
+        for id in [
+            UiNodeId::new(10_002),
+            UiNodeId::new(10_003),
+            UiNodeId::new(10_004),
+        ] {
+            let node = document.node(id).expect("action");
             assert_eq!(node.kind, UiWidgetKind::Button);
             assert!(node.focusable);
             assert!(node.semantics.action.is_some());

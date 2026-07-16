@@ -1601,6 +1601,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "meridian-alluvium"
+version = "0.1.0"
+dependencies = [
+ "meridian-assets",
+ "meridian-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "meridian-asset-tools"
 version = "0.1.0"
 dependencies = [
@@ -1677,6 +1687,7 @@ dependencies = [
 name = "meridian-editor"
 version = "0.1.0"
 dependencies = [
+ "meridian-alluvium",
  "meridian-asset-tools",
  "meridian-assets",
  "meridian-benchmark",
@@ -1842,6 +1853,7 @@ dependencies = [
 name = "meridian-ui-editor"
 version = "0.1.0"
 dependencies = [
+ "meridian-alluvium",
  "meridian-core",
  "meridian-editor-core",
  "meridian-ui",

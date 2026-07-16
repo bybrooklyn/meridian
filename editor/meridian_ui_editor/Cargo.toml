@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+meridian-alluvium = { path = "../../engine/meridian_alluvium" }
 meridian-core = { path = "../../engine/meridian_core" }
 meridian-editor-core = { path = "../meridian_editor_core" }
 meridian-ui = { path = "../../engine/meridian_ui" }
