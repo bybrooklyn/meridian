@@ -410,9 +410,9 @@ game format, or `game/` path may change.
 Deliverables and public contracts: the editor-only `meridian-build` crate now
 provides Meridian-owned `BuildId`, `BuildRequest`, `BuildNode`, lifecycle/event/
 diagnostic types, cooperative cancellation, bounded file hashing, a structured
-Cargo metadata and JSON adapter, and the `meridian-build --cargo-check` helper
-CLI. Cargo and rustc types remain internal; arguments remain arrays and Cargo
-JSON remains the diagnostic protocol. A bounded versioned, host-selected local
+Cargo metadata/check/build JSON adapter, and the `meridian-build --cargo-check`
+or `--cargo-build` helper CLI. Cargo and rustc types remain internal; arguments
+remain arrays and Cargo JSON remains the diagnostic protocol. A bounded versioned, host-selected local
 state store publishes a synced temporary snapshot through a same-directory
 rename; `DurableBuildService` persists each accepted mutation, restores
 interrupted work as `WorkerLost`, and rejects malformed, oversized, symlinked,
@@ -422,6 +422,8 @@ unreachable nodes; its deterministic local scheduler starts a Cargo metadata
 node before the dependent Cargo-check node and blocks dependents after terminal
 failure. Concurrent/resource-aware scheduling, durable cache/provenance,
 non-Cargo nodes, and cross-checkout metadata normalization remain unimplemented.
+The build adapter reports Cargo artifact messages but does not yet hash, validate,
+cache, or atomically publish an artifact pointer.
 
 Explicit non-goals: a lossless TOML editor, rust-analyzer session, remote
 worker, signing/deployment, Alluvium adapter, editor panels, package graph
@@ -433,7 +435,7 @@ compiler diagnostic/artifact mapping; typed full Cargo metadata parsing;
 secret-like diagnostic redaction; durable snapshot publication/reopen and
 `WorkerLost` recovery; graph order, invalid-edge, cycle, unreachable-node, and
 blocked-dependent fixtures; and a structured local Cargo smoke and helper-CLI
-check that never invoke a shell.
+check/build that never invoke a shell.
 
 Benchmarks and hardware: no performance claim in the first slice; local Cargo
 toolchain only. Remote, sandbox, and named-hardware profiles are explicitly not
@@ -446,7 +448,8 @@ persists that recovery before exposing it, and rejects late success. Process
 supervision, child-process-group termination, durable artifact provenance, and
 atomic artifact publication remain required before package completion. The local
 graph proof is only Cargo metadata -> check; it makes no parallelism, resource,
-cache, or non-Cargo adapter claim.
+cache, or non-Cargo adapter claim. Cargo build output is observable but not yet
+an atomically published Meridian artifact.
 
 Accessibility: the service emits named stages, actionable typed diagnostics,
 and cancellation/retry states for later Meridian UI consumption; no visible
@@ -479,7 +482,7 @@ are in scope initially. The metadata hash is a local Cargo payload hash rather
 than a cross-checkout-normalized reproducibility identity. The portable state
 store is project-host-selected local recovery, not a remote, signing, artifact,
 or provider store. The current graph scheduler is single-host, dependency-only,
-and restricted to the Cargo metadata -> check proof. Concurrent/resource-aware
+and restricted to the Cargo metadata -> check/build proof. Concurrent/resource-aware
 build-DAG scheduling, long-lived worker restart, lossless manifest editing,
 rust-analyzer, remote execution, signing, and deployment remain planned.
 

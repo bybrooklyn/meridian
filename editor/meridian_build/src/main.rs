@@ -20,10 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         arguments.toolchain.clone(),
     )?;
     metadata_node.declared_environment = environment.identity_values().into_keys().collect();
-    let mut root = BuildNode::cargo_check(
-        BuildNodeId::new("cargo-check")?,
-        arguments.toolchain.clone(),
-    )?;
+    let mut root = cargo_root_node(arguments.cargo_command, &arguments.toolchain)?;
     root.declared_environment = environment.identity_values().into_keys().collect();
     root.dependencies.push(metadata_node.id.clone());
     let graph = BuildGraph::new(
@@ -61,7 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     let identity = BuildIdentityInput {
         source_checkpoint: arguments.source_checkpoint,
-        resolved_profile: "cargo-check".to_owned(),
+        resolved_profile: format!("cargo-{}", arguments.cargo_command.as_str()),
         cargo_metadata_and_lock: format!("metadata:{metadata_hash};lock:{lock_hash}"),
         toolchain_version: arguments.toolchain,
         target_and_capabilities: arguments.target,
@@ -80,7 +77,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let invocation = CargoInvocation::new(
         &arguments.workspace,
-        CargoCommand::Check,
+        arguments.cargo_command,
         arguments.cargo_arguments,
         environment,
     )?;
@@ -117,7 +114,19 @@ fn print_event(event: &meridian_build::BuildEvent) {
     );
 }
 
+fn cargo_root_node(
+    command: CargoCommand,
+    toolchain: &str,
+) -> Result<BuildNode, meridian_build::BuildError> {
+    match command {
+        CargoCommand::Check => BuildNode::cargo_check(BuildNodeId::new("cargo-check")?, toolchain),
+        CargoCommand::Build => BuildNode::cargo_build(BuildNodeId::new("cargo-build")?, toolchain),
+        CargoCommand::Metadata => unreachable!("CLI root operation excludes cargo metadata"),
+    }
+}
+
 struct CliArguments {
+    cargo_command: CargoCommand,
     workspace: PathBuf,
     source_checkpoint: String,
     toolchain: String,
@@ -128,9 +137,11 @@ struct CliArguments {
 impl CliArguments {
     fn parse(arguments: impl IntoIterator<Item = String>) -> Result<Self, CliError> {
         let mut arguments = arguments.into_iter();
-        if arguments.next().as_deref() != Some("--cargo-check") {
-            return Err(CliError::Usage);
-        }
+        let cargo_command = match arguments.next().as_deref() {
+            Some("--cargo-check") => CargoCommand::Check,
+            Some("--cargo-build") => CargoCommand::Build,
+            _ => return Err(CliError::Usage),
+        };
         let mut workspace = None;
         let mut source_checkpoint = None;
         let mut toolchain = None;
@@ -152,6 +163,7 @@ impl CliArguments {
             }
         }
         Ok(Self {
+            cargo_command,
             workspace: PathBuf::from(workspace.ok_or(CliError::MissingArgument("--workspace"))?),
             source_checkpoint: source_checkpoint
                 .ok_or(CliError::MissingArgument("--source-checkpoint"))?,
@@ -180,7 +192,7 @@ impl std::fmt::Display for CliError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Usage => formatter.write_str(
-                "usage: meridian-build --cargo-check --workspace <path> --source-checkpoint <id> --toolchain <version> --target <target> [-- <cargo arguments>]",
+                "usage: meridian-build <--cargo-check|--cargo-build> --workspace <path> --source-checkpoint <id> --toolchain <version> --target <target> [-- <cargo arguments>]",
             ),
             Self::MissingArgument(flag) => write!(formatter, "missing required argument {flag}"),
             Self::UnknownArgument(argument) => write!(formatter, "unknown argument {argument}"),

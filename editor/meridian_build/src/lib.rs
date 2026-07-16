@@ -161,6 +161,8 @@ pub enum BuildNodeKind {
     CargoMetadata,
     /// Run a Cargo check and consume its JSON message stream.
     CargoCheck,
+    /// Run a Cargo build and consume its JSON message stream.
+    CargoBuild,
 }
 
 /// A typed graph node with declared immutable inputs and dependencies.
@@ -216,6 +218,27 @@ impl BuildNode {
         Ok(Self {
             id,
             kind: BuildNodeKind::CargoCheck,
+            input_hashes: Vec::new(),
+            tool_id_version,
+            declared_environment: Vec::new(),
+            dependencies: Vec::new(),
+        })
+    }
+
+    /// Builds a minimal Cargo-build node using the declared Cargo tool identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the ID or declared tool version is invalid.
+    pub fn cargo_build(
+        id: BuildNodeId,
+        tool_id_version: impl Into<String>,
+    ) -> Result<Self, BuildError> {
+        let tool_id_version = tool_id_version.into();
+        validate_text("tool ID and version", &tool_id_version)?;
+        Ok(Self {
+            id,
+            kind: BuildNodeKind::CargoBuild,
             input_hashes: Vec::new(),
             tool_id_version,
             declared_environment: Vec::new(),
@@ -1428,13 +1451,18 @@ pub enum CargoCommand {
     Metadata,
     /// Run `cargo check` with Cargo's machine-readable JSON message protocol.
     Check,
+    /// Run `cargo build` with Cargo's machine-readable JSON message protocol.
+    Build,
 }
 
 impl CargoCommand {
-    const fn as_str(self) -> &'static str {
+    /// Returns the Cargo subcommand name used in a structured process plan.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Metadata => "metadata",
             Self::Check => "check",
+            Self::Build => "build",
         }
     }
 }
@@ -1548,7 +1576,7 @@ impl CargoInvocation {
                 "--locked".to_owned(),
                 "--format-version=1".to_owned(),
             ],
-            CargoCommand::Check => vec![
+            CargoCommand::Check | CargoCommand::Build => vec![
                 self.command.as_str().to_owned(),
                 "--locked".to_owned(),
                 "--quiet".to_owned(),
@@ -1639,7 +1667,7 @@ pub struct CargoMetadataOutcome {
     pub content_hash: Option<String>,
 }
 
-/// Runs Cargo with structured arguments and parses its bounded JSON message stream.
+/// Runs a structured Cargo check or build and parses its bounded JSON message stream.
 ///
 /// # Errors
 ///
@@ -1649,7 +1677,10 @@ pub fn run_cargo_json(
     invocation: &CargoInvocation,
     cancellation: &BuildCancellation,
 ) -> Result<CargoRunOutcome, BuildError> {
-    if invocation.command != CargoCommand::Check {
+    if !matches!(
+        invocation.command,
+        CargoCommand::Check | CargoCommand::Build
+    ) {
         return Err(BuildError::UnexpectedCargoCommand {
             expected: CargoCommand::Check,
             received: invocation.command,
@@ -2870,19 +2901,24 @@ mod tests {
 
     #[test]
     fn structured_cargo_plan_clears_ambient_protocol_overrides() {
-        let invocation = CargoInvocation::new(
-            "/workspace",
-            CargoCommand::Check,
-            vec!["-p".to_owned(), "meridian-build".to_owned()],
-            CargoEnvironment::default(),
-        )
-        .expect("invocation");
-        let plan = invocation.command_plan();
-        assert_eq!(plan.arguments[0], "check");
-        assert!(plan
-            .arguments
-            .iter()
-            .any(|argument| argument == "--message-format=json"));
+        for (command, expected_subcommand) in [
+            (CargoCommand::Check, "check"),
+            (CargoCommand::Build, "build"),
+        ] {
+            let invocation = CargoInvocation::new(
+                "/workspace",
+                command,
+                vec!["-p".to_owned(), "meridian-build".to_owned()],
+                CargoEnvironment::default(),
+            )
+            .expect("invocation");
+            let plan = invocation.command_plan();
+            assert_eq!(plan.arguments[0], expected_subcommand);
+            assert!(plan
+                .arguments
+                .iter()
+                .any(|argument| argument == "--message-format=json"));
+        }
         assert!(matches!(
             CargoInvocation::new(
                 "/workspace",
