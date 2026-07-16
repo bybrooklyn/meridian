@@ -1236,6 +1236,35 @@ pub struct PublishedArtifact {
     tool_id_version: String,
     content_hash: String,
     byte_length: u64,
+    cargo_provenance: Option<CargoArtifactProvenance>,
+}
+
+/// Bounded Cargo identity retained for one Cargo-reported artifact publication.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CargoArtifactProvenance {
+    package_id: String,
+    target_name: String,
+}
+
+impl CargoArtifactProvenance {
+    fn from_artifact(artifact: &CargoArtifact) -> Self {
+        Self {
+            package_id: artifact.package_id.clone(),
+            target_name: artifact.target_name.clone(),
+        }
+    }
+
+    /// Returns Cargo's package identity that reported the artifact.
+    #[must_use]
+    pub fn package_id(&self) -> &str {
+        &self.package_id
+    }
+
+    /// Returns Cargo's target name that reported the artifact.
+    #[must_use]
+    pub fn target_name(&self) -> &str {
+        &self.target_name
+    }
 }
 
 impl PublishedArtifact {
@@ -1274,6 +1303,12 @@ impl PublishedArtifact {
     pub const fn byte_length(&self) -> u64 {
         self.byte_length
     }
+
+    /// Returns the Cargo package/target identity when Cargo reported this artifact.
+    #[must_use]
+    pub fn cargo_provenance(&self) -> Option<&CargoArtifactProvenance> {
+        self.cargo_provenance.as_ref()
+    }
 }
 
 #[derive(Deserialize)]
@@ -1284,6 +1319,8 @@ struct StoredPublishedArtifact {
     tool_id_version: String,
     content_hash: String,
     byte_length: u64,
+    #[serde(default)]
+    cargo_provenance: Option<CargoArtifactProvenance>,
 }
 
 impl From<StoredPublishedArtifact> for PublishedArtifact {
@@ -1295,6 +1332,7 @@ impl From<StoredPublishedArtifact> for PublishedArtifact {
             tool_id_version: stored.tool_id_version,
             content_hash: stored.content_hash,
             byte_length: stored.byte_length,
+            cargo_provenance: stored.cargo_provenance,
         }
     }
 }
@@ -1338,10 +1376,24 @@ impl ArtifactStore {
         schema: impl Into<String>,
         source: impl AsRef<Path>,
     ) -> Result<PublishedArtifact, BuildError> {
+        self.publish_file_with_cargo_provenance(build_id, node, schema, source, None)
+    }
+
+    fn publish_file_with_cargo_provenance(
+        &self,
+        build_id: &BuildId,
+        node: &BuildNode,
+        schema: impl Into<String>,
+        source: impl AsRef<Path>,
+        cargo_provenance: Option<CargoArtifactProvenance>,
+    ) -> Result<PublishedArtifact, BuildError> {
         validate_build_id(build_id)?;
         validate_build_node(node)?;
         let schema = schema.into();
         validate_text("artifact schema", &schema)?;
+        if let Some(provenance) = &cargo_provenance {
+            validate_cargo_artifact_provenance(provenance)?;
+        }
         let objects_directory = self.objects_directory()?;
         let reference_directory = self.reference_directory(build_id)?;
         let (temporary_object, content_hash, byte_length) =
@@ -1360,9 +1412,9 @@ impl ArtifactStore {
             tool_id_version: node.tool_id_version.clone(),
             content_hash,
             byte_length,
+            cargo_provenance,
         };
-        Self::publish_reference(&reference_directory, &published)?;
-        Ok(published)
+        Self::publish_reference(&reference_directory, &published)
     }
 
     /// Validates and publishes one Cargo-reported executable from a declared output root.
@@ -1412,7 +1464,13 @@ impl ArtifactStore {
         if !executable_path.starts_with(&output_root) {
             return Err(BuildError::CargoArtifactExecutableOutsideOutputRoot);
         }
-        self.publish_file(build_id, node, "cargo-executable-v1", executable_path)
+        self.publish_file_with_cargo_provenance(
+            build_id,
+            node,
+            "cargo-executable-v1",
+            executable_path,
+            Some(CargoArtifactProvenance::from_artifact(artifact)),
+        )
     }
 
     /// Returns the local object path for a validated content hash.
@@ -1447,12 +1505,18 @@ impl ArtifactStore {
     fn publish_reference(
         directory: &Path,
         published: &PublishedArtifact,
-    ) -> Result<(), BuildError> {
+    ) -> Result<PublishedArtifact, BuildError> {
         let path = directory.join(reference_file_name(&published.node_id));
         match read_published_reference(&path) {
             Ok(existing) => {
                 if existing == *published {
-                    return Ok(());
+                    return Ok(existing);
+                }
+                if existing.cargo_provenance.is_none()
+                    && published.cargo_provenance.is_some()
+                    && matching_artifact_identity(&existing, published)
+                {
+                    return Ok(existing);
                 }
                 return Err(BuildError::ArtifactReferenceConflict);
             }
@@ -1471,7 +1535,7 @@ impl ArtifactStore {
             return Err(error);
         }
         match read_published_reference(&path) {
-            Ok(existing) if existing == *published => Ok(()),
+            Ok(existing) if existing == *published => Ok(existing),
             Ok(_) => Err(BuildError::ArtifactReferenceConflict),
             Err(error) => Err(error),
         }
@@ -2090,6 +2154,22 @@ fn validate_published_artifact(reference: &PublishedArtifact) -> Result<(), Buil
         &reference.tool_id_version,
     )?;
     validate_artifact_hash(&reference.content_hash)
+}
+
+fn matching_artifact_identity(first: &PublishedArtifact, second: &PublishedArtifact) -> bool {
+    first.build_id == second.build_id
+        && first.node_id == second.node_id
+        && first.schema == second.schema
+        && first.tool_id_version == second.tool_id_version
+        && first.content_hash == second.content_hash
+        && first.byte_length == second.byte_length
+}
+
+fn validate_cargo_artifact_provenance(
+    provenance: &CargoArtifactProvenance,
+) -> Result<(), BuildError> {
+    validate_text("published Cargo package ID", &provenance.package_id)?;
+    validate_text("published Cargo target name", &provenance.target_name)
 }
 
 fn validate_artifact_event(event: &BuildEvent) -> Result<(), BuildError> {
@@ -4447,6 +4527,9 @@ mod tests {
             .publish_cargo_executable(&build_id, &node, &artifact, &cargo_output_root)
             .expect("listed executable publishes");
         assert_eq!(published.schema(), "cargo-executable-v1");
+        let provenance = published.cargo_provenance().expect("Cargo provenance");
+        assert_eq!(provenance.package_id(), artifact.package_id);
+        assert_eq!(provenance.target_name(), artifact.target_name);
         assert_eq!(
             fs::read(
                 store
@@ -4455,6 +4538,43 @@ mod tests {
             )
             .expect("published executable reads"),
             b"Cargo-reported executable"
+        );
+    }
+
+    #[test]
+    fn artifact_store_reuses_matching_legacy_reference_without_upgrading_it() {
+        let directory = TemporaryDirectory::new();
+        let cargo_output_root = directory.path.join("cargo-target");
+        let executable = cargo_output_root.join("debug").join("example-bin");
+        fs::create_dir_all(executable.parent().expect("executable parent"))
+            .expect("output root creates");
+        fs::write(&executable, b"legacy Cargo executable").expect("executable writes");
+        let node = BuildNode::cargo_build(
+            BuildNodeId::new("cargo-build").expect("node ID"),
+            "cargo 1.90",
+        )
+        .expect("build node");
+        let mut artifact_identity = identity();
+        artifact_identity.root_node_ids = vec![node.id.as_str().to_owned()];
+        let build_id = BuildId::derive(&artifact_identity).expect("build ID");
+        let store = ArtifactStore::new(directory.artifact_root()).expect("artifact store");
+        let legacy = store
+            .publish_file(&build_id, &node, "cargo-executable-v1", &executable)
+            .expect("legacy reference publishes");
+        assert!(legacy.cargo_provenance().is_none());
+        let executable_text = executable.to_string_lossy().into_owned();
+        let artifact = CargoArtifact {
+            package_id: "path+file:///workspace#example@0.1.0".to_owned(),
+            target_name: "example-bin".to_owned(),
+            filenames: vec![executable_text.clone()],
+            executable: Some(executable_text),
+        };
+
+        assert_eq!(
+            store
+                .publish_cargo_executable(&build_id, &node, &artifact, &cargo_output_root)
+                .expect("matching legacy reference reuses"),
+            legacy
         );
     }
 

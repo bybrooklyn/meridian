@@ -33,10 +33,11 @@ Non-goals: replacing Cargo or rust-analyzer, creating separate Meridian Studio/I
   normalization, cache/provenance persistence, and worker supervision remain
   planned. A host-selected `ArtifactStore` can validate/copy one bounded regular
   file into a BLAKE3-addressed object and atomically create a BuildId/node
-  reference carrying declared schema and tool identity. A running service can
-  expose that verified hash as a typed artifact event only when the reference
-  matches its BuildId and root node. It does not prove that Cargo produced the
-  source file. The helper can opt in to one Cargo-reported executable
+  reference carrying declared schema and tool identity. Cargo-reported
+  executable references additionally retain Cargo's package ID and target name.
+  A running service can expose that verified hash as a typed artifact event only
+  when the reference matches its BuildId and root node. It does not prove that
+  Cargo produced the source file. The helper can opt in to one Cargo-reported executable
   publication only after a successful build or test-compilation command, with
   paired `--artifact-store` and `--cargo-output-root` paths. It requires exactly
   one executable, requires that executable to be listed by Cargo, and rejects

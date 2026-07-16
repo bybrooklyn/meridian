@@ -429,10 +429,12 @@ non-Cargo nodes, and cross-checkout metadata normalization remain unimplemented.
 `ArtifactStore` accepts a host-selected bounded regular source file, copies and
 hashes it into a BLAKE3-addressed object, verifies any pre-existing object, and
 atomically creates a non-overwriting BuildId/node reference with declared schema
-and tool identity. A running `BuildService` or `DurableBuildService` can emit a
-typed artifact event only when that verified reference carries the request's
-BuildId and root-node ID, exposing the verified content hash to the host. The
-helper CLI can opt in to publish exactly one Cargo-reported executable after a
+and tool identity. Cargo-reported executable references additionally retain the
+bounded Cargo package ID and target name. A running `BuildService` or
+`DurableBuildService` can emit a typed artifact event only when that verified
+reference carries the request's BuildId and root-node ID, exposing the verified
+content hash to the host. The helper CLI can opt in to publish exactly one
+Cargo-reported executable after a
 successful build or test-compilation command when paired host-selected
 `--artifact-store` and `--cargo-output-root` paths are supplied. The executable
 must be listed by Cargo and be a bounded regular non-symlink file beneath the
@@ -472,8 +474,9 @@ graph proof is only Cargo metadata -> check/build; it makes no parallelism, reso
 cache, or non-Cargo adapter claim. A host-selected `ArtifactStore` can copy one
 bounded regular file into a BLAKE3-addressed object, verify a pre-existing
 object, and atomically create a BuildId/node reference with declared schema and
-tool identity. The store verifies copied bytes but does not prove that a Cargo
-invocation produced its source path. After a successful helper build or
+tool identity. Cargo-reported executable references retain the package ID and
+target name supplied by Cargo, but the store still verifies copied bytes rather
+than proving that a Cargo invocation produced its source path. After a successful helper build or
 test-compilation command, an opt-in paired artifact-store/output-root request
 can select exactly one Cargo-reported executable: it must be listed by Cargo,
 regular, non-symlinked, within the canonical output root, and within the
@@ -498,8 +501,9 @@ output root and rejects root escape. Existing objects must hash to their
 content-addressed name and references never overwrite a different BuildId/node
 result.
 
-Migration/compatibility: no existing public or persistent format changes. The
-new versioned protocol begins at v1 and is additive.
+Migration/compatibility: Cargo-reported executable references add optional
+package/target provenance. Existing local references deserialize without that
+field and retain no Cargo provenance; the v1 protocol remains additive.
 
 Documentation: the Cargo/IDE/build authority, repository architecture,
 registries, and this package record are the owning sources; they are updated
