@@ -432,8 +432,13 @@ atomically creates a non-overwriting BuildId/node reference with declared schema
 and tool identity. A running `BuildService` or `DurableBuildService` can emit a
 typed artifact event only when that verified reference carries the request's
 BuildId and root-node ID, exposing the verified content hash to the host. The
-build adapter reports Cargo artifact messages but does not yet automatically
-select, validate, or publish them; cache policy remains absent.
+helper CLI can opt in to publish exactly one Cargo-reported executable after a
+successful build or test-compilation command when paired host-selected
+`--artifact-store` and `--cargo-output-root` paths are supplied. The executable
+must be listed by Cargo and be a bounded regular non-symlink file beneath the
+canonical output root; it is copied and event-bound before the terminal success
+transition. General Cargo artifact selection, cache policy, and remote
+provenance remain absent.
 
 Explicit non-goals: a lossless TOML editor, rust-analyzer session, remote
 worker, signing/deployment, Alluvium adapter, editor panels, package graph
@@ -445,10 +450,11 @@ compiler diagnostic/artifact mapping; typed full Cargo metadata parsing;
 secret-like JSON and process-stderr diagnostic redaction; durable snapshot publication/reopen and
 `WorkerLost` recovery; graph order, invalid-edge, cycle, unreachable-node, and
 blocked-dependent fixtures; verified artifact object/reference publication,
-corrupt-object rejection, conflicting-reference rejection, and request-bound
-artifact-event fixture; and a structured
-local Cargo smoke, verified artifact-event smoke, and helper-CLI
-check/build/test-compilation that never invoke a shell.
+corrupt-object rejection, conflicting-reference rejection, output-root escape
+and unlisted-executable rejection, and request-bound artifact-event fixture;
+and a structured local Cargo smoke, verified artifact-event smoke, and
+helper-CLI check/build/test-compilation including one opt-in executable
+publication that never invokes a shell.
 
 Benchmarks and hardware: no performance claim in the first slice; local Cargo
 toolchain only. Remote, sandbox, and named-hardware profiles are explicitly not
@@ -460,17 +466,21 @@ tests pass. The durable local store reopens interrupted work as `WorkerLost`,
 persists that recovery before exposing it, and rejects late success. The adapter
 drains stdout and bounded stderr concurrently so failed local Cargo runs return
 a typed redacted process diagnostic. Process supervision, child-process-group
-termination, automatic Cargo-artifact qualification, and durable build-wide
+termination, general Cargo-artifact qualification, and durable build-wide
 provenance remain required before package completion. The local
 graph proof is only Cargo metadata -> check/build; it makes no parallelism, resource,
 cache, or non-Cargo adapter claim. A host-selected `ArtifactStore` can copy one
 bounded regular file into a BLAKE3-addressed object, verify a pre-existing
 object, and atomically create a BuildId/node reference with declared schema and
 tool identity. The store verifies copied bytes but does not prove that a Cargo
-invocation produced its source path. Cargo build output is observable but is not yet automatically
-selected, validated, or published into that store. The host can record a
-verified artifact event only while its matching request is running; mismatched
-BuildId or node identity is rejected before the hash becomes observable.
+invocation produced its source path. After a successful helper build or
+test-compilation command, an opt-in paired artifact-store/output-root request
+can select exactly one Cargo-reported executable: it must be listed by Cargo,
+regular, non-symlinked, within the canonical output root, and within the
+existing bounded-file limit. The host records its verified artifact event while
+the matching request is still running; mismatched BuildId or node identity is
+rejected before the hash becomes observable. Zero, multiple, arbitrary, or
+oversized Cargo outputs are not published.
 
 Accessibility: the service emits named stages, actionable typed diagnostics,
 verified artifact outcomes, and cancellation/retry states for later Meridian UI
@@ -482,9 +492,11 @@ allowlisted; Windows-required `USERPROFILE` and `SYSTEMROOT` are explicit local
 identity inputs rather than ambient fallback; Cargo output is untrusted input;
 paths and diagnostic text are bounded and redacted; no secrets, credentials,
 private-game paths, or shell concatenation are permitted. Artifact roots,
-objects, references, and source files reject direct symlinks; existing objects
-must hash to their content-addressed name and references never overwrite a
-different BuildId/node result.
+objects, references, and source files reject direct symlinks; opt-in Cargo
+executable publication additionally requires an explicit non-symlink canonical
+output root and rejects root escape. Existing objects must hash to their
+content-addressed name and references never overwrite a different BuildId/node
+result.
 
 Migration/compatibility: no existing public or persistent format changes. The
 new versioned protocol begins at v1 and is additive.

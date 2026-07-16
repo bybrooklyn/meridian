@@ -36,9 +36,13 @@ Non-goals: replacing Cargo or rust-analyzer, creating separate Meridian Studio/I
   reference carrying declared schema and tool identity. A running service can
   expose that verified hash as a typed artifact event only when the reference
   matches its BuildId and root node. It does not prove that Cargo produced the
-  source file. Cargo build artifact messages are observable only; automatic
-  artifact selection/publication, cache policy, and remote provenance remain
-  unimplemented. The current
+  source file. The helper can opt in to one Cargo-reported executable
+  publication only after a successful build or test-compilation command, with
+  paired `--artifact-store` and `--cargo-output-root` paths. It requires exactly
+  one executable, requires that executable to be listed by Cargo, and rejects
+  symlinked, non-regular, oversized, or output-root-escaping paths before an
+  atomic publication/event. General artifact selection, cache policy, and
+  remote provenance remain unimplemented. The current
   adapter concurrently drains stdout and bounded stderr; stderr becomes a typed
   process-failure diagnostic only for a non-success Cargo status, not a compiler
   artifact or persistent log.

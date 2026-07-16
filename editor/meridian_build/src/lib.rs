@@ -839,6 +839,9 @@ impl BuildService {
         operation_id: OperationId,
         message: CargoMessage,
     ) -> Result<BuildEvent, BuildError> {
+        if let CargoMessage::Artifact(artifact) = &message {
+            validate_cargo_artifact(artifact)?;
+        }
         let operation = self.operation_mut(operation_id)?;
         if operation.phase != BuildPhase::Running {
             return Err(BuildError::CargoMessageOutsideRunning(operation.phase));
@@ -1219,7 +1222,7 @@ impl BuildServiceStore {
 ///
 /// This bounded foundation publishes a fully copied, hashed object before an
 /// non-overwriting BuildId/node reference. It intentionally does not provide cache
-/// eviction, remote transfer, signing, or automatic Cargo-artifact selection.
+/// eviction, remote transfer, signing, or unconstrained Cargo-artifact selection.
 pub struct ArtifactStore {
     root: PathBuf,
 }
@@ -1360,6 +1363,56 @@ impl ArtifactStore {
         };
         Self::publish_reference(&reference_directory, &published)?;
         Ok(published)
+    }
+
+    /// Validates and publishes one Cargo-reported executable from a declared output root.
+    ///
+    /// The Cargo artifact record is untrusted until its bounded fields validate, the
+    /// executable is listed in the record's filenames, and its canonical regular-file
+    /// path lies beneath the explicit non-symlink output root. The method records that
+    /// Cargo reported the path; it does not establish remote provenance, signing, or a
+    /// reusable cache policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the record lacks a listed absolute executable, the output
+    /// root or executable path is unsafe, the executable escapes the root, or normal
+    /// artifact publication validation fails.
+    pub fn publish_cargo_executable(
+        &self,
+        build_id: &BuildId,
+        node: &BuildNode,
+        artifact: &CargoArtifact,
+        cargo_output_root: impl AsRef<Path>,
+    ) -> Result<PublishedArtifact, BuildError> {
+        validate_cargo_artifact(artifact)?;
+        let executable = artifact
+            .executable
+            .as_deref()
+            .ok_or(BuildError::CargoArtifactExecutableMissing)?;
+        if !artifact
+            .filenames
+            .iter()
+            .any(|filename| filename == executable)
+        {
+            return Err(BuildError::CargoArtifactExecutableNotListed);
+        }
+        let executable_path = Path::new(executable);
+        if !executable_path.is_absolute() {
+            return Err(BuildError::CargoArtifactExecutableNotAbsolute);
+        }
+        validate_regular_artifact_file(executable_path)?;
+        let output_root = canonical_cargo_output_root(cargo_output_root.as_ref())?;
+        let executable_path =
+            fs::canonicalize(executable_path).map_err(|error| BuildError::ArtifactIo {
+                operation: "canonicalize Cargo executable",
+                message: error.to_string(),
+            })?;
+        validate_regular_artifact_file(&executable_path)?;
+        if !executable_path.starts_with(&output_root) {
+            return Err(BuildError::CargoArtifactExecutableOutsideOutputRoot);
+        }
+        self.publish_file(build_id, node, "cargo-executable-v1", executable_path)
     }
 
     /// Returns the local object path for a validated content hash.
@@ -1929,6 +1982,23 @@ fn validate_regular_artifact_file(path: &Path) -> Result<(), BuildError> {
         return Err(BuildError::ArtifactSourceNotRegular);
     }
     Ok(())
+}
+
+fn canonical_cargo_output_root(path: &Path) -> Result<PathBuf, BuildError> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| BuildError::ArtifactIo {
+        operation: "inspect Cargo output root",
+        message: error.to_string(),
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(BuildError::ArtifactPathSymlink);
+    }
+    if !metadata.is_dir() {
+        return Err(BuildError::ArtifactPathNotDirectory);
+    }
+    fs::canonicalize(path).map_err(|error| BuildError::ArtifactIo {
+        operation: "canonicalize Cargo output root",
+        message: error.to_string(),
+    })
 }
 
 fn create_artifact_temporary(directory: &Path, label: &str) -> Result<(PathBuf, File), BuildError> {
@@ -2659,23 +2729,31 @@ fn map_artifact(raw: RawCargoMessage) -> Result<CargoMessage, BuildError> {
     let filenames = raw
         .filenames
         .ok_or(BuildError::MissingCargoField("compiler-artifact.filenames"))?;
-    if filenames.len() > MAX_FILENAMES {
-        return Err(BuildError::TooManyArtifactFilenames(filenames.len()));
-    }
-    validate_text("Cargo package ID", &package_id)?;
-    validate_text("Cargo target name", &target_name)?;
-    for filename in &filenames {
-        validate_text("Cargo artifact filename", filename)?;
-    }
-    if let Some(executable) = &raw.executable {
-        validate_text("Cargo artifact executable", executable)?;
-    }
-    Ok(CargoMessage::Artifact(CargoArtifact {
+    let artifact = CargoArtifact {
         package_id,
         target_name,
         filenames,
         executable: raw.executable,
-    }))
+    };
+    validate_cargo_artifact(&artifact)?;
+    Ok(CargoMessage::Artifact(artifact))
+}
+
+fn validate_cargo_artifact(artifact: &CargoArtifact) -> Result<(), BuildError> {
+    if artifact.filenames.len() > MAX_FILENAMES {
+        return Err(BuildError::TooManyArtifactFilenames(
+            artifact.filenames.len(),
+        ));
+    }
+    validate_text("Cargo package ID", &artifact.package_id)?;
+    validate_text("Cargo target name", &artifact.target_name)?;
+    for filename in &artifact.filenames {
+        validate_text("Cargo artifact filename", filename)?;
+    }
+    if let Some(executable) = &artifact.executable {
+        validate_text("Cargo artifact executable", executable)?;
+    }
+    Ok(())
 }
 
 struct CargoStreams {
@@ -3293,6 +3371,16 @@ pub enum BuildError {
     InputTooLarge(usize),
     /// Cargo emitted too many artifact filenames in one event.
     TooManyArtifactFilenames(usize),
+    /// Cargo did not nominate an executable for requested publication.
+    CargoArtifactExecutableMissing,
+    /// Cargo's executable path was absent from its artifact filename list.
+    CargoArtifactExecutableNotListed,
+    /// Cargo's executable path was not absolute.
+    CargoArtifactExecutableNotAbsolute,
+    /// Cargo's executable path escaped the declared output root.
+    CargoArtifactExecutableOutsideOutputRoot,
+    /// More or fewer than one Cargo executable was eligible for one publication.
+    CargoArtifactExecutableCount(usize),
     /// Cargo command does not match the selected adapter protocol.
     UnexpectedCargoCommand {
         /// Command required by the called adapter.
@@ -3541,6 +3629,22 @@ impl Display for BuildError {
             Self::TooManyArtifactFilenames(count) => {
                 write!(formatter, "Cargo artifact has too many filenames ({count})")
             }
+            Self::CargoArtifactExecutableMissing => {
+                formatter.write_str("Cargo artifact did not report an executable")
+            }
+            Self::CargoArtifactExecutableNotListed => {
+                formatter.write_str("Cargo executable was not listed among artifact filenames")
+            }
+            Self::CargoArtifactExecutableNotAbsolute => {
+                formatter.write_str("Cargo executable path must be absolute")
+            }
+            Self::CargoArtifactExecutableOutsideOutputRoot => {
+                formatter.write_str("Cargo executable escaped the declared output root")
+            }
+            Self::CargoArtifactExecutableCount(count) => write!(
+                formatter,
+                "expected exactly one Cargo executable for publication ({count} found)"
+            ),
             Self::UnexpectedCargoCommand { expected, received } => write!(
                 formatter,
                 "Cargo adapter expects {}, received {}",
@@ -4280,6 +4384,78 @@ mod tests {
             store.publish_file(&build_id, &node, "cargo-artifact-v1", &source),
             Err(BuildError::ArtifactObjectHashMismatch)
         ));
+    }
+
+    #[test]
+    fn artifact_store_qualifies_one_listed_executable_within_the_output_root() {
+        let directory = TemporaryDirectory::new();
+        let cargo_output_root = directory.path.join("cargo-target");
+        let executable = cargo_output_root.join("debug").join("example-bin");
+        fs::create_dir_all(executable.parent().expect("executable parent"))
+            .expect("output root creates");
+        fs::write(&executable, b"Cargo-reported executable").expect("executable writes");
+        let node = BuildNode::cargo_build(
+            BuildNodeId::new("cargo-build").expect("node ID"),
+            "cargo 1.90",
+        )
+        .expect("build node");
+        let mut artifact_identity = identity();
+        artifact_identity.root_node_ids = vec![node.id.as_str().to_owned()];
+        let build_id = BuildId::derive(&artifact_identity).expect("build ID");
+        let store = ArtifactStore::new(directory.artifact_root()).expect("artifact store");
+        let executable_text = executable.to_string_lossy().into_owned();
+        let artifact = CargoArtifact {
+            package_id: "path+file:///workspace#example@0.1.0".to_owned(),
+            target_name: "example-bin".to_owned(),
+            filenames: vec![executable_text.clone()],
+            executable: Some(executable_text),
+        };
+
+        let outside = directory.path.join("outside-bin");
+        fs::write(&outside, b"outside executable").expect("outside executable writes");
+        let outside_text = outside.to_string_lossy().into_owned();
+        assert!(matches!(
+            store.publish_cargo_executable(
+                &build_id,
+                &node,
+                &CargoArtifact {
+                    package_id: artifact.package_id.clone(),
+                    target_name: artifact.target_name.clone(),
+                    filenames: vec![outside_text.clone()],
+                    executable: Some(outside_text),
+                },
+                &cargo_output_root,
+            ),
+            Err(BuildError::CargoArtifactExecutableOutsideOutputRoot)
+        ));
+        assert!(matches!(
+            store.publish_cargo_executable(
+                &build_id,
+                &node,
+                &CargoArtifact {
+                    package_id: artifact.package_id.clone(),
+                    target_name: artifact.target_name.clone(),
+                    filenames: Vec::new(),
+                    executable: artifact.executable.clone(),
+                },
+                &cargo_output_root,
+            ),
+            Err(BuildError::CargoArtifactExecutableNotListed)
+        ));
+
+        let published = store
+            .publish_cargo_executable(&build_id, &node, &artifact, &cargo_output_root)
+            .expect("listed executable publishes");
+        assert_eq!(published.schema(), "cargo-executable-v1");
+        assert_eq!(
+            fs::read(
+                store
+                    .object_path(published.content_hash())
+                    .expect("object path"),
+            )
+            .expect("published executable reads"),
+            b"Cargo-reported executable"
+        );
     }
 
     #[test]

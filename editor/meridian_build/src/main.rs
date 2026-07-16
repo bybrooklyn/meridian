@@ -5,15 +5,16 @@ use std::error::Error;
 use std::path::PathBuf;
 
 use meridian_build::{
-    hash_file_bounded, run_cargo_json, run_cargo_metadata, BuildCancellation, BuildGraph,
-    BuildGraphSchedule, BuildIdentityInput, BuildNode, BuildNodeId, BuildPhase, BuildRequest,
-    BuildService, CargoCommand, CargoEnvironment, CargoInvocation, CargoMetadataOutcome,
-    CargoRunStatus,
+    hash_file_bounded, run_cargo_json, run_cargo_metadata, ArtifactStore, BuildCancellation,
+    BuildGraph, BuildGraphSchedule, BuildIdentityInput, BuildNode, BuildNodeId, BuildPhase,
+    BuildRequest, BuildService, CargoArtifact, CargoCommand, CargoEnvironment, CargoInvocation,
+    CargoMessage, CargoMetadataOutcome, CargoRunStatus,
 };
 use meridian_core::{OperationId, TraceId};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let arguments = CliArguments::parse(env::args().skip(1))?;
+    let artifact_store = optional_artifact_store(&arguments)?;
     let lock_hash = hash_file_bounded(&arguments.workspace.join("Cargo.lock"))?;
     let environment = CargoEnvironment::from_host();
     let mut metadata_node = BuildNode::cargo_metadata(
@@ -54,11 +55,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let _ = schedule.start(&root.id)?;
     let root_node_id = root.id.clone();
     let request = BuildRequest::new(&identity, OperationId::new(1), TraceId::new(1), root)?;
+    let request_build_id = request.build_id.clone();
+    let request_root_node = request.root_node.clone();
     let mut service = BuildService::default();
     print_event(&service.submit(request)?);
-    print_event(&service.transition(OperationId::new(1), BuildPhase::Resolving, 5)?);
-    print_event(&service.transition(OperationId::new(1), BuildPhase::Ready, 15)?);
-    print_event(&service.transition(OperationId::new(1), BuildPhase::Running, 20)?);
+    transition_service_to_running(&mut service)?;
 
     let invocation = CargoInvocation::new(
         &arguments.workspace,
@@ -67,7 +68,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         environment,
     )?;
     let outcome = run_cargo_json(&invocation, &BuildCancellation::default())?;
+    let mut cargo_executables = Vec::new();
     for message in outcome.messages {
+        if let CargoMessage::Artifact(artifact) = &message {
+            if artifact.executable.is_some() {
+                cargo_executables.push(artifact.clone());
+            }
+        }
         print_event(&service.record_cargo_message(OperationId::new(1), message)?);
     }
     if let Some(diagnostic) = outcome.process_diagnostic {
@@ -75,6 +82,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     match outcome.status {
         CargoRunStatus::Succeeded => {
+            publish_succeeded_executable(
+                artifact_store,
+                &cargo_executables,
+                &request_build_id,
+                &request_root_node,
+                &mut service,
+            )?;
             print_event(&service.transition(OperationId::new(1), BuildPhase::Succeeded, 100)?);
             let _ = schedule.finish(&root_node_id, BuildPhase::Succeeded)?;
         }
@@ -98,6 +112,51 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Err(format!("cargo {} was cancelled", arguments.cargo_command.as_str()).into());
         }
     }
+    Ok(())
+}
+
+fn transition_service_to_running(
+    service: &mut BuildService,
+) -> Result<(), meridian_build::BuildError> {
+    print_event(&service.transition(OperationId::new(1), BuildPhase::Resolving, 5)?);
+    print_event(&service.transition(OperationId::new(1), BuildPhase::Ready, 15)?);
+    print_event(&service.transition(OperationId::new(1), BuildPhase::Running, 20)?);
+    Ok(())
+}
+
+fn optional_artifact_store(
+    arguments: &CliArguments,
+) -> Result<Option<(ArtifactStore, PathBuf)>, meridian_build::BuildError> {
+    match (
+        arguments.artifact_store.as_ref(),
+        arguments.cargo_output_root.as_ref(),
+    ) {
+        (Some(store_root), Some(output_root)) => Ok(Some((
+            ArtifactStore::new(store_root.clone())?,
+            output_root.clone(),
+        ))),
+        (None, None) => Ok(None),
+        _ => unreachable!("CLI parser requires artifact publication paths together"),
+    }
+}
+
+fn publish_succeeded_executable(
+    artifact_store: Option<(ArtifactStore, PathBuf)>,
+    cargo_executables: &[CargoArtifact],
+    build_id: &meridian_build::BuildId,
+    root_node: &BuildNode,
+    service: &mut BuildService,
+) -> Result<(), meridian_build::BuildError> {
+    let Some((store, output_root)) = artifact_store else {
+        return Ok(());
+    };
+    let [artifact] = cargo_executables else {
+        return Err(meridian_build::BuildError::CargoArtifactExecutableCount(
+            cargo_executables.len(),
+        ));
+    };
+    let publication = store.publish_cargo_executable(build_id, root_node, artifact, output_root)?;
+    print_event(&service.record_published_artifact(OperationId::new(1), publication)?);
     Ok(())
 }
 
@@ -173,6 +232,8 @@ struct CliArguments {
     toolchain: String,
     target: String,
     cargo_arguments: Vec<String>,
+    artifact_store: Option<PathBuf>,
+    cargo_output_root: Option<PathBuf>,
 }
 
 impl CliArguments {
@@ -189,6 +250,8 @@ impl CliArguments {
         let mut toolchain = None;
         let mut target = None;
         let mut cargo_arguments = Vec::new();
+        let mut artifact_store = None;
+        let mut cargo_output_root = None;
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
                 "--workspace" => workspace = Some(next_value(&mut arguments, "--workspace")?),
@@ -197,12 +260,30 @@ impl CliArguments {
                 }
                 "--toolchain" => toolchain = Some(next_value(&mut arguments, "--toolchain")?),
                 "--target" => target = Some(next_value(&mut arguments, "--target")?),
+                "--artifact-store" => {
+                    artifact_store = Some(PathBuf::from(next_value(
+                        &mut arguments,
+                        "--artifact-store",
+                    )?));
+                }
+                "--cargo-output-root" => {
+                    cargo_output_root = Some(PathBuf::from(next_value(
+                        &mut arguments,
+                        "--cargo-output-root",
+                    )?));
+                }
                 "--" => {
                     cargo_arguments.extend(arguments);
                     break;
                 }
                 _ => return Err(CliError::UnknownArgument(argument)),
             }
+        }
+        if artifact_store.is_some() != cargo_output_root.is_some() {
+            return Err(CliError::ArtifactPublicationPathsMustPair);
+        }
+        if artifact_store.is_some() && cargo_command == CargoCommand::Check {
+            return Err(CliError::ArtifactPublicationRequiresOutputCommand);
         }
         Ok(Self {
             cargo_command,
@@ -212,6 +293,8 @@ impl CliArguments {
             toolchain: toolchain.ok_or(CliError::MissingArgument("--toolchain"))?,
             target: target.ok_or(CliError::MissingArgument("--target"))?,
             cargo_arguments,
+            artifact_store,
+            cargo_output_root,
         })
     }
 }
@@ -228,16 +311,24 @@ enum CliError {
     Usage,
     MissingArgument(&'static str),
     UnknownArgument(String),
+    ArtifactPublicationPathsMustPair,
+    ArtifactPublicationRequiresOutputCommand,
 }
 
 impl std::fmt::Display for CliError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Usage => formatter.write_str(
-                "usage: meridian-build <--cargo-check|--cargo-build|--cargo-test-no-run> --workspace <path> --source-checkpoint <id> --toolchain <version> --target <target> [-- <cargo arguments>]",
+                "usage: meridian-build <--cargo-check|--cargo-build|--cargo-test-no-run> --workspace <path> --source-checkpoint <id> --toolchain <version> --target <target> [--artifact-store <path> --cargo-output-root <path>] [-- <cargo arguments>]",
             ),
             Self::MissingArgument(flag) => write!(formatter, "missing required argument {flag}"),
             Self::UnknownArgument(argument) => write!(formatter, "unknown argument {argument}"),
+            Self::ArtifactPublicationPathsMustPair => formatter.write_str(
+                "--artifact-store and --cargo-output-root must be supplied together",
+            ),
+            Self::ArtifactPublicationRequiresOutputCommand => formatter.write_str(
+                "artifact publication requires --cargo-build or --cargo-test-no-run",
+            ),
         }
     }
 }
