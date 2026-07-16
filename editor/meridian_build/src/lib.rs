@@ -747,6 +747,8 @@ pub enum BuildEventPayload {
     Cargo(CargoMessage),
     /// A bounded process-level Cargo failure diagnostic, carried in [`BuildEvent::diagnostic`].
     ProcessDiagnostic,
+    /// A verified artifact publication bound to the running request.
+    Artifact(PublishedArtifact),
 }
 
 /// Versioned event emitted by the build service.
@@ -869,6 +871,35 @@ impl BuildService {
         )
     }
 
+    /// Records one verified artifact publication while an operation is running.
+    ///
+    /// The publication must carry the same immutable `BuildId` and root-node ID as
+    /// the request. This method does not publish or prove the source itself; use
+    /// [`ArtifactStore`] for the bounded file-copy and object/reference checks.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the operation is absent or not running, or when the
+    /// publication is malformed or belongs to a different request.
+    pub fn record_published_artifact(
+        &mut self,
+        operation_id: OperationId,
+        publication: PublishedArtifact,
+    ) -> Result<BuildEvent, BuildError> {
+        validate_published_artifact(&publication)?;
+        let operation = self.operation_mut(operation_id)?;
+        if operation.phase != BuildPhase::Running {
+            return Err(BuildError::CargoMessageOutsideRunning(operation.phase));
+        }
+        if publication.build_id != operation.request.build_id {
+            return Err(BuildError::MismatchedEventIdentity);
+        }
+        if publication.node_id != operation.request.root_node.id {
+            return Err(BuildError::MismatchedNodeId);
+        }
+        operation.emit_with_artifact(BuildPhase::Running, 75, publication)
+    }
+
     /// Accepts a worker-produced event only if identity, sequence, and phase are valid.
     ///
     /// # Errors
@@ -884,6 +915,7 @@ impl BuildService {
         if operation.request.root_node.id != event.node_id {
             return Err(BuildError::MismatchedNodeId);
         }
+        validate_artifact_event(event)?;
         let expected = operation.last_sequence.saturating_add(1);
         if event.sequence != expected {
             return Err(BuildError::StaleEventSequence {
@@ -1183,20 +1215,75 @@ pub struct ArtifactStore {
 }
 
 /// Non-overwriting reference to one atomically published artifact object.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PublishedArtifact {
-    /// Caller-supplied build input identity associated with this publication.
-    pub build_id: BuildId,
-    /// Graph node that produced the artifact.
-    pub node_id: BuildNodeId,
-    /// Declared schema or format identity for the artifact bytes.
-    pub schema: String,
-    /// Caller-declared producer tool identity/version from the graph node.
-    pub tool_id_version: String,
-    /// BLAKE3 hash of the exact published object bytes.
-    pub content_hash: String,
-    /// Published object size in bytes.
-    pub byte_length: u64,
+    build_id: BuildId,
+    node_id: BuildNodeId,
+    schema: String,
+    tool_id_version: String,
+    content_hash: String,
+    byte_length: u64,
+}
+
+impl PublishedArtifact {
+    /// Returns the immutable `BuildId` bound to this verified publication.
+    #[must_use]
+    pub fn build_id(&self) -> &BuildId {
+        &self.build_id
+    }
+
+    /// Returns the graph node that produced this verified publication.
+    #[must_use]
+    pub fn node_id(&self) -> &BuildNodeId {
+        &self.node_id
+    }
+
+    /// Returns the declared schema or format identity for the artifact bytes.
+    #[must_use]
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    /// Returns the declared producer tool identity/version from the graph node.
+    #[must_use]
+    pub fn tool_id_version(&self) -> &str {
+        &self.tool_id_version
+    }
+
+    /// Returns the BLAKE3 hash of the exact published object bytes.
+    #[must_use]
+    pub fn content_hash(&self) -> &str {
+        &self.content_hash
+    }
+
+    /// Returns the published object size in bytes.
+    #[must_use]
+    pub const fn byte_length(&self) -> u64 {
+        self.byte_length
+    }
+}
+
+#[derive(Deserialize)]
+struct StoredPublishedArtifact {
+    build_id: BuildId,
+    node_id: BuildNodeId,
+    schema: String,
+    tool_id_version: String,
+    content_hash: String,
+    byte_length: u64,
+}
+
+impl From<StoredPublishedArtifact> for PublishedArtifact {
+    fn from(stored: StoredPublishedArtifact) -> Self {
+        Self {
+            build_id: stored.build_id,
+            node_id: stored.node_id,
+            schema: stored.schema,
+            tool_id_version: stored.tool_id_version,
+            content_hash: stored.content_hash,
+            byte_length: stored.byte_length,
+        }
+    }
 }
 
 impl ArtifactStore {
@@ -1425,6 +1512,20 @@ impl DurableBuildService {
         self.persist(|service| service.record_process_diagnostic(operation_id, diagnostic))
     }
 
+    /// Records and durably stores one verified artifact-publication event.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the publication does not match the running request
+    /// or the resulting event cannot be durably persisted.
+    pub fn record_published_artifact(
+        &mut self,
+        operation_id: OperationId,
+        publication: PublishedArtifact,
+    ) -> Result<BuildEvent, BuildError> {
+        self.persist(|service| service.record_published_artifact(operation_id, publication))
+    }
+
     /// Validates and durably records one external worker event.
     ///
     /// # Errors
@@ -1534,6 +1635,30 @@ impl BuildOperation {
             artifact_hash: None,
             trace_id: self.request.trace_id,
             payload,
+        })
+    }
+
+    fn emit_with_artifact(
+        &mut self,
+        phase: BuildPhase,
+        progress: u8,
+        publication: PublishedArtifact,
+    ) -> Result<BuildEvent, BuildError> {
+        validate_transition(self.phase, phase)?;
+        self.phase = phase;
+        self.last_sequence = self.last_sequence.saturating_add(1);
+        Ok(BuildEvent {
+            protocol_version: BUILD_PROTOCOL_VERSION,
+            build_id: self.request.build_id.clone(),
+            operation_id: self.request.operation_id,
+            node_id: self.request.root_node.id.clone(),
+            sequence: self.last_sequence,
+            phase,
+            progress,
+            diagnostic: None,
+            artifact_hash: Some(publication.content_hash.clone()),
+            trace_id: self.request.trace_id,
+            payload: BuildEventPayload::Artifact(publication),
         })
     }
 }
@@ -1869,7 +1994,8 @@ fn read_published_reference(path: &Path) -> Result<PublishedArtifact, BuildError
         operation: "read artifact reference",
         message: error.to_string(),
     })?;
-    let reference: PublishedArtifact = serde_json::from_slice(&bytes)
+    let reference = serde_json::from_slice::<StoredPublishedArtifact>(&bytes)
+        .map(PublishedArtifact::from)
         .map_err(|error| BuildError::MalformedArtifactReference(error.to_string()))?;
     validate_published_artifact(&reference)?;
     Ok(reference)
@@ -1884,6 +2010,31 @@ fn validate_published_artifact(reference: &PublishedArtifact) -> Result<(), Buil
         &reference.tool_id_version,
     )?;
     validate_artifact_hash(&reference.content_hash)
+}
+
+fn validate_artifact_event(event: &BuildEvent) -> Result<(), BuildError> {
+    match &event.payload {
+        BuildEventPayload::Artifact(publication) => {
+            validate_published_artifact(publication)?;
+            if publication.build_id != event.build_id
+                || publication.node_id != event.node_id
+                || event.artifact_hash.as_deref() != Some(publication.content_hash.as_str())
+            {
+                return Err(BuildError::MismatchedArtifactEvent);
+            }
+            Ok(())
+        }
+        BuildEventPayload::Lifecycle
+        | BuildEventPayload::Cargo(_)
+        | BuildEventPayload::ProcessDiagnostic
+            if event.artifact_hash.is_some() =>
+        {
+            Err(BuildError::MismatchedArtifactEvent)
+        }
+        BuildEventPayload::Lifecycle
+        | BuildEventPayload::Cargo(_)
+        | BuildEventPayload::ProcessDiagnostic => Ok(()),
+    }
 }
 
 fn validate_artifact_hash(content_hash: &str) -> Result<(), BuildError> {
@@ -3086,6 +3237,8 @@ pub enum BuildError {
     MismatchedEventIdentity,
     /// An external event has a node ID outside the registered request.
     MismatchedNodeId,
+    /// An artifact event did not carry the matching verified publication and hash.
+    MismatchedArtifactEvent,
     /// An external event skipped or replayed a sequence number.
     StaleEventSequence { expected: u64, received: u64 },
     /// Workspace path was empty.
@@ -3311,6 +3464,9 @@ impl Display for BuildError {
             }
             Self::MismatchedNodeId => {
                 formatter.write_str("event node ID does not match the request")
+            }
+            Self::MismatchedArtifactEvent => {
+                formatter.write_str("artifact event does not match its verified publication")
             }
             Self::StaleEventSequence { expected, received } => {
                 write!(
@@ -4024,15 +4180,15 @@ mod tests {
         let published = store
             .publish_file(&build_id, &node, "cargo-artifact-v1", &source)
             .expect("artifact publishes");
-        assert_eq!(published.byte_length, 24);
+        assert_eq!(published.byte_length(), 24);
         assert_eq!(
-            published.content_hash,
+            published.content_hash(),
             blake3::hash(b"first published artifact")
                 .to_hex()
                 .to_string()
         );
         let object_path = store
-            .object_path(&published.content_hash)
+            .object_path(published.content_hash())
             .expect("object path");
         assert_eq!(
             fs::read(&object_path).expect("published object reads"),
@@ -4081,12 +4237,86 @@ mod tests {
             .publish_file(&build_id, &node, "cargo-artifact-v1", &source)
             .expect("artifact publishes");
         let object_path = store
-            .object_path(&published.content_hash)
+            .object_path(published.content_hash())
             .expect("object path");
         fs::write(&object_path, b"corrupt").expect("object corruption writes");
         assert!(matches!(
             store.publish_file(&build_id, &node, "cargo-artifact-v1", &source),
             Err(BuildError::ArtifactObjectHashMismatch)
+        ));
+    }
+
+    #[test]
+    fn verified_artifact_events_require_the_running_request_identity() {
+        let directory = TemporaryDirectory::new();
+        let source = directory.artifact_source();
+        fs::write(&source, b"verified event artifact").expect("artifact source writes");
+        let request = request(1);
+        let build_id = request.build_id.clone();
+        let node = request.root_node.clone();
+        let store = ArtifactStore::new(directory.artifact_root()).expect("artifact store");
+        let published = store
+            .publish_file(&build_id, &node, "cargo-artifact-v1", &source)
+            .expect("artifact publishes");
+
+        let mut service = BuildService::default();
+        service.submit(request).expect("queued");
+        service
+            .transition(OperationId::new(1), BuildPhase::Resolving, 5)
+            .expect("resolving");
+        service
+            .transition(OperationId::new(1), BuildPhase::Ready, 10)
+            .expect("ready");
+        service
+            .transition(OperationId::new(1), BuildPhase::Running, 20)
+            .expect("running");
+
+        let event = service
+            .record_published_artifact(OperationId::new(1), published.clone())
+            .expect("publication event");
+        assert_eq!(
+            event.artifact_hash,
+            Some(published.content_hash().to_owned())
+        );
+        let mut external = event.clone();
+        external.sequence = external.sequence.saturating_add(1);
+        service
+            .accept_external_event(&external)
+            .expect("matching external publication event");
+        let mut tampered = external;
+        tampered.sequence = tampered.sequence.saturating_add(1);
+        tampered.artifact_hash = Some("0".repeat(64));
+        assert!(matches!(
+            service.accept_external_event(&tampered),
+            Err(BuildError::MismatchedArtifactEvent)
+        ));
+        assert!(matches!(
+            event.payload,
+            BuildEventPayload::Artifact(ref event_publication) if event_publication == &published
+        ));
+
+        let mut other_identity = identity();
+        other_identity.source_checkpoint = "different-checkpoint".to_owned();
+        let other_build_id = BuildId::derive(&other_identity).expect("different build ID");
+        let wrong_build = store
+            .publish_file(&other_build_id, &node, "cargo-artifact-v1", &source)
+            .expect("different build publication");
+        assert!(matches!(
+            service.record_published_artifact(OperationId::new(1), wrong_build),
+            Err(BuildError::MismatchedEventIdentity)
+        ));
+
+        let other_node = BuildNode::cargo_build(
+            BuildNodeId::new("different-node").expect("different node ID"),
+            "cargo 1.90",
+        )
+        .expect("different build node");
+        let wrong_node = store
+            .publish_file(&build_id, &other_node, "cargo-artifact-v1", &source)
+            .expect("different node publication");
+        assert!(matches!(
+            service.record_published_artifact(OperationId::new(1), wrong_node),
+            Err(BuildError::MismatchedNodeId)
         ));
     }
 

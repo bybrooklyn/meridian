@@ -108,7 +108,8 @@ wgpu, Rapier, egui, and AccessKit types MUST stop at their adapter crates. Exist
   BuildId/request/event contracts, bounded Cargo JSON mapping and process-failure
   stderr diagnostics, structured Cargo checks/builds/test compilation, helper CLI,
   host-selected local durable worker-loss recovery, verified atomic local
-  artifact-object/reference publication with declared tool identity, and a
+  artifact-object/reference publication with declared tool identity and
+  request-bound artifact event, and a
   deterministic Cargo metadata -> check/build dependency graph; long-lived scheduling,
   durable cache/provenance, and broad DAG adapters remain planned.
 - meridian-vcs and meridian-sync.

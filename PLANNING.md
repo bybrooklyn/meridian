@@ -428,8 +428,11 @@ non-Cargo nodes, and cross-checkout metadata normalization remain unimplemented.
 `ArtifactStore` accepts a host-selected bounded regular source file, copies and
 hashes it into a BLAKE3-addressed object, verifies any pre-existing object, and
 atomically creates a non-overwriting BuildId/node reference with declared schema
-and tool identity. The build adapter reports Cargo artifact messages but does not yet
-automatically select, validate, or publish them; cache policy remains absent.
+and tool identity. A running `BuildService` or `DurableBuildService` can emit a
+typed artifact event only when that verified reference carries the request's
+BuildId and root-node ID, exposing the verified content hash to the host. The
+build adapter reports Cargo artifact messages but does not yet automatically
+select, validate, or publish them; cache policy remains absent.
 
 Explicit non-goals: a lossless TOML editor, rust-analyzer session, remote
 worker, signing/deployment, Alluvium adapter, editor panels, package graph
@@ -441,7 +444,8 @@ compiler diagnostic/artifact mapping; typed full Cargo metadata parsing;
 secret-like JSON and process-stderr diagnostic redaction; durable snapshot publication/reopen and
 `WorkerLost` recovery; graph order, invalid-edge, cycle, unreachable-node, and
 blocked-dependent fixtures; verified artifact object/reference publication,
-corrupt-object rejection, and conflicting-reference rejection; and a structured
+corrupt-object rejection, conflicting-reference rejection, and request-bound
+artifact-event fixture; and a structured
 local Cargo smoke and helper-CLI check/build/test-compilation that never invoke a shell.
 
 Benchmarks and hardware: no performance claim in the first slice; local Cargo
@@ -462,10 +466,13 @@ bounded regular file into a BLAKE3-addressed object, verify a pre-existing
 object, and atomically create a BuildId/node reference with declared schema and
 tool identity. The store verifies copied bytes but does not prove that a Cargo
 invocation produced its source path. Cargo build output is observable but is not yet automatically
-selected, validated, or published into that store.
+selected, validated, or published into that store. The host can record a
+verified artifact event only while its matching request is running; mismatched
+BuildId or node identity is rejected before the hash becomes observable.
 
 Accessibility: the service emits named stages, actionable typed diagnostics,
-and cancellation/retry states for later Meridian UI consumption; no visible
+verified artifact outcomes, and cancellation/retry states for later Meridian UI
+consumption; no visible
 panel is claimed by this package.
 
 Security/provenance: command arguments are structured arrays; environment is
