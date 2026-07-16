@@ -299,17 +299,32 @@ mod tests {
     #[test]
     fn poll_is_non_blocking_until_completion() {
         let pool = pool();
-        let mut task = pool.submit(|| 42_u32).expect("pool is open");
-        let mut result = None;
-        for _ in 0..100 {
-            if let Some(value) = task.poll() {
-                result = Some(value);
-                break;
-            }
-            thread::yield_now();
-        }
+        let (release, wait_for_release) = mpsc::channel();
+        let mut task = pool
+            .submit(move || {
+                wait_for_release.recv().expect("test release is sent");
+                42_u32
+            })
+            .expect("pool is open");
+        assert!(
+            task.poll().is_none(),
+            "poll must not wait for a blocked task"
+        );
+        release.send(()).expect("worker release is received");
 
-        assert_eq!(result.expect("task completed").expect("task succeeded"), 42);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        let result = loop {
+            if let Some(value) = task.poll() {
+                break value;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "task did not complete before the bounded test deadline"
+            );
+            thread::sleep(std::time::Duration::from_millis(1));
+        };
+
+        assert_eq!(result.expect("task succeeded"), 42);
     }
 
     #[test]

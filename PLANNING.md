@@ -416,8 +416,12 @@ JSON remains the diagnostic protocol. A bounded versioned, host-selected local
 state store publishes a synced temporary snapshot through a same-directory
 rename; `DurableBuildService` persists each accepted mutation, restores
 interrupted work as `WorkerLost`, and rejects malformed, oversized, symlinked,
-or non-regular state files. Scheduling, durable cache/provenance, non-Cargo
-nodes, and cross-checkout metadata normalization remain unimplemented.
+or non-regular state files. `BuildGraph` validates declared dependencies,
+requested-root/BuildId agreement, duplicate inputs/environment, cycles, and
+unreachable nodes; its deterministic local scheduler starts a Cargo metadata
+node before the dependent Cargo-check node and blocks dependents after terminal
+failure. Concurrent/resource-aware scheduling, durable cache/provenance,
+non-Cargo nodes, and cross-checkout metadata normalization remain unimplemented.
 
 Explicit non-goals: a lossless TOML editor, rust-analyzer session, remote
 worker, signing/deployment, Alluvium adapter, editor panels, package graph
@@ -427,8 +431,9 @@ Tests: deterministic identity; invalid lifecycle transitions; stale BuildId or
 sequence rejection; cancellation before process spawn; malformed Cargo JSON;
 compiler diagnostic/artifact mapping; typed full Cargo metadata parsing;
 secret-like diagnostic redaction; durable snapshot publication/reopen and
-`WorkerLost` recovery; and a structured local Cargo smoke and helper-CLI check
-that never invoke a shell.
+`WorkerLost` recovery; graph order, invalid-edge, cycle, unreachable-node, and
+blocked-dependent fixtures; and a structured local Cargo smoke and helper-CLI
+check that never invoke a shell.
 
 Benchmarks and hardware: no performance claim in the first slice; local Cargo
 toolchain only. Remote, sandbox, and named-hardware profiles are explicitly not
@@ -439,16 +444,19 @@ queued through terminal states; cancellation-before-spawn and malformed-event
 tests pass. The durable local store reopens interrupted work as `WorkerLost`,
 persists that recovery before exposing it, and rejects late success. Process
 supervision, child-process-group termination, durable artifact provenance, and
-atomic artifact publication remain required before package completion.
+atomic artifact publication remain required before package completion. The local
+graph proof is only Cargo metadata -> check; it makes no parallelism, resource,
+cache, or non-Cargo adapter claim.
 
 Accessibility: the service emits named stages, actionable typed diagnostics,
 and cancellation/retry states for later Meridian UI consumption; no visible
 panel is claimed by this package.
 
 Security/provenance: command arguments are structured arrays; environment is
-allowlisted; Cargo output is untrusted input; paths and diagnostic text are
-bounded and redacted; no secrets, credentials, private-game paths, or shell
-concatenation are permitted.
+allowlisted; Windows-required `USERPROFILE` and `SYSTEMROOT` are explicit local
+identity inputs rather than ambient fallback; Cargo output is untrusted input;
+paths and diagnostic text are bounded and redacted; no secrets, credentials,
+private-game paths, or shell concatenation are permitted.
 
 Migration/compatibility: no existing public or persistent format changes. The
 new versioned protocol begins at v1 and is additive.
@@ -470,9 +478,10 @@ Known limits and unsupported rows: only local Cargo JSON metadata/check flows
 are in scope initially. The metadata hash is a local Cargo payload hash rather
 than a cross-checkout-normalized reproducibility identity. The portable state
 store is project-host-selected local recovery, not a remote, signing, artifact,
-or provider store. Full build DAG scheduling, long-lived worker restart,
-lossless manifest editing, rust-analyzer, remote execution, signing, and
-deployment remain planned.
+or provider store. The current graph scheduler is single-host, dependency-only,
+and restricted to the Cargo metadata -> check proof. Concurrent/resource-aware
+build-DAG scheduling, long-lived worker restart, lossless manifest editing,
+rust-analyzer, remote execution, signing, and deployment remain planned.
 
 Reviewers/sign-offs: Definition of Ready was reviewed against the current
 workspace and MS-02 evidence. The current local implementation slice passes its

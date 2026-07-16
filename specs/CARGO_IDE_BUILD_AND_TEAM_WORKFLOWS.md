@@ -26,8 +26,11 @@ Non-goals: replacing Cargo or rust-analyzer, creating separate Meridian Studio/I
   CLI, and a host-selected local durable state store. The store snapshots each
   accepted `DurableBuildService` mutation through a synced temporary sibling and
   same-directory rename, then persists `WorkerLost` recovery before returning it
-  to the host. Full DAG scheduling, cross-checkout identity normalization,
-  cache/provenance persistence, and worker supervision remain planned.
+  to the host. `BuildGraph` now rejects invalid/mismatched Cargo dependency
+  graphs and deterministically schedules the local metadata -> check proof.
+  Concurrent/resource-aware DAG scheduling, cross-checkout identity
+  normalization, cache/provenance persistence, and worker supervision remain
+  planned.
 - meridian-build-protocol: versioned editor/service/worker messages.
 - meridian-cargo: cargo metadata, JSON messages, rustc artifacts, tests.
 - meridian-ide: language-server/session, code intelligence, debugger, test, profiler, and source-navigation contracts used inside Meridian.
@@ -134,6 +137,9 @@ Large artifacts are immutable and streamed/range-addressed. A worker cannot publ
 
 - command arguments are structured arrays, never shell-concatenated strings;
 - environment variables use allowlists and secret references;
+- Windows Cargo/rustup execution receives only explicit `USERPROFILE` and
+  `SYSTEMROOT` host roots when present; both are local BuildId inputs rather than
+  ambient fallback;
 - remote workers never receive unrelated project content or signing keys;
 - logs/diagnostics redact secrets;
 - downloaded tools/SDKs have pinned version/hash/license/provenance;

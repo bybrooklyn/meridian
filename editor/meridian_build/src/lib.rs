@@ -46,9 +46,11 @@ const ENVIRONMENT_ALLOWLIST: &[&str] = &[
     "PATH",
     "RUSTUP_HOME",
     "RUSTUP_TOOLCHAIN",
+    "SYSTEMROOT",
     "TEMP",
     "TMP",
     "TMPDIR",
+    "USERPROFILE",
 ];
 
 /// Content-addressed identity for a build's declared inputs.
@@ -179,6 +181,27 @@ pub struct BuildNode {
 }
 
 impl BuildNode {
+    /// Builds a minimal Cargo-metadata node using the declared Cargo tool identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the ID or declared tool version is invalid.
+    pub fn cargo_metadata(
+        id: BuildNodeId,
+        tool_id_version: impl Into<String>,
+    ) -> Result<Self, BuildError> {
+        let tool_id_version = tool_id_version.into();
+        validate_text("tool ID and version", &tool_id_version)?;
+        Ok(Self {
+            id,
+            kind: BuildNodeKind::CargoMetadata,
+            input_hashes: Vec::new(),
+            tool_id_version,
+            declared_environment: Vec::new(),
+            dependencies: Vec::new(),
+        })
+    }
+
     /// Builds a minimal Cargo-check node using the declared Cargo tool identity.
     ///
     /// # Errors
@@ -198,6 +221,351 @@ impl BuildNode {
             declared_environment: Vec::new(),
             dependencies: Vec::new(),
         })
+    }
+}
+
+/// Immutable, dependency-validated graph for one requested build root set.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BuildGraph {
+    nodes: BTreeMap<BuildNodeId, BuildNode>,
+    requested_roots: Vec<BuildNodeId>,
+}
+
+impl BuildGraph {
+    /// Validates and constructs a deterministic graph for the requested roots.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for absent/duplicate nodes or roots, invalid node fields,
+    /// unknown or duplicate dependencies, dependency cycles, or nodes unrelated to
+    /// every requested root.
+    pub fn new(
+        nodes: impl IntoIterator<Item = BuildNode>,
+        requested_roots: impl IntoIterator<Item = BuildNodeId>,
+    ) -> Result<Self, BuildError> {
+        let mut mapped_nodes = BTreeMap::new();
+        for node in nodes {
+            if mapped_nodes.len() == MAX_OPERATIONS {
+                return Err(BuildError::TooManyBuildGraphNodes(
+                    MAX_OPERATIONS.saturating_add(1),
+                ));
+            }
+            validate_build_node(&node)?;
+            let id = node.id.clone();
+            if mapped_nodes.insert(id.clone(), node).is_some() {
+                return Err(BuildError::DuplicateBuildGraphNode(id));
+            }
+        }
+        if mapped_nodes.is_empty() {
+            return Err(BuildError::EmptyBuildGraph);
+        }
+
+        let mut requested_roots = requested_roots.into_iter().collect::<Vec<_>>();
+        if requested_roots.is_empty() {
+            return Err(BuildError::NoRootNodes);
+        }
+        requested_roots.sort_unstable();
+        for roots in requested_roots.windows(2) {
+            if roots[0] == roots[1] {
+                return Err(BuildError::DuplicateRootNode(roots[0].as_str().to_owned()));
+            }
+        }
+        for root in &requested_roots {
+            if !mapped_nodes.contains_key(root) {
+                return Err(BuildError::UnknownBuildGraphRoot(root.clone()));
+            }
+        }
+
+        for node in mapped_nodes.values() {
+            for dependency in &node.dependencies {
+                if !mapped_nodes.contains_key(dependency) {
+                    return Err(BuildError::UnknownBuildGraphDependency {
+                        node: node.id.clone(),
+                        dependency: dependency.clone(),
+                    });
+                }
+            }
+        }
+
+        let mut visiting = BTreeSet::new();
+        let mut visited = BTreeSet::new();
+        for root in &requested_roots {
+            validate_graph_dependencies(root, &mapped_nodes, &mut visiting, &mut visited)?;
+        }
+        if visited.len() != mapped_nodes.len() {
+            if let Some(node) = mapped_nodes.keys().find(|node| !visited.contains(*node)) {
+                return Err(BuildError::UnreachableBuildGraphNode(node.clone()));
+            }
+        }
+
+        Ok(Self {
+            nodes: mapped_nodes,
+            requested_roots,
+        })
+    }
+
+    /// Returns the requested roots in canonical identifier order.
+    #[must_use]
+    pub fn requested_roots(&self) -> &[BuildNodeId] {
+        &self.requested_roots
+    }
+
+    /// Returns one immutable node by identifier.
+    #[must_use]
+    pub fn node(&self, node_id: &BuildNodeId) -> Option<&BuildNode> {
+        self.nodes.get(node_id)
+    }
+
+    /// Returns graph node IDs in deterministic dependency-before-dependent order.
+    #[must_use]
+    pub fn execution_order(&self) -> Vec<BuildNodeId> {
+        let mut visited = BTreeSet::new();
+        let mut order = Vec::with_capacity(self.nodes.len());
+        for root in &self.requested_roots {
+            append_execution_order(root, &self.nodes, &mut visited, &mut order);
+        }
+        order
+    }
+
+    /// Verifies that the graph roots exactly match the `BuildId`'s declared roots.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid identity input or a root mismatch that would
+    /// otherwise let a graph execute under an unrelated `BuildId`.
+    pub fn validate_identity(&self, identity: &BuildIdentityInput) -> Result<(), BuildError> {
+        validate_identity(identity)?;
+        let declared = identity
+            .root_node_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let graph_roots = self
+            .requested_roots
+            .iter()
+            .map(BuildNodeId::as_str)
+            .collect::<BTreeSet<_>>();
+        if declared != graph_roots {
+            return Err(BuildError::BuildGraphIdentityRootsMismatch);
+        }
+        Ok(())
+    }
+
+    /// Creates a deterministic, dependency-aware scheduler for this graph.
+    #[must_use]
+    pub fn schedule(&self) -> BuildGraphSchedule {
+        BuildGraphSchedule::new(self.clone())
+    }
+}
+
+/// Per-node state in the bounded dependency scheduler.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuildGraphNodeState {
+    /// Waiting for successful dependencies.
+    Waiting,
+    /// All dependencies succeeded and the node may start.
+    Ready,
+    /// A worker is executing the node.
+    Running,
+    /// The node completed with validated output.
+    Succeeded,
+    /// The node encountered an actionable failure.
+    Failed,
+    /// The node was cancelled before publication.
+    Cancelled,
+    /// The executing worker disappeared before a valid commit.
+    WorkerLost,
+    /// A newer graph or `BuildId` invalidated the node.
+    Superseded,
+    /// A required dependency cannot produce a successful input.
+    Blocked,
+}
+
+impl BuildGraphNodeState {
+    const fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::Succeeded
+                | Self::Failed
+                | Self::Cancelled
+                | Self::WorkerLost
+                | Self::Superseded
+                | Self::Blocked
+        )
+    }
+
+    const fn blocks_dependents(self) -> bool {
+        matches!(
+            self,
+            Self::Failed | Self::Cancelled | Self::WorkerLost | Self::Superseded | Self::Blocked
+        )
+    }
+}
+
+/// One state transition emitted by the deterministic graph scheduler.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BuildGraphNodeEvent {
+    /// Node whose scheduler state changed.
+    pub node_id: BuildNodeId,
+    /// New scheduler state.
+    pub state: BuildGraphNodeState,
+}
+
+/// Single-host dependency scheduler with no hidden worker or resource authority.
+pub struct BuildGraphSchedule {
+    graph: BuildGraph,
+    states: BTreeMap<BuildNodeId, BuildGraphNodeState>,
+}
+
+impl BuildGraphSchedule {
+    fn new(graph: BuildGraph) -> Self {
+        let mut schedule = Self {
+            states: graph
+                .nodes
+                .keys()
+                .cloned()
+                .map(|node_id| (node_id, BuildGraphNodeState::Waiting))
+                .collect(),
+            graph,
+        };
+        schedule.refresh_waiting_nodes();
+        schedule
+    }
+
+    /// Returns a node's current scheduler state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `node_id` is absent from the validated graph.
+    pub fn state(&self, node_id: &BuildNodeId) -> Result<BuildGraphNodeState, BuildError> {
+        self.states
+            .get(node_id)
+            .copied()
+            .ok_or_else(|| BuildError::UnknownBuildGraphNode(node_id.clone()))
+    }
+
+    /// Returns every node currently ready to start in deterministic order.
+    #[must_use]
+    pub fn ready_nodes(&self) -> Vec<BuildNodeId> {
+        self.states
+            .iter()
+            .filter(|(_, state)| **state == BuildGraphNodeState::Ready)
+            .map(|(node_id, _)| node_id.clone())
+            .collect()
+    }
+
+    /// Starts one ready node.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the node is absent or not ready, including when a
+    /// dependency failed or remains incomplete.
+    pub fn start(&mut self, node_id: &BuildNodeId) -> Result<BuildGraphNodeEvent, BuildError> {
+        self.transition(
+            node_id,
+            BuildGraphNodeState::Ready,
+            BuildGraphNodeState::Running,
+        )
+    }
+
+    /// Finishes one running node with a valid terminal operation phase.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the node is absent, not running, or supplied a
+    /// non-terminal phase that cannot conclude one graph node.
+    pub fn finish(
+        &mut self,
+        node_id: &BuildNodeId,
+        phase: BuildPhase,
+    ) -> Result<BuildGraphNodeEvent, BuildError> {
+        let target = match phase {
+            BuildPhase::Succeeded => BuildGraphNodeState::Succeeded,
+            BuildPhase::Failed => BuildGraphNodeState::Failed,
+            BuildPhase::Cancelled => BuildGraphNodeState::Cancelled,
+            BuildPhase::WorkerLost => BuildGraphNodeState::WorkerLost,
+            BuildPhase::Superseded => BuildGraphNodeState::Superseded,
+            BuildPhase::Queued
+            | BuildPhase::Resolving
+            | BuildPhase::Ready
+            | BuildPhase::Running
+            | BuildPhase::CancelRequested => {
+                return Err(BuildError::InvalidBuildGraphCompletion(phase));
+            }
+        };
+        let event = self.transition(node_id, BuildGraphNodeState::Running, target)?;
+        self.refresh_waiting_nodes();
+        Ok(event)
+    }
+
+    /// Returns whether every node has reached a terminal scheduler state.
+    #[must_use]
+    pub fn is_complete(&self) -> bool {
+        self.states
+            .values()
+            .copied()
+            .all(BuildGraphNodeState::is_terminal)
+    }
+
+    fn transition(
+        &mut self,
+        node_id: &BuildNodeId,
+        expected: BuildGraphNodeState,
+        target: BuildGraphNodeState,
+    ) -> Result<BuildGraphNodeEvent, BuildError> {
+        let state = self
+            .states
+            .get_mut(node_id)
+            .ok_or_else(|| BuildError::UnknownBuildGraphNode(node_id.clone()))?;
+        if *state != expected {
+            return Err(BuildError::InvalidBuildGraphNodeTransition {
+                node: node_id.clone(),
+                current: *state,
+                next: target,
+            });
+        }
+        *state = target;
+        Ok(BuildGraphNodeEvent {
+            node_id: node_id.clone(),
+            state: target,
+        })
+    }
+
+    fn refresh_waiting_nodes(&mut self) {
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for (node_id, node) in &self.graph.nodes {
+                let Some(state) = self.states.get(node_id).copied() else {
+                    continue;
+                };
+                if state != BuildGraphNodeState::Waiting {
+                    continue;
+                }
+                let dependency_states = node
+                    .dependencies
+                    .iter()
+                    .filter_map(|dependency| self.states.get(dependency).copied())
+                    .collect::<Vec<_>>();
+                let next = if dependency_states
+                    .iter()
+                    .copied()
+                    .any(BuildGraphNodeState::blocks_dependents)
+                {
+                    BuildGraphNodeState::Blocked
+                } else if dependency_states
+                    .iter()
+                    .copied()
+                    .all(|state| state == BuildGraphNodeState::Succeeded)
+                {
+                    BuildGraphNodeState::Ready
+                } else {
+                    continue;
+                };
+                self.states.insert(node_id.clone(), next);
+                changed = true;
+            }
+        }
     }
 }
 
@@ -941,6 +1309,87 @@ fn validate_persisted_operation(operation: &PersistedBuildOperation) -> Result<(
         validate_text("build node dependency", dependency.as_str())?;
     }
     Ok(())
+}
+
+fn validate_build_node(node: &BuildNode) -> Result<(), BuildError> {
+    validate_text("build node ID", node.id.as_str())?;
+    validate_text("build node tool ID and version", &node.tool_id_version)?;
+    let mut inputs = BTreeSet::new();
+    for input in &node.input_hashes {
+        validate_text("build node input hash", input)?;
+        if !inputs.insert(input) {
+            return Err(BuildError::DuplicateBuildGraphInput {
+                node: node.id.clone(),
+                input: input.clone(),
+            });
+        }
+    }
+    let mut environment = BTreeSet::new();
+    for name in &node.declared_environment {
+        if !is_allowlisted_environment(name) {
+            return Err(BuildError::EnvironmentNotAllowlisted(name.clone()));
+        }
+        if !environment.insert(name) {
+            return Err(BuildError::DuplicateBuildGraphEnvironment {
+                node: node.id.clone(),
+                name: name.clone(),
+            });
+        }
+    }
+    let mut dependencies = BTreeSet::new();
+    for dependency in &node.dependencies {
+        validate_text("build node dependency", dependency.as_str())?;
+        if *dependency == node.id {
+            return Err(BuildError::BuildGraphSelfDependency(node.id.clone()));
+        }
+        if !dependencies.insert(dependency) {
+            return Err(BuildError::DuplicateBuildGraphDependency {
+                node: node.id.clone(),
+                dependency: dependency.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_graph_dependencies(
+    node_id: &BuildNodeId,
+    nodes: &BTreeMap<BuildNodeId, BuildNode>,
+    visiting: &mut BTreeSet<BuildNodeId>,
+    visited: &mut BTreeSet<BuildNodeId>,
+) -> Result<(), BuildError> {
+    if visited.contains(node_id) {
+        return Ok(());
+    }
+    if !visiting.insert(node_id.clone()) {
+        return Err(BuildError::CyclicBuildGraphDependency(node_id.clone()));
+    }
+    let node = nodes
+        .get(node_id)
+        .ok_or_else(|| BuildError::UnknownBuildGraphNode(node_id.clone()))?;
+    for dependency in &node.dependencies {
+        validate_graph_dependencies(dependency, nodes, visiting, visited)?;
+    }
+    visiting.remove(node_id);
+    visited.insert(node_id.clone());
+    Ok(())
+}
+
+fn append_execution_order(
+    node_id: &BuildNodeId,
+    nodes: &BTreeMap<BuildNodeId, BuildNode>,
+    visited: &mut BTreeSet<BuildNodeId>,
+    order: &mut Vec<BuildNodeId>,
+) {
+    if !visited.insert(node_id.clone()) {
+        return;
+    }
+    if let Some(node) = nodes.get(node_id) {
+        for dependency in &node.dependencies {
+            append_execution_order(dependency, nodes, visited, order);
+        }
+    }
+    order.push(node_id.clone());
 }
 
 fn validate_regular_snapshot_metadata(metadata: &fs::Metadata) -> Result<(), BuildError> {
@@ -1784,6 +2233,63 @@ pub enum BuildError {
     NoRootNodes,
     /// Root nodes were duplicated before identity calculation.
     DuplicateRootNode(String),
+    /// Build graph declared no nodes.
+    EmptyBuildGraph,
+    /// Build graph exceeded the bounded node count.
+    TooManyBuildGraphNodes(usize),
+    /// Build graph repeated one node ID.
+    DuplicateBuildGraphNode(BuildNodeId),
+    /// A requested graph root does not name a graph node.
+    UnknownBuildGraphRoot(BuildNodeId),
+    /// A graph node declares a dependency absent from the graph.
+    UnknownBuildGraphDependency {
+        /// Dependent node declaring the invalid edge.
+        node: BuildNodeId,
+        /// Missing dependency target.
+        dependency: BuildNodeId,
+    },
+    /// A graph node declares itself as a dependency.
+    BuildGraphSelfDependency(BuildNodeId),
+    /// A graph node repeated one dependency edge.
+    DuplicateBuildGraphDependency {
+        /// Node declaring the duplicate edge.
+        node: BuildNodeId,
+        /// Repeated dependency target.
+        dependency: BuildNodeId,
+    },
+    /// A graph node repeated one immutable input hash declaration.
+    DuplicateBuildGraphInput {
+        /// Node declaring the duplicate input.
+        node: BuildNodeId,
+        /// Repeated immutable input hash.
+        input: String,
+    },
+    /// A graph node repeated one declared environment name.
+    DuplicateBuildGraphEnvironment {
+        /// Node declaring the duplicate environment name.
+        node: BuildNodeId,
+        /// Repeated allowlisted environment name.
+        name: String,
+    },
+    /// A dependency cycle prevents deterministic graph ordering.
+    CyclicBuildGraphDependency(BuildNodeId),
+    /// A graph node is unrelated to every requested build root.
+    UnreachableBuildGraphNode(BuildNodeId),
+    /// A caller queried or transitioned a node outside the graph.
+    UnknownBuildGraphNode(BuildNodeId),
+    /// A graph scheduler transition does not match the current node state.
+    InvalidBuildGraphNodeTransition {
+        /// Node whose state cannot change.
+        node: BuildNodeId,
+        /// Current scheduler state.
+        current: BuildGraphNodeState,
+        /// Requested scheduler state.
+        next: BuildGraphNodeState,
+    },
+    /// A graph completion attempted to use a non-terminal operation phase.
+    InvalidBuildGraphCompletion(BuildPhase),
+    /// `BuildId` roots do not equal the graph's requested root set.
+    BuildGraphIdentityRootsMismatch,
     /// An environment name falls outside the explicit allowlist.
     EnvironmentNotAllowlisted(String),
     /// The caller registered the same process-local operation twice.
@@ -1904,6 +2410,66 @@ impl Display for BuildError {
             }
             Self::DuplicateRootNode(node) => {
                 write!(formatter, "build identity duplicates root node {node}")
+            }
+            Self::EmptyBuildGraph => formatter.write_str("build graph needs at least one node"),
+            Self::TooManyBuildGraphNodes(count) => {
+                write!(formatter, "build graph has too many nodes ({count})")
+            }
+            Self::DuplicateBuildGraphNode(node) => {
+                write!(formatter, "build graph duplicates node {node}")
+            }
+            Self::UnknownBuildGraphRoot(node) => {
+                write!(formatter, "build graph root {node} is not declared")
+            }
+            Self::UnknownBuildGraphDependency { node, dependency } => {
+                write!(
+                    formatter,
+                    "build node {node} depends on unknown node {dependency}"
+                )
+            }
+            Self::BuildGraphSelfDependency(node) => {
+                write!(formatter, "build node {node} cannot depend on itself")
+            }
+            Self::DuplicateBuildGraphDependency { node, dependency } => {
+                write!(
+                    formatter,
+                    "build node {node} duplicates dependency {dependency}"
+                )
+            }
+            Self::DuplicateBuildGraphInput { node, input } => {
+                write!(formatter, "build node {node} duplicates input hash {input}")
+            }
+            Self::DuplicateBuildGraphEnvironment { node, name } => {
+                write!(formatter, "build node {node} duplicates environment {name}")
+            }
+            Self::CyclicBuildGraphDependency(node) => {
+                write!(formatter, "build graph has a dependency cycle at {node}")
+            }
+            Self::UnreachableBuildGraphNode(node) => {
+                write!(
+                    formatter,
+                    "build graph node {node} is not reachable from a requested root"
+                )
+            }
+            Self::UnknownBuildGraphNode(node) => {
+                write!(formatter, "build graph node {node} is unknown")
+            }
+            Self::InvalidBuildGraphNodeTransition {
+                node,
+                current,
+                next,
+            } => write!(
+                formatter,
+                "invalid build graph transition for {node} from {current:?} to {next:?}"
+            ),
+            Self::InvalidBuildGraphCompletion(phase) => {
+                write!(
+                    formatter,
+                    "build graph cannot complete a node with {phase:?}"
+                )
+            }
+            Self::BuildGraphIdentityRootsMismatch => {
+                formatter.write_str("build graph roots do not match the BuildId identity roots")
             }
             Self::EnvironmentNotAllowlisted(name) => {
                 write!(formatter, "environment variable {name} is not allowlisted")
@@ -2140,6 +2706,25 @@ mod tests {
     }
 
     #[test]
+    fn cargo_environment_explicitly_admits_required_windows_roots() {
+        let mut environment = CargoEnvironment::default();
+        environment
+            .insert("USERPROFILE", r"C:\Users\runner")
+            .expect("Windows profile is allowlisted");
+        environment
+            .insert("SYSTEMROOT", r"C:\Windows")
+            .expect("Windows system root is allowlisted");
+        assert_eq!(
+            environment.identity_values().get("USERPROFILE"),
+            Some(&r"C:\Users\runner".to_owned())
+        );
+        assert!(matches!(
+            environment.insert("APPDATA", r"C:\Users\runner\AppData"),
+            Err(BuildError::EnvironmentNotAllowlisted(_))
+        ));
+    }
+
+    #[test]
     fn lifecycle_rejects_stale_events_and_post_cancel_success() {
         let mut service = BuildService::default();
         let queued = service.submit(request(1)).expect("queued");
@@ -2322,6 +2907,118 @@ mod tests {
         cancellation.cancel();
         let result = run_cargo_json(&invocation, &cancellation).expect("cancelled outcome");
         assert_eq!(result.status, CargoRunStatus::Cancelled);
+    }
+
+    fn cargo_graph_nodes() -> (BuildNode, BuildNode) {
+        let metadata = BuildNode::cargo_metadata(
+            BuildNodeId::new("cargo-metadata").expect("metadata ID"),
+            "cargo 1.90",
+        )
+        .expect("metadata node");
+        let mut check = BuildNode::cargo_check(
+            BuildNodeId::new("cargo-check").expect("check ID"),
+            "cargo 1.90",
+        )
+        .expect("check node");
+        check.dependencies.push(metadata.id.clone());
+        (metadata, check)
+    }
+
+    #[test]
+    fn graph_schedules_dependencies_before_requested_roots() {
+        let (metadata, check) = cargo_graph_nodes();
+        let graph = BuildGraph::new(
+            vec![check.clone(), metadata.clone()],
+            vec![check.id.clone()],
+        )
+        .expect("graph");
+        assert_eq!(
+            graph.execution_order(),
+            vec![metadata.id.clone(), check.id.clone()]
+        );
+        graph
+            .validate_identity(&identity())
+            .expect("identity roots");
+
+        let mut schedule = graph.schedule();
+        assert_eq!(schedule.ready_nodes(), vec![metadata.id.clone()]);
+        assert_eq!(
+            schedule.start(&metadata.id).expect("metadata starts").state,
+            BuildGraphNodeState::Running
+        );
+        assert_eq!(
+            schedule
+                .finish(&metadata.id, BuildPhase::Succeeded)
+                .expect("metadata succeeds")
+                .state,
+            BuildGraphNodeState::Succeeded
+        );
+        assert_eq!(schedule.ready_nodes(), vec![check.id.clone()]);
+        schedule.start(&check.id).expect("check starts");
+        schedule
+            .finish(&check.id, BuildPhase::Succeeded)
+            .expect("check succeeds");
+        assert!(schedule.is_complete());
+    }
+
+    #[test]
+    fn graph_rejects_bad_edges_and_blocks_dependents_after_failure() {
+        let (metadata, mut check) = cargo_graph_nodes();
+        check
+            .dependencies
+            .push(BuildNodeId::new("missing").expect("missing ID"));
+        assert!(matches!(
+            BuildGraph::new(vec![metadata, check.clone()], vec![check.id.clone()]),
+            Err(BuildError::UnknownBuildGraphDependency { .. })
+        ));
+
+        let (metadata, mut check) = cargo_graph_nodes();
+        check.input_hashes = vec!["same-input".to_owned(), "same-input".to_owned()];
+        assert!(matches!(
+            BuildGraph::new(vec![metadata, check.clone()], vec![check.id.clone()]),
+            Err(BuildError::DuplicateBuildGraphInput { .. })
+        ));
+
+        let (mut first, second) = cargo_graph_nodes();
+        first.dependencies.push(second.id.clone());
+        assert!(matches!(
+            BuildGraph::new(vec![first.clone(), second.clone()], vec![second.id.clone()]),
+            Err(BuildError::CyclicBuildGraphDependency(_))
+        ));
+
+        let (metadata, check) = cargo_graph_nodes();
+        let orphan =
+            BuildNode::cargo_metadata(BuildNodeId::new("orphan").expect("orphan ID"), "cargo 1.90")
+                .expect("orphan node");
+        assert!(matches!(
+            BuildGraph::new(
+                vec![metadata.clone(), check.clone(), orphan],
+                vec![check.id.clone()]
+            ),
+            Err(BuildError::UnreachableBuildGraphNode(_))
+        ));
+
+        let graph = BuildGraph::new(
+            vec![metadata.clone(), check.clone()],
+            vec![check.id.clone()],
+        )
+        .expect("graph");
+        let mut mismatched_identity = identity();
+        mismatched_identity.root_node_ids = vec!["different-root".to_owned()];
+        assert!(matches!(
+            graph.validate_identity(&mismatched_identity),
+            Err(BuildError::BuildGraphIdentityRootsMismatch)
+        ));
+        let mut schedule = graph.schedule();
+        schedule.start(&metadata.id).expect("metadata starts");
+        schedule
+            .finish(&metadata.id, BuildPhase::Failed)
+            .expect("metadata fails");
+        assert_eq!(
+            schedule.state(&check.id).expect("check state"),
+            BuildGraphNodeState::Blocked
+        );
+        assert!(schedule.is_complete());
     }
 
     struct TemporaryDirectory {
