@@ -28,10 +28,14 @@ pub const BUILD_PROTOCOL_VERSION: u16 = 1;
 pub const MAX_CARGO_JSON_LINE_BYTES: usize = 1_048_576;
 /// Maximum accepted `cargo metadata` payload before JSON parsing allocates its fields.
 pub const MAX_CARGO_METADATA_BYTES: usize = 8 * 1_024 * 1_024;
-/// Maximum retained Cargo stderr payload for one failed process invocation.
-pub const MAX_CARGO_STDERR_BYTES: usize = 16 * 1_024;
 /// Maximum serialized service snapshot accepted before JSON parsing.
 pub const MAX_BUILD_SNAPSHOT_BYTES: usize = 1_048_576;
+/// Maximum retained Cargo stderr payload for one failed process invocation.
+///
+/// This reuses the service's existing snapshot boundary: fresh Cargo checks can
+/// emit more than a small terminal-sized status stream, but diagnostics still
+/// remain bounded before they are retained or redacted.
+pub const MAX_CARGO_STDERR_BYTES: usize = MAX_BUILD_SNAPSHOT_BYTES;
 /// Maximum aggregate raw Cargo JSON retained for one operation.
 pub const MAX_CARGO_JSON_OUTPUT_BYTES: usize = MAX_BUILD_SNAPSHOT_BYTES;
 /// Maximum Cargo JSON lines accepted for one operation.
@@ -6192,6 +6196,22 @@ mod tests {
             started.elapsed() < Duration::from_secs(10),
             "cancelling Cargo must not wait for the build-script child"
         );
+    }
+
+    #[test]
+    fn cargo_stderr_reuses_the_existing_service_bound() {
+        let normal_fresh_check_output = vec![b'x'; 16 * 1_024 + 1];
+        assert_eq!(
+            read_cargo_stderr(std::io::Cursor::new(normal_fresh_check_output.clone()))
+                .expect("normal Cargo status output fits the service bound"),
+            String::from_utf8(normal_fresh_check_output).expect("fixture is UTF-8")
+        );
+
+        let oversized = vec![b'x'; MAX_CARGO_STDERR_BYTES + 1];
+        assert!(matches!(
+            read_cargo_stderr(std::io::Cursor::new(oversized)),
+            Err(BuildError::CargoStderrTooLarge(length)) if length > MAX_CARGO_STDERR_BYTES
+        ));
     }
 
     #[test]
