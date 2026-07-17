@@ -8,9 +8,11 @@ Documentation maturity: `ImplementationReady`. Implementation maturity:
 `ImplementedFoundation`. Governing IDs: `REQ-UI-001`, `REQ-EDT-001`, `WP-UI-001`,
 `WP-EDT-001`, `RG-UI-001`.
 
-Current package truth: `WP-EDT-001` is `ImplementedFoundation` after GitHub
-Actions run `29508496428` passed governance and Linux, Windows, and macOS rows
-for `ec2a6334`. `WP-PRC-001` is active after that qualified prerequisite.
+Current package truth: `WP-EDT-001` is active corrective work. GitHub Actions
+run `29508496428` passed governance and Linux, Windows, and macOS rows for
+`ec2a6334`, but that evidence qualifies only the former source/session/UI/build
+foundation. It does not qualify persistent native Creator interaction or a
+presented Creator application. `WP-PRC-001` remains `ImplementedFoundation`.
 `meridian-editor-core` now owns the UI-free Creator Alpha project session,
 typed transactions/inverses/checkpoints, generation-checked selection, Play
 fork/apply/discard, and durable recovery. `meridian-ui-editor` declares the
@@ -41,7 +43,7 @@ Non-goals: embedding egui as permanent architecture, duplicating a game UI engin
 - meridian-editor-core: document sessions, selection, commands, undo, play mode.
 - meridian-editor-egui-bootstrap: current temporary shell and migration adapters.
 
-No egui type enters ui-core, editor-core, source documents, commands, or plugins. AccessKit is consumed only by a platform adapter from Meridian semantics. `WP-UI-001` adopts `cosmic-text` under `DEP-UI-001` only as the text shaping, fallback, layout, and rasterization adapter, and `unicode-segmentation` under `DEP-UI-002` only for extended-grapheme editing boundaries; Meridian-owned text, display-list, semantic, event, clipboard-policy, and diagnostic types remain the public boundary. Platform accessibility adapters are a separately scoped MS-03 spike, and `RG-UI-001` selects no production display-list renderer before its MS-02 entry gate.
+No egui type enters ui-core, editor-core, source documents, commands, or plugins. AccessKit is consumed only by a platform adapter from Meridian semantics. `WP-UI-001` adopts `cosmic-text` under `DEP-UI-001` only as the text shaping, fallback, layout, and rasterization adapter, and `unicode-segmentation` under `DEP-UI-002` only for extended-grapheme editing boundaries. `WP-EDT-001` adopts `rfd` under `DEP-UI-003` only for an explicit native project-directory picker in `meridian-editor`; its types never cross the private adapter. Meridian-owned text, display-list, semantic, event, clipboard-policy, diagnostic, path-validation, and command types remain the public boundary. Platform accessibility adapters are a separately scoped MS-03 spike, and `RG-UI-001` selects no production display-list renderer before its MS-02 entry gate.
 
 ## 3. Data model
 

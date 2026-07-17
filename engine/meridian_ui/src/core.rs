@@ -76,7 +76,11 @@ impl UiRect {
     }
 }
 
-/// Linear RGBA colour owned by the UI contract.
+/// Normalized RGBA colour owned by the UI contract.
+///
+/// Named design tokens preserve their authored sRGB channel values. Renderer
+/// adapters own any target colour-space conversion; third-party colour types
+/// never cross this boundary.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UiColor {
     pub red: f32,
@@ -98,17 +102,77 @@ impl UiColor {
 
     #[must_use]
     pub const fn panel() -> Self {
-        Self::rgba(0.06, 0.07, 0.10, 0.96)
+        Self::surface()
     }
 
     #[must_use]
     pub const fn foreground() -> Self {
-        Self::rgba(0.93, 0.95, 1.0, 1.0)
+        Self::text()
     }
 
     #[must_use]
     pub const fn focus() -> Self {
-        Self::rgba(0.31, 0.71, 1.0, 1.0)
+        Self::amber()
+    }
+
+    /// Meridian website background token (`#090b0b`).
+    #[must_use]
+    pub const fn background() -> Self {
+        Self::rgba(0.035_294_12, 0.043_137_256, 0.043_137_256, 1.0)
+    }
+
+    /// Meridian website surface token (`#121515`).
+    #[must_use]
+    pub const fn surface() -> Self {
+        Self::rgba(0.070_588_24, 0.082_352_94, 0.082_352_94, 1.0)
+    }
+
+    /// Meridian website border token (`#292d2c`).
+    #[must_use]
+    pub const fn border() -> Self {
+        Self::rgba(0.160_784_32, 0.176_470_6, 0.172_549_02, 1.0)
+    }
+
+    /// Meridian website primary-text token (`#e3e1d8`).
+    #[must_use]
+    pub const fn text() -> Self {
+        Self::rgba(0.890_196_1, 0.882_352_95, 0.847_058_83, 1.0)
+    }
+
+    /// Meridian website secondary-text token (`#929790`).
+    #[must_use]
+    pub const fn secondary_text() -> Self {
+        Self::rgba(0.572_549_05, 0.592_156_9, 0.564_705_9, 1.0)
+    }
+
+    /// Meridian website muted-text token (`#686e68`).
+    #[must_use]
+    pub const fn muted_text() -> Self {
+        Self::rgba(0.407_843_14, 0.431_372_55, 0.407_843_14, 1.0)
+    }
+
+    /// Meridian website destructive token (`#a73732`).
+    #[must_use]
+    pub const fn red() -> Self {
+        Self::rgba(0.654_902, 0.215_686_28, 0.196_078_43, 1.0)
+    }
+
+    /// Meridian website destructive-hover token (`#c04b44`).
+    #[must_use]
+    pub const fn red_hover() -> Self {
+        Self::rgba(0.752_941_2, 0.294_117_66, 0.266_666_68, 1.0)
+    }
+
+    /// Meridian website positive/grass token (`#8d8961`).
+    #[must_use]
+    pub const fn grass() -> Self {
+        Self::rgba(0.552_941_2, 0.537_254_9, 0.380_392_16, 1.0)
+    }
+
+    /// Meridian website warning/emphasis token (`#c0964e`).
+    #[must_use]
+    pub const fn amber() -> Self {
+        Self::rgba(0.752_941_2, 0.588_235_3, 0.305_882_36, 1.0)
     }
 }
 
@@ -126,8 +190,77 @@ pub enum UiWidgetKind {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum UiLayout {
     Overlay,
-    VerticalStack { gap: f32 },
-    HorizontalStack { gap: f32 },
+    VerticalStack {
+        gap: f32,
+    },
+    HorizontalStack {
+        gap: f32,
+    },
+    /// Equal-sized cells arranged left-to-right, then top-to-bottom.
+    Grid {
+        columns: u8,
+        gap: f32,
+    },
+}
+
+/// Preferred sizing and flexible growth for a retained node.
+///
+/// A preferred dimension is a bounded starting point, not an absolute pixel
+/// requirement: the layout engine scales it down before overflowing a smaller
+/// viewport. Remaining space is shared by positive `grow` values.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UiLayoutHints {
+    pub preferred_width: Option<f32>,
+    pub preferred_height: Option<f32>,
+    pub grow: f32,
+}
+
+impl UiLayoutHints {
+    /// Returns flexible hints that share remaining axis space equally.
+    #[must_use]
+    pub const fn flexible() -> Self {
+        Self {
+            preferred_width: None,
+            preferred_height: None,
+            grow: 1.0,
+        }
+    }
+
+    /// Returns a fixed-height hint that does not absorb surplus vertical space.
+    #[must_use]
+    pub const fn fixed_height(height: f32) -> Self {
+        Self {
+            preferred_width: None,
+            preferred_height: Some(height),
+            grow: 0.0,
+        }
+    }
+
+    /// Returns a fixed-width hint that does not absorb surplus horizontal space.
+    #[must_use]
+    pub const fn fixed_width(width: f32) -> Self {
+        Self {
+            preferred_width: Some(width),
+            preferred_height: None,
+            grow: 0.0,
+        }
+    }
+
+    /// Returns a preferred two-axis size without flexible growth.
+    #[must_use]
+    pub const fn fixed_size(width: f32, height: f32) -> Self {
+        Self {
+            preferred_width: Some(width),
+            preferred_height: Some(height),
+            grow: 0.0,
+        }
+    }
+}
+
+impl Default for UiLayoutHints {
+    fn default() -> Self {
+        Self::flexible()
+    }
 }
 
 /// Public semantic role independent of a platform accessibility API.
@@ -189,9 +322,17 @@ impl UiSemantics {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UiStyle {
     pub background: Option<UiColor>,
+    pub border: Option<UiBorder>,
     pub foreground: UiColor,
     pub padding: f32,
     pub font_size: f32,
+}
+
+/// A bounded rectangular stroke drawn around a retained node.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UiBorder {
+    pub color: UiColor,
+    pub width: u8,
 }
 
 /// Policy applied to one retained text-input node.
@@ -208,6 +349,7 @@ impl UiStyle {
     pub const fn panel() -> Self {
         Self {
             background: Some(UiColor::panel()),
+            border: None,
             foreground: UiColor::foreground(),
             padding: 12.0,
             font_size: 16.0,
@@ -218,9 +360,175 @@ impl UiStyle {
     pub const fn text() -> Self {
         Self {
             background: None,
+            border: None,
             foreground: UiColor::foreground(),
             padding: 6.0,
             font_size: 16.0,
+        }
+    }
+
+    /// A transparent structural group that does not create a visual surface.
+    #[must_use]
+    pub const fn transparent() -> Self {
+        Self {
+            background: None,
+            border: None,
+            foreground: UiColor::foreground(),
+            padding: 0.0,
+            font_size: 16.0,
+        }
+    }
+
+    /// The application canvas used behind a full native workspace.
+    #[must_use]
+    pub const fn canvas() -> Self {
+        Self {
+            background: Some(UiColor::background()),
+            border: None,
+            foreground: UiColor::foreground(),
+            padding: 24.0,
+            font_size: 16.0,
+        }
+    }
+
+    /// A raised application surface with a restrained border.
+    #[must_use]
+    pub const fn surface() -> Self {
+        Self {
+            background: Some(UiColor::surface()),
+            border: Some(UiBorder {
+                color: UiColor::border(),
+                width: 1,
+            }),
+            foreground: UiColor::foreground(),
+            padding: 14.0,
+            font_size: 16.0,
+        }
+    }
+
+    /// A subtly brighter surface for headers and currently important regions.
+    #[must_use]
+    pub const fn elevated_surface() -> Self {
+        Self {
+            background: Some(UiColor::surface()),
+            border: Some(UiBorder {
+                color: UiColor::grass(),
+                width: 1,
+            }),
+            foreground: UiColor::foreground(),
+            padding: 16.0,
+            font_size: 16.0,
+        }
+    }
+
+    /// Large, high-contrast display text.
+    #[must_use]
+    pub const fn heading() -> Self {
+        Self {
+            background: None,
+            border: None,
+            foreground: UiColor::text(),
+            padding: 0.0,
+            font_size: 28.0,
+        }
+    }
+
+    /// Compact section-label text.
+    #[must_use]
+    pub const fn section_heading() -> Self {
+        Self {
+            background: None,
+            border: None,
+            foreground: UiColor::text(),
+            padding: 0.0,
+            font_size: 16.0,
+        }
+    }
+
+    /// Supporting text that does not compete with the primary action.
+    #[must_use]
+    pub const fn muted_text() -> Self {
+        Self {
+            background: None,
+            border: None,
+            foreground: UiColor::muted_text(),
+            padding: 0.0,
+            font_size: 13.0,
+        }
+    }
+
+    /// The primary action treatment used once per decision group.
+    #[must_use]
+    pub const fn primary_action() -> Self {
+        Self {
+            background: Some(UiColor::red()),
+            border: Some(UiBorder {
+                color: UiColor::red_hover(),
+                width: 1,
+            }),
+            foreground: UiColor::text(),
+            padding: 12.0,
+            font_size: 16.0,
+        }
+    }
+
+    /// A secondary action with the same keyboard semantics as a primary action.
+    #[must_use]
+    pub const fn secondary_action() -> Self {
+        Self {
+            background: Some(UiColor::surface()),
+            border: Some(UiBorder {
+                color: UiColor::border(),
+                width: 1,
+            }),
+            foreground: UiColor::foreground(),
+            padding: 10.0,
+            font_size: 14.0,
+        }
+    }
+
+    /// A dense but still focusable action used inside bounded tool panels.
+    #[must_use]
+    pub const fn compact_action() -> Self {
+        Self {
+            background: Some(UiColor::surface()),
+            border: Some(UiBorder {
+                color: UiColor::border(),
+                width: 1,
+            }),
+            foreground: UiColor::foreground(),
+            padding: 3.0,
+            font_size: 11.0,
+        }
+    }
+
+    /// A clearly editable field surface.
+    #[must_use]
+    pub const fn text_field() -> Self {
+        Self {
+            background: Some(UiColor::background()),
+            border: Some(UiBorder {
+                color: UiColor::border(),
+                width: 1,
+            }),
+            foreground: UiColor::foreground(),
+            padding: 12.0,
+            font_size: 16.0,
+        }
+    }
+
+    /// A compact numeric or short-token field for a dense inspector row.
+    #[must_use]
+    pub const fn compact_text_field() -> Self {
+        Self {
+            background: Some(UiColor::background()),
+            border: Some(UiBorder {
+                color: UiColor::border(),
+                width: 1,
+            }),
+            foreground: UiColor::foreground(),
+            padding: 4.0,
+            font_size: 14.0,
         }
     }
 }
@@ -232,6 +540,7 @@ pub struct UiNode {
     pub kind: UiWidgetKind,
     pub layout: UiLayout,
     pub style: UiStyle,
+    pub layout_hints: UiLayoutHints,
     pub semantics: UiSemantics,
     pub text: Option<String>,
     pub text_input: Option<UiTextInputOptions>,
@@ -252,6 +561,7 @@ impl UiNode {
             kind: UiWidgetKind::Panel,
             layout,
             style: UiStyle::panel(),
+            layout_hints: UiLayoutHints::default(),
             semantics: UiSemantics::group(name),
             text: None,
             text_input: None,
@@ -267,6 +577,7 @@ impl UiNode {
             kind: UiWidgetKind::Label,
             layout: UiLayout::Overlay,
             style: UiStyle::text(),
+            layout_hints: UiLayoutHints::default(),
             semantics: UiSemantics::status(name),
             text: Some(text.into()),
             text_input: None,
@@ -286,7 +597,8 @@ impl UiNode {
             id,
             kind: UiWidgetKind::Button,
             layout: UiLayout::Overlay,
-            style: UiStyle::panel(),
+            style: UiStyle::secondary_action(),
+            layout_hints: UiLayoutHints::default(),
             semantics: UiSemantics::button(name, action),
             text: Some(text.into()),
             text_input: None,
@@ -311,7 +623,8 @@ impl UiNode {
             id,
             kind: UiWidgetKind::TextInput,
             layout: UiLayout::Overlay,
-            style: UiStyle::text(),
+            style: UiStyle::text_field(),
+            layout_hints: UiLayoutHints::default(),
             semantics: UiSemantics::text_input(name),
             text: Some(if options.password {
                 String::new()
@@ -322,6 +635,20 @@ impl UiNode {
             focusable: true,
             children: Vec::new(),
         }
+    }
+
+    /// Replaces this node's Meridian-owned visual treatment.
+    #[must_use]
+    pub const fn with_style(mut self, style: UiStyle) -> Self {
+        self.style = style;
+        self
+    }
+
+    /// Replaces this node's preferred size and flexible-growth behavior.
+    #[must_use]
+    pub const fn with_layout_hints(mut self, layout_hints: UiLayoutHints) -> Self {
+        self.layout_hints = layout_hints;
+        self
     }
 }
 
@@ -485,11 +812,21 @@ impl UiDocument {
 
     #[must_use]
     pub fn focus_order(&self) -> Vec<UiNodeId> {
-        self.nodes
-            .values()
-            .filter(|node| node.focusable)
-            .map(|node| node.id)
-            .collect()
+        let mut order = Vec::new();
+        self.collect_focus_order(self.root, &mut order);
+        order
+    }
+
+    fn collect_focus_order(&self, id: UiNodeId, order: &mut Vec<UiNodeId>) {
+        let Some(node) = self.nodes.get(&id) else {
+            return;
+        };
+        if node.focusable {
+            order.push(id);
+        }
+        for child in &node.children {
+            self.collect_focus_order(*child, order);
+        }
     }
 }
 
@@ -514,6 +851,13 @@ pub enum UiEvent {
     CopySelection,
     PointerDown(UiPoint),
     PointerUp(UiPoint),
+    PointerCancel,
+    /// Requests focus for a named focusable control through a semantic adapter.
+    ///
+    /// This does not activate the control or expose its private text value. It
+    /// exists so an accessibility adapter can use the same focus model as
+    /// keyboard and pointer input.
+    AssistiveFocus(UiNodeId),
     AssistiveActivate(UiNodeId),
 }
 
@@ -619,6 +963,12 @@ pub enum DisplayPrimitive {
         bounds: UiRect,
         color: UiColor,
     },
+    Border {
+        node: UiNodeId,
+        bounds: UiRect,
+        color: UiColor,
+        width: u8,
+    },
     Text {
         node: UiNodeId,
         bounds: UiRect,
@@ -699,6 +1049,7 @@ pub enum UiDiagnostic {
     TextInputNotFocused,
     TextInputLimitExceeded { node: UiNodeId, maximum: usize },
     ClipboardDeniedForPassword { node: UiNodeId },
+    AssistiveFocusDenied { node: UiNodeId },
 }
 
 /// Input captured at a stable frame boundary.
@@ -900,6 +1251,28 @@ fn bounded_count_as_f32(value: usize) -> f32 {
     f32::from(u16::try_from(value).unwrap_or(u16::MAX))
 }
 
+fn finite_nonnegative(value: f32) -> f32 {
+    if value.is_finite() {
+        value.max(0.0)
+    } else {
+        0.0
+    }
+}
+
+fn inset_bounds(bounds: UiRect, inset: f32) -> UiRect {
+    let inset = finite_nonnegative(inset).min(bounds.size.width.min(bounds.size.height) / 2.0);
+    UiRect::new(
+        UiPoint {
+            x: bounds.origin.x + inset,
+            y: bounds.origin.y + inset,
+        },
+        UiSize::new(
+            (bounds.size.width - inset * 2.0).max(0.0),
+            (bounds.size.height - inset * 2.0).max(0.0),
+        ),
+    )
+}
+
 #[allow(clippy::cast_precision_loss)]
 fn i32_to_f32(value: i32) -> f32 {
     value as f32
@@ -914,7 +1287,7 @@ struct UiEmission<'a> {
     diagnostics: &'a mut Vec<UiDiagnostic>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct UiTextInputState {
     value: String,
     selection: UiTextSelection,
@@ -978,6 +1351,86 @@ impl UiRuntime {
     #[must_use]
     pub const fn document(&self) -> &UiDocument {
         &self.document
+    }
+
+    /// Replaces the retained document at a frame boundary while preserving
+    /// compatible private text-input state by stable node ID.
+    ///
+    /// A caller may rebuild presentation from authoritative source without
+    /// copying text values into that source or emitting them through semantics.
+    pub fn replace_document(&mut self, document: UiDocument) {
+        let previous_inputs = std::mem::take(&mut self.text_inputs);
+        self.text_inputs = document
+            .nodes
+            .values()
+            .filter_map(|node| {
+                let options = node.text_input?;
+                let state = previous_inputs
+                    .get(&node.id)
+                    .filter(|state| state.password == options.password);
+                Some((
+                    node.id,
+                    state.cloned().unwrap_or(UiTextInputState {
+                        value: if options.password {
+                            String::new()
+                        } else {
+                            node.text.clone().unwrap_or_default()
+                        },
+                        selection: UiTextSelection::default(),
+                        preedit: None,
+                        password: options.password,
+                    }),
+                ))
+            })
+            .collect();
+        if self
+            .focused
+            .is_some_and(|id| !document.node(id).is_some_and(|node| node.focusable))
+        {
+            self.focused = None;
+        }
+        self.pointer_capture = None;
+        self.previous_semantics = None;
+        self.document = document;
+    }
+
+    /// Returns one non-password text value kept privately by the runtime.
+    ///
+    /// Password values are deliberately never exposed through this API.
+    #[must_use]
+    pub fn text_input_value(&self, node: UiNodeId) -> Option<&str> {
+        self.text_inputs
+            .get(&node)
+            .filter(|state| !state.password)
+            .map(|state| state.value.as_str())
+    }
+
+    /// Restores one non-password text control to the current document value.
+    ///
+    /// Documents normally preserve a user's in-progress text by stable node
+    /// ID. Callers use this narrow reset only after an authoritative source
+    /// change or selection change makes that retained draft stale. Password
+    /// inputs are deliberately never restored from document text.
+    pub fn reset_text_input_from_document(&mut self, node: UiNodeId) -> bool {
+        let Some(default_value) = self
+            .document
+            .node(node)
+            .filter(|document_node| {
+                document_node
+                    .text_input
+                    .is_some_and(|options| !options.password)
+            })
+            .and_then(|document_node| document_node.text.as_deref())
+        else {
+            return false;
+        };
+        let Some(state) = self.text_inputs.get_mut(&node) else {
+            return false;
+        };
+        default_value.clone_into(&mut state.value);
+        state.selection = UiTextSelection::default();
+        state.preedit = None;
+        true
     }
 
     /// Processes events, resolves retained layout, and returns only immutable output.
@@ -1048,39 +1501,147 @@ impl UiRuntime {
         if count == 0 {
             return;
         }
-        let gap = match node.layout {
-            UiLayout::VerticalStack { gap } | UiLayout::HorizontalStack { gap } => gap.max(0.0),
-            UiLayout::Overlay => 0.0,
-        };
-        let available = match node.layout {
-            UiLayout::VerticalStack { .. } => {
-                (bounds.size.height - gap * bounded_count_as_f32(count.saturating_sub(1))).max(1.0)
+        let content_bounds = inset_bounds(bounds, node.style.padding);
+        match node.layout {
+            UiLayout::Overlay => {
+                for child in &node.children {
+                    self.layout_node(*child, content_bounds, layout);
+                }
             }
-            UiLayout::HorizontalStack { .. } => {
-                (bounds.size.width - gap * bounded_count_as_f32(count.saturating_sub(1))).max(1.0)
+            UiLayout::Grid { columns, gap } => {
+                self.layout_grid(&node.children, content_bounds, columns, gap, layout);
             }
-            UiLayout::Overlay => 0.0,
+            UiLayout::VerticalStack { gap } => {
+                self.layout_stack(&node.children, content_bounds, gap, true, layout);
+            }
+            UiLayout::HorizontalStack { gap } => {
+                self.layout_stack(&node.children, content_bounds, gap, false, layout);
+            }
+        }
+    }
+
+    fn layout_stack(
+        &self,
+        children: &[UiNodeId],
+        bounds: UiRect,
+        gap: f32,
+        vertical: bool,
+        layout: &mut BTreeMap<UiNodeId, UiRect>,
+    ) {
+        let gap = finite_nonnegative(gap);
+        let item_count = bounded_count_as_f32(children.len());
+        let total_gap = gap * bounded_count_as_f32(children.len().saturating_sub(1));
+        let axis_extent = if vertical {
+            bounds.size.height
+        } else {
+            bounds.size.width
         };
-        let item_count = bounded_count_as_f32(count);
-        for (index, child) in node.children.iter().enumerate() {
-            let item_index = bounded_count_as_f32(index);
-            let child_bounds = match node.layout {
-                UiLayout::Overlay => bounds,
-                UiLayout::VerticalStack { .. } => UiRect::new(
+        let available = (axis_extent - total_gap).max(0.0);
+        let preferred_total = children.iter().fold(0.0, |total, child| {
+            let preference = self
+                .document
+                .node(*child)
+                .and_then(|node| {
+                    if vertical {
+                        node.layout_hints.preferred_height
+                    } else {
+                        node.layout_hints.preferred_width
+                    }
+                })
+                .map_or(0.0, finite_nonnegative);
+            total + preference
+        });
+        let preferred_scale = if preferred_total > available && preferred_total > 0.0 {
+            available / preferred_total
+        } else {
+            1.0
+        };
+        let remaining = (available - preferred_total * preferred_scale).max(0.0);
+        let grow_total = children.iter().fold(0.0, |total, child| {
+            total
+                + self
+                    .document
+                    .node(*child)
+                    .map_or(0.0, |node| finite_nonnegative(node.layout_hints.grow))
+        });
+        let mut cursor = if vertical {
+            bounds.origin.y
+        } else {
+            bounds.origin.x
+        };
+        for child in children {
+            let node = self.document.node(*child);
+            let preferred = node
+                .and_then(|node| {
+                    if vertical {
+                        node.layout_hints.preferred_height
+                    } else {
+                        node.layout_hints.preferred_width
+                    }
+                })
+                .map_or(0.0, finite_nonnegative)
+                * preferred_scale;
+            let grow = node.map_or(0.0, |node| finite_nonnegative(node.layout_hints.grow));
+            let grown = if grow_total > 0.0 {
+                remaining * grow / grow_total
+            } else if preferred_total == 0.0 {
+                available / item_count
+            } else {
+                0.0
+            };
+            let extent = (preferred + grown).max(0.0);
+            let child_bounds = if vertical {
+                UiRect::new(
                     UiPoint {
                         x: bounds.origin.x,
-                        y: bounds.origin.y + item_index * (available / item_count + gap),
+                        y: cursor,
                     },
-                    UiSize::new(bounds.size.width, available / item_count),
-                ),
-                UiLayout::HorizontalStack { .. } => UiRect::new(
+                    UiSize::new(bounds.size.width, extent),
+                )
+            } else {
+                UiRect::new(
                     UiPoint {
-                        x: bounds.origin.x + item_index * (available / item_count + gap),
+                        x: cursor,
                         y: bounds.origin.y,
                     },
-                    UiSize::new(available / item_count, bounds.size.height),
-                ),
+                    UiSize::new(extent, bounds.size.height),
+                )
             };
+            self.layout_node(*child, child_bounds, layout);
+            cursor += extent + gap;
+        }
+    }
+
+    fn layout_grid(
+        &self,
+        children: &[UiNodeId],
+        bounds: UiRect,
+        columns: u8,
+        gap: f32,
+        layout: &mut BTreeMap<UiNodeId, UiRect>,
+    ) {
+        let requested_columns = usize::from(columns.max(1));
+        let columns = requested_columns.min(children.len()).max(1);
+        let rows = children.len().div_ceil(columns);
+        let gap = finite_nonnegative(gap);
+        let width = ((bounds.size.width - gap * bounded_count_as_f32(columns.saturating_sub(1)))
+            .max(0.0)
+            / bounded_count_as_f32(columns))
+        .max(0.0);
+        let height = ((bounds.size.height - gap * bounded_count_as_f32(rows.saturating_sub(1)))
+            .max(0.0)
+            / bounded_count_as_f32(rows))
+        .max(0.0);
+        for (index, child) in children.iter().enumerate() {
+            let column = index % columns;
+            let row = index / columns;
+            let child_bounds = UiRect::new(
+                UiPoint {
+                    x: bounds.origin.x + bounded_count_as_f32(column) * (width + gap),
+                    y: bounds.origin.y + bounded_count_as_f32(row) * (height + gap),
+                },
+                UiSize::new(width, height),
+            );
             self.layout_node(*child, child_bounds, layout);
         }
     }
@@ -1101,6 +1662,18 @@ impl UiRuntime {
                 if let Some(target) = self.focused {
                     self.dispatch(target, routes);
                     self.activate(target, commands);
+                }
+            }
+            UiEvent::AssistiveFocus(target) => {
+                if self
+                    .document
+                    .node(target)
+                    .is_some_and(|node| node.focusable)
+                {
+                    self.dispatch(target, routes);
+                    self.focused = Some(target);
+                } else {
+                    diagnostics.push(UiDiagnostic::AssistiveFocusDenied { node: target });
                 }
             }
             UiEvent::AssistiveActivate(target) => {
@@ -1131,20 +1704,24 @@ impl UiRuntime {
                     {
                         self.focused = Some(target);
                     }
-                } else {
+                } else if !layout
+                    .get(&self.document.root())
+                    .is_some_and(|bounds| bounds.contains(point))
+                {
                     diagnostics.push(UiDiagnostic::PointerOutsideDocument);
                 }
             }
             UiEvent::PointerUp(point) => {
-                let target = self
-                    .pointer_capture
-                    .take()
-                    .or_else(|| self.hit_test(point, layout));
-                if let Some(target) = target {
+                let captured = self.pointer_capture.take();
+                let released_over = self.hit_test(point, layout);
+                if let Some(target) = captured {
                     self.dispatch(target, routes);
-                    self.activate(target, commands);
+                    if released_over == Some(target) {
+                        self.activate(target, commands);
+                    }
                 }
             }
+            UiEvent::PointerCancel => self.pointer_capture = None,
         }
     }
 
@@ -1387,12 +1964,26 @@ impl UiRuntime {
     }
 
     fn hit_test(&self, point: UiPoint, layout: &BTreeMap<UiNodeId, UiRect>) -> Option<UiNodeId> {
-        self.document
-            .nodes
-            .keys()
-            .rev()
-            .find(|id| layout.get(id).is_some_and(|bounds| bounds.contains(point)))
-            .copied()
+        self.hit_test_node(self.document.root(), point, layout)
+    }
+
+    fn hit_test_node(
+        &self,
+        id: UiNodeId,
+        point: UiPoint,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+    ) -> Option<UiNodeId> {
+        let bounds = layout.get(&id)?;
+        if !bounds.contains(point) {
+            return None;
+        }
+        let node = self.document.node(id)?;
+        for child in node.children.iter().rev() {
+            if let Some(target) = self.hit_test_node(*child, point, layout) {
+                return Some(target);
+            }
+        }
+        node.focusable.then_some(id)
     }
 
     fn emit_node(&mut self, id: UiNodeId, parent: Option<UiNodeId>, emission: &mut UiEmission<'_>) {
@@ -1414,6 +2005,14 @@ impl UiRuntime {
                 color: background,
             });
         }
+        if let Some(border) = node.style.border {
+            emission.display.primitives.push(DisplayPrimitive::Border {
+                node: id,
+                bounds,
+                color: border.color,
+                width: border.width.max(1),
+            });
+        }
         let rendered_text = self
             .text_inputs
             .get(&id)
@@ -1433,7 +2032,7 @@ impl UiRuntime {
                 },
                 UiSize::new(
                     (bounds.size.width - node.style.padding * 2.0).max(1.0),
-                    bounds.size.height,
+                    (bounds.size.height - node.style.padding * 2.0).max(1.0),
                 ),
             );
             let text_output = self.text.layout(
@@ -1556,6 +2155,79 @@ mod tests {
     }
 
     #[test]
+    fn preferred_stack_and_grid_keep_controls_in_distinct_visible_cells() {
+        let root = UiNodeId::new(0x400);
+        let header = UiNodeId::new(0x401);
+        let body = UiNodeId::new(0x402);
+        let actions = UiNodeId::new(0x403);
+        let first = UiNodeId::new(0x404);
+        let second = UiNodeId::new(0x405);
+        let third = UiNodeId::new(0x406);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::label(header, "Header", "Creator tools")
+                    .with_style(UiStyle::section_heading())
+                    .with_layout_hints(UiLayoutHints::fixed_height(40.0)),
+                UiNode::button(first, "First action", "first", "First")
+                    .with_style(UiStyle::primary_action()),
+                UiNode::button(second, "Second action", "second", "Second")
+                    .with_style(UiStyle::secondary_action()),
+                UiNode::button(third, "Third action", "third", "Third")
+                    .with_style(UiStyle::secondary_action()),
+                UiNode::container(
+                    actions,
+                    "Action grid",
+                    UiLayout::Grid {
+                        columns: 3,
+                        gap: 8.0,
+                    },
+                    vec![first, second, third],
+                )
+                .with_style(UiStyle::transparent()),
+                UiNode::container(body, "Tool body", UiLayout::Overlay, vec![actions])
+                    .with_style(UiStyle::surface()),
+                UiNode::container(
+                    root,
+                    "Creator layout",
+                    UiLayout::VerticalStack { gap: 8.0 },
+                    vec![header, body],
+                )
+                .with_style(UiStyle::canvas()),
+            ],
+        )
+        .expect("valid preferred-layout document");
+        let mut runtime = UiRuntime::new(document);
+        let mut input = frame(Vec::new());
+        input.viewport = UiSize::new(400.0, 220.0);
+        let output = runtime.reconcile(input);
+        let tree = match &output.semantic_delta {
+            SemanticDelta::Replace(tree) => tree,
+            SemanticDelta::Unchanged => panic!("first frame must publish semantics"),
+        };
+        let bounds = |id| {
+            tree.nodes
+                .iter()
+                .find(|node| node.id == id)
+                .map(|node| node.bounds)
+                .expect("declared node has semantics")
+        };
+        let header_bounds = bounds(header);
+        let first_bounds = bounds(first);
+        let second_bounds = bounds(second);
+        let third_bounds = bounds(third);
+        assert!((header_bounds.size.height - 40.0).abs() < 0.1);
+        assert!(first_bounds.size.width > 80.0 && first_bounds.size.height > 40.0);
+        assert!(first_bounds.origin.x < second_bounds.origin.x);
+        assert!(second_bounds.origin.x < third_bounds.origin.x);
+        assert!(output
+            .display_list
+            .primitives
+            .iter()
+            .any(|primitive| matches!(primitive, DisplayPrimitive::Border { .. })));
+    }
+
+    #[test]
     fn keyboard_activation_emits_declared_command() {
         let document = recovery_panel_document().expect("recovery fixture is valid");
         let mut runtime = UiRuntime::new(document);
@@ -1566,6 +2238,133 @@ mod tests {
             .event_routes
             .iter()
             .any(|route| route.phase == UiEventPhase::Target));
+    }
+
+    #[test]
+    fn focus_order_follows_declared_tree_order_instead_of_stable_id_order() {
+        let root = UiNodeId::new(1);
+        let first = UiNodeId::new(30);
+        let second = UiNodeId::new(10);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Focus fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![first, second],
+                ),
+                UiNode::button(first, "First declared", "fixture.first", "First"),
+                UiNode::button(second, "Second declared", "fixture.second", "Second"),
+            ],
+        )
+        .expect("focus-order fixture is valid");
+
+        assert_eq!(document.focus_order(), vec![first, second]);
+    }
+
+    #[test]
+    fn pointer_ignores_structural_groups_and_activates_the_visible_button() {
+        let root = UiNodeId::new(1);
+        let group = UiNodeId::new(90);
+        let action = UiNodeId::new(2);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Pointer fixture", UiLayout::Overlay, vec![group]),
+                UiNode::container(group, "Structural group", UiLayout::Overlay, vec![action])
+                    .with_style(UiStyle::transparent()),
+                UiNode::button(action, "Visible action", "fixture.activate", "Activate"),
+            ],
+        )
+        .expect("pointer fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(frame(vec![
+            UiEvent::PointerDown(UiPoint { x: 100.0, y: 40.0 }),
+            UiEvent::PointerUp(UiPoint { x: 100.0, y: 40.0 }),
+        ]));
+
+        assert_eq!(output.focused, Some(action));
+        assert_eq!(
+            output.commands,
+            vec![UiCommandRequest {
+                source: action,
+                action: "fixture.activate".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn pointer_activation_requires_release_over_the_captured_control() {
+        let root = UiNodeId::new(1);
+        let action = UiNodeId::new(2);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Pointer fixture", UiLayout::Overlay, vec![action]),
+                UiNode::button(action, "Visible action", "fixture.activate", "Activate"),
+            ],
+        )
+        .expect("pointer fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(frame(vec![
+            UiEvent::PointerDown(UiPoint { x: 100.0, y: 40.0 }),
+            UiEvent::PointerUp(UiPoint {
+                x: 1_000.0,
+                y: 1_000.0,
+            }),
+        ]));
+
+        assert_eq!(output.focused, Some(action));
+        assert!(output.commands.is_empty());
+    }
+
+    #[test]
+    fn pointer_release_without_press_and_cancelled_press_do_not_activate() {
+        let root = UiNodeId::new(1);
+        let action = UiNodeId::new(2);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Pointer fixture", UiLayout::Overlay, vec![action]),
+                UiNode::button(action, "Visible action", "fixture.activate", "Activate"),
+            ],
+        )
+        .expect("pointer fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let orphan_release = runtime.reconcile(frame(vec![UiEvent::PointerUp(UiPoint {
+            x: 100.0,
+            y: 40.0,
+        })]));
+        assert!(orphan_release.commands.is_empty());
+
+        let cancelled = runtime.reconcile(frame(vec![
+            UiEvent::PointerDown(UiPoint { x: 100.0, y: 40.0 }),
+            UiEvent::PointerCancel,
+            UiEvent::PointerUp(UiPoint { x: 100.0, y: 40.0 }),
+        ]));
+        assert!(cancelled.commands.is_empty());
+    }
+
+    #[test]
+    fn meridian_palette_tokens_match_the_website_contract() {
+        assert_eq!(
+            UiColor::background(),
+            UiColor::rgba(0.035_294_12, 0.043_137_256, 0.043_137_256, 1.0)
+        );
+        assert_eq!(
+            UiColor::surface(),
+            UiColor::rgba(0.070_588_24, 0.082_352_94, 0.082_352_94, 1.0)
+        );
+        assert_eq!(
+            UiColor::border(),
+            UiColor::rgba(0.160_784_32, 0.176_470_6, 0.172_549_02, 1.0)
+        );
+        assert_eq!(
+            UiColor::text(),
+            UiColor::rgba(0.890_196_1, 0.882_352_95, 0.847_058_83, 1.0)
+        );
+        assert_eq!(UiColor::focus(), UiColor::amber());
     }
 
     #[test]
@@ -1816,5 +2615,74 @@ mod tests {
                 .map(|state| state.value.as_str()),
             Some("safe")
         );
+    }
+
+    #[test]
+    fn replacing_document_preserves_non_password_text_by_stable_id() {
+        let (document, input) = text_input_document("Meridian Project", false);
+        let mut runtime = UiRuntime::new(document);
+        runtime.reconcile(frame(vec![
+            UiEvent::FocusNext,
+            UiEvent::SelectAllText,
+            UiEvent::TextCommit("Creator Sample".to_owned()),
+        ]));
+        let (replacement, _) = text_input_document("Ignored initial value", false);
+        runtime.replace_document(replacement);
+        assert_eq!(runtime.text_input_value(input), Some("Creator Sample"));
+    }
+
+    #[test]
+    fn assistive_focus_edits_a_named_text_control_and_rejects_nonfocusable_targets() {
+        let root = UiNodeId::new(0x401);
+        let input = UiNodeId::new(0x402);
+        let label = UiNodeId::new(0x403);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![input, label],
+                ),
+                UiNode::text_input(input, "Placement X", "0", UiTextInputOptions::default()),
+                UiNode::label(label, "Read only", "Read only"),
+            ],
+        )
+        .expect("assistive focus fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        let output = runtime.reconcile(frame(vec![
+            UiEvent::AssistiveFocus(input),
+            UiEvent::SelectAllText,
+            UiEvent::TextCommit("250".to_owned()),
+            UiEvent::AssistiveFocus(label),
+        ]));
+
+        assert_eq!(output.focused, Some(input));
+        assert_eq!(runtime.text_input_value(input), Some("250"));
+        assert!(output
+            .diagnostics
+            .contains(&UiDiagnostic::AssistiveFocusDenied { node: label }));
+    }
+
+    #[test]
+    fn targeted_text_input_reset_uses_current_document_default_without_resetting_passwords() {
+        let (document, input) = text_input_document("0", false);
+        let mut runtime = UiRuntime::new(document);
+        runtime.reconcile(frame(vec![
+            UiEvent::FocusNext,
+            UiEvent::SelectAllText,
+            UiEvent::TextCommit("250".to_owned()),
+        ]));
+        assert_eq!(runtime.text_input_value(input), Some("250"));
+
+        assert!(runtime.reset_text_input_from_document(input));
+        assert_eq!(runtime.text_input_value(input), Some("0"));
+
+        let (password_document, password) = text_input_document("ignored", true);
+        let mut password_runtime = UiRuntime::new(password_document);
+        assert!(!password_runtime.reset_text_input_from_document(password));
+        assert_eq!(password_runtime.text_input_value(password), None);
     }
 }

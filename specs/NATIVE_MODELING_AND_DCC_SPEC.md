@@ -7,8 +7,8 @@ Status: version 0.5 normative architecture, 2026-07-15.
 Architecture status: `Adopted` by ADR-0022. Documentation maturity: `ResearchReady`. Implementation maturity: `Partial`.
 Governing IDs: `REQ-MDL-001` through `REQ-MDL-004`; `WP-MDL-001`; `WP-MDL-002`; `PRG-MDL-001`.
 
-Current implementation status: `WP-MDL-001` is active after qualified
-Alluvium evidence. Its MS-03 delivery is limited to a native editable-model
+Current implementation status: `WP-MDL-001` is `Partial` after its bounded
+MS-03 source delivery. Its MS-03 delivery is limited to a native editable-model
 source, stable vertex/edge/face identity and lineage, immutable revisions,
 generation-checked selection, primitive creation, transforms, one bounded
 topology operation, semantic undo/recovery, an accessible inspector, and a

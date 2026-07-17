@@ -6,8 +6,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
+use std::ffi::OsString;
 use std::fmt::{self, Display, Formatter};
-use std::path::Path;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use meridian_core::StableId;
 use meridian_save::{SaveConfig, SaveError, SaveStore};
@@ -17,9 +21,11 @@ use serde::{Deserialize, Serialize};
 pub const PROJECT_SCHEMA: &str = "meridian.creator-project/v1";
 const RECOVERY_SCHEMA: &str = "meridian.editor-recovery/v1";
 const CHECKPOINT_INTERVAL: usize = 8;
+static SOURCE_TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// A deterministic world-space translation in millimetres.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Translation {
     /// East/west displacement in millimetres.
     pub x_mm: i64,
@@ -34,6 +40,7 @@ pub struct Translation {
 /// The editor retains source identity and provenance only; it never replaces the
 /// original source path with a render preview or opaque derived asset.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ImportedSource {
     /// Persistent identity supplied by the importing source authority.
     pub id: StableId,
@@ -47,6 +54,7 @@ pub struct ImportedSource {
 
 /// One editable object placement in the public generic Creator Alpha world.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorldPlacement {
     /// Persistent object identity.
     pub id: StableId,
@@ -60,6 +68,7 @@ pub struct WorldPlacement {
 
 /// Versioned, human-readable source owned by the Creator Editor.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectDocument {
     /// Exact source schema identifier.
     pub schema: String,
@@ -122,10 +131,51 @@ impl ProjectDocument {
         }
         Ok(())
     }
+
+    /// Reads one regular, bounded Creator project source file.
+    ///
+    /// # Errors
+    ///
+    /// Rejects symlinks, directories, oversized inputs, malformed JSON, and
+    /// invalid source before a session can observe it.
+    pub fn read_source(path: impl AsRef<Path>) -> Result<Self, EditorError> {
+        let path = path.as_ref();
+        let metadata = fs::symlink_metadata(path)
+            .map_err(|error| EditorError::SourceRead(format!("{}: {error}", path.display())))?;
+        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+            return Err(EditorError::InvalidSourcePath(path.display().to_string()));
+        }
+        let maximum = SaveConfig::default().max_payload_bytes;
+        let size = usize::try_from(metadata.len()).map_err(|_| EditorError::SourceTooLarge {
+            size: usize::MAX,
+            maximum,
+        })?;
+        if size > maximum {
+            return Err(EditorError::SourceTooLarge { size, maximum });
+        }
+        let bytes = fs::read(path)
+            .map_err(|error| EditorError::SourceRead(format!("{}: {error}", path.display())))?;
+        let document: Self = serde_json::from_slice(&bytes)
+            .map_err(|error| EditorError::SourceDecoding(error.to_string()))?;
+        document.validate()?;
+        Ok(document)
+    }
+
+    /// Emits canonical, pretty Creator project source JSON.
+    ///
+    /// # Errors
+    ///
+    /// Returns validation or encoding errors without changing source.
+    pub fn canonical_json(&self) -> Result<String, EditorError> {
+        self.validate()?;
+        serde_json::to_string_pretty(self)
+            .map_err(|error| EditorError::SourceEncoding(error.to_string()))
+    }
 }
 
 /// A generation-checked selection stored independently from project source.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Selection {
     /// Document generation at which this selection was made.
     pub generation: u64,
@@ -173,9 +223,13 @@ impl Selection {
 
 /// Typed source mutations available in the MS-03 Editor Alpha boundary.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum EditorCommand {
     /// Registers a source already accepted by the import authority.
     RegisterImportedSource(ImportedSource),
+    /// Replaces the retained metadata for an already registered source after a
+    /// fresh DAT-owned import. The stable source identity cannot change.
+    UpdateImportedSource(ImportedSource),
     /// Removes a source which has no editable placement references.
     RemoveImportedSource {
         /// Source to remove.
@@ -199,6 +253,7 @@ pub enum EditorCommand {
 
 /// Required audit metadata carried with every committed command.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CommandMetadata {
     /// Human-readable action label for history and assistive UI.
     pub label: String,
@@ -225,6 +280,7 @@ impl CommandMetadata {
 
 /// A validated mutation request which can be previewed before commitment.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct EditorTransaction {
     /// Typed source mutation.
     pub command: EditorCommand,
@@ -243,6 +299,7 @@ pub struct CommandPreview {
 
 /// An immutable source checkpoint retained at bounded history intervals.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Checkpoint {
     /// Document generation after the checkpointed transaction.
     pub generation: u64,
@@ -251,12 +308,14 @@ pub struct Checkpoint {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 struct HistoryEntry {
     transaction: EditorTransaction,
     inverse: EditorCommand,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 struct PlaySession {
     base_document: ProjectDocument,
     runtime_document: ProjectDocument,
@@ -275,6 +334,7 @@ pub struct PlayChange {
 
 /// Editor-owned session state, history, checkpoints, and optional Play fork.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct EditorSession {
     document: ProjectDocument,
     selection: Selection,
@@ -323,6 +383,33 @@ impl EditorSession {
         &self.checkpoints
     }
 
+    /// Returns the number of committed source transactions available to undo.
+    #[must_use]
+    pub fn undo_depth(&self) -> usize {
+        self.undo.len()
+    }
+
+    /// Returns the number of previously undone transactions available to redo.
+    #[must_use]
+    pub fn redo_depth(&self) -> usize {
+        self.redo.len()
+    }
+
+    /// Returns whether an isolated Play fork is currently active.
+    #[must_use]
+    pub fn play_active(&self) -> bool {
+        self.play.is_some()
+    }
+
+    /// Returns the number of explicit source changes currently pending in Play.
+    ///
+    /// A missing Play fork has no pending changes; this query never mutates the
+    /// source-authoritative session.
+    #[must_use]
+    pub fn pending_play_change_count(&self) -> usize {
+        self.play_changes().map_or(0, |changes| changes.len())
+    }
+
     /// Validates a transaction without changing source or history.
     ///
     /// # Errors
@@ -342,23 +429,31 @@ impl EditorSession {
     ///
     /// Returns validation errors before source, history, or checkpoints mutate.
     pub fn commit(&mut self, transaction: EditorTransaction) -> Result<(), EditorError> {
-        if self.play.is_some() {
-            return Err(EditorError::PlaySessionActive);
+        let before = self.clone();
+        let result = (|| {
+            if self.play.is_some() {
+                return Err(EditorError::PlaySessionActive);
+            }
+            validate_transaction(&self.document, &transaction)?;
+            let generation = self
+                .document
+                .generation
+                .checked_add(1)
+                .ok_or(EditorError::GenerationExhausted)?;
+            let inverse = apply_command(&mut self.document, &transaction.command)?;
+            self.document.generation = generation;
+            self.undo.push(HistoryEntry {
+                transaction,
+                inverse,
+            });
+            self.redo.clear();
+            self.record_checkpoint();
+            Ok(())
+        })();
+        if result.is_err() {
+            *self = before;
         }
-        validate_transaction(&self.document, &transaction)?;
-        let inverse = apply_command(&mut self.document, &transaction.command)?;
-        self.document.generation = self
-            .document
-            .generation
-            .checked_add(1)
-            .ok_or(EditorError::GenerationExhausted)?;
-        self.undo.push(HistoryEntry {
-            transaction,
-            inverse,
-        });
-        self.redo.clear();
-        self.record_checkpoint();
-        Ok(())
+        result
     }
 
     /// Undoes the latest committed transaction through its typed inverse.
@@ -367,19 +462,27 @@ impl EditorSession {
     ///
     /// Returns [`EditorError::NothingToUndo`] when history is empty.
     pub fn undo(&mut self) -> Result<(), EditorError> {
-        if self.play.is_some() {
-            return Err(EditorError::PlaySessionActive);
+        let before = self.clone();
+        let result = (|| {
+            if self.play.is_some() {
+                return Err(EditorError::PlaySessionActive);
+            }
+            let generation = self
+                .document
+                .generation
+                .checked_add(1)
+                .ok_or(EditorError::GenerationExhausted)?;
+            let entry = self.undo.pop().ok_or(EditorError::NothingToUndo)?;
+            apply_command(&mut self.document, &entry.inverse)?;
+            self.document.generation = generation;
+            self.redo.push(entry);
+            self.record_checkpoint();
+            Ok(())
+        })();
+        if result.is_err() {
+            *self = before;
         }
-        let entry = self.undo.pop().ok_or(EditorError::NothingToUndo)?;
-        apply_command(&mut self.document, &entry.inverse)?;
-        self.document.generation = self
-            .document
-            .generation
-            .checked_add(1)
-            .ok_or(EditorError::GenerationExhausted)?;
-        self.redo.push(entry);
-        self.record_checkpoint();
-        Ok(())
+        result
     }
 
     /// Replays the latest undone transaction after revalidating it.
@@ -388,20 +491,28 @@ impl EditorSession {
     ///
     /// Returns [`EditorError::NothingToRedo`] when redo history is empty.
     pub fn redo(&mut self) -> Result<(), EditorError> {
-        if self.play.is_some() {
-            return Err(EditorError::PlaySessionActive);
+        let before = self.clone();
+        let result = (|| {
+            if self.play.is_some() {
+                return Err(EditorError::PlaySessionActive);
+            }
+            let generation = self
+                .document
+                .generation
+                .checked_add(1)
+                .ok_or(EditorError::GenerationExhausted)?;
+            let entry = self.redo.pop().ok_or(EditorError::NothingToRedo)?;
+            validate_transaction(&self.document, &entry.transaction)?;
+            apply_command(&mut self.document, &entry.transaction.command)?;
+            self.document.generation = generation;
+            self.undo.push(entry);
+            self.record_checkpoint();
+            Ok(())
+        })();
+        if result.is_err() {
+            *self = before;
         }
-        let entry = self.redo.pop().ok_or(EditorError::NothingToRedo)?;
-        validate_transaction(&self.document, &entry.transaction)?;
-        apply_command(&mut self.document, &entry.transaction.command)?;
-        self.document.generation = self
-            .document
-            .generation
-            .checked_add(1)
-            .ok_or(EditorError::GenerationExhausted)?;
-        self.undo.push(entry);
-        self.record_checkpoint();
-        Ok(())
+        result
     }
 
     /// Starts an isolated runtime fork. Source stays immutable until apply-back.
@@ -516,6 +627,235 @@ impl EditorSession {
     }
 }
 
+/// Durable source and recovery coordinator for one Creator project.
+///
+/// The project JSON is authoritative. Recovery may restore only safe local
+/// state after its recovered source exactly matches the accepted project JSON.
+pub struct ProjectStore {
+    source_path: PathBuf,
+    recovery: EditorRecoveryStore,
+}
+
+/// How a source-authoritative project open treated local recovery state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProjectRecoveryStatus {
+    /// No recovery sidecar was present.
+    None,
+    /// Recovery matched the accepted source document and resumed a fresh source
+    /// session. Unproven sidecar history is deliberately not restored.
+    Restored,
+    /// Recovery was invalid or disagreed with source and was safely ignored.
+    Ignored,
+}
+
+/// A source-authoritative project session returned by [`ProjectStore::open`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OpenProject {
+    /// The validated source session, optionally with matching safe recovery
+    /// state. Sidecar undo/redo history never becomes source authority.
+    pub session: EditorSession,
+    /// Recovery disposition that callers should expose through diagnostics.
+    pub recovery: ProjectRecoveryStatus,
+}
+
+impl ProjectStore {
+    /// Binds one project source path and one separate recovery sidecar.
+    #[must_use]
+    pub fn new(source_path: impl Into<PathBuf>, recovery_path: impl AsRef<Path>) -> Self {
+        Self {
+            source_path: source_path.into(),
+            recovery: EditorRecoveryStore::new(recovery_path),
+        }
+    }
+
+    /// Returns the authoritative project source path.
+    #[must_use]
+    pub fn source_path(&self) -> &Path {
+        &self.source_path
+    }
+
+    /// Returns the local recovery sidecar path.
+    #[must_use]
+    pub fn recovery_path(&self) -> &Path {
+        self.recovery.path()
+    }
+
+    /// Writes a newly created source document and its initial recovery sidecar.
+    ///
+    /// # Errors
+    ///
+    /// Leaves no partially accepted in-memory project state when source or
+    /// recovery persistence fails.
+    pub fn create(&self, document: ProjectDocument) -> Result<EditorSession, EditorError> {
+        if self.source_path.exists() {
+            return Err(EditorError::SourceWrite(
+                "refusing to replace an existing project source during creation".to_owned(),
+            ));
+        }
+        let session = EditorSession::open(document)?;
+        self.write_document(session.document())?;
+        if let Err(error) = self.recovery.save(&session) {
+            if let Err(rollback) = remove_source_file(&self.source_path) {
+                return Err(EditorError::SourceRollbackFailed(rollback));
+            }
+            return Err(error);
+        }
+        Ok(session)
+    }
+
+    /// Opens accepted source and restores only matching safe recovery state.
+    ///
+    /// # Errors
+    ///
+    /// Source errors are returned; recovery errors are isolated as an ignored
+    /// sidecar so they cannot make authoritative source unavailable.
+    pub fn open(&self) -> Result<OpenProject, EditorError> {
+        let document = ProjectDocument::read_source(&self.source_path)?;
+        let session = EditorSession::open(document.clone())?;
+        if !self.recovery.path().exists() {
+            return Ok(OpenProject {
+                session,
+                recovery: ProjectRecoveryStatus::None,
+            });
+        }
+        match self.recovery.load() {
+            Ok(recovered) if recovered.document() == &document => Ok(OpenProject {
+                session: recovered,
+                recovery: ProjectRecoveryStatus::Restored,
+            }),
+            Ok(_) | Err(_) => Ok(OpenProject {
+                session,
+                recovery: ProjectRecoveryStatus::Ignored,
+            }),
+        }
+    }
+
+    /// Runs one typed session mutation, then atomically persists source and
+    /// recovery. Any write failure restores the accepted in-memory session; a
+    /// recovery failure also restores the prior source document before return.
+    ///
+    /// # Errors
+    ///
+    /// Mutation, source-write, recovery-write, and rollback failures remain
+    /// typed and never publish a partial accepted session.
+    pub fn mutate<T, F>(&self, session: &mut EditorSession, mutation: F) -> Result<T, EditorError>
+    where
+        F: FnOnce(&mut EditorSession) -> Result<T, EditorError>,
+    {
+        let before = session.clone();
+        let outcome = match mutation(session) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                *session = before;
+                return Err(error);
+            }
+        };
+        if let Err(error) = self.write_document(session.document()) {
+            *session = before;
+            return Err(error);
+        }
+        if let Err(error) = self.recovery.save(session) {
+            let rollback = self.write_document(before.document());
+            *session = before;
+            if let Err(rollback) = rollback {
+                return Err(EditorError::SourceRollbackFailed(rollback.to_string()));
+            }
+            return Err(error);
+        }
+        Ok(outcome)
+    }
+
+    /// Persists a Play-only mutation in recovery without changing source.
+    ///
+    /// # Errors
+    ///
+    /// Restores the in-memory Play state if recovery cannot be updated.
+    pub fn mutate_play<T, F>(
+        &self,
+        session: &mut EditorSession,
+        mutation: F,
+    ) -> Result<T, EditorError>
+    where
+        F: FnOnce(&mut EditorSession) -> Result<T, EditorError>,
+    {
+        let before = session.clone();
+        let outcome = match mutation(session) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                *session = before;
+                return Err(error);
+            }
+        };
+        if let Err(error) = self.recovery.save(session) {
+            *session = before;
+            return Err(error);
+        }
+        Ok(outcome)
+    }
+
+    fn write_document(&self, document: &ProjectDocument) -> Result<(), EditorError> {
+        write_atomic_source(&self.source_path, document.canonical_json()?.as_bytes())
+    }
+}
+
+fn write_atomic_source(path: &Path, bytes: &[u8]) -> Result<(), EditorError> {
+    let maximum = SaveConfig::default().max_payload_bytes;
+    if bytes.len() > maximum {
+        return Err(EditorError::SourceTooLarge {
+            size: bytes.len(),
+            maximum,
+        });
+    }
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .ok_or_else(|| {
+            EditorError::SourceWrite("project source has no parent directory".to_owned())
+        })?;
+    let parent_metadata = fs::symlink_metadata(parent)
+        .map_err(|error| EditorError::SourceWrite(format!("{}: {error}", parent.display())))?;
+    if !parent_metadata.file_type().is_dir() || parent_metadata.file_type().is_symlink() {
+        return Err(EditorError::SourceWrite(
+            "project source parent must be a real directory".to_owned(),
+        ));
+    }
+    if path.exists() {
+        let metadata = fs::symlink_metadata(path)
+            .map_err(|error| EditorError::SourceWrite(format!("{}: {error}", path.display())))?;
+        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+            return Err(EditorError::InvalidSourcePath(path.display().to_string()));
+        }
+    }
+    let temporary = source_temporary_path(path);
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|error| EditorError::SourceWrite(format!("{}: {error}", temporary.display())))?;
+    let result = (|| {
+        file.write_all(bytes)
+            .map_err(|error| EditorError::SourceWrite(error.to_string()))?;
+        file.sync_all()
+            .map_err(|error| EditorError::SourceWrite(error.to_string()))?;
+        fs::rename(&temporary, path).map_err(|error| EditorError::SourceWrite(error.to_string()))
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn source_temporary_path(path: &Path) -> PathBuf {
+    let sequence = SOURCE_TEMPORARY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let mut temporary = OsString::from(path.as_os_str());
+    temporary.push(format!(".{}.{}.tmp", std::process::id(), sequence));
+    PathBuf::from(temporary)
+}
+
+fn remove_source_file(path: &Path) -> Result<(), String> {
+    fs::remove_file(path).map_err(|error| format!("{}: {error}", path.display()))
+}
+
 /// Durable file-backed crash-recovery boundary for an [`EditorSession`].
 pub struct EditorRecoveryStore {
     store: SaveStore,
@@ -551,13 +891,15 @@ impl EditorRecoveryStore {
         self.store.save(bytes).map_err(EditorError::RecoverySave)
     }
 
-    /// Recovers and revalidates the latest durable session or its previous backup.
+    /// Recovers the latest durable source snapshot or its previous backup.
     ///
     /// # Errors
     ///
-    /// Returns an error if both durable copies are invalid or violate source rules.
-    /// A persisted selection from an older document generation is deliberately
-    /// cleared rather than becoming an invalid recovery blocker.
+    /// Returns an error if both durable copies are invalid or violate source
+    /// rules. Recovery history cannot establish an authoritative provenance
+    /// from a caller-owned sidecar, so this method always rebuilds a fresh
+    /// session from the validated snapshot document. A persisted selection is
+    /// retained only when it is current and contains selectable identities.
     pub fn load(&self) -> Result<EditorSession, EditorError> {
         let bytes = self.store.load().map_err(EditorError::RecoverySave)?;
         let snapshot: RecoverySnapshot = serde_json::from_slice(&bytes)
@@ -565,26 +907,17 @@ impl EditorRecoveryStore {
         if snapshot.schema != RECOVERY_SCHEMA {
             return Err(EditorError::UnsupportedRecoverySchema(snapshot.schema));
         }
-        let mut session = snapshot.session;
-        session.document.validate()?;
-        validate_recovered_history(&session)?;
-        if matches!(
-            session.selection.validate(&session.document),
-            Err(EditorError::StaleSelection { .. })
-        ) {
-            session.selection = Selection {
-                generation: session.document.generation,
-                ids: BTreeSet::new(),
-            };
+        let selection = snapshot.session.selection;
+        let mut session = EditorSession::open(snapshot.session.document)?;
+        if selection.generation == session.document.generation {
+            let _ = session.select(selection.ids);
         }
-        // Runtime Play state is an isolated, explicitly disposable fork. A
-        // recovered source session never resumes it implicitly after a crash.
-        session.play = None;
         Ok(session)
     }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 struct RecoverySnapshot {
     schema: String,
     session: EditorSession,
@@ -610,6 +943,17 @@ fn validate_transaction(
             }
             if document.placements.contains_key(&source.id) {
                 return Err(EditorError::StableIdentityCollision(source.id));
+            }
+            if source.label.trim().is_empty()
+                || source.source_path.trim().is_empty()
+                || source.source_hash.trim().is_empty()
+            {
+                return Err(EditorError::InvalidImportedSource(source.id));
+            }
+        }
+        EditorCommand::UpdateImportedSource(source) => {
+            if !document.sources.contains_key(&source.id) {
+                return Err(EditorError::UnknownSource(source.id));
             }
             if source.label.trim().is_empty()
                 || source.source_path.trim().is_empty()
@@ -657,7 +1001,8 @@ fn validate_transaction(
 fn command_affected_ids(command: &EditorCommand) -> BTreeSet<StableId> {
     let mut ids = BTreeSet::new();
     match command {
-        EditorCommand::RegisterImportedSource(source) => {
+        EditorCommand::RegisterImportedSource(source)
+        | EditorCommand::UpdateImportedSource(source) => {
             ids.insert(source.id);
         }
         EditorCommand::RemoveImportedSource { source_id } => {
@@ -685,6 +1030,13 @@ fn apply_command(
             Ok(EditorCommand::RemoveImportedSource {
                 source_id: source.id,
             })
+        }
+        EditorCommand::UpdateImportedSource(source) => {
+            let previous = document
+                .sources
+                .insert(source.id, source.clone())
+                .ok_or(EditorError::UnknownSource(source.id))?;
+            Ok(EditorCommand::UpdateImportedSource(previous))
         }
         EditorCommand::RemoveImportedSource { source_id } => {
             let source = document
@@ -724,30 +1076,23 @@ fn apply_command(
     }
 }
 
-fn validate_recovered_history(session: &EditorSession) -> Result<(), EditorError> {
-    for entry in session.undo.iter().chain(&session.redo) {
-        if entry.transaction.metadata.label.trim().is_empty()
-            || entry.transaction.metadata.actor.trim().is_empty()
-            || command_affected_ids(&entry.transaction.command)
-                != entry.transaction.metadata.affected_ids
-        {
-            return Err(EditorError::InvalidRecoveryHistory);
-        }
-    }
-    for checkpoint in &session.checkpoints {
-        checkpoint.document.validate()?;
-        if checkpoint.generation != checkpoint.document.generation
-            || checkpoint.generation > session.document.generation
-        {
-            return Err(EditorError::InvalidRecoveryHistory);
-        }
-    }
-    Ok(())
-}
-
 /// Typed errors for source validation, session history, Play, and recovery.
 #[derive(Debug)]
 pub enum EditorError {
+    /// Project source path is not a regular non-symlink file.
+    InvalidSourcePath(String),
+    /// Project source could not be read.
+    SourceRead(String),
+    /// Project source exceeded the durable source bound.
+    SourceTooLarge { size: usize, maximum: usize },
+    /// Project source JSON could not be decoded.
+    SourceDecoding(String),
+    /// Project source JSON could not be encoded canonically.
+    SourceEncoding(String),
+    /// Atomic project-source persistence failed.
+    SourceWrite(String),
+    /// Recovery persistence failed after source changed and source rollback failed.
+    SourceRollbackFailed(String),
     /// Project source schema is not supported by this Creator Alpha boundary.
     UnsupportedProjectSchema(String),
     /// Recovery payload schema is not supported.
@@ -808,6 +1153,13 @@ pub enum EditorError {
 impl Display for EditorError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidSourcePath(path) => write!(formatter, "project source path is not a regular file: {path}"),
+            Self::SourceRead(message) => write!(formatter, "project source read failed: {message}"),
+            Self::SourceTooLarge { size, maximum } => write!(formatter, "project source has {size} bytes; maximum is {maximum}"),
+            Self::SourceDecoding(message) => write!(formatter, "project source decoding failed: {message}"),
+            Self::SourceEncoding(message) => write!(formatter, "project source encoding failed: {message}"),
+            Self::SourceWrite(message) => write!(formatter, "project source persistence failed: {message}"),
+            Self::SourceRollbackFailed(message) => write!(formatter, "project source rollback failed: {message}"),
             Self::UnsupportedProjectSchema(schema) => {
                 write!(formatter, "unsupported project schema: {schema}")
             }
@@ -919,6 +1271,92 @@ mod tests {
     }
 
     #[test]
+    fn source_schema_rejects_unknown_fields_recursively_without_rewrite() {
+        let unique = NEXT_TEST_PATH.fetch_add(1, Ordering::Relaxed);
+        let root = env::temp_dir().join(format!(
+            "meridian-editor-core-strict-source-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).expect("project directory");
+        let path = root.join("project.meridian.json");
+        let canonical = seeded_session()
+            .document()
+            .canonical_json()
+            .expect("canonical source");
+        let value: serde_json::Value =
+            serde_json::from_str(&canonical).expect("canonical source parses as JSON");
+        let mut fixtures = Vec::new();
+
+        let mut root_unknown = value.clone();
+        root_unknown
+            .as_object_mut()
+            .expect("root object")
+            .insert("unexpected_root".to_owned(), serde_json::Value::Bool(true));
+        fixtures.push(root_unknown);
+
+        let mut imported_source_unknown = value.clone();
+        imported_source_unknown
+            .get_mut("sources")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("source map")
+            .values_mut()
+            .next()
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("imported source")
+            .insert(
+                "unexpected_source".to_owned(),
+                serde_json::Value::Bool(true),
+            );
+        fixtures.push(imported_source_unknown);
+
+        let mut placement_unknown = value.clone();
+        placement_unknown
+            .get_mut("placements")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("placement map")
+            .values_mut()
+            .next()
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("placement")
+            .insert(
+                "unexpected_placement".to_owned(),
+                serde_json::Value::Bool(true),
+            );
+        fixtures.push(placement_unknown);
+
+        let mut translation_unknown = value;
+        let placements = translation_unknown
+            .get_mut("placements")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("placement map");
+        let placement = placements
+            .values_mut()
+            .next()
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("placement");
+        placement
+            .get_mut("translation")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("translation")
+            .insert(
+                "unexpected_translation".to_owned(),
+                serde_json::Value::Bool(true),
+            );
+        fixtures.push(translation_unknown);
+
+        for fixture in fixtures {
+            let bytes = serde_json::to_vec_pretty(&fixture).expect("fixture encodes");
+            fs::write(&path, &bytes).expect("fixture writes");
+            assert!(matches!(
+                ProjectDocument::read_source(&path),
+                Err(EditorError::SourceDecoding(_))
+            ));
+            assert_eq!(fs::read(&path).expect("fixture remains"), bytes);
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn transactions_preview_commit_and_inverse_round_trip() {
         let mut session = seeded_session();
         let command = EditorCommand::SetPlacementTranslation {
@@ -962,6 +1400,50 @@ mod tests {
             .expect_err("affected ID mismatch rejected");
         assert!(matches!(error, EditorError::AffectedIdsMismatch));
         assert_eq!(session, before);
+    }
+
+    #[test]
+    fn generation_exhaustion_rolls_back_commit_undo_and_redo() {
+        let move_placement = || {
+            transaction(
+                EditorCommand::SetPlacementTranslation {
+                    placement_id: id(3),
+                    translation: Translation {
+                        x_mm: 1,
+                        ..Translation::default()
+                    },
+                },
+                "Move placement",
+            )
+        };
+
+        let mut commit_session = seeded_session();
+        commit_session.document.generation = u64::MAX;
+        let before_commit = commit_session.clone();
+        assert!(matches!(
+            commit_session.commit(move_placement()),
+            Err(EditorError::GenerationExhausted)
+        ));
+        assert_eq!(commit_session, before_commit);
+
+        let mut undo_session = seeded_session();
+        undo_session.document.generation = u64::MAX;
+        let before_undo = undo_session.clone();
+        assert!(matches!(
+            undo_session.undo(),
+            Err(EditorError::GenerationExhausted)
+        ));
+        assert_eq!(undo_session, before_undo);
+
+        let mut redo_session = seeded_session();
+        redo_session.undo().expect("undo creates redo history");
+        redo_session.document.generation = u64::MAX;
+        let before_redo = redo_session.clone();
+        assert!(matches!(
+            redo_session.redo(),
+            Err(EditorError::GenerationExhausted)
+        ));
+        assert_eq!(redo_session, before_redo);
     }
 
     #[test]
@@ -1069,7 +1551,7 @@ mod tests {
     }
 
     #[test]
-    fn recovery_round_trip_restores_source_and_history() {
+    fn recovery_round_trip_rebuilds_source_without_history() {
         let session = seeded_session();
         let unique = NEXT_TEST_PATH.fetch_add(1, Ordering::Relaxed);
         let path = env::temp_dir().join(format!(
@@ -1078,13 +1560,14 @@ mod tests {
         ));
         let store = EditorRecoveryStore::new(&path);
         store.save(&session).expect("save recovery");
-        let recovered = store.load().expect("recover");
+        let mut recovered = store.load().expect("recover");
         assert_eq!(recovered.document(), session.document());
         assert_eq!(recovered.selection().ids.len(), 0);
         assert_eq!(
             recovered.selection().generation,
             recovered.document().generation
         );
+        assert!(matches!(recovered.undo(), Err(EditorError::NothingToUndo)));
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("state.bak"));
     }
@@ -1125,5 +1608,259 @@ mod tests {
         assert_eq!(recovered.document().placements[&id(3)].translation.y_mm, 25);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("state.bak"));
+    }
+
+    #[test]
+    fn project_store_writes_canonical_source_and_resumes_matching_source() {
+        let unique = NEXT_TEST_PATH.fetch_add(1, Ordering::Relaxed);
+        let root = env::temp_dir().join(format!(
+            "meridian-editor-core-project-store-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).expect("project directory");
+        let store = ProjectStore::new(
+            root.join("project.meridian.json"),
+            root.join("editor-recovery.state"),
+        );
+        let session = store
+            .create(ProjectDocument::new(id(1)))
+            .expect("initial source persists");
+        let source = fs::read_to_string(store.source_path()).expect("source reads");
+        let parsed =
+            ProjectDocument::read_source(store.source_path()).expect("canonical source parses");
+        assert_eq!(parsed, *session.document());
+        assert!(source.contains(PROJECT_SCHEMA));
+
+        let opened = store.open().expect("matching recovery opens");
+        assert_eq!(opened.recovery, ProjectRecoveryStatus::Restored);
+        assert_eq!(opened.session.document(), session.document());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn project_store_ignores_matching_forged_recovery_history() {
+        let unique = NEXT_TEST_PATH.fetch_add(1, Ordering::Relaxed);
+        let root = env::temp_dir().join(format!(
+            "meridian-editor-core-forged-history-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).expect("project directory");
+        let store = ProjectStore::new(
+            root.join("project.meridian.json"),
+            root.join("editor-recovery.state"),
+        );
+        let source_session = store
+            .create(seeded_session().document().clone())
+            .expect("authoritative source persists");
+        let authoritative = source_session.document().clone();
+        let mut forged = seeded_session();
+        assert_eq!(forged.document(), &authoritative);
+        forged.undo = vec![HistoryEntry {
+            transaction: transaction(
+                EditorCommand::SetPlacementTranslation {
+                    placement_id: id(3),
+                    translation: Translation::default(),
+                },
+                "Forged history",
+            ),
+            inverse: EditorCommand::SetPlacementTranslation {
+                placement_id: id(3),
+                translation: Translation {
+                    x_mm: 999,
+                    ..Translation::default()
+                },
+            },
+        }];
+        let snapshot = RecoverySnapshot {
+            schema: RECOVERY_SCHEMA.to_owned(),
+            session: forged,
+        };
+        let bytes = serde_json::to_vec_pretty(&snapshot).expect("forged sidecar encodes");
+        store
+            .recovery
+            .store
+            .save(bytes)
+            .expect("forged sidecar saves");
+
+        let mut opened = store.open().expect("authoritative source reopens");
+        assert_eq!(opened.recovery, ProjectRecoveryStatus::Restored);
+        assert_eq!(opened.session.document(), &authoritative);
+        assert!(matches!(
+            opened.session.undo(),
+            Err(EditorError::NothingToUndo)
+        ));
+        assert_eq!(opened.session.document(), &authoritative);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn project_store_create_does_not_replace_existing_authoritative_source() {
+        let unique = NEXT_TEST_PATH.fetch_add(1, Ordering::Relaxed);
+        let root = env::temp_dir().join(format!(
+            "meridian-editor-core-existing-project-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).expect("project directory");
+        let store = ProjectStore::new(
+            root.join("project.meridian.json"),
+            root.join("editor-recovery.state"),
+        );
+        let existing = b"existing-authoritative-source";
+        fs::write(store.source_path(), existing).expect("existing source fixture");
+
+        let error = store
+            .create(ProjectDocument::new(id(1)))
+            .expect_err("creation must not replace existing source");
+
+        assert!(matches!(error, EditorError::SourceWrite(_)));
+        assert_eq!(
+            fs::read(store.source_path()).expect("existing source survives"),
+            existing
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn project_store_rolls_back_in_memory_mutation_when_source_write_fails() {
+        let unique = NEXT_TEST_PATH.fetch_add(1, Ordering::Relaxed);
+        let parent = env::temp_dir().join(format!(
+            "meridian-editor-core-invalid-parent-{}-{unique}",
+            std::process::id()
+        ));
+        fs::write(&parent, b"not a directory").expect("invalid parent fixture");
+        let store = ProjectStore::new(
+            parent.join("project.meridian.json"),
+            parent.join("recovery"),
+        );
+        let mut session = seeded_session();
+        let before = session.clone();
+        let error = store
+            .mutate(&mut session, |session| {
+                session.commit(transaction(
+                    EditorCommand::SetPlacementTranslation {
+                        placement_id: id(3),
+                        translation: Translation {
+                            x_mm: 99,
+                            ..Translation::default()
+                        },
+                    },
+                    "Move placement",
+                ))
+            })
+            .expect_err("source path rejects persistence");
+        assert!(matches!(error, EditorError::SourceWrite(_)));
+        assert_eq!(session, before);
+        let _ = fs::remove_file(parent);
+    }
+
+    #[test]
+    fn project_store_rolls_back_session_when_mutation_closure_errors() {
+        let unique = NEXT_TEST_PATH.fetch_add(1, Ordering::Relaxed);
+        let root = env::temp_dir().join(format!(
+            "meridian-editor-core-closure-rollback-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).expect("project directory");
+        let store = ProjectStore::new(
+            root.join("project.meridian.json"),
+            root.join("editor-recovery.state"),
+        );
+        let mut session = store
+            .create(seeded_session().document().clone())
+            .expect("initial project persists");
+        let source_before = fs::read(store.source_path()).expect("source before mutation");
+        let before_mutation = session.clone();
+        let error = store
+            .mutate(&mut session, |session| {
+                session.document.generation = 777;
+                Err::<(), _>(EditorError::InvalidCommandMetadata)
+            })
+            .expect_err("failing closure rolls back session");
+        assert!(matches!(error, EditorError::InvalidCommandMetadata));
+        assert_eq!(session, before_mutation);
+        assert_eq!(
+            fs::read(store.source_path()).expect("source remains authoritative"),
+            source_before
+        );
+
+        session.start_play().expect("play starts");
+        let before_play_mutation = session.clone();
+        let error = store
+            .mutate_play(&mut session, |session| {
+                session
+                    .set_play_translation(
+                        id(3),
+                        Translation {
+                            x_mm: 11,
+                            ..Translation::default()
+                        },
+                    )
+                    .expect("play mutation succeeds before explicit failure");
+                Err::<(), _>(EditorError::InvalidCommandMetadata)
+            })
+            .expect_err("failing play closure rolls back session");
+        assert!(matches!(error, EditorError::InvalidCommandMetadata));
+        assert_eq!(session, before_play_mutation);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn project_store_restores_source_and_session_when_recovery_write_fails() {
+        let unique = NEXT_TEST_PATH.fetch_add(1, Ordering::Relaxed);
+        let root = env::temp_dir().join(format!(
+            "meridian-editor-core-recovery-rollback-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).expect("project directory");
+        let store = ProjectStore::new(
+            root.join("project.meridian.json"),
+            root.join("editor-recovery.state"),
+        );
+        let mut session = store
+            .create(seeded_session().document().clone())
+            .expect("initial project persists");
+        let source_before = fs::read(store.source_path()).expect("source before mutation");
+        let session_before = session.clone();
+        let recovery_temporary = PathBuf::from(format!("{}.tmp", store.recovery_path().display()));
+        fs::create_dir(&recovery_temporary).expect("recovery temporary obstruction");
+
+        let error = store
+            .mutate(&mut session, |session| {
+                session.commit(transaction(
+                    EditorCommand::SetPlacementTranslation {
+                        placement_id: id(3),
+                        translation: Translation {
+                            x_mm: 71,
+                            ..Translation::default()
+                        },
+                    },
+                    "Move placement",
+                ))
+            })
+            .expect_err("recovery write must fail");
+
+        assert!(matches!(error, EditorError::RecoverySave(_)));
+        assert_eq!(session, session_before);
+        assert_eq!(
+            fs::read(store.source_path()).expect("source after rollback"),
+            source_before
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reimport_is_typed_and_undoable_without_changing_source_identity() {
+        let mut session = seeded_session();
+        let mut reimported = source();
+        reimported.source_hash = "public-triangle-v2".to_owned();
+        session
+            .commit(transaction(
+                EditorCommand::UpdateImportedSource(reimported.clone()),
+                "Reimport source",
+            ))
+            .expect("reimport commits");
+        assert_eq!(session.document().sources[&id(2)], reimported);
+        session.undo().expect("reimport undo");
+        assert_eq!(session.document().sources[&id(2)], source());
     }
 }

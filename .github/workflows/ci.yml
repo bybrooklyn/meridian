@@ -46,6 +46,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo run -p meridian-editor --bin meridian -- --headless-smoke --frames 4
       - run: cargo run -p meridian-editor --bin meridian -- --ui-headless-smoke
+      - run: cargo run -p meridian-editor --bin meridian -- --creator-alpha-smoke --project examples/creator-alpha --evidence target/meridian-ci-creator-alpha
       - run: cargo run -p meridian-rt --example headless_profile_smoke
       - run: cargo run -p meridian-build --example cargo_service_smoke
       - run: cargo run -p meridian-build --example artifact_event_smoke
@@ -74,3 +75,103 @@ jobs:
             echo "meridian-rt must not select meridian-ui"
             exit 1
           fi
+      - name: Package unsigned universal macOS developer preview
+        if: runner.os == 'macOS'
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          scripts/package_macos_app.sh
+          test -f target/Meridian.app/Contents/MacOS/meridian
+          test -f target/Meridian.app/Contents/Resources/DISTRIBUTION.txt
+          test -f target/Meridian.app.sha256
+          test "$(plutil -extract CFBundleIdentifier raw target/Meridian.app/Contents/Info.plist)" = "works.deadsignal.meridian"
+          lipo -archs target/Meridian.app/Contents/MacOS/meridian | grep -Eq '(^| )arm64( |$)'
+          lipo -archs target/Meridian.app/Contents/MacOS/meridian | grep -Eq '(^| )x86_64( |$)'
+          if grep -Eiq 'unsigned|developer preview|beta' target/Meridian.app/Contents/Info.plist; then
+            echo "distribution-status copy must not appear in application metadata"
+            exit 1
+          fi
+          grep -Fqi "unsigned developer preview" target/Meridian.app/Contents/Resources/DISTRIBUTION.txt
+          target/Meridian.app/Contents/MacOS/meridian --creator-alpha-ui-smoke --project examples/creator-alpha
+          shasum -a 256 -c target/Meridian.app.sha256
+      - name: Verify normal Creator preview stays open on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          state_dir="$(mktemp -d)"
+          log_path="${state_dir}/creator.log"
+          creator_pid=""
+          cleanup() {
+            if [[ -n "${creator_pid}" ]] && kill -0 "${creator_pid}" 2>/dev/null; then
+              kill -TERM "${creator_pid}" 2>/dev/null || true
+            fi
+            if [[ -n "${creator_pid}" ]]; then
+              wait "${creator_pid}" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          MERIDIAN_STATE_DIR="${state_dir}" \
+            target/Meridian.app/Contents/MacOS/meridian \
+              --project "${GITHUB_WORKSPACE}/examples/creator-alpha" \
+              >"${log_path}" 2>&1 &
+          creator_pid="$!"
+          for _ in $(seq 1 30); do
+            if ! kill -0 "${creator_pid}" 2>/dev/null; then
+              status=0
+              if wait "${creator_pid}"; then
+                status=0
+              else
+                status="$?"
+              fi
+              echo "Meridian Creator exited before the normal interactive liveness window (status ${status})."
+              cat "${log_path}" || true
+              exit 1
+            fi
+            sleep 0.1
+          done
+      - name: Archive macOS Creator Alpha review evidence
+        if: runner.os == 'macOS' && always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_root=target/meridian-ci-artifacts
+          rm -rf "${artifact_root}"
+          mkdir -p "${artifact_root}"
+          if [[ -d target/Meridian.app ]]; then
+            ditto -c -k --sequesterRsrc --keepParent target/Meridian.app "${artifact_root}/Meridian.app.zip"
+          fi
+          if [[ -f target/Meridian.app.sha256 ]]; then
+            cp target/Meridian.app.sha256 "${artifact_root}/Meridian.app.sha256"
+          fi
+          evidence_root=
+          for candidate in target/meridian-ci-creator-alpha examples/creator-alpha/target/meridian-ci-creator-alpha; do
+            if [[ -d "${candidate}" ]]; then
+              evidence_root="${candidate}"
+              break
+            fi
+          done
+          if [[ -n "${evidence_root}" ]]; then
+            ditto -c -k --sequesterRsrc --keepParent "${evidence_root}" "${artifact_root}/creator-alpha-evidence.zip"
+          fi
+          for review_file in \
+            docs/production/MS03_NATIVE_CREATOR_REVIEW.md \
+            docs/production/evidence/ms03-creator-alpha-hub-20260717.jpeg \
+            docs/production/evidence/ms03-creator-alpha-workspace-20260717.jpeg; do
+            if [[ -f "${review_file}" ]]; then
+              cp "${review_file}" "${artifact_root}/$(basename "${review_file}")"
+            fi
+          done
+          if compgen -G "${artifact_root}/*" > /dev/null; then
+            (
+              cd "${artifact_root}"
+              shasum -a 256 * > SHA256SUMS
+            )
+          fi
+      - name: Retain macOS preview and Creator Alpha evidence
+        if: runner.os == 'macOS' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meridian-ms03-macos-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          path: target/meridian-ci-artifacts

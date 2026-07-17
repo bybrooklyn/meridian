@@ -1,12 +1,14 @@
 //! MS-01 Meridian application composition and qualification smoke.
 
 use std::error::Error;
+use std::ffi::OsString;
 use std::fmt::{self, Display, Formatter};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::num::NonZeroUsize;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -33,8 +35,8 @@ use meridian_diagnostics::{
     DiagnosticEvent, DiagnosticSeverity, DiagnosticTimeline, RecoveryAction, RedactionClass,
 };
 use meridian_editor_core::{
-    CommandMetadata, EditorCommand, EditorRecoveryStore, EditorSession, ImportedSource,
-    ProjectDocument, Translation, WorldPlacement,
+    CommandMetadata, EditorCommand, EditorError, EditorSession, ImportedSource, ProjectDocument,
+    ProjectRecoveryStatus, ProjectStore, Translation, WorldPlacement,
 };
 use meridian_input::{
     Action, ButtonControl, InputActionMap, InputState, KeyCode, NativeInputEvent,
@@ -47,7 +49,8 @@ use meridian_modeler::{
 use meridian_package::{MountedPackage, PackageBuilder, PackageChunk, PackageLimits};
 use meridian_platform::{
     run as run_platform, EventLoopMode, PlatformApplication, PlatformConfig, PlatformContext,
-    PlatformEvent, PlatformEventEnvelope, RuntimeLifecycle, SurfaceSignal, WindowSize,
+    PlatformError, PlatformEvent, PlatformEventEnvelope, PlatformModifiers, PlatformWindow,
+    RuntimeLifecycle, SurfaceSignal, WindowSize,
 };
 use meridian_renderer::{
     FoundationMeshDescriptor, MaterialHandle, MeshHandle, PenumbraFoundationRenderer,
@@ -68,11 +71,15 @@ use meridian_streaming::{
 };
 use meridian_tasks::{TaskClass, TaskContext};
 use meridian_ui::{
-    recovery_panel_document, runtime_overlay_document, DisplayList, SemanticDelta, UiDiagnostic,
-    UiDocument, UiEvent, UiFrameInput, UiRuntime, UiSize,
+    recovery_panel_document, runtime_overlay_document, DisplayList, SemanticDelta,
+    UiCommandRequest, UiDiagnostic, UiEvent, UiFrameInput, UiNodeId, UiPoint, UiRuntime, UiSize,
+    UiTextCursorDirection,
 };
 use meridian_ui_editor::{
-    creator_alpha_document, model_inspector_document, recipe_inspector_document,
+    creator_hub_document, creator_workspace_document, creator_workspace_document_with_view,
+    model_inspector_document, recipe_inspector_document, CreatorWorkspaceView, RecentProjectView,
+    CREATOR_HUB_PROJECT_NAME, CREATOR_INSPECTOR_X_MM, CREATOR_INSPECTOR_Y_MM,
+    CREATOR_INSPECTOR_Z_MM,
 };
 use meridian_world::{CompiledWorldCell, SpatialDatabase};
 use meridian_world_tools::compile_world_source;
@@ -86,6 +93,10 @@ const DEFAULT_CAPTURE: &str = "visible-source-frame.png";
 const CREATOR_ALPHA_MANIFEST: &str = "creator-alpha.project.json";
 const CREATOR_ALPHA_SCHEMA: &str = "meridian.creator-alpha/v1";
 const CREATOR_ALPHA_EVIDENCE_SCHEMA: &str = "meridian.creator-alpha-evidence/v1";
+const CREATOR_PROJECT_SOURCE: &str = "project.meridian.json";
+const CREATOR_INTERNAL_DIRECTORY: &str = ".meridian";
+const CREATOR_HUB_SCHEMA: &str = "meridian.launch-hub/v1";
+const CREATOR_RECENT_LIMIT: usize = 16;
 const CREATOR_ALPHA_BUILD_TIMEOUT: Duration = Duration::from_mins(1);
 const VISUAL_ASSET_NAME: &str = "fixtures/ms01/public-triangle.visual";
 const COLLISION_ASSET_NAME: &str = "fixtures/ms01/public-triangle.collision";
@@ -93,8 +104,11 @@ const CELL_ASSET_NAME: &str = "fixtures/ms01/world-cell-0-0-0";
 const SAVE_COMPONENT: &str = "meridian.ms01.position";
 const EVIDENCE_CAPACITY: usize = 512;
 const UI_SMOKE_MAX_PRESENT_ATTEMPTS: u8 = 3;
+const CREATOR_UI_SMOKE_VISIBLE_PRESENTATIONS: u8 = 2;
 static NEXT_DEFAULT_EVIDENCE_ID: AtomicU64 = AtomicU64::new(0);
 static NEXT_CREATOR_BUILD_ID: AtomicU64 = AtomicU64::new(0);
+static NEXT_CREATOR_SMOKE_PROJECT_ID: AtomicU64 = AtomicU64::new(0);
+static NEXT_ATOMIC_WRITE_ID: AtomicU64 = AtomicU64::new(0);
 
 type AppResult<T> = Result<T, Box<dyn Error>>;
 
@@ -378,11 +392,14 @@ pub fn run(options: &MeridianOptions) -> AppResult<()> {
     if options.mode == RunMode::CreatorAlphaUiSmoke {
         return run_creator_alpha_ui_smoke(options);
     }
+    if options.mode == RunMode::Interactive {
+        return run_creator_application(options.project.as_deref(), false);
+    }
     let project_root = resolve_project_root(options.project.as_deref())?;
     let evidence_root = options.evidence.as_deref().map_or_else(
         || match options.mode {
             RunMode::Smoke | RunMode::HeadlessSmoke => default_evidence_root(&project_root),
-            RunMode::Interactive => project_root.join(DEFAULT_EVIDENCE),
+            RunMode::Interactive => unreachable!("interactive Creator launch handled above"),
             RunMode::UiHeadlessSmoke
             | RunMode::UiSmoke
             | RunMode::CreatorAlphaSmoke
@@ -441,8 +458,8 @@ fn run_alluvium_command(command: &AlluviumCommand) -> AppResult<()> {
                 )
                 .into());
             }
-            let source = fs::read_to_string(recipe)?;
-            let raw: ProceduralRecipe = serde_json::from_str(&source)?;
+            let source = read_bounded_regular_file(recipe, "Alluvium recipe")?;
+            let raw: ProceduralRecipe = serde_json::from_slice(&source)?;
             let migrated = raw.migrate_one_step()?;
             let canonical_json = migrated.canonical_json()?;
             json!({"command":"migrate", "schema":RECIPE_SCHEMA, "recipe":migrated, "canonical_json":canonical_json})
@@ -502,7 +519,14 @@ fn read_alluvium_recipe(path: &Path) -> AppResult<ProceduralRecipe> {
         )
         .into());
     }
-    Ok(ProceduralRecipe::from_json(&fs::read_to_string(path)?)?)
+    let source = read_bounded_regular_file(path, "Alluvium recipe")?;
+    let source = std::str::from_utf8(&source).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Alluvium recipe is not UTF-8: {error}"),
+        )
+    })?;
+    Ok(ProceduralRecipe::from_json(source)?)
 }
 
 fn evaluate_alluvium(
@@ -591,28 +615,1816 @@ fn run_ui_native_smoke() -> AppResult<()> {
 /// Renders the Creator Alpha retained workspace through Meridian's native UI
 /// raster bridge. This is a review surface, not headless milestone evidence.
 fn run_creator_alpha_ui_smoke(options: &MeridianOptions) -> AppResult<()> {
-    let project_root =
-        resolve_creator_alpha_project(options.project.as_deref().ok_or_else(|| {
-            io::Error::other("Creator Alpha project argument was not retained for UI smoke")
-        })?)?;
-    let manifest_path = project_root.join(CREATOR_ALPHA_MANIFEST);
-    let manifest: CreatorAlphaManifest = serde_json::from_slice(&fs::read(manifest_path)?)?;
-    validate_creator_alpha_manifest(&project_root, &manifest)?;
-    let imported_source = import_creator_alpha_source(&project_root, &manifest.imported_asset)?;
-    let (session, _) = run_creator_alpha_editor_journey(&manifest, &imported_source)?;
-    let workspace = creator_alpha_document(&session)
-        .map_err(|error| io::Error::other(format!("Creator Alpha UI invalid: {error:?}")))?;
+    run_creator_application(options.project.as_deref(), true)
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct CreatorRecentProject {
+    label: String,
+    path: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct CreatorHubState {
+    schema: String,
+    recents: Vec<CreatorRecentProject>,
+}
+
+impl Default for CreatorHubState {
+    fn default() -> Self {
+        Self {
+            schema: CREATOR_HUB_SCHEMA.to_owned(),
+            recents: Vec::new(),
+        }
+    }
+}
+
+impl CreatorHubState {
+    fn validate(&self) -> AppResult<()> {
+        if self.schema != CREATOR_HUB_SCHEMA {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unsupported Meridian launch-hub schema",
+            )
+            .into());
+        }
+        if self.recents.len() > CREATOR_RECENT_LIMIT {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Meridian launch-hub recents exceed the supported bound",
+            )
+            .into());
+        }
+        if self
+            .recents
+            .iter()
+            .any(|recent| recent.label.trim().is_empty() || recent.path.trim().is_empty())
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Meridian launch-hub contains an incomplete recent project",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    fn remember(&mut self, root: &Path) {
+        let path = root.display().to_string();
+        let label = root
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or("Meridian project")
+            .to_owned();
+        self.recents.retain(|recent| recent.path != path);
+        self.recents.insert(0, CreatorRecentProject { label, path });
+        self.recents.truncate(CREATOR_RECENT_LIMIT);
+    }
+
+    fn views(&self) -> Vec<RecentProjectView> {
+        self.recents
+            .iter()
+            .map(|recent| {
+                let root = Path::new(&recent.path);
+                RecentProjectView {
+                    label: recent.label.clone(),
+                    path: recent.path.clone(),
+                    available: root.join(CREATOR_ALPHA_MANIFEST).is_file()
+                        && root.join(CREATOR_PROJECT_SOURCE).is_file(),
+                }
+            })
+            .collect()
+    }
+}
+
+struct CreatorHubStore {
+    path: PathBuf,
+}
+
+impl CreatorHubStore {
+    fn for_run(smoke: bool) -> AppResult<Self> {
+        let path = if smoke {
+            workspace_root()?.join("target/meridian-evidence/creator-alpha-ui-smoke/hub.json")
+        } else {
+            creator_user_state_path()?
+        };
+        Ok(Self { path })
+    }
+
+    fn load(&self) -> AppResult<CreatorHubState> {
+        match fs::symlink_metadata(&self.path) {
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Ok(CreatorHubState::default())
+            }
+            Err(error) => return Err(error.into()),
+        }
+        let bytes = read_bounded_regular_file(&self.path, "Meridian launch-hub state")?;
+        let state: CreatorHubState = serde_json::from_slice(&bytes)?;
+        state.validate()?;
+        Ok(state)
+    }
+
+    fn save(&self, state: &CreatorHubState) -> AppResult<()> {
+        state.validate()?;
+        let parent = self.path.parent().ok_or_else(|| {
+            io::Error::other("Meridian launch-hub state path has no parent directory")
+        })?;
+        fs::create_dir_all(parent)?;
+        write_atomic(&self.path, &serde_json::to_vec_pretty(state)?)
+    }
+}
+
+/// Private platform-thread adapter for explicit Creator project-directory picks.
+///
+/// Meridian paths cross this seam only after the picker result has been
+/// validated by the Creator hub. No `rfd` type escapes this implementation.
+trait CreatorProjectPicker {
+    fn pick_directory(&self, window: Option<&meridian_platform::PlatformWindow>)
+        -> Option<PathBuf>;
+}
+
+struct NativeCreatorProjectPicker;
+
+impl CreatorProjectPicker for NativeCreatorProjectPicker {
+    fn pick_directory(
+        &self,
+        window: Option<&meridian_platform::PlatformWindow>,
+    ) -> Option<PathBuf> {
+        let dialog = rfd::FileDialog::new().set_title("Choose Meridian project directory");
+        let dialog = if let Some(window) = window {
+            dialog.set_parent(window)
+        } else {
+            dialog
+        };
+        dialog.pick_folder()
+    }
+}
+
+fn creator_user_state_path() -> AppResult<PathBuf> {
+    if let Some(directory) = std::env::var_os("MERIDIAN_STATE_DIR") {
+        return Ok(PathBuf::from(directory).join("launch-hub.json"));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var_os("HOME")
+            .ok_or_else(|| io::Error::other("HOME is unavailable for Meridian local state"))?;
+        Ok(PathBuf::from(home)
+            .join("Library/Application Support/Meridian")
+            .join("launch-hub.json"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let directory = std::env::var_os("APPDATA")
+            .ok_or_else(|| io::Error::other("APPDATA is unavailable for Meridian local state"))?;
+        Ok(PathBuf::from(directory)
+            .join("Meridian")
+            .join("launch-hub.json"))
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        if let Some(directory) = std::env::var_os("XDG_STATE_HOME") {
+            return Ok(PathBuf::from(directory)
+                .join("meridian")
+                .join("launch-hub.json"));
+        }
+        let home = std::env::var_os("HOME")
+            .ok_or_else(|| io::Error::other("HOME is unavailable for Meridian local state"))?;
+        Ok(PathBuf::from(home)
+            .join(".local/state/meridian")
+            .join("launch-hub.json"))
+    }
+}
+
+#[derive(Debug)]
+struct CreatorBuildTask {
+    receiver: Receiver<Result<CreatorAlphaBuildEvidence, String>>,
+}
+
+#[derive(Clone, Debug)]
+struct CreatorBuildSummary {
+    build_id: String,
+    artifact_hash: String,
+    artifact_bytes: u64,
+}
+
+type CreatorBuildSpawner = fn(Box<dyn FnOnce() + Send>) -> io::Result<()>;
+
+fn spawn_creator_build_worker(task: Box<dyn FnOnce() + Send>) -> io::Result<()> {
+    thread::Builder::new()
+        .name("meridian-creator-build".to_owned())
+        .spawn(task)
+        .map(|_| ())
+}
+
+struct CreatorWorkspace {
+    root: PathBuf,
+    manifest: CreatorAlphaManifest,
+    project_store: ProjectStore,
+    session: EditorSession,
+    model_path: PathBuf,
+    model_recovery: ModelRecoveryStore,
+    model_session: ModelSession,
+    recipe: ProceduralRecipe,
+    recovery_status: ProjectRecoveryStatus,
+    status: String,
+    build: Option<CreatorBuildTask>,
+    last_build: Option<CreatorBuildSummary>,
+}
+
+impl CreatorWorkspace {
+    fn open(requested: &Path) -> AppResult<Self> {
+        let root = resolve_creator_alpha_project(requested)?;
+        let manifest: CreatorAlphaManifest = serde_json::from_slice(&read_bounded_regular_file(
+            &root.join(CREATOR_ALPHA_MANIFEST),
+            "Creator Alpha manifest",
+        )?)?;
+        validate_creator_alpha_manifest(&root, &manifest)?;
+        let project_store = ProjectStore::new(
+            root.join(CREATOR_PROJECT_SOURCE),
+            root.join(CREATOR_INTERNAL_DIRECTORY)
+                .join("editor-recovery.state"),
+        );
+        let opened = project_store.open()?;
+        let mut session = opened.session;
+        // A valid Creator Alpha project has an editable placement. Select its
+        // first stable source placement locally on open so the Inspector and
+        // viewport agree about their initial subject without mutating source.
+        if session.selection().ids.is_empty() {
+            if let Some(placement_id) = session.document().placements.keys().next().copied() {
+                session.select([placement_id])?;
+            }
+        }
+        let model_path = root.join(validated_project_relative_path(&manifest.editable_model)?);
+        let model_recovery = ModelRecoveryStore::new(
+            root.join(CREATOR_INTERNAL_DIRECTORY)
+                .join("modeler-recovery.state"),
+        );
+        let source_model = ModelDocument::read_source(&model_path)?;
+        let model_session = if model_recovery.path().exists() {
+            match model_recovery.load() {
+                Ok(recovered) if recovered.current().document() == &source_model => recovered,
+                Ok(_) | Err(_) => ModelSession::open(source_model)?,
+            }
+        } else {
+            ModelSession::open(source_model)?
+        };
+        let recipe_path = root.join(validated_project_relative_path(
+            &manifest.procedural_recipe,
+        )?);
+        let recipe = read_alluvium_recipe(&recipe_path)?;
+        let status = match opened.recovery {
+            ProjectRecoveryStatus::None => {
+                "Opened authoritative source; no recovery snapshot exists.".to_owned()
+            }
+            ProjectRecoveryStatus::Restored => {
+                "Opened authoritative source with validated recovered context; history starts fresh."
+                    .to_owned()
+            }
+            ProjectRecoveryStatus::Ignored => {
+                "Opened authoritative source; incompatible recovery was ignored.".to_owned()
+            }
+        };
+        Ok(Self {
+            root,
+            manifest,
+            project_store,
+            session,
+            model_path,
+            model_recovery,
+            model_session,
+            recipe,
+            recovery_status: opened.recovery,
+            status,
+            build: None,
+            last_build: None,
+        })
+    }
+
+    fn ui_view(&self) -> CreatorWorkspaceView {
+        let model = self.model_session.current().document();
+        let preview_triangles = model.objects.first().map_or(0, |object| {
+            model
+                .penumbra_preview(object.id)
+                .map_or(0, |preview| preview.triangle_indices.len() / 3)
+        });
+        let build = if self.build.is_some() {
+            "Build in progress through the durable worker.".to_owned()
+        } else if let Some(last) = &self.last_build {
+            let artifact_prefix = last.artifact_hash.chars().take(12).collect::<String>();
+            format!(
+                "{} · artifact {artifact_prefix} · {} bytes.",
+                last.build_id, last.artifact_bytes
+            )
+        } else if self.status.starts_with("Build failed:") {
+            self.status.clone()
+        } else {
+            "Ready for a bounded local build.".to_owned()
+        };
+        CreatorWorkspaceView {
+            activity: self.status.clone(),
+            recovery: format!(
+                "Recovery: {:?} · {} checkpoint(s).",
+                self.recovery_status,
+                self.session.checkpoints().len()
+            ),
+            build,
+            recipe: format!(
+                "v1 · {} placement(s) · every {} mm.",
+                self.recipe.operation.count, self.recipe.operation.spacing_mm
+            ),
+            model: format!(
+                "Revision {} · {} object(s) · {} preview triangle(s).",
+                self.model_session.current().generation(),
+                model.objects.len(),
+                preview_triangles
+            ),
+        }
+    }
+
+    fn mutate_model<T, F>(&mut self, mutation: F) -> AppResult<T>
+    where
+        F: FnOnce(&mut ModelSession) -> Result<T, meridian_modeler::ModelError>,
+    {
+        let before = self.model_session.clone();
+        let output = mutation(&mut self.model_session)?;
+        if let Err(error) = self
+            .model_session
+            .current()
+            .document()
+            .write_source(&self.model_path)
+        {
+            self.model_session = before;
+            return Err(error.into());
+        }
+        if let Err(error) = self.model_recovery.save(&self.model_session) {
+            let rollback = before.current().document().write_source(&self.model_path);
+            self.model_session = before;
+            if let Err(rollback) = rollback {
+                return Err(io::Error::other(format!(
+                    "model recovery failed ({error}) and source rollback failed ({rollback})"
+                ))
+                .into());
+            }
+            return Err(error.into());
+        }
+        Ok(output)
+    }
+
+    #[allow(clippy::assigning_clones)] // Status changes are infrequent UI diagnostics.
+    fn poll_build(&mut self) -> bool {
+        let Some(task) = self.build.as_ref() else {
+            return false;
+        };
+        match task.receiver.try_recv() {
+            Ok(Ok(evidence)) => {
+                self.status = format!(
+                    "Build completed: {} (artifact {}, {} bytes).",
+                    evidence.build_id, evidence.artifact_hash, evidence.artifact_bytes
+                );
+                self.last_build = Some(CreatorBuildSummary {
+                    build_id: evidence.build_id,
+                    artifact_hash: evidence.artifact_hash,
+                    artifact_bytes: evidence.artifact_bytes,
+                });
+                self.build = None;
+                true
+            }
+            Ok(Err(error)) => {
+                self.status = format!("Build failed: {error}");
+                self.build = None;
+                true
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.status = "Build worker ended without a completion result.".to_owned();
+                self.build = None;
+                true
+            }
+            Err(TryRecvError::Empty) => false,
+        }
+    }
+
+    fn start_build(&mut self, wake_window: Option<PlatformWindow>) -> AppResult<()> {
+        self.start_build_with_wake(wake_window, spawn_creator_build_worker)
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::assigning_clones)] // Status changes are infrequent UI diagnostics.
+    fn start_build_with_spawner(&mut self, spawn: CreatorBuildSpawner) -> AppResult<()> {
+        self.start_build_with_wake(None, spawn)
+    }
+
+    #[allow(clippy::assigning_clones)] // Status changes are infrequent UI diagnostics.
+    fn start_build_with_wake(
+        &mut self,
+        wake_window: Option<PlatformWindow>,
+        spawn: CreatorBuildSpawner,
+    ) -> AppResult<()> {
+        if self.build.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                "a Creator build is already running",
+            )
+            .into());
+        }
+        let evidence_root = self.root.join("target/meridian-build/creator-alpha");
+        fs::create_dir_all(&evidence_root)?;
+        let build_input = evidence_root.join("creator-alpha-build-input.json");
+        write_atomic(
+            &build_input,
+            &serde_json::to_vec_pretty(&CreatorAlphaBuildInput {
+                schema: "meridian.creator-alpha-build-input/v1",
+                project_id: self.session.document().id.to_string(),
+                document_generation: self.session.document().generation,
+                imported_source_count: self.session.document().sources.len(),
+                placement_count: self.session.document().placements.len(),
+                editable_model: &self.manifest.editable_model,
+                model_document_generation: self.model_session.current().generation(),
+                model_preview_triangle_count: self
+                    .model_session
+                    .current()
+                    .document()
+                    .objects
+                    .first()
+                    .map_or(0, |object| {
+                        self.model_session
+                            .current()
+                            .document()
+                            .penumbra_preview(object.id)
+                            .map_or(0, |preview| preview.triangle_indices.len() / 3)
+                    }),
+                procedural_recipe: &self.manifest.procedural_recipe,
+            })?,
+        )?;
+        let manifest = read_bounded_regular_file(
+            &self.root.join(CREATOR_ALPHA_MANIFEST),
+            "Creator Alpha manifest",
+        )?;
+        let (sender, receiver) = mpsc::channel();
+        let worker_evidence_root = evidence_root.clone();
+        let worker_build_input = build_input.clone();
+        if let Err(error) = spawn(Box::new(move || {
+            let result =
+                run_creator_alpha_build(&manifest, &worker_evidence_root, &worker_build_input)
+                    .map_err(|error| error.to_string());
+            let _ = sender.send(result);
+            if let Some(window) = wake_window {
+                window.request_redraw();
+            }
+        })) {
+            let _ = fs::remove_file(&build_input);
+            return Err(
+                io::Error::other(format!("unable to start Creator build worker: {error}")).into(),
+            );
+        }
+        self.status = "Build submitted through the durable one-worker Cargo service.".to_owned();
+        self.build = Some(CreatorBuildTask { receiver });
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CreatorUiAction {
+    CreateProject,
+    OpenProject,
+    OpenRecent(usize),
+    RemoveRecent(usize),
+    Recover,
+    ReturnHub,
+    StartPlay,
+    ApplyPlay,
+    DiscardPlay,
+    SelectPlacement,
+    EditPlacement,
+    PreviewCommand,
+    Undo,
+    Redo,
+    Reimport,
+    InspectSource,
+    SubmitBuild,
+    InspectBuild,
+    RecipeInspect,
+    RecipeValidate,
+    RecipeMigrate,
+    RecipePreview,
+    RecipeBake,
+    RecipeDirty,
+    RecipeExplain,
+    RecipeProvenance,
+    RecipeLicenseAudit,
+    ModelInspect,
+    ModelCreatePrimitive,
+    ModelTransform,
+    ModelSplitEdge,
+    ModelUndo,
+    ModelRedo,
+    ModelRecover,
+    FocusSelection,
+    ShowDiagnostics,
+}
+
+impl CreatorUiAction {
+    fn parse(action: &str) -> AppResult<Self> {
+        let fixed = match action {
+            "hub.create-project" => Self::CreateProject,
+            "hub.open-project" | "editor.open-project" => Self::OpenProject,
+            "editor.recover" => Self::Recover,
+            "editor.return-hub" => Self::ReturnHub,
+            "editor.play-start" => Self::StartPlay,
+            "editor.play-apply" => Self::ApplyPlay,
+            "editor.play-discard" => Self::DiscardPlay,
+            "editor.select-placement" => Self::SelectPlacement,
+            "editor.edit-placement" => Self::EditPlacement,
+            "editor.preview-command" => Self::PreviewCommand,
+            "editor.undo" => Self::Undo,
+            "editor.redo" => Self::Redo,
+            "asset.reimport" => Self::Reimport,
+            "asset.inspect-source" => Self::InspectSource,
+            "build.submit" => Self::SubmitBuild,
+            "build.inspect" => Self::InspectBuild,
+            "procedural.inspect" => Self::RecipeInspect,
+            "procedural.validate" => Self::RecipeValidate,
+            "procedural.migrate" => Self::RecipeMigrate,
+            "procedural.preview" => Self::RecipePreview,
+            "procedural.bake" => Self::RecipeBake,
+            "procedural.dirty" => Self::RecipeDirty,
+            "procedural.explain" => Self::RecipeExplain,
+            "procedural.provenance" => Self::RecipeProvenance,
+            "procedural.license-audit" => Self::RecipeLicenseAudit,
+            "model.inspect-source" => Self::ModelInspect,
+            "model.create-primitive" => Self::ModelCreatePrimitive,
+            "model.transform" => Self::ModelTransform,
+            "model.split-edge" => Self::ModelSplitEdge,
+            "model.undo" => Self::ModelUndo,
+            "model.redo" => Self::ModelRedo,
+            "model.recover" => Self::ModelRecover,
+            "editor.focus-selection" => Self::FocusSelection,
+            "editor.show-diagnostic" => Self::ShowDiagnostics,
+            _ => {
+                if let Some(index) = action.strip_prefix("hub.open-recent:") {
+                    return Ok(Self::OpenRecent(index.parse()?));
+                }
+                if let Some(index) = action.strip_prefix("hub.remove-recent:") {
+                    return Ok(Self::RemoveRecent(index.parse()?));
+                }
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unsupported Creator UI action: {action}"),
+                )
+                .into());
+            }
+        };
+        Ok(fixed)
+    }
+}
+
+enum CreatorScreen {
+    Hub,
+    Workspace(Box<CreatorWorkspace>),
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum InspectorFieldSync {
+    #[default]
+    RetainDraft,
+    ResetFromAuthoritativeSource,
+}
+
+struct CreatorApplication {
+    hub_store: CreatorHubStore,
+    hub: CreatorHubState,
+    screen: CreatorScreen,
+    ui: UiRuntime,
+    display_list: DisplayList,
+    logical_viewport: UiSize,
+    scale_factor: f32,
+    physical_size: WindowSize,
+    pending_events: Vec<UiEvent>,
+    pending_actions: Vec<String>,
+    pointer: UiPoint,
+    modifiers: PlatformModifiers,
+    rhi: Option<Rhi>,
+    renderer: Option<UiOverlayRenderer>,
+    structural_fallback_submitted: bool,
+    surface_attempts: u8,
+    bootstrap_renderer_refresh_pending: bool,
+    native_smoke: bool,
+    visible_presentations: u8,
+    hub_status: String,
+    inspector_field_sync: InspectorFieldSync,
+    terminal_error: Option<PlatformError>,
+}
+
+fn run_creator_application(project: Option<&Path>, native_smoke: bool) -> AppResult<()> {
+    let application = CreatorApplication::new(project, native_smoke)?;
     run_platform(
         PlatformConfig {
-            title: "Meridian Creator Alpha review smoke".to_owned(),
+            title: "Meridian — Creator".to_owned(),
             initial_size: WindowSize::new(1280, 800),
             resizable: true,
             visible: true,
-            event_loop_mode: EventLoopMode::Poll,
+            event_loop_mode: creator_event_loop_mode(native_smoke),
         },
-        UiNativeSmokeApplication::creator_alpha(workspace)?,
+        application,
     )?;
     Ok(())
+}
+
+const fn creator_event_loop_mode(native_smoke: bool) -> EventLoopMode {
+    if native_smoke {
+        EventLoopMode::Poll
+    } else {
+        EventLoopMode::Wait
+    }
+}
+
+const fn creator_exits_after_visible_presentation(native_smoke: bool, presentations: u8) -> bool {
+    native_smoke && presentations >= CREATOR_UI_SMOKE_VISIBLE_PRESENTATIONS
+}
+
+/// The Creator surface receives a bounded settling redraw after its first
+/// presentation. On macOS a surface can report a successful first present
+/// before its uploaded UI texture is composited; without this redraw the
+/// persistent application can remain visually blank until a later input event.
+const fn creator_requests_follow_up_redraw(
+    native_smoke: bool,
+    presentations: u8,
+    build_active: bool,
+) -> bool {
+    !creator_exits_after_visible_presentation(native_smoke, presentations)
+        && (presentations < CREATOR_UI_SMOKE_VISIBLE_PRESENTATIONS || build_active)
+}
+
+const fn creator_exits_after_surface_attempt(native_smoke: bool, attempts: u8) -> bool {
+    native_smoke && attempts >= UI_SMOKE_MAX_PRESENT_ATTEMPTS
+}
+
+const fn creator_surface_is_renderable(size: WindowSize) -> bool {
+    !size.is_zero()
+}
+
+fn rebuild_for_renderable_creator_surface<T>(
+    size: WindowSize,
+    rebuild: impl FnOnce() -> AppResult<T>,
+) -> AppResult<Option<T>> {
+    if !creator_surface_is_renderable(size) {
+        return Ok(None);
+    }
+    rebuild().map(Some)
+}
+
+fn parse_creator_translation_component(axis: &str, value: Option<&str>) -> AppResult<i64> {
+    let value = value.map(str::trim).filter(|value| !value.is_empty());
+    value
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("{axis} coordinate must be a signed whole millimetre value"),
+            )
+        })?
+        .parse::<i64>()
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("{axis} coordinate must be a signed whole millimetre value"),
+            )
+            .into()
+        })
+}
+
+impl CreatorApplication {
+    fn new(project: Option<&Path>, native_smoke: bool) -> AppResult<Self> {
+        let hub_store = CreatorHubStore::for_run(native_smoke)?;
+        let (hub, hub_status) = match hub_store.load() {
+            Ok(hub) => (
+                hub,
+                "Create a public project or open a validated project directory.".to_owned(),
+            ),
+            Err(error) => (
+                CreatorHubState::default(),
+                format!("Local hub state was ignored: {error}"),
+            ),
+        };
+        let document = creator_hub_document(&hub.views(), &hub_status)
+            .map_err(|error| io::Error::other(format!("Creator hub UI invalid: {error:?}")))?;
+        let mut application = Self {
+            hub_store,
+            hub,
+            screen: CreatorScreen::Hub,
+            ui: UiRuntime::new(document),
+            display_list: DisplayList::default(),
+            logical_viewport: UiSize::new(1280.0, 800.0),
+            scale_factor: 1.0,
+            physical_size: WindowSize::new(1280, 800),
+            pending_events: Vec::new(),
+            pending_actions: Vec::new(),
+            pointer: UiPoint::default(),
+            modifiers: PlatformModifiers::default(),
+            rhi: None,
+            renderer: None,
+            structural_fallback_submitted: false,
+            surface_attempts: 0,
+            bootstrap_renderer_refresh_pending: false,
+            native_smoke,
+            visible_presentations: 0,
+            hub_status,
+            inspector_field_sync: InspectorFieldSync::RetainDraft,
+            terminal_error: None,
+        };
+        if let Some(project) = project {
+            application.open_project(project)?;
+        }
+        application.refresh_document_and_ui()?;
+        Ok(application)
+    }
+
+    fn refresh_document(&mut self) -> AppResult<()> {
+        let document = match &self.screen {
+            CreatorScreen::Hub => creator_hub_document(&self.hub.views(), &self.hub_status),
+            CreatorScreen::Workspace(workspace) => {
+                let view = workspace.ui_view();
+                creator_workspace_document_with_view(&workspace.session, &view)
+            }
+        }
+        .map_err(|error| io::Error::other(format!("Creator UI document invalid: {error:?}")))?;
+        self.ui.replace_document(document);
+        Ok(())
+    }
+
+    fn refresh_ui_without_events(&mut self) {
+        let mut input = UiFrameInput::new(self.logical_viewport);
+        input.scale_factor = self.scale_factor;
+        input.high_contrast = false;
+        self.display_list = self.ui.reconcile(input).display_list;
+    }
+
+    fn refresh_document_and_ui(&mut self) -> AppResult<()> {
+        self.refresh_document()?;
+        if std::mem::replace(
+            &mut self.inspector_field_sync,
+            InspectorFieldSync::RetainDraft,
+        ) == InspectorFieldSync::ResetFromAuthoritativeSource
+        {
+            let _ = self
+                .ui
+                .reset_text_input_from_document(CREATOR_INSPECTOR_X_MM);
+            let _ = self
+                .ui
+                .reset_text_input_from_document(CREATOR_INSPECTOR_Y_MM);
+            let _ = self
+                .ui
+                .reset_text_input_from_document(CREATOR_INSPECTOR_Z_MM);
+        }
+        self.refresh_ui_without_events();
+        Ok(())
+    }
+
+    fn reconcile_ui(&mut self, context: &mut PlatformContext<'_>) -> AppResult<()> {
+        let build_changed = if let CreatorScreen::Workspace(workspace) = &mut self.screen {
+            workspace.poll_build()
+        } else {
+            false
+        };
+        let pending_events = std::mem::take(&mut self.pending_events);
+        let had_pending_events = !pending_events.is_empty();
+        let had_pending_actions = !self.pending_actions.is_empty();
+        if !build_changed && !had_pending_events && !had_pending_actions {
+            return Ok(());
+        }
+        let mut input = UiFrameInput::new(self.logical_viewport);
+        input.scale_factor = self.scale_factor;
+        input.high_contrast = false;
+        input.events = pending_events;
+        let output = self.ui.reconcile(input);
+        let clipboard_requested = !output.clipboard_requests.is_empty();
+        let mut commands = self.pending_actions.drain(..).collect::<Vec<_>>();
+        commands.extend(output.commands.into_iter().map(|command| command.action));
+        self.dispatch_ui_actions(commands, context.window());
+        if clipboard_requested {
+            self.set_status(
+                "Copy is unavailable until Meridian's platform clipboard adapter is active."
+                    .to_owned(),
+            );
+        }
+        self.refresh_document_and_ui()?;
+        self.rebuild_renderer_for_display()?;
+        Ok(())
+    }
+
+    fn dispatch_ui_actions(
+        &mut self,
+        commands: impl IntoIterator<Item = String>,
+        wake_window: Option<&PlatformWindow>,
+    ) {
+        for command in commands {
+            if let Err(error) = self.execute_action_with_window(&command, wake_window.cloned()) {
+                self.set_status(format!("{error}"));
+            }
+        }
+    }
+
+    /// Drives bounded retained UI events through the same action dispatcher as
+    /// the native application. The Creator Alpha process smoke uses it only
+    /// for an already-open workspace, so it cannot invoke the hub picker.
+    fn reconcile_workspace_ui_events_for_smoke(
+        &mut self,
+        events: Vec<UiEvent>,
+    ) -> AppResult<Vec<UiCommandRequest>> {
+        if !matches!(self.screen, CreatorScreen::Workspace(_)) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Creator UI smoke requires an open workspace",
+            )
+            .into());
+        }
+        let mut input = UiFrameInput::new(self.logical_viewport);
+        input.scale_factor = self.scale_factor;
+        input.high_contrast = false;
+        input.events = events;
+        let output = self.ui.reconcile(input);
+        let clipboard_requested = !output.clipboard_requests.is_empty();
+        let commands = output.commands;
+        for command in &commands {
+            if matches!(
+                CreatorUiAction::parse(&command.action)?,
+                CreatorUiAction::CreateProject
+                    | CreatorUiAction::OpenProject
+                    | CreatorUiAction::OpenRecent(_)
+                    | CreatorUiAction::RemoveRecent(_)
+            ) {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "Creator UI smoke may not invoke project-picker actions",
+                )
+                .into());
+            }
+        }
+        self.dispatch_ui_actions(commands.iter().map(|command| command.action.clone()), None);
+        if clipboard_requested {
+            self.set_status(
+                "Copy is unavailable until Meridian's platform clipboard adapter is active."
+                    .to_owned(),
+            );
+        }
+        self.refresh_document_and_ui()?;
+        Ok(commands)
+    }
+
+    fn creator_action_node(&self, action: &str) -> AppResult<UiNodeId> {
+        self.ui
+            .document()
+            .focus_order()
+            .into_iter()
+            .find(|id| {
+                self.ui
+                    .document()
+                    .node(*id)
+                    .and_then(|node| node.semantics.action.as_deref())
+                    == Some(action)
+            })
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Creator UI action is absent from the active workspace: {action}"),
+                )
+                .into()
+            })
+    }
+
+    fn activate_workspace_action_for_smoke(
+        &mut self,
+        action: &str,
+    ) -> AppResult<Vec<UiCommandRequest>> {
+        let target = self.creator_action_node(action)?;
+        self.reconcile_workspace_ui_events_for_smoke(vec![UiEvent::AssistiveActivate(target)])
+    }
+
+    fn set_status(&mut self, status: String) {
+        match &mut self.screen {
+            CreatorScreen::Hub => self.hub_status = status,
+            CreatorScreen::Workspace(workspace) => workspace.status = status,
+        }
+    }
+
+    fn inspector_translation(&self) -> AppResult<Translation> {
+        Ok(Translation {
+            x_mm: parse_creator_translation_component(
+                "X",
+                self.ui.text_input_value(CREATOR_INSPECTOR_X_MM),
+            )?,
+            y_mm: parse_creator_translation_component(
+                "Y",
+                self.ui.text_input_value(CREATOR_INSPECTOR_Y_MM),
+            )?,
+            z_mm: parse_creator_translation_component(
+                "Z",
+                self.ui.text_input_value(CREATOR_INSPECTOR_Z_MM),
+            )?,
+        })
+    }
+
+    fn open_project(&mut self, requested: &Path) -> AppResult<()> {
+        let mut workspace = CreatorWorkspace::open(requested)?;
+        self.hub.remember(&workspace.root);
+        if self.hub_store.save(&self.hub).is_err() {
+            workspace.status.push_str(
+                " Recent-project state could not be saved; reopen this project manually after exit.",
+            );
+        }
+        self.inspector_field_sync = InspectorFieldSync::ResetFromAuthoritativeSource;
+        self.screen = CreatorScreen::Workspace(Box::new(workspace));
+        Ok(())
+    }
+
+    /// Runs the native directory adapter only for an explicit Creator hub action.
+    ///
+    /// Cancellation and invalid selections remain visible hub diagnostics rather
+    /// than becoming ambient filesystem authority or application-fatal errors.
+    #[allow(clippy::assigning_clones)] // Hub diagnostics are infrequent user-visible state changes.
+    fn execute_explicit_picker_action(
+        &mut self,
+        action: CreatorUiAction,
+        picker: &dyn CreatorProjectPicker,
+        window: Option<&meridian_platform::PlatformWindow>,
+    ) -> AppResult<()> {
+        if !matches!(
+            action,
+            CreatorUiAction::CreateProject | CreatorUiAction::OpenProject
+        ) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "only explicit Creator create or open actions may invoke the project picker",
+            )
+            .into());
+        }
+        if !matches!(self.screen, CreatorScreen::Hub) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "project directory selection is available only from the Creator hub",
+            )
+            .into());
+        }
+        let selection = picker.pick_directory(window);
+        match (action, selection) {
+            (CreatorUiAction::CreateProject, None) => {
+                self.hub_status = "Project creation cancelled.".to_owned();
+            }
+            (CreatorUiAction::OpenProject, None) => {
+                self.hub_status = "Project open cancelled.".to_owned();
+            }
+            (CreatorUiAction::CreateProject, Some(parent)) => {
+                let name = self
+                    .ui
+                    .text_input_value(CREATOR_HUB_PROJECT_NAME)
+                    .unwrap_or_default()
+                    .trim()
+                    .to_owned();
+                if let Err(error) = create_public_creator_project(&parent, &name)
+                    .and_then(|root| self.open_project(&root))
+                {
+                    self.hub_status = format!("Unable to create the selected project: {error}");
+                }
+            }
+            (CreatorUiAction::OpenProject, Some(root)) => {
+                if let Err(error) = self.open_project(&root) {
+                    self.hub_status = format!("Unable to open the selected project: {error}");
+                }
+            }
+            _ => unreachable!("explicit picker actions were validated before picking"),
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::assigning_clones)] // Hub status strings are user-visible diagnostics.
+    fn execute_action_with_window(
+        &mut self,
+        action: &str,
+        wake_window: Option<PlatformWindow>,
+    ) -> AppResult<()> {
+        match CreatorUiAction::parse(action)? {
+            CreatorUiAction::CreateProject => {
+                self.execute_explicit_picker_action(
+                    CreatorUiAction::CreateProject,
+                    &NativeCreatorProjectPicker,
+                    wake_window.as_ref(),
+                )?;
+            }
+            CreatorUiAction::OpenProject => {
+                self.execute_explicit_picker_action(
+                    CreatorUiAction::OpenProject,
+                    &NativeCreatorProjectPicker,
+                    wake_window.as_ref(),
+                )?;
+            }
+            CreatorUiAction::OpenRecent(index) => {
+                let path = self
+                    .hub
+                    .recents
+                    .get(index)
+                    .ok_or_else(|| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "recent project index is unavailable",
+                        )
+                    })?
+                    .path
+                    .clone();
+                self.open_project(Path::new(&path))?;
+            }
+            CreatorUiAction::RemoveRecent(index) => {
+                if index >= self.hub.recents.len() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "recent project index is unavailable",
+                    )
+                    .into());
+                }
+                self.hub.recents.remove(index);
+                self.hub_store.save(&self.hub)?;
+                self.hub_status = "Recent project removed.".to_owned();
+            }
+            CreatorUiAction::ReturnHub => {
+                self.screen = CreatorScreen::Hub;
+                self.hub_status = "Project remains saved; choose a project to open.".to_owned();
+            }
+            action => self.execute_workspace_action_with_wake(action, wake_window)?,
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::assigning_clones, clippy::too_many_lines)]
+    // The platform window is an optional wake-only adapter for asynchronous build completion.
+    fn execute_workspace_action_with_wake(
+        &mut self,
+        action: CreatorUiAction,
+        wake_window: Option<PlatformWindow>,
+    ) -> AppResult<()> {
+        let inspector_translation = matches!(
+            action,
+            CreatorUiAction::EditPlacement | CreatorUiAction::PreviewCommand
+        )
+        .then(|| self.inspector_translation())
+        .transpose()?;
+        let CreatorScreen::Workspace(workspace) = &mut self.screen else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "this Creator action requires an open project",
+            )
+            .into());
+        };
+        let mut reset_inspector_fields = false;
+        match action {
+            CreatorUiAction::Recover => {
+                let opened = workspace.project_store.open()?;
+                workspace.session = opened.session;
+                workspace.recovery_status = opened.recovery;
+                workspace.status = format!("Recovered source session: {:?}.", opened.recovery);
+                reset_inspector_fields = true;
+            }
+            CreatorUiAction::StartPlay => {
+                workspace
+                    .project_store
+                    .mutate_play(&mut workspace.session, EditorSession::start_play)?;
+                workspace.status =
+                    "Play session started; source remains unchanged until Apply.".to_owned();
+            }
+            CreatorUiAction::ApplyPlay => {
+                let changes = workspace
+                    .project_store
+                    .mutate(&mut workspace.session, EditorSession::apply_play)?;
+                workspace.status = format!(
+                    "Applied {} explicit Play change(s) to source.",
+                    changes.len()
+                );
+                reset_inspector_fields = true;
+            }
+            CreatorUiAction::DiscardPlay => {
+                workspace
+                    .project_store
+                    .mutate_play(&mut workspace.session, EditorSession::discard_play)?;
+                workspace.status = "Discarded the isolated Play session.".to_owned();
+                reset_inspector_fields = true;
+            }
+            CreatorUiAction::SelectPlacement => {
+                let placement = first_placement_id(&workspace.session)?;
+                workspace.session.select([placement])?;
+                workspace.status = format!("Selected placement {placement}.");
+                reset_inspector_fields = true;
+            }
+            CreatorUiAction::EditPlacement => {
+                let placement_id = selected_or_first_placement(&workspace.session)?;
+                let before = workspace.session.document().placements[&placement_id].translation;
+                let translation = inspector_translation.ok_or_else(|| {
+                    io::Error::other(
+                        "Creator placement action omitted parsed inspector coordinates",
+                    )
+                })?;
+                if workspace.session.play_active() {
+                    workspace
+                        .project_store
+                        .mutate_play(&mut workspace.session, |session| {
+                            session.set_play_translation(placement_id, translation)
+                        })?;
+                    workspace.status =
+                        "Applied typed X/Y/Z translation to the isolated Play session. Apply keeps it; Discard removes it."
+                            .to_owned();
+                } else if translation == before {
+                    workspace.status = "No source change: the typed placement coordinates already match the authoritative document.".to_owned();
+                } else {
+                    workspace
+                        .project_store
+                        .mutate(&mut workspace.session, |session| {
+                            session.commit(creator_transaction(
+                                EditorCommand::SetPlacementTranslation {
+                                    placement_id,
+                                    translation,
+                                },
+                                "Edit placement translation",
+                            ))
+                        })?;
+                    workspace.status =
+                        "Applied typed X/Y/Z source translation and persisted canonical project JSON."
+                            .to_owned();
+                    reset_inspector_fields = true;
+                }
+            }
+            CreatorUiAction::PreviewCommand => {
+                let placement_id = selected_or_first_placement(&workspace.session)?;
+                let translation = inspector_translation.ok_or_else(|| {
+                    io::Error::other("Creator preview action omitted parsed inspector coordinates")
+                })?;
+                workspace.session.preview(&creator_transaction(
+                    EditorCommand::SetPlacementTranslation {
+                        placement_id,
+                        translation,
+                    },
+                    "Preview placement translation",
+                ))?;
+                workspace.status =
+                    "Typed placement command preview succeeded without mutation.".to_owned();
+            }
+            CreatorUiAction::Undo => {
+                workspace
+                    .project_store
+                    .mutate(&mut workspace.session, EditorSession::undo)?;
+                workspace.status = "Undid the latest typed source command.".to_owned();
+                reset_inspector_fields = true;
+            }
+            CreatorUiAction::Redo => {
+                workspace
+                    .project_store
+                    .mutate(&mut workspace.session, EditorSession::redo)?;
+                workspace.status = "Redid the latest typed source command.".to_owned();
+                reset_inspector_fields = true;
+            }
+            CreatorUiAction::Reimport => {
+                let imported = import_creator_alpha_source(
+                    &workspace.root,
+                    &workspace.manifest.imported_asset,
+                )?;
+                workspace
+                    .project_store
+                    .mutate(&mut workspace.session, |session| {
+                        session.commit(creator_transaction(
+                            EditorCommand::UpdateImportedSource(imported),
+                            "Reimport source",
+                        ))
+                    })?;
+                workspace.status =
+                    "Reimported source identity and persisted the new hash metadata.".to_owned();
+            }
+            CreatorUiAction::InspectSource => {
+                workspace.status = format!(
+                    "Imported source has {} registered source record(s).",
+                    workspace.session.document().sources.len()
+                );
+            }
+            CreatorUiAction::SubmitBuild => workspace.start_build(wake_window)?,
+            CreatorUiAction::InspectBuild => {
+                workspace.status = if workspace.build.is_some() {
+                    "Build is running through the durable one-worker Cargo service.".to_owned()
+                } else {
+                    workspace.status.clone()
+                };
+            }
+            CreatorUiAction::RecipeInspect => {
+                workspace.status = format!(
+                    "Recipe {} uses {}.",
+                    workspace.recipe.id, workspace.recipe.schema
+                );
+            }
+            CreatorUiAction::RecipeValidate => {
+                workspace.recipe.validate()?;
+                workspace.status = "Canonical procedural recipe validation passed.".to_owned();
+            }
+            CreatorUiAction::RecipeMigrate => {
+                let canonical = workspace.recipe.canonical_json()?;
+                workspace.status = format!(
+                    "Recipe is already v1; canonical source has {} bytes.",
+                    canonical.len()
+                );
+            }
+            CreatorUiAction::RecipePreview => {
+                let preview = evaluate_alluvium(&workspace.recipe, EvaluationMode::Preview)?;
+                workspace.status = format!(
+                    "Recipe preview generated {} placement(s).",
+                    preview.field.samples.len()
+                );
+            }
+            CreatorUiAction::RecipeBake => {
+                let audit = license_audit(&workspace.recipe, "creator-alpha-editor")?;
+                if !audit.accepted {
+                    return Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "recipe bake rejected by license policy",
+                    )
+                    .into());
+                }
+                let bake = evaluate_alluvium(&workspace.recipe, EvaluationMode::Bake)?;
+                workspace.status = format!(
+                    "Recipe bake generated {} placement(s).",
+                    bake.field.samples.len()
+                );
+            }
+            CreatorUiAction::RecipeDirty => {
+                let report = dirty_report(&workspace.recipe, &workspace.recipe);
+                workspace.status =
+                    format!("Recipe dirty report: {} reason(s).", report.reasons.len());
+            }
+            CreatorUiAction::RecipeExplain => {
+                let preview = evaluate_alluvium(&workspace.recipe, EvaluationMode::Preview)?;
+                let first = preview.field.samples.first().ok_or_else(|| {
+                    io::Error::other("recipe preview produced no generated identities")
+                })?;
+                let explanation =
+                    explain_generated(&workspace.recipe, first.id)?.ok_or_else(|| {
+                        io::Error::other("recipe generated identity has no explanation")
+                    })?;
+                workspace.status = format!(
+                    "Recipe explanation retained generated ID {}.",
+                    explanation.id
+                );
+            }
+            CreatorUiAction::RecipeProvenance => {
+                workspace.status = format!(
+                    "Recipe provenance: {} ({})",
+                    workspace.recipe.provenance.origin, workspace.recipe.provenance.license
+                );
+            }
+            CreatorUiAction::RecipeLicenseAudit => {
+                let audit = license_audit(&workspace.recipe, "creator-alpha-editor")?;
+                workspace.status = format!("Recipe license audit accepted: {}.", audit.accepted);
+            }
+            CreatorUiAction::ModelInspect => {
+                workspace.status = format!(
+                    "Editable model has {} source object(s).",
+                    workspace.model_session.current().document().objects.len()
+                );
+            }
+            CreatorUiAction::ModelCreatePrimitive => {
+                let first_id =
+                    next_model_id_range(workspace.model_session.current().document(), 10)?;
+                let primitive = creator_alpha_public_quad_with_first_id(first_id);
+                workspace.mutate_model(|session| {
+                    session.apply(ModelTransaction::new(
+                        "Create Creator primitive",
+                        ModelCommand::CreatePrimitive(primitive),
+                    ))
+                })?;
+                workspace.status =
+                    "Created one typed editable primitive and saved source.".to_owned();
+            }
+            CreatorUiAction::ModelTransform => {
+                let object_id = workspace
+                    .model_session
+                    .current()
+                    .document()
+                    .objects
+                    .first()
+                    .ok_or_else(|| io::Error::other("editable model has no selectable object"))?
+                    .id;
+                workspace.mutate_model(|session| {
+                    session.select(ModelElementKind::Object, [object_id])?;
+                    session.apply(
+                        ModelTransaction::new(
+                            "Translate editable object",
+                            ModelCommand::TranslateObject {
+                                object_id,
+                                translation_mm: Millimetres3 { x: 50, y: 0, z: 0 },
+                            },
+                        )
+                        .with_selection(session.selection().clone()),
+                    )
+                })?;
+                workspace.status =
+                    "Translated selected editable model object and saved source.".to_owned();
+            }
+            CreatorUiAction::ModelSplitEdge => {
+                let object = workspace
+                    .model_session
+                    .current()
+                    .document()
+                    .objects
+                    .first()
+                    .ok_or_else(|| io::Error::other("editable model has no source object"))?;
+                let object_id = object.id;
+                let edge = object
+                    .edges
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| io::Error::other("editable model has no source edge"))?;
+                let first_id =
+                    next_model_id_range(workspace.model_session.current().document(), 3)?;
+                let vertex_id = StableId::new(first_id);
+                let first_edge_id = StableId::new(first_id + 1);
+                let second_edge_id = StableId::new(first_id + 2);
+                workspace.mutate_model(|session| {
+                    session.select(ModelElementKind::Edge, [edge.id])?;
+                    session.apply(
+                        ModelTransaction::new(
+                            "Split editable model edge",
+                            ModelCommand::SplitEdge(SplitEdge {
+                                object_id,
+                                edge_id: edge.id,
+                                new_vertex: Vertex {
+                                    id: vertex_id,
+                                    position_mm: Millimetres3 {
+                                        x: 0,
+                                        y: -500,
+                                        z: -500,
+                                    },
+                                },
+                                replacement_edges: [
+                                    Edge {
+                                        id: first_edge_id,
+                                        start: edge.start,
+                                        end: vertex_id,
+                                    },
+                                    Edge {
+                                        id: second_edge_id,
+                                        start: vertex_id,
+                                        end: edge.end,
+                                    },
+                                ],
+                            }),
+                        )
+                        .with_selection(session.selection().clone()),
+                    )
+                })?;
+                workspace.status =
+                    "Applied bounded topology split with stable lineage and saved source."
+                        .to_owned();
+            }
+            CreatorUiAction::ModelUndo => {
+                workspace.mutate_model(ModelSession::undo)?;
+                workspace.status = "Undid the latest semantic model operation.".to_owned();
+            }
+            CreatorUiAction::ModelRedo => {
+                workspace.mutate_model(ModelSession::redo)?;
+                workspace.status = "Redid the latest semantic model operation.".to_owned();
+            }
+            CreatorUiAction::ModelRecover => {
+                let source = ModelDocument::read_source(&workspace.model_path)?;
+                let recovered = workspace.model_recovery.load()?;
+                if recovered.current().document() != &source {
+                    return Err(io::Error::other(
+                        "model recovery disagrees with authoritative source",
+                    )
+                    .into());
+                }
+                workspace.model_session = recovered;
+                workspace.status =
+                    "Recovered model history matching authoritative source.".to_owned();
+            }
+            CreatorUiAction::FocusSelection => {
+                workspace.status = format!(
+                    "Focused {} selected source element(s).",
+                    workspace.session.selection().ids.len()
+                );
+            }
+            CreatorUiAction::ShowDiagnostics => {
+                workspace.status = format!(
+                    "Diagnostics are visible below: recovery is {:?}; {} source checkpoint(s) are available.",
+                    workspace.recovery_status,
+                    workspace.session.checkpoints().len()
+                );
+            }
+            CreatorUiAction::CreateProject
+            | CreatorUiAction::OpenProject
+            | CreatorUiAction::OpenRecent(_)
+            | CreatorUiAction::RemoveRecent(_)
+            | CreatorUiAction::ReturnHub => unreachable!("handled before workspace dispatch"),
+        }
+        if reset_inspector_fields {
+            self.inspector_field_sync = InspectorFieldSync::ResetFromAuthoritativeSource;
+        }
+        Ok(())
+    }
+
+    fn refresh_for_size(&mut self, size: WindowSize, scale_factor: f64) -> AppResult<()> {
+        self.physical_size = size;
+        self.scale_factor = f64_to_f32(scale_factor).clamp(0.5, 4.0);
+        self.logical_viewport = UiSize::new(
+            f64_to_f32(f64::from(size.width) / f64::from(self.scale_factor)),
+            f64_to_f32(f64::from(size.height) / f64::from(self.scale_factor)),
+        );
+        self.refresh_document_and_ui()?;
+        let Some(mut rhi) = self.rhi.take() else {
+            return Ok(());
+        };
+        rhi.resize(size);
+        let renderer = rebuild_for_renderable_creator_surface(size, || {
+            Ok(UiOverlayRenderer::new(
+                &mut rhi,
+                &self.display_list,
+                self.logical_viewport,
+                self.scale_factor,
+            )?)
+        })?;
+        let Some(renderer) = renderer else {
+            self.rhi = Some(rhi);
+            return Ok(());
+        };
+        self.rhi = Some(rhi);
+        self.renderer = Some(renderer);
+        self.schedule_bootstrap_renderer_refresh();
+        Ok(())
+    }
+
+    fn rebuild_renderer_for_display(&mut self) -> AppResult<()> {
+        let Some(mut rhi) = self.rhi.take() else {
+            return Ok(());
+        };
+        let renderer = rebuild_for_renderable_creator_surface(self.physical_size, || {
+            Ok(UiOverlayRenderer::new(
+                &mut rhi,
+                &self.display_list,
+                self.logical_viewport,
+                self.scale_factor,
+            )?)
+        })?;
+        let Some(renderer) = renderer else {
+            self.rhi = Some(rhi);
+            return Ok(());
+        };
+        self.rhi = Some(rhi);
+        self.renderer = Some(renderer);
+        self.structural_fallback_submitted = false;
+        self.surface_attempts = 0;
+        Ok(())
+    }
+
+    fn initialize_gpu(&mut self, window: meridian_platform::PlatformWindow) -> AppResult<()> {
+        self.refresh_for_size(window.size(), window.scale_factor())?;
+        let mut rhi = Rhi::new(window, RhiConfig::default())?;
+        let renderer = rebuild_for_renderable_creator_surface(self.physical_size, || {
+            Ok(UiOverlayRenderer::new(
+                &mut rhi,
+                &self.display_list,
+                self.logical_viewport,
+                self.scale_factor,
+            )?)
+        })?;
+        let Some(renderer) = renderer else {
+            self.rhi = Some(rhi);
+            return Ok(());
+        };
+        self.rhi = Some(rhi);
+        self.renderer = Some(renderer);
+        self.schedule_bootstrap_renderer_refresh();
+        Ok(())
+    }
+
+    /// Schedules one renderer rebuild after a newly configured native surface.
+    ///
+    /// On macOS the first accepted texture draw can precede compositor-visible
+    /// contents. The next frame rebuilds the immutable raster bridge, matching
+    /// the normal display-list update path without creating a permanent loop.
+    fn schedule_bootstrap_renderer_refresh(&mut self) {
+        self.bootstrap_renderer_refresh_pending = true;
+    }
+
+    fn take_bootstrap_renderer_refresh(&mut self) -> bool {
+        std::mem::take(&mut self.bootstrap_renderer_refresh_pending)
+    }
+
+    fn record_terminal_error(&mut self, detail: impl Display) {
+        let terminal_error =
+            PlatformError::application(format!("Meridian Creator application error: {detail}"));
+        eprintln!("{terminal_error}");
+        self.terminal_error = Some(terminal_error);
+    }
+
+    fn render(&mut self, context: &mut PlatformContext<'_>) -> AppResult<()> {
+        self.reconcile_ui(context)?;
+        if !creator_surface_is_renderable(self.physical_size) {
+            return Ok(());
+        }
+        let outcome = match (self.rhi.as_mut(), self.renderer.as_ref()) {
+            (Some(rhi), Some(renderer)) => renderer.render_frame(rhi, ClearColor::default())?,
+            _ => {
+                return Err(
+                    io::Error::other("Creator application has no initialized renderer").into(),
+                )
+            }
+        };
+        if self.take_bootstrap_renderer_refresh() {
+            self.rebuild_renderer_for_display()?;
+            context.request_redraw();
+            return Ok(());
+        }
+        if outcome.visible() {
+            self.visible_presentations = self.visible_presentations.saturating_add(1);
+            let build_active = matches!(&self.screen, CreatorScreen::Workspace(workspace) if workspace.build.is_some());
+            if creator_exits_after_visible_presentation(
+                self.native_smoke,
+                self.visible_presentations,
+            ) {
+                context.exit();
+            } else if creator_requests_follow_up_redraw(
+                self.native_smoke,
+                self.visible_presentations,
+                build_active,
+            ) {
+                context.request_redraw();
+            }
+            return Ok(());
+        }
+        self.surface_attempts = self.surface_attempts.saturating_add(1);
+        if !self.structural_fallback_submitted {
+            let (Some(rhi), Some(renderer)) = (self.rhi.as_mut(), self.renderer.as_ref()) else {
+                return Err(io::Error::other("Creator structural fallback has no renderer").into());
+            };
+            renderer.submit_structural_validation(rhi, ClearColor::default())?;
+            self.structural_fallback_submitted = true;
+        }
+        if creator_exits_after_surface_attempt(self.native_smoke, self.surface_attempts) {
+            context.exit();
+        } else if self.surface_attempts < UI_SMOKE_MAX_PRESENT_ATTEMPTS {
+            context.request_redraw();
+        }
+        Ok(())
+    }
+
+    fn route_input(&mut self, event: NativeInputEvent) {
+        let NativeInputEvent::Button { control, down } = event else {
+            return;
+        };
+        match control {
+            ButtonControl::Mouse(meridian_input::MouseButton::Left) => {
+                self.pending_events.push(if down {
+                    UiEvent::PointerDown(self.pointer)
+                } else {
+                    UiEvent::PointerUp(self.pointer)
+                });
+            }
+            _ if !down => {}
+            ButtonControl::Key(KeyCode::Tab) => self.pending_events.push(if self.modifiers.shift {
+                UiEvent::FocusPrevious
+            } else {
+                UiEvent::FocusNext
+            }),
+            ButtonControl::Key(KeyCode::Enter) => self.pending_events.push(UiEvent::Activate),
+            ButtonControl::Key(KeyCode::Backspace) => {
+                self.pending_events.push(UiEvent::DeleteTextBackward);
+            }
+            ButtonControl::Key(KeyCode::Delete) => {
+                self.pending_events.push(UiEvent::DeleteTextForward);
+            }
+            ButtonControl::Key(KeyCode::Left) => {
+                self.pending_events.push(UiEvent::MoveTextCursor {
+                    direction: UiTextCursorDirection::Backward,
+                    extend_selection: self.modifiers.shift,
+                });
+            }
+            ButtonControl::Key(KeyCode::Right) => {
+                self.pending_events.push(UiEvent::MoveTextCursor {
+                    direction: UiTextCursorDirection::Forward,
+                    extend_selection: self.modifiers.shift,
+                });
+            }
+            ButtonControl::Key(KeyCode::Z) if self.modifiers.primary_command() => {
+                self.pending_actions.push(if self.modifiers.shift {
+                    "editor.redo".to_owned()
+                } else {
+                    "editor.undo".to_owned()
+                });
+            }
+            ButtonControl::Key(KeyCode::Y) if self.modifiers.primary_command() => {
+                self.pending_actions.push("editor.redo".to_owned());
+            }
+            ButtonControl::Key(KeyCode::A) if self.modifiers.primary_command() => {
+                self.pending_events.push(UiEvent::SelectAllText);
+            }
+            ButtonControl::Key(KeyCode::C) if self.modifiers.primary_command() => {
+                self.pending_events.push(UiEvent::CopySelection);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_event(&mut self, event: PlatformEvent, context: &mut PlatformContext<'_>) {
+        let result: AppResult<()> = match event {
+            PlatformEvent::WindowCreated { .. } => match context.window().cloned() {
+                Some(window) => self
+                    .initialize_gpu(window)
+                    .map(|()| context.request_redraw()),
+                None => Err(
+                    io::Error::other("Creator window creation omitted its native window").into(),
+                ),
+            },
+            PlatformEvent::Resized(size) => self
+                .refresh_for_size(size, f64::from(self.scale_factor))
+                .map(|()| context.request_redraw()),
+            PlatformEvent::ScaleFactorChanged { scale_factor, size } => self
+                .refresh_for_size(size, scale_factor)
+                .map(|()| context.request_redraw()),
+            PlatformEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers;
+                Ok(())
+            }
+            PlatformEvent::PointerMoved { x, y } => {
+                self.pointer = UiPoint {
+                    x: x / self.scale_factor,
+                    y: y / self.scale_factor,
+                };
+                Ok(())
+            }
+            PlatformEvent::TextCommit(text) => {
+                self.pending_events.push(UiEvent::TextCommit(text));
+                self.reconcile_ui(context)
+                    .map(|()| context.request_redraw())
+            }
+            PlatformEvent::ImePreedit { text, cursor } => {
+                self.pending_events
+                    .push(UiEvent::ImePreedit { text, cursor });
+                self.reconcile_ui(context)
+                    .map(|()| context.request_redraw())
+            }
+            PlatformEvent::Input(event) => {
+                self.route_input(event);
+                self.reconcile_ui(context)
+                    .map(|()| context.request_redraw())
+            }
+            PlatformEvent::RedrawRequested => self.render(context),
+            PlatformEvent::CloseRequested | PlatformEvent::Exiting => {
+                context.exit();
+                Ok(())
+            }
+            PlatformEvent::Focused(false) => {
+                self.modifiers = PlatformModifiers::default();
+                self.pending_events.push(UiEvent::PointerCancel);
+                self.reconcile_ui(context)
+            }
+            PlatformEvent::Resumed => {
+                if self.rhi.is_some() && creator_surface_is_renderable(self.physical_size) {
+                    context.request_redraw();
+                }
+                Ok(())
+            }
+            // A Creator window can initially be occluded while macOS brings
+            // the process forward. Retry only when the platform explicitly
+            // reports focus instead of spinning redraws while it is hidden.
+            PlatformEvent::Focused(true) => {
+                if creator_surface_is_renderable(self.physical_size) {
+                    context.request_redraw();
+                }
+                Ok(())
+            }
+            PlatformEvent::Suspended | PlatformEvent::MemoryWarning => Ok(()),
+        };
+        if let Err(error) = result {
+            self.record_terminal_error(error);
+            context.exit();
+        }
+    }
+}
+
+impl PlatformApplication for CreatorApplication {
+    fn on_event(&mut self, event: PlatformEvent, context: &mut PlatformContext<'_>) {
+        self.handle_event(event, context);
+    }
+
+    fn terminal_error(&self) -> Option<PlatformError> {
+        self.terminal_error.clone()
+    }
+}
+
+fn create_public_creator_project(parent: &Path, name: &str) -> AppResult<PathBuf> {
+    let name_path = Path::new(name);
+    if name.trim().is_empty()
+        || name_path.components().count() != 1
+        || !matches!(name_path.components().next(), Some(Component::Normal(_)))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "project name must be one nonempty directory name",
+        )
+        .into());
+    }
+    let parent_metadata = fs::symlink_metadata(parent)?;
+    if !parent_metadata.file_type().is_dir() || parent_metadata.file_type().is_symlink() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "new project parent must be a real directory",
+        )
+        .into());
+    }
+    let root = parent.join(name_path);
+    if root.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "new project directory already exists",
+        )
+        .into());
+    }
+    fs::create_dir(&root)?;
+    let result = (|| {
+        let template = workspace_root()?.join("examples/creator-alpha");
+        for relative in [
+            Path::new(CREATOR_ALPHA_MANIFEST),
+            Path::new("assets/public-triangle.mesh.json"),
+            Path::new("models/public-box.model.json"),
+            Path::new("recipes/public-placement.mproc"),
+        ] {
+            let source = template.join(relative);
+            let destination = root.join(relative);
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(source, destination)?;
+        }
+        let manifest: CreatorAlphaManifest =
+            serde_json::from_slice(&fs::read(root.join(CREATOR_ALPHA_MANIFEST))?)?;
+        validate_creator_alpha_manifest(&root, &manifest)?;
+        let imported = import_creator_alpha_source(&root, &manifest.imported_asset)?;
+        let mut document = ProjectDocument::new(manifest.project_id);
+        document.sources.insert(imported.id, imported.clone());
+        document.placements.insert(
+            manifest.placement.id,
+            WorldPlacement {
+                id: manifest.placement.id,
+                source_id: imported.id,
+                label: manifest.placement.label,
+                translation: manifest.placement.translation,
+            },
+        );
+        let store = ProjectStore::new(
+            root.join(CREATOR_PROJECT_SOURCE),
+            root.join(CREATOR_INTERNAL_DIRECTORY)
+                .join("editor-recovery.state"),
+        );
+        store.create(document)?;
+        Ok::<(), Box<dyn Error>>(())
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_dir_all(&root);
+        return Err(error);
+    }
+    Ok(root)
+}
+
+fn first_placement_id(session: &EditorSession) -> AppResult<StableId> {
+    session
+        .document()
+        .placements
+        .keys()
+        .next()
+        .copied()
+        .ok_or_else(|| io::Error::other("project has no editable placement").into())
+}
+
+fn selected_or_first_placement(session: &EditorSession) -> AppResult<StableId> {
+    session
+        .selection()
+        .ids
+        .iter()
+        .find(|id| session.document().placements.contains_key(id))
+        .copied()
+        .map_or_else(|| first_placement_id(session), Ok)
+}
+
+fn creator_transaction(
+    command: EditorCommand,
+    label: &str,
+) -> meridian_editor_core::EditorTransaction {
+    let affected_ids = match &command {
+        EditorCommand::RegisterImportedSource(source)
+        | EditorCommand::UpdateImportedSource(source) => {
+            vec![source.id]
+        }
+        EditorCommand::RemoveImportedSource { source_id } => vec![*source_id],
+        EditorCommand::PlaceObject(placement) => vec![placement.id, placement.source_id],
+        EditorCommand::SetPlacementTranslation { placement_id, .. }
+        | EditorCommand::RemovePlacement { placement_id } => vec![*placement_id],
+    };
+    meridian_editor_core::EditorTransaction {
+        command,
+        metadata: CommandMetadata::local(label, affected_ids),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -663,6 +2475,7 @@ struct CreatorAlphaEvidence<'a> {
     document_generation: u64,
     imported_source_count: usize,
     placement_count: usize,
+    source_persistence: CheckStatus,
     recovery: CheckStatus,
     semantic_workspace: CheckStatus,
     procedural: CreatorAlphaProceduralEvidence,
@@ -714,27 +2527,26 @@ struct CreatorAlphaBuildEvidence {
 /// isolated Play apply/discard, durable recovery, semantic UI construction, and
 /// a real bounded Cargo build with an artifact bound to the build request.
 fn run_creator_alpha_smoke(options: &MeridianOptions) -> AppResult<()> {
-    let project_root = resolve_creator_alpha_project(
+    let source_project_root = resolve_creator_alpha_project(
         options
             .project
             .as_deref()
             .ok_or_else(|| io::Error::other("Creator Alpha project argument was not retained"))?,
     )?;
     let evidence_root = resolve_output_path(
-        &project_root,
+        &source_project_root,
         options.evidence.as_deref(),
         Path::new("target/meridian-evidence/creator-alpha"),
     );
     fs::create_dir_all(&evidence_root)?;
+    let project_root = create_isolated_creator_smoke_project(&source_project_root, &evidence_root)?;
     let manifest_path = project_root.join(CREATOR_ALPHA_MANIFEST);
     let manifest_bytes = fs::read(&manifest_path)?;
     let manifest: CreatorAlphaManifest = serde_json::from_slice(&manifest_bytes)?;
     validate_creator_alpha_manifest(&project_root, &manifest)?;
-    let imported_source = import_creator_alpha_source(&project_root, &manifest.imported_asset)?;
 
-    let (session, mut journey) = run_creator_alpha_editor_journey(&manifest, &imported_source)?;
-    let (recovered, semantic_workspace) = recover_creator_alpha_session(&evidence_root, &session)?;
-    journey.push("recover");
+    let (recovered, semantic_workspace, mut journey) =
+        run_creator_alpha_persistent_journey(&project_root, &manifest)?;
     let procedural = run_creator_alpha_procedural_journey(&project_root, &manifest)?;
     journey.extend(["recipe-validate", "recipe-preview", "recipe-bake"]);
     let (modeler, modeler_journey) =
@@ -770,6 +2582,7 @@ fn run_creator_alpha_smoke(options: &MeridianOptions) -> AppResult<()> {
         document_generation: recovered.document().generation,
         imported_source_count: recovered.document().sources.len(),
         placement_count: recovered.document().placements.len(),
+        source_persistence: CheckStatus::Pass,
         recovery: CheckStatus::Pass,
         semantic_workspace,
         procedural,
@@ -789,6 +2602,61 @@ fn run_creator_alpha_smoke(options: &MeridianOptions) -> AppResult<()> {
         "Meridian Creator Alpha smoke passed: source edit, undo/redo, Play apply/discard, durable recovery, semantic workspace, and request-bound build artifact verified at {}",
         evidence_root.display()
     );
+    Ok(())
+}
+
+/// Copies public source inputs into an output-owned project before the smoke mutates them.
+///
+/// The caller-selected project remains read-only; only the isolated copy receives
+/// persistent Creator commands and recovery sidecars.
+fn create_isolated_creator_smoke_project(
+    source_project_root: &Path,
+    evidence_root: &Path,
+) -> AppResult<PathBuf> {
+    let manifest: CreatorAlphaManifest = serde_json::from_slice(&read_bounded_regular_file(
+        &source_project_root.join(CREATOR_ALPHA_MANIFEST),
+        "Creator Alpha manifest",
+    )?)?;
+    validate_creator_alpha_manifest(source_project_root, &manifest)?;
+    ProjectDocument::read_source(source_project_root.join(CREATOR_PROJECT_SOURCE))?;
+
+    let sequence = NEXT_CREATOR_SMOKE_PROJECT_ID.fetch_add(1, Ordering::Relaxed);
+    let root = evidence_root.join(format!(
+        "creator-alpha-project-{}-{sequence}",
+        std::process::id()
+    ));
+    fs::create_dir(&root)?;
+    let result = (|| {
+        for relative in [
+            Path::new(CREATOR_ALPHA_MANIFEST),
+            Path::new(CREATOR_PROJECT_SOURCE),
+            validated_project_relative_path(&manifest.imported_asset.source_path)?,
+            validated_project_relative_path(&manifest.editable_model)?,
+            validated_project_relative_path(&manifest.procedural_recipe)?,
+        ] {
+            copy_regular_creator_project_file(source_project_root, &root, relative)?;
+        }
+        Ok::<(), Box<dyn Error>>(())
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_dir_all(&root);
+        return Err(error);
+    }
+    Ok(root)
+}
+
+fn copy_regular_creator_project_file(
+    source_project_root: &Path,
+    destination_root: &Path,
+    relative: &Path,
+) -> AppResult<()> {
+    let source = source_project_root.join(relative);
+    let bytes = read_bounded_regular_file(&source, "Creator Alpha smoke source")?;
+    let destination = destination_root.join(relative);
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    write_atomic(&destination, &bytes)?;
     Ok(())
 }
 
@@ -906,22 +2774,26 @@ fn prepare_creator_alpha_model_session(
 }
 
 fn creator_alpha_public_quad() -> PrimitiveCreate {
+    creator_alpha_public_quad_with_first_id(1_301)
+}
+
+fn creator_alpha_public_quad_with_first_id(first_id: u128) -> PrimitiveCreate {
     PrimitiveCreate::Quad(QuadPrimitive {
         ids: QuadPrimitiveIds {
-            object: StableId::new(1_301),
+            object: StableId::new(first_id),
             vertices: [
-                StableId::new(1_302),
-                StableId::new(1_303),
-                StableId::new(1_304),
-                StableId::new(1_305),
+                StableId::new(first_id + 1),
+                StableId::new(first_id + 2),
+                StableId::new(first_id + 3),
+                StableId::new(first_id + 4),
             ],
             edges: [
-                StableId::new(1_306),
-                StableId::new(1_307),
-                StableId::new(1_308),
-                StableId::new(1_309),
+                StableId::new(first_id + 5),
+                StableId::new(first_id + 6),
+                StableId::new(first_id + 7),
+                StableId::new(first_id + 8),
             ],
-            face: StableId::new(1_310),
+            face: StableId::new(first_id + 9),
         },
         label: "Creator Alpha public quad".to_owned(),
         origin_mm: Millimetres3 {
@@ -931,6 +2803,36 @@ fn creator_alpha_public_quad() -> PrimitiveCreate {
         },
         half_extent_mm: 250,
     })
+}
+
+fn next_model_id_range(document: &ModelDocument, count: u128) -> AppResult<u128> {
+    if count == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "model stable-ID allocation requires a non-zero count",
+        )
+        .into());
+    }
+    let mut maximum = document.document_id.get();
+    for object in &document.objects {
+        maximum = maximum.max(object.id.get());
+        for vertex in &object.vertices {
+            maximum = maximum.max(vertex.id.get());
+        }
+        for edge in &object.edges {
+            maximum = maximum.max(edge.id.get());
+        }
+        for face in &object.faces {
+            maximum = maximum.max(face.id.get());
+        }
+    }
+    let first = maximum
+        .checked_add(1)
+        .ok_or_else(|| io::Error::other("model stable-ID space is exhausted"))?;
+    first
+        .checked_add(count - 1)
+        .ok_or_else(|| io::Error::other("model stable-ID range is exhausted"))?;
+    Ok(first)
 }
 
 fn split_creator_alpha_model_edge(
@@ -1063,112 +2965,291 @@ fn model_element_counts(document: &ModelDocument) -> (usize, usize, usize) {
     })
 }
 
-fn run_creator_alpha_editor_journey(
+/// Exercises the live Creator action adapter against an output-owned copy of
+/// the public project. Every mutation takes the same typed route as a native
+/// UI command, then survives authoritative source persistence and a reopen.
+#[allow(clippy::too_many_lines)] // The explicit sequence is the Creator Alpha evidence contract.
+fn run_creator_alpha_persistent_journey(
+    project_root: &Path,
     manifest: &CreatorAlphaManifest,
-    imported_source: &ImportedSource,
-) -> AppResult<(EditorSession, Vec<&'static str>)> {
-    let mut session = EditorSession::open(ProjectDocument::new(manifest.project_id))?;
-    let mut journey = vec!["open"];
-    commit_creator_command(
-        &mut session,
-        EditorCommand::RegisterImportedSource(imported_source.clone()),
-        "Register imported source",
-    )?;
-    journey.push("import");
-    let placement = WorldPlacement {
-        id: manifest.placement.id,
-        source_id: imported_source.id,
-        label: manifest.placement.label.clone(),
-        translation: manifest.placement.translation,
+) -> AppResult<(EditorSession, CheckStatus, Vec<&'static str>)> {
+    let mut application = CreatorApplication::new(Some(project_root), true)?;
+    let imported = import_creator_alpha_source(project_root, &manifest.imported_asset)?;
+    let (source_path, placement_id, original_translation) = {
+        let workspace = creator_workspace_for_smoke(&application)?;
+        if workspace.recovery_status != ProjectRecoveryStatus::None {
+            return Err(
+                io::Error::other("isolated Creator Alpha smoke project was not fresh").into(),
+            );
+        }
+        if workspace.session.document().sources.get(&imported.id) != Some(&imported) {
+            return Err(io::Error::other(
+                "Creator Alpha source document disagrees with the DAT import authority",
+            )
+            .into());
+        }
+        let placement_id = first_placement_id(&workspace.session)?;
+        (
+            workspace.project_store.source_path().to_path_buf(),
+            placement_id,
+            workspace.session.document().placements[&placement_id].translation,
+        )
     };
-    commit_creator_command(
-        &mut session,
-        EditorCommand::PlaceObject(placement.clone()),
-        "Place editable world object",
-    )?;
-    session.select([placement.id])?;
-    let edited_translation = Translation {
-        x_mm: 1_000,
-        ..placement.translation
-    };
-    commit_creator_command(
-        &mut session,
-        EditorCommand::SetPlacementTranslation {
-            placement_id: placement.id,
-            translation: edited_translation,
-        },
-        "Edit placement",
-    )?;
-    journey.extend(["edit", "undo", "redo"]);
-    session.undo()?;
-    session.redo()?;
 
-    session.start_play()?;
-    session.set_play_translation(
-        placement.id,
-        Translation {
-            y_mm: 250,
-            ..edited_translation
-        },
-    )?;
-    if session.apply_play()?.len() != 1 {
-        return Err(
-            io::Error::other("Creator Alpha Play apply produced an unexpected diff").into(),
-        );
+    let edited_candidate = Translation {
+        x_mm: original_translation
+            .x_mm
+            .checked_add(250)
+            .ok_or_else(|| io::Error::other("Creator Alpha placement edit exceeded i64 range"))?,
+        ..original_translation
+    };
+    let select_placement = application.creator_action_node("editor.select-placement")?;
+    let edit_placement = application.creator_action_node("editor.edit-placement")?;
+    let emitted = application.reconcile_workspace_ui_events_for_smoke(vec![
+        UiEvent::AssistiveActivate(select_placement),
+        UiEvent::AssistiveFocus(CREATOR_INSPECTOR_X_MM),
+        UiEvent::SelectAllText,
+        UiEvent::TextCommit(edited_candidate.x_mm.to_string()),
+        UiEvent::AssistiveFocus(CREATOR_INSPECTOR_Y_MM),
+        UiEvent::SelectAllText,
+        UiEvent::TextCommit(edited_candidate.y_mm.to_string()),
+        UiEvent::AssistiveFocus(CREATOR_INSPECTOR_Z_MM),
+        UiEvent::SelectAllText,
+        UiEvent::TextCommit(edited_candidate.z_mm.to_string()),
+        UiEvent::AssistiveActivate(edit_placement),
+    ])?;
+    assert_creator_ui_command(&emitted, "editor.select-placement")?;
+    assert_creator_ui_command(&emitted, "editor.edit-placement")?;
+    let edited_translation = creator_workspace_for_smoke(&application)?
+        .session
+        .document()
+        .placements[&placement_id]
+        .translation;
+    if edited_translation == original_translation {
+        return Err(io::Error::other("Creator Alpha action adapter did not edit source").into());
     }
-    session.start_play()?;
-    session.set_play_translation(
-        placement.id,
-        Translation {
-            z_mm: 500,
-            ..session.document().placements[&placement.id].translation
-        },
+    assert_persisted_creator_source(
+        &source_path,
+        &creator_workspace_for_smoke(&application)?.session,
     )?;
-    session.discard_play()?;
-    journey.extend(["play-apply", "play-stop-discard"]);
-    Ok((session, journey))
-}
 
-fn recover_creator_alpha_session(
-    evidence_root: &Path,
-    session: &EditorSession,
-) -> AppResult<(EditorSession, CheckStatus)> {
-    let recovery_store = EditorRecoveryStore::new(evidence_root.join("editor-recovery.state"));
-    recovery_store.save(session)?;
-    let recovered = recovery_store.load()?;
-    if recovered.document() != session.document() {
+    let emitted = application.activate_workspace_action_for_smoke("editor.undo")?;
+    assert_creator_ui_command(&emitted, "editor.undo")?;
+    if creator_workspace_for_smoke(&application)?
+        .session
+        .document()
+        .placements[&placement_id]
+        .translation
+        != original_translation
+    {
         return Err(io::Error::other(
-            "Creator Alpha recovery did not restore authoritative source",
+            "Creator Alpha action-adapter undo did not restore persisted placement source",
         )
         .into());
     }
-    let workspace = creator_alpha_document(&recovered)
-        .map_err(|error| io::Error::other(format!("Creator Alpha UI invalid: {error:?}")))?;
-    let semantic_workspace = CheckStatus::from_bool(workspace.root().stable_id().get() == 1);
+    assert_persisted_creator_source(
+        &source_path,
+        &creator_workspace_for_smoke(&application)?.session,
+    )?;
+
+    let emitted = application.activate_workspace_action_for_smoke("editor.redo")?;
+    assert_creator_ui_command(&emitted, "editor.redo")?;
+    if creator_workspace_for_smoke(&application)?
+        .session
+        .document()
+        .placements[&placement_id]
+        .translation
+        != edited_translation
+    {
+        return Err(io::Error::other(
+            "Creator Alpha action-adapter redo did not restore persisted placement source",
+        )
+        .into());
+    }
+    assert_persisted_creator_source(
+        &source_path,
+        &creator_workspace_for_smoke(&application)?.session,
+    )?;
+
+    let emitted = application.activate_workspace_action_for_smoke("editor.play-start")?;
+    assert_creator_ui_command(&emitted, "editor.play-start")?;
+    let play_applied_translation = Translation {
+        y_mm: 250,
+        ..edited_translation
+    };
+    let edit_placement = application.creator_action_node("editor.edit-placement")?;
+    let emitted = application.reconcile_workspace_ui_events_for_smoke(vec![
+        UiEvent::AssistiveFocus(CREATOR_INSPECTOR_X_MM),
+        UiEvent::SelectAllText,
+        UiEvent::TextCommit(play_applied_translation.x_mm.to_string()),
+        UiEvent::AssistiveFocus(CREATOR_INSPECTOR_Y_MM),
+        UiEvent::SelectAllText,
+        UiEvent::TextCommit(play_applied_translation.y_mm.to_string()),
+        UiEvent::AssistiveFocus(CREATOR_INSPECTOR_Z_MM),
+        UiEvent::SelectAllText,
+        UiEvent::TextCommit(play_applied_translation.z_mm.to_string()),
+        UiEvent::AssistiveActivate(edit_placement),
+    ])?;
+    assert_creator_ui_command(&emitted, "editor.edit-placement")?;
+    let emitted = application.activate_workspace_action_for_smoke("editor.play-apply")?;
+    assert_creator_ui_command(&emitted, "editor.play-apply")?;
+    if creator_workspace_for_smoke(&application)?
+        .session
+        .document()
+        .placements[&placement_id]
+        .translation
+        .y_mm
+        != 250
+    {
+        return Err(io::Error::other("Creator Alpha Play Apply did not persist its diff").into());
+    }
+    assert_persisted_creator_source(
+        &source_path,
+        &creator_workspace_for_smoke(&application)?.session,
+    )?;
+
+    let source_before_discard = fs::read(&source_path)?;
+    let emitted = application.activate_workspace_action_for_smoke("editor.play-start")?;
+    assert_creator_ui_command(&emitted, "editor.play-start")?;
+    let applied_translation = creator_workspace_for_smoke(&application)?
+        .session
+        .document()
+        .placements[&placement_id]
+        .translation;
+    let play_discard_translation = Translation {
+        z_mm: 500,
+        ..applied_translation
+    };
+    let edit_placement = application.creator_action_node("editor.edit-placement")?;
+    let emitted = application.reconcile_workspace_ui_events_for_smoke(vec![
+        UiEvent::AssistiveFocus(CREATOR_INSPECTOR_X_MM),
+        UiEvent::SelectAllText,
+        UiEvent::TextCommit(play_discard_translation.x_mm.to_string()),
+        UiEvent::AssistiveFocus(CREATOR_INSPECTOR_Y_MM),
+        UiEvent::SelectAllText,
+        UiEvent::TextCommit(play_discard_translation.y_mm.to_string()),
+        UiEvent::AssistiveFocus(CREATOR_INSPECTOR_Z_MM),
+        UiEvent::SelectAllText,
+        UiEvent::TextCommit(play_discard_translation.z_mm.to_string()),
+        UiEvent::AssistiveActivate(edit_placement),
+    ])?;
+    assert_creator_ui_command(&emitted, "editor.edit-placement")?;
+    let emitted = application.activate_workspace_action_for_smoke("editor.play-discard")?;
+    assert_creator_ui_command(&emitted, "editor.play-discard")?;
+    if fs::read(&source_path)? != source_before_discard {
+        return Err(
+            io::Error::other("Creator Alpha discarded Play changed authoritative source").into(),
+        );
+    }
+
+    let emitted = application.activate_workspace_action_for_smoke("asset.reimport")?;
+    assert_creator_ui_command(&emitted, "asset.reimport")?;
+    assert_persisted_creator_source(
+        &source_path,
+        &creator_workspace_for_smoke(&application)?.session,
+    )?;
+
+    let expected_document = creator_workspace_for_smoke(&application)?
+        .session
+        .document()
+        .clone();
+    let mut reopened_application = CreatorApplication::new(Some(project_root), true)?;
+    let emitted = reopened_application.activate_workspace_action_for_smoke("editor.recover")?;
+    assert_creator_ui_command(&emitted, "editor.recover")?;
+    let reopened = creator_workspace_for_smoke_mut(&mut reopened_application)?;
+    if reopened.recovery_status != ProjectRecoveryStatus::Restored {
+        return Err(io::Error::other(
+            "Creator Alpha reopen did not safely restore source while discarding untrusted history",
+        )
+        .into());
+    }
+    if reopened.session.document() != &expected_document {
+        return Err(io::Error::other(
+            "Creator Alpha reopen did not rebuild the authoritative project source",
+        )
+        .into());
+    }
+    assert_persisted_creator_source(&source_path, &reopened.session)?;
+    if !matches!(reopened.session.undo(), Err(EditorError::NothingToUndo)) {
+        return Err(io::Error::other(
+            "Creator Alpha reopen accepted untrusted recovery undo history",
+        )
+        .into());
+    }
+    let workspace_document = creator_workspace_document(&reopened.session, &reopened.status)
+        .map_err(|error| {
+            io::Error::other(format!("Creator Alpha workspace UI invalid: {error:?}"))
+        })?;
+    let semantic_workspace =
+        CheckStatus::from_bool(workspace_document.root().stable_id().get() == 1);
     if semantic_workspace != CheckStatus::Pass {
         return Err(io::Error::other("Creator Alpha workspace root changed unexpectedly").into());
     }
-    Ok((recovered, semantic_workspace))
+    Ok((
+        reopened.session.clone(),
+        semantic_workspace,
+        vec![
+            "open",
+            "import",
+            "edit",
+            "undo",
+            "redo",
+            "play-apply",
+            "play-stop-discard",
+            "reimport",
+            "reopen",
+            "recover",
+        ],
+    ))
 }
 
-fn commit_creator_command(
-    session: &mut EditorSession,
-    command: EditorCommand,
-    label: &str,
-) -> AppResult<()> {
-    let affected_ids = match &command {
-        EditorCommand::RegisterImportedSource(source) => vec![source.id],
-        EditorCommand::RemoveImportedSource { source_id } => vec![*source_id],
-        EditorCommand::PlaceObject(placement) => vec![placement.id, placement.source_id],
-        EditorCommand::SetPlacementTranslation { placement_id, .. }
-        | EditorCommand::RemovePlacement { placement_id } => vec![*placement_id],
-    };
-    let transaction = meridian_editor_core::EditorTransaction {
-        command,
-        metadata: CommandMetadata::local(label, affected_ids),
-    };
-    session.preview(&transaction)?;
-    session.commit(transaction)?;
+fn creator_workspace_for_smoke(application: &CreatorApplication) -> AppResult<&CreatorWorkspace> {
+    match &application.screen {
+        CreatorScreen::Workspace(workspace) => Ok(workspace),
+        CreatorScreen::Hub => Err(io::Error::other(
+            "Creator Alpha smoke expected the live application to open a workspace",
+        )
+        .into()),
+    }
+}
+
+fn assert_creator_ui_command(commands: &[UiCommandRequest], expected: &str) -> AppResult<()> {
+    if commands.iter().any(|command| command.action == expected) {
+        return Ok(());
+    }
+    Err(io::Error::other(format!(
+        "Creator UI smoke did not emit the expected semantic action: {expected}"
+    ))
+    .into())
+}
+
+fn creator_workspace_for_smoke_mut(
+    application: &mut CreatorApplication,
+) -> AppResult<&mut CreatorWorkspace> {
+    match &mut application.screen {
+        CreatorScreen::Workspace(workspace) => Ok(workspace),
+        CreatorScreen::Hub => Err(io::Error::other(
+            "Creator Alpha smoke expected the reopened application to open a workspace",
+        )
+        .into()),
+    }
+}
+
+fn assert_persisted_creator_source(source_path: &Path, session: &EditorSession) -> AppResult<()> {
+    let expected = session.document().canonical_json()?;
+    let source = fs::read(source_path)?;
+    if source.as_slice() != expected.as_bytes() {
+        return Err(io::Error::other(
+            "Creator Alpha source is not canonical accepted session JSON",
+        )
+        .into());
+    }
+    let parsed = ProjectDocument::read_source(source_path)?;
+    if parsed != *session.document() {
+        return Err(
+            io::Error::other("Creator Alpha source does not match accepted session").into(),
+        );
+    }
     Ok(())
 }
 
@@ -2201,13 +4282,11 @@ fn suffixed_path(path: &Path, suffix: &str) -> PathBuf {
 enum UiSmokeStage {
     Recovery,
     RuntimeOverlay,
-    CreatorAlpha,
 }
 
 struct UiNativeSmokeApplication {
     recovery_runtime: UiRuntime,
     overlay_runtime: UiRuntime,
-    creator_alpha_runtime: Option<UiRuntime>,
     display_list: DisplayList,
     logical_viewport: UiSize,
     scale_factor: f32,
@@ -2228,7 +4307,6 @@ impl UiNativeSmokeApplication {
         let mut application = Self {
             recovery_runtime: UiRuntime::new(recovery_document),
             overlay_runtime: UiRuntime::new(overlay_document),
-            creator_alpha_runtime: None,
             display_list: DisplayList::default(),
             logical_viewport: UiSize::new(960.0, 540.0),
             scale_factor: 1.0,
@@ -2240,29 +4318,6 @@ impl UiNativeSmokeApplication {
             surface_attempts: 0,
         };
         application.refresh_display(WindowSize::new(960, 540), 1.0);
-        Ok(application)
-    }
-
-    fn creator_alpha(document: UiDocument) -> AppResult<Self> {
-        let recovery_document = recovery_panel_document()
-            .map_err(|error| io::Error::other(format!("recovery UI fixture invalid: {error:?}")))?;
-        let overlay_document = runtime_overlay_document()
-            .map_err(|error| io::Error::other(format!("runtime UI fixture invalid: {error:?}")))?;
-        let mut application = Self {
-            recovery_runtime: UiRuntime::new(recovery_document),
-            overlay_runtime: UiRuntime::new(overlay_document),
-            creator_alpha_runtime: Some(UiRuntime::new(document)),
-            display_list: DisplayList::default(),
-            logical_viewport: UiSize::new(1280.0, 800.0),
-            scale_factor: 1.0,
-            physical_size: WindowSize::new(1280, 800),
-            stage: UiSmokeStage::CreatorAlpha,
-            rhi: None,
-            renderer: None,
-            structural_fallback_submitted: false,
-            surface_attempts: 0,
-        };
-        application.refresh_display(WindowSize::new(1280, 800), 1.0);
         Ok(application)
     }
 
@@ -2282,13 +4337,6 @@ impl UiNativeSmokeApplication {
         self.display_list = match self.stage {
             UiSmokeStage::Recovery => self.recovery_runtime.reconcile(input).display_list,
             UiSmokeStage::RuntimeOverlay => self.overlay_runtime.reconcile(input).display_list,
-            UiSmokeStage::CreatorAlpha => {
-                self.creator_alpha_runtime
-                    .as_mut()
-                    .expect("Creator Alpha UI stage owns its runtime")
-                    .reconcile(input)
-                    .display_list
-            }
         };
     }
 
@@ -2375,10 +4423,7 @@ impl UiNativeSmokeApplication {
     }
 
     fn advance_stage(&mut self, context: &mut PlatformContext<'_>) -> AppResult<()> {
-        if matches!(
-            self.stage,
-            UiSmokeStage::RuntimeOverlay | UiSmokeStage::CreatorAlpha
-        ) {
+        if self.stage == UiSmokeStage::RuntimeOverlay {
             context.exit();
             return Ok(());
         }
@@ -2390,6 +4435,7 @@ impl UiNativeSmokeApplication {
         Ok(())
     }
 
+    #[allow(clippy::needless_pass_by_value)] // PlatformApplication transfers event ownership.
     fn handle_event(&mut self, event: PlatformEvent, context: &mut PlatformContext<'_>) {
         let result: AppResult<()> = match event {
             PlatformEvent::WindowCreated { .. } => match context.window().cloned() {
@@ -2412,7 +4458,11 @@ impl UiNativeSmokeApplication {
             PlatformEvent::Resumed
             | PlatformEvent::Suspended
             | PlatformEvent::Focused(_)
+            | PlatformEvent::ModifiersChanged(_)
             | PlatformEvent::Input(_)
+            | PlatformEvent::PointerMoved { .. }
+            | PlatformEvent::TextCommit(_)
+            | PlatformEvent::ImePreedit { .. }
             | PlatformEvent::MemoryWarning => Ok(()),
         };
         if let Err(error) = result {
@@ -2849,8 +4899,9 @@ impl PlatformApplication for MeridianApplication {
 }
 
 impl MeridianApplication {
+    #[allow(clippy::needless_pass_by_value)] // Event-envelope ownership is defined by the app callback.
     fn handle_event(&mut self, envelope: PlatformEventEnvelope, context: &mut PlatformContext<'_>) {
-        let transition = self.lifecycle.observe_platform(envelope.event);
+        let transition = self.lifecycle.observe_platform(&envelope.event);
         self.prepared.runtime_epoch = transition.epoch;
         let mut platform_event = DiagnosticEvent::new(
             "RUN-PLATFORM-EVENT",
@@ -2859,7 +4910,7 @@ impl MeridianApplication {
             "meridian-platform",
         )
         .correlated(self.prepared.operation_id, self.prepared.trace_id)
-        .with_field("event", platform_event_name(envelope.event));
+        .with_field("event", platform_event_name(&envelope.event));
         platform_event.monotonic_ns = envelope.metadata.monotonic_ns;
         platform_event.runtime_epoch = transition.epoch;
         self.prepared.timeline.push(platform_event);
@@ -2953,7 +5004,7 @@ fn frame_outcome_name(outcome: FrameOutcome) -> String {
     format!("{outcome:?}")
 }
 
-fn platform_event_name(event: PlatformEvent) -> &'static str {
+fn platform_event_name(event: &PlatformEvent) -> &'static str {
     match event {
         PlatformEvent::Resumed => "resumed",
         PlatformEvent::Suspended => "suspended",
@@ -2962,7 +5013,11 @@ fn platform_event_name(event: PlatformEvent) -> &'static str {
         PlatformEvent::ScaleFactorChanged { .. } => "scale-factor-changed",
         PlatformEvent::Focused(true) => "focused",
         PlatformEvent::Focused(false) => "unfocused",
+        PlatformEvent::ModifiersChanged(_) => "modifiers-changed",
         PlatformEvent::Input(_) => "input",
+        PlatformEvent::PointerMoved { .. } => "pointer-moved",
+        PlatformEvent::TextCommit(_) => "text-commit",
+        PlatformEvent::ImePreedit { .. } => "ime-preedit",
         PlatformEvent::RedrawRequested => "redraw-requested",
         PlatformEvent::CloseRequested => "close-requested",
         PlatformEvent::MemoryWarning => "memory-warning",
@@ -3063,10 +5118,42 @@ fn write_evidence_bundle(
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
-    let temporary = suffixed_path(path, ".tmp");
+    let maximum = SaveConfig::default().max_payload_bytes;
+    if bytes.len() > maximum {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "atomic payload is {} bytes; maximum is {maximum}",
+                bytes.len()
+            ),
+        )
+        .into());
+    }
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .ok_or_else(|| io::Error::other("atomic destination has no parent directory"))?;
+    let parent_metadata = fs::symlink_metadata(parent)?;
+    if !parent_metadata.file_type().is_dir() || parent_metadata.file_type().is_symlink() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "atomic destination parent must be a real directory",
+        )
+        .into());
+    }
+    if path.exists() {
+        let metadata = fs::symlink_metadata(path)?;
+        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "atomic destination must be a regular non-symlink file",
+            )
+            .into());
+        }
+    }
+    let temporary = atomic_temporary_path(path);
     let mut file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .write(true)
         .open(&temporary)?;
     file.write_all(bytes)?;
@@ -3079,6 +5166,39 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
     Ok(())
 }
 
+fn read_bounded_regular_file(path: &Path, label: &str) -> AppResult<Vec<u8>> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{label} must be a regular non-symlink file"),
+        )
+        .into());
+    }
+    let size = usize::try_from(metadata.len()).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{label} length is not supported"),
+        )
+    })?;
+    let maximum = SaveConfig::default().max_payload_bytes;
+    if size > maximum {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{label} is {size} bytes; maximum is {maximum}"),
+        )
+        .into());
+    }
+    Ok(fs::read(path)?)
+}
+
+fn atomic_temporary_path(path: &Path) -> PathBuf {
+    let sequence = NEXT_ATOMIC_WRITE_ID.fetch_add(1, Ordering::Relaxed);
+    let mut temporary = OsString::from(path.as_os_str());
+    temporary.push(format!(".{}.{}.tmp", std::process::id(), sequence));
+    PathBuf::from(temporary)
+}
+
 #[allow(clippy::cast_possible_truncation)]
 fn f64_to_f32(value: f64) -> f32 {
     value as f32
@@ -3086,9 +5206,27 @@ fn f64_to_f32(value: f64) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    use meridian_ui_editor::creator_alpha_panels;
+
     use super::*;
     use serde_json::Value;
+    use std::cell::Cell;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct FakeCreatorProjectPicker {
+        selection: Option<PathBuf>,
+        invocations: Cell<usize>,
+    }
+
+    impl CreatorProjectPicker for FakeCreatorProjectPicker {
+        fn pick_directory(
+            &self,
+            _window: Option<&meridian_platform::PlatformWindow>,
+        ) -> Option<PathBuf> {
+            self.invocations.set(self.invocations.get() + 1);
+            self.selection.clone()
+        }
+    }
 
     #[test]
     fn argument_parser_accepts_bounded_smoke_configuration() {
@@ -3265,5 +5403,543 @@ mod tests {
             imported.metadata.source_hash.to_string(),
             "ae037da0e1bdfb1175812ac7333322c7dea5b7c4032a1c5ad8f532f1d7535569"
         );
+    }
+
+    #[test]
+    fn public_creator_sample_source_matches_the_dat_import_authority() {
+        let root = workspace_root()
+            .expect("workspace root")
+            .join("examples/creator-alpha");
+        let manifest: CreatorAlphaManifest = serde_json::from_slice(
+            &fs::read(root.join(CREATOR_ALPHA_MANIFEST)).expect("manifest reads"),
+        )
+        .expect("manifest parses");
+        let imported = import_creator_alpha_source(&root, &manifest.imported_asset)
+            .expect("public source imports");
+        let document = ProjectDocument::read_source(root.join(CREATOR_PROJECT_SOURCE))
+            .expect("canonical project source parses");
+        assert_eq!(document.sources.get(&imported.id), Some(&imported));
+        assert_eq!(
+            document.placements[&manifest.placement.id].source_id,
+            imported.id
+        );
+    }
+
+    #[test]
+    fn creator_hub_actions_are_bounded_and_unknown_actions_are_rejected() {
+        assert!(matches!(
+            CreatorUiAction::parse("hub.open-recent:0"),
+            Ok(CreatorUiAction::OpenRecent(0))
+        ));
+        assert!(CreatorUiAction::parse("hub.open-recent:not-an-index").is_err());
+        assert!(CreatorUiAction::parse("untrusted.run-shell").is_err());
+        for panel in creator_alpha_panels() {
+            for action in panel.commands {
+                assert!(
+                    CreatorUiAction::parse(action).is_ok(),
+                    "{} exposes an unhandled Creator action: {action}",
+                    panel.title
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)] // Covers the complete typed Inspector transaction boundary.
+    fn typed_inspector_ui_edits_persist_and_reject_invalid_or_noop_source_changes() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let parent = std::env::temp_dir().join(format!("meridian-creator-inspector-{nonce}"));
+        fs::create_dir(&parent).expect("temporary parent");
+        let root = create_public_creator_project(&parent, "Public Creator Project")
+            .expect("public project creates");
+        let mut application =
+            CreatorApplication::new(Some(&root), true).expect("public Creator workspace opens");
+        let (
+            placement_id,
+            source_path,
+            original,
+            original_document,
+            original_generation,
+            original_undo,
+        ) = {
+            let workspace = creator_workspace_for_smoke(&application).expect("workspace");
+            let placement_id = first_placement_id(&workspace.session).expect("placement");
+            (
+                placement_id,
+                workspace.project_store.source_path().to_path_buf(),
+                workspace.session.document().placements[&placement_id].translation,
+                workspace.session.document().clone(),
+                workspace.session.document().generation,
+                workspace.session.undo_depth(),
+            )
+        };
+        let source_before = fs::read(&source_path).expect("source reads");
+        let edit = application
+            .creator_action_node("editor.edit-placement")
+            .expect("edit action exists");
+        let emitted = application
+            .reconcile_workspace_ui_events_for_smoke(vec![
+                UiEvent::AssistiveFocus(CREATOR_INSPECTOR_X_MM),
+                UiEvent::SelectAllText,
+                UiEvent::TextCommit("not-a-millimetre".to_owned()),
+                UiEvent::AssistiveActivate(edit),
+            ])
+            .expect("invalid UI action remains a diagnostic");
+        assert_creator_ui_command(&emitted, "editor.edit-placement").expect("semantic action");
+        {
+            let workspace = creator_workspace_for_smoke(&application).expect("workspace");
+            assert_eq!(fs::read(&source_path).expect("source reads"), source_before);
+            assert_eq!(workspace.session.document(), &original_document);
+            assert_eq!(workspace.session.document().generation, original_generation);
+            assert_eq!(workspace.session.undo_depth(), original_undo);
+            assert!(workspace
+                .status
+                .contains("X coordinate must be a signed whole millimetre value"));
+        }
+
+        let candidate = Translation {
+            x_mm: original
+                .x_mm
+                .checked_add(375)
+                .expect("bounded test coordinate"),
+            ..original
+        };
+        let emitted = application
+            .reconcile_workspace_ui_events_for_smoke(vec![
+                UiEvent::AssistiveFocus(CREATOR_INSPECTOR_X_MM),
+                UiEvent::SelectAllText,
+                UiEvent::TextCommit(candidate.x_mm.to_string()),
+                UiEvent::AssistiveFocus(CREATOR_INSPECTOR_Y_MM),
+                UiEvent::SelectAllText,
+                UiEvent::TextCommit(candidate.y_mm.to_string()),
+                UiEvent::AssistiveFocus(CREATOR_INSPECTOR_Z_MM),
+                UiEvent::SelectAllText,
+                UiEvent::TextCommit(candidate.z_mm.to_string()),
+                UiEvent::AssistiveActivate(edit),
+            ])
+            .expect("valid UI edit persists");
+        assert_creator_ui_command(&emitted, "editor.edit-placement").expect("semantic action");
+        {
+            let workspace = creator_workspace_for_smoke(&application).expect("workspace");
+            assert_eq!(
+                workspace.session.document().placements[&placement_id].translation,
+                candidate
+            );
+            assert_persisted_creator_source(&source_path, &workspace.session)
+                .expect("canonical source persists");
+        }
+        assert_eq!(
+            application.ui.text_input_value(CREATOR_INSPECTOR_X_MM),
+            Some(candidate.x_mm.to_string().as_str())
+        );
+
+        let (source_after_edit, generation_after_edit, undo_after_edit) = {
+            let workspace = creator_workspace_for_smoke(&application).expect("workspace");
+            (
+                fs::read(&source_path).expect("source reads"),
+                workspace.session.document().generation,
+                workspace.session.undo_depth(),
+            )
+        };
+        let emitted = application
+            .reconcile_workspace_ui_events_for_smoke(vec![UiEvent::AssistiveActivate(edit)])
+            .expect("no-op UI edit remains a diagnostic");
+        assert_creator_ui_command(&emitted, "editor.edit-placement").expect("semantic action");
+        {
+            let workspace = creator_workspace_for_smoke(&application).expect("workspace");
+            assert_eq!(
+                fs::read(&source_path).expect("source reads"),
+                source_after_edit
+            );
+            assert_eq!(
+                workspace.session.document().generation,
+                generation_after_edit
+            );
+            assert_eq!(workspace.session.undo_depth(), undo_after_edit);
+            assert!(workspace.status.starts_with("No source change:"));
+        }
+
+        let emitted = application
+            .activate_workspace_action_for_smoke("editor.undo")
+            .expect("undo action routes through UI");
+        assert_creator_ui_command(&emitted, "editor.undo").expect("semantic undo action");
+        assert_eq!(
+            creator_workspace_for_smoke(&application)
+                .expect("workspace")
+                .session
+                .document()
+                .placements[&placement_id]
+                .translation,
+            original
+        );
+        let expected_x = original.x_mm.to_string();
+        assert_eq!(
+            application.ui.text_input_value(CREATOR_INSPECTOR_X_MM),
+            Some(expected_x.as_str())
+        );
+
+        fs::remove_dir_all(parent).expect("temporary project removes");
+    }
+
+    #[test]
+    fn explicit_picker_cancellation_and_invalid_selection_stay_in_hub_remediation() {
+        let mut application =
+            CreatorApplication::new(None, true).expect("Creator hub initializes without a picker");
+        application
+            .execute_explicit_picker_action(
+                CreatorUiAction::OpenProject,
+                &FakeCreatorProjectPicker {
+                    selection: None,
+                    invocations: Cell::new(0),
+                },
+                None,
+            )
+            .expect("picker cancellation remains a hub result");
+        assert_eq!(application.hub_status, "Project open cancelled.");
+        assert!(matches!(application.screen, CreatorScreen::Hub));
+
+        application
+            .execute_explicit_picker_action(
+                CreatorUiAction::OpenProject,
+                &FakeCreatorProjectPicker {
+                    selection: Some(PathBuf::from("not-a-creator-project")),
+                    invocations: Cell::new(0),
+                },
+                None,
+            )
+            .expect("invalid picker selection remains a hub result");
+        assert!(matches!(application.screen, CreatorScreen::Hub));
+        assert!(application
+            .hub_status
+            .starts_with("Unable to open the selected project:"));
+
+        let forbidden_picker = FakeCreatorProjectPicker {
+            selection: None,
+            invocations: Cell::new(0),
+        };
+        assert!(application
+            .execute_explicit_picker_action(CreatorUiAction::ReturnHub, &forbidden_picker, None)
+            .is_err());
+        assert_eq!(forbidden_picker.invocations.get(), 0);
+    }
+
+    #[test]
+    fn interactive_creator_lifetime_is_persistent_while_ui_smoke_is_bounded() {
+        assert_eq!(MeridianOptions::default().mode, RunMode::Interactive);
+        assert_eq!(creator_event_loop_mode(false), EventLoopMode::Wait);
+        assert_eq!(creator_event_loop_mode(true), EventLoopMode::Poll);
+        assert!(!creator_exits_after_visible_presentation(false, u8::MAX));
+        assert!(!creator_exits_after_surface_attempt(false, u8::MAX));
+        assert!(!creator_exits_after_visible_presentation(true, 1));
+        assert!(creator_exits_after_visible_presentation(true, 2));
+        assert!(creator_requests_follow_up_redraw(false, 1, false));
+        assert!(!creator_requests_follow_up_redraw(false, 2, false));
+        assert!(creator_requests_follow_up_redraw(false, 2, true));
+        assert!(creator_requests_follow_up_redraw(true, 1, false));
+        assert!(!creator_requests_follow_up_redraw(true, 2, false));
+        assert!(!creator_exits_after_surface_attempt(true, 2));
+        assert!(creator_exits_after_surface_attempt(
+            true,
+            UI_SMOKE_MAX_PRESENT_ATTEMPTS
+        ));
+        assert!(!creator_surface_is_renderable(WindowSize::new(0, 800)));
+        assert!(!creator_surface_is_renderable(WindowSize::new(1280, 0)));
+        assert!(creator_surface_is_renderable(WindowSize::new(1280, 800)));
+
+        let mut application =
+            CreatorApplication::new(None, true).expect("Creator hub initializes for bootstrap");
+        application.schedule_bootstrap_renderer_refresh();
+        assert!(application.take_bootstrap_renderer_refresh());
+        assert!(!application.take_bootstrap_renderer_refresh());
+    }
+
+    #[test]
+    fn creator_pointer_routes_real_press_and_release() {
+        let mut application =
+            CreatorApplication::new(None, true).expect("Creator hub initializes for input");
+        application.pointer = UiPoint { x: 120.0, y: 80.0 };
+
+        application.route_input(NativeInputEvent::Button {
+            control: ButtonControl::Mouse(meridian_input::MouseButton::Left),
+            down: true,
+        });
+        assert_eq!(
+            application.pending_events,
+            vec![UiEvent::PointerDown(application.pointer)]
+        );
+
+        application.route_input(NativeInputEvent::Button {
+            control: ButtonControl::Mouse(meridian_input::MouseButton::Left),
+            down: false,
+        });
+        assert_eq!(
+            application.pending_events,
+            vec![
+                UiEvent::PointerDown(application.pointer),
+                UiEvent::PointerUp(application.pointer)
+            ]
+        );
+    }
+
+    #[test]
+    fn creator_reports_unavailable_clipboard_without_mutating_source() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let parent = std::env::temp_dir().join(format!("meridian-creator-copy-{nonce}"));
+        fs::create_dir(&parent).expect("temporary parent");
+        let root = create_public_creator_project(&parent, "Public Creator Project")
+            .expect("public project creates");
+        let mut application =
+            CreatorApplication::new(Some(&root), true).expect("public Creator workspace opens");
+        let source_path = creator_workspace_for_smoke(&application)
+            .expect("workspace")
+            .project_store
+            .source_path()
+            .to_path_buf();
+        let source_before = fs::read(&source_path).expect("source reads");
+
+        application
+            .reconcile_workspace_ui_events_for_smoke(vec![
+                UiEvent::AssistiveFocus(CREATOR_INSPECTOR_X_MM),
+                UiEvent::SelectAllText,
+                UiEvent::CopySelection,
+            ])
+            .expect("copy request remains a typed UI result");
+
+        let workspace = creator_workspace_for_smoke(&application).expect("workspace");
+        assert_eq!(fs::read(&source_path).expect("source reads"), source_before);
+        assert_eq!(
+            workspace.status,
+            "Copy is unavailable until Meridian's platform clipboard adapter is active."
+        );
+        fs::remove_dir_all(parent).expect("temporary project removes");
+    }
+
+    #[test]
+    fn creator_terminal_errors_remain_typed_for_the_platform_runner() {
+        let mut application = CreatorApplication::new(None, true)
+            .expect("Creator hub initializes for failure handoff");
+
+        application.record_terminal_error("synthetic renderer failure");
+
+        let error = application
+            .terminal_error()
+            .expect("Creator retains terminal application failure");
+        assert_eq!(
+            error.kind(),
+            meridian_platform::PlatformErrorKind::Application
+        );
+        assert!(error.to_string().contains("synthetic renderer failure"));
+    }
+
+    #[test]
+    fn zero_extent_creator_surface_skips_renderer_rebuild_until_restore() {
+        let rebuild_calls = Cell::new(0);
+        let skipped = rebuild_for_renderable_creator_surface(WindowSize::new(0, 0), || {
+            rebuild_calls.set(rebuild_calls.get() + 1);
+            Ok(())
+        })
+        .expect("minimized Creator surface is nonfatal");
+        assert!(skipped.is_none());
+        assert_eq!(rebuild_calls.get(), 0);
+
+        let rebuilt = rebuild_for_renderable_creator_surface(WindowSize::new(1280, 800), || {
+            rebuild_calls.set(rebuild_calls.get() + 1);
+            Ok(())
+        })
+        .expect("restored Creator surface is nonfatal");
+        assert_eq!(rebuilt, Some(()));
+        assert_eq!(rebuild_calls.get(), 1);
+    }
+
+    #[test]
+    fn recent_state_write_failure_does_not_block_an_authoritative_project_open() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let parent = std::env::temp_dir().join(format!("meridian-creator-recent-save-{nonce}"));
+        fs::create_dir(&parent).expect("temporary parent");
+        let root = create_public_creator_project(&parent, "Public Creator Project")
+            .expect("public project creates");
+        let blocked_parent = parent.join("recents-parent-is-a-file");
+        fs::write(&blocked_parent, b"not a directory").expect("blocked state parent writes");
+
+        let mut application =
+            CreatorApplication::new(None, true).expect("Creator hub initializes without a project");
+        application.hub_store = CreatorHubStore {
+            path: blocked_parent.join("launch-hub.json"),
+        };
+        application
+            .open_project(&root)
+            .expect("authoritative project opens despite recents failure");
+
+        let CreatorScreen::Workspace(workspace) = &application.screen else {
+            panic!("Creator project did not open a workspace");
+        };
+        assert!(workspace
+            .status
+            .contains("Recent-project state could not be saved"));
+        assert_eq!(
+            workspace.session.document().schema,
+            meridian_editor_core::PROJECT_SCHEMA
+        );
+        fs::remove_dir_all(parent).expect("temporary project removes");
+    }
+
+    #[test]
+    fn creator_hub_rejects_oversized_state_before_reading_it() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let parent = std::env::temp_dir().join(format!("meridian-creator-hub-bound-{nonce}"));
+        fs::create_dir(&parent).expect("temporary parent");
+        let path = parent.join("launch-hub.json");
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .expect("sparse hub state creates");
+        file.set_len(
+            u64::try_from(SaveConfig::default().max_payload_bytes + 1)
+                .expect("test bound fits u64"),
+        )
+        .expect("sparse hub state grows");
+        let store = CreatorHubStore { path };
+
+        let error = store.load().expect_err("oversized hub state is rejected");
+        assert!(error.to_string().contains("maximum"));
+        fs::remove_dir_all(parent).expect("temporary project removes");
+    }
+
+    #[test]
+    fn atomic_writer_does_not_reuse_a_predictable_temporary_path() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let parent = std::env::temp_dir().join(format!("meridian-atomic-write-{nonce}"));
+        fs::create_dir(&parent).expect("temporary parent");
+        let path = parent.join("state.json");
+        let legacy_temporary = suffixed_path(&path, ".tmp");
+        fs::write(&legacy_temporary, b"do not replace").expect("legacy temporary writes");
+
+        write_atomic(&path, b"accepted").expect("unique atomic write succeeds");
+
+        assert_eq!(fs::read(&path).expect("destination reads"), b"accepted");
+        assert_eq!(
+            fs::read(&legacy_temporary).expect("legacy temporary reads"),
+            b"do not replace"
+        );
+        fs::remove_dir_all(parent).expect("temporary project removes");
+    }
+
+    #[test]
+    fn failed_creator_build_worker_start_is_typed_and_does_not_publish_a_build() {
+        fn reject_worker(_: Box<dyn FnOnce() + Send>) -> io::Result<()> {
+            Err(io::Error::other("test worker refusal"))
+        }
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let parent = std::env::temp_dir().join(format!("meridian-creator-build-start-{nonce}"));
+        fs::create_dir(&parent).expect("temporary parent");
+        let root = create_public_creator_project(&parent, "Public Creator Project")
+            .expect("public project creates");
+        let mut workspace = CreatorWorkspace::open(&root).expect("created project opens");
+        let status_before = workspace.status.clone();
+
+        let error = workspace
+            .start_build_with_spawner(reject_worker)
+            .expect_err("worker start refusal must be typed");
+        assert!(error
+            .to_string()
+            .contains("unable to start Creator build worker"));
+        assert!(workspace.build.is_none());
+        assert_eq!(workspace.status, status_before);
+        assert!(!root
+            .join("target/meridian-build/creator-alpha/creator-alpha-build-input.json")
+            .exists());
+        fs::remove_dir_all(parent).expect("temporary project removes");
+    }
+
+    #[test]
+    fn repeated_model_actions_allocate_fresh_stable_source_ids() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let parent = std::env::temp_dir().join(format!("meridian-creator-model-repeat-{nonce}"));
+        fs::create_dir(&parent).expect("temporary parent");
+        let root = create_public_creator_project(&parent, "Public Creator Project")
+            .expect("public project creates");
+        let mut application =
+            CreatorApplication::new(Some(&root), true).expect("public Creator workspace opens");
+        let (initial_objects, model_path) = {
+            let workspace = creator_workspace_for_smoke(&application).expect("workspace");
+            (
+                workspace.model_session.current().document().objects.len(),
+                workspace.model_path.clone(),
+            )
+        };
+
+        application
+            .activate_workspace_action_for_smoke("model.create-primitive")
+            .expect("first primitive creates");
+        application
+            .activate_workspace_action_for_smoke("model.create-primitive")
+            .expect("second primitive creates with fresh IDs");
+        application
+            .activate_workspace_action_for_smoke("model.split-edge")
+            .expect("first edge split succeeds");
+        application
+            .activate_workspace_action_for_smoke("model.split-edge")
+            .expect("second edge split succeeds with fresh IDs");
+
+        let document = creator_workspace_for_smoke(&application)
+            .expect("workspace")
+            .model_session
+            .current()
+            .document();
+        assert_eq!(document.objects.len(), initial_objects + 2);
+        document
+            .validate()
+            .expect("repeated actions preserve topology and identity");
+        let source = ModelDocument::read_source(model_path).expect("model source persists");
+        assert_eq!(
+            source.canonical_json().expect("source canonicalizes"),
+            document.canonical_json().expect("session canonicalizes")
+        );
+        fs::remove_dir_all(parent).expect("temporary project removes");
+    }
+
+    #[test]
+    fn create_project_copies_only_public_creator_source_and_opens_it() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let parent = std::env::temp_dir().join(format!("meridian-creator-create-{nonce}"));
+        fs::create_dir(&parent).expect("temporary parent");
+        let root = create_public_creator_project(&parent, "Public Creator Project")
+            .expect("public project creates");
+        let workspace = CreatorWorkspace::open(&root).expect("created project opens");
+        assert_eq!(
+            workspace.session.document().schema,
+            meridian_editor_core::PROJECT_SCHEMA
+        );
+        assert_eq!(workspace.session.document().placements.len(), 1);
+        assert_eq!(workspace.session.selection().ids.len(), 1);
+        assert!(root.join(CREATOR_PROJECT_SOURCE).is_file());
+        assert!(!root.join("game").exists());
+        fs::remove_dir_all(parent).expect("temporary project removes");
     }
 }

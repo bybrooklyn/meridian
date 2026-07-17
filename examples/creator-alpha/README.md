@@ -2,7 +2,9 @@
 
 This is a generic public project for Meridian Creator Alpha evidence. It contains
 one imported public mesh source, one editable world placement, one editable-model
-source document, and one deterministic procedural-placement recipe. It contains no
+source document, and one deterministic procedural-placement recipe. Its canonical
+`project.meridian.json` is the source-authoritative Creator project document;
+`.meridian/` is local recovery state and is never source authority. It contains no
 Project Meridian content.
 
 Run the end-to-end Editor Alpha smoke with an explicit evidence destination:
@@ -21,9 +23,10 @@ cargo run -p meridian-editor -- --creator-alpha-ui-smoke \
   --project examples/creator-alpha
 ```
 
-This review smoke verifies native composition of the semantic workspace. An
-occluded surface is reported as structural-only evidence and is not a visual
-quality result.
+This bounded native smoke opens the same persistent Creator application used by
+normal `meridian` launch and then exits after its review frames. An occluded
+surface is reported as structural-only evidence and is not a visual-quality
+result.
 
 The recipe and editable-model source are intentionally public source inputs.
 `WP-PRC-001` evaluates the recipe through the strict scalar reference path and

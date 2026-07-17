@@ -494,7 +494,7 @@ Acceptance for `WP-PRC-002` requires a reproducible sanitized forest/field corpu
 
 | Package | Result | Milestone | Status |
 |---|---|---|---|
-| `WP-PRC-001` | typed recipe, field, strict evaluator, cache, identity, overrides, provenance, text/headless/basic inspector | `MS-03`, `MS-05` | Active |
+| `WP-PRC-001` | typed recipe, field, strict evaluator, cache, identity, overrides, provenance, text/headless/basic inspector | `MS-03`, `MS-05` | ImplementedFoundation |
 | `WP-PRC-002` | Project Meridian environmental proving recipes and sanitized corpus | `MS-05` | Planned |
 | `WP-PRC-003` | Alluvium–Basalt terrain and field production integration | `MS-05`, `MS-08` | Planned |
 | `WP-PRC-004` | vegetation and ecosystem production integration | `MS-05`, `MS-08` | Planned |

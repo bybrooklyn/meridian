@@ -1,0 +1,8 @@
+Meridian is an unsigned developer preview. It is downloadable but is not
+Developer ID signed or notarized. Verify the published SHA-256 before opening.
+macOS Gatekeeper may require the user to explicitly allow this app through the
+standard Open Anyway / Privacy & Security flow. Do not treat that override as a
+trust, security, signing, or notarization claim.
+
+The build may contain macOS's automatic ad-hoc Mach-O marker. It has no
+Developer ID identity and does not create verified developer trust.

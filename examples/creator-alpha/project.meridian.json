@@ -1,0 +1,25 @@
+{
+  "schema": "meridian.creator-project/v1",
+  "id": 1001,
+  "generation": 0,
+  "sources": {
+    "152035140716559442984034638058563022253": {
+      "id": 152035140716559442984034638058563022253,
+      "label": "Public triangle source",
+      "source_path": "assets/public-triangle.mesh.json",
+      "source_hash": "8c6da7bbd477df5879523b7d7c1d0c96e725cb6c9c21973795d4d6d44bb552ca"
+    }
+  },
+  "placements": {
+    "1003": {
+      "id": 1003,
+      "source_id": 152035140716559442984034638058563022253,
+      "label": "Public triangle placement",
+      "translation": {
+        "x_mm": 0,
+        "y_mm": 0,
+        "z_mm": 0
+      }
+    }
+  }
+}

@@ -9,7 +9,7 @@ use meridian_core::{MonotonicNs, RuntimeEpoch};
 use meridian_input::{winit_adapter, NativeInputEvent};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{DeviceEvent, WindowEvent};
+use winit::event::{DeviceEvent, Ime, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
@@ -112,15 +112,49 @@ impl HasDisplayHandle for PlatformWindow {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Keyboard modifiers normalized for Meridian application shortcuts.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[allow(clippy::struct_excessive_bools)] // Independent platform modifier keys are not a state machine.
+pub struct PlatformModifiers {
+    pub shift: bool,
+    pub control: bool,
+    pub alt: bool,
+    pub command: bool,
+}
+
+impl PlatformModifiers {
+    /// Returns whether the platform's primary command modifier is held.
+    #[must_use]
+    pub const fn primary_command(self) -> bool {
+        self.control || self.command
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum PlatformEvent {
     Resumed,
     Suspended,
-    WindowCreated { size: WindowSize, scale_factor: f64 },
+    WindowCreated {
+        size: WindowSize,
+        scale_factor: f64,
+    },
     Resized(WindowSize),
-    ScaleFactorChanged { scale_factor: f64, size: WindowSize },
+    ScaleFactorChanged {
+        scale_factor: f64,
+        size: WindowSize,
+    },
     Focused(bool),
+    ModifiersChanged(PlatformModifiers),
     Input(NativeInputEvent),
+    PointerMoved {
+        x: f32,
+        y: f32,
+    },
+    TextCommit(String),
+    ImePreedit {
+        text: String,
+        cursor: Option<(usize, usize)>,
+    },
     RedrawRequested,
     CloseRequested,
     MemoryWarning,
@@ -134,7 +168,7 @@ pub struct PlatformEventMetadata {
     pub runtime_epoch: RuntimeEpoch,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PlatformEventEnvelope {
     pub metadata: PlatformEventMetadata,
     pub event: PlatformEvent,
@@ -212,7 +246,7 @@ impl RuntimeLifecycle {
         self.last_non_zero_size
     }
 
-    pub fn observe_platform(&mut self, event: PlatformEvent) -> LifecycleTransition {
+    pub fn observe_platform(&mut self, event: &PlatformEvent) -> LifecycleTransition {
         let (next, rebuild, invalidates) = match event {
             PlatformEvent::Resumed => (LifecycleState::Ready, RuntimeRebuildAction::None, false),
             PlatformEvent::WindowCreated { size, .. }
@@ -221,7 +255,7 @@ impl RuntimeLifecycle {
                 if size.is_zero() {
                     (LifecycleState::ZeroExtent, RuntimeRebuildAction::None, true)
                 } else {
-                    self.last_non_zero_size = Some(size);
+                    self.last_non_zero_size = Some(*size);
                     (
                         LifecycleState::Ready,
                         RuntimeRebuildAction::ReconfigureSurface,
@@ -236,7 +270,11 @@ impl RuntimeLifecycle {
                 (LifecycleState::Exiting, RuntimeRebuildAction::Exit, true)
             }
             PlatformEvent::Focused(_)
+            | PlatformEvent::ModifiersChanged(_)
             | PlatformEvent::Input(_)
+            | PlatformEvent::PointerMoved { .. }
+            | PlatformEvent::TextCommit(_)
+            | PlatformEvent::ImePreedit { .. }
             | PlatformEvent::RedrawRequested
             | PlatformEvent::MemoryWarning => {
                 return self.transition(self.state, RuntimeRebuildAction::None, false);
@@ -334,6 +372,17 @@ pub trait PlatformApplication {
     ) {
         self.on_event(envelope.event, context);
     }
+
+    /// Returns an application-owned terminal failure observed while handling a
+    /// platform event.
+    ///
+    /// Native event loops do not transport application errors themselves. An
+    /// application that must exit after an unrecoverable renderer, UI, or
+    /// lifecycle error records it here so [`run`] can preserve a failing
+    /// process result instead of reporting a clean window close.
+    fn terminal_error(&self) -> Option<PlatformError> {
+        None
+    }
 }
 
 /// Starts the native event loop and runs `application` until it requests exit.
@@ -359,7 +408,10 @@ pub fn run<A: PlatformApplication>(
         .run_app(&mut adapter)
         .map_err(|error| PlatformError::new(PlatformErrorKind::EventLoopRun, error.to_string()))?;
 
-    if let Some(error) = adapter.startup_error {
+    if let Some(error) = adapter.completion_error() {
+        return Err(error);
+    }
+    if let Some(error) = adapter.application.terminal_error() {
         return Err(error);
     }
 
@@ -375,6 +427,7 @@ struct WinitApplication<A> {
     started_at: Instant,
     next_event_sequence: u64,
     lifecycle: RuntimeLifecycle,
+    initial_redraw_pending: bool,
 }
 
 impl<A: PlatformApplication> WinitApplication<A> {
@@ -388,11 +441,18 @@ impl<A: PlatformApplication> WinitApplication<A> {
             started_at: Instant::now(),
             next_event_sequence: 1,
             lifecycle: RuntimeLifecycle::new(),
+            initial_redraw_pending: false,
         }
     }
 
+    fn completion_error(&self) -> Option<PlatformError> {
+        self.startup_error
+            .clone()
+            .or_else(|| self.application.terminal_error())
+    }
+
     fn dispatch(&mut self, event: PlatformEvent, event_loop: &ActiveEventLoop) {
-        let transition = self.lifecycle.observe_platform(event);
+        let transition = self.lifecycle.observe_platform(&event);
         let sequence = self.next_event_sequence;
         self.next_event_sequence = self.next_event_sequence.wrapping_add(1).max(1);
         let monotonic_ns = u64::try_from(self.started_at.elapsed().as_nanos()).unwrap_or(u64::MAX);
@@ -435,10 +495,12 @@ impl<A: PlatformApplication> WinitApplication<A> {
 
         match event_loop.create_window(attributes) {
             Ok(window) => {
+                window.set_ime_allowed(true);
                 self.native_window_id = Some(window.id());
                 self.window = Some(PlatformWindow {
                     inner: Arc::new(window),
                 });
+                self.initial_redraw_pending = self.config.visible;
                 let window = self.window.as_ref().expect("window was just stored");
                 self.dispatch(
                     PlatformEvent::WindowCreated {
@@ -493,6 +555,23 @@ impl<A: PlatformApplication> ApplicationHandler for WinitApplication<A> {
                     })
             }
             WindowEvent::Focused(focused) => Some(PlatformEvent::Focused(focused)),
+            WindowEvent::ModifiersChanged(modifiers) => {
+                let modifiers = modifiers.state();
+                Some(PlatformEvent::ModifiersChanged(PlatformModifiers {
+                    shift: modifiers.shift_key(),
+                    control: modifiers.control_key(),
+                    alt: modifiers.alt_key(),
+                    command: modifiers.super_key(),
+                }))
+            }
+            WindowEvent::CursorMoved { position, .. } => Some(PlatformEvent::PointerMoved {
+                x: f64_to_f32(position.x),
+                y: f64_to_f32(position.y),
+            }),
+            WindowEvent::Ime(Ime::Commit(text)) => Some(PlatformEvent::TextCommit(text)),
+            WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
+                Some(PlatformEvent::ImePreedit { text, cursor })
+            }
             WindowEvent::RedrawRequested => Some(PlatformEvent::RedrawRequested),
             _ => native_input.map(PlatformEvent::Input),
         };
@@ -521,8 +600,26 @@ impl<A: PlatformApplication> ApplicationHandler for WinitApplication<A> {
         self.dispatch(PlatformEvent::MemoryWarning, event_loop);
     }
 
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if self.initial_redraw_pending {
+            if let Some(window) = &self.window {
+                window.request_redraw();
+                self.initial_redraw_pending = false;
+            }
+        }
+    }
+
     fn exiting(&mut self, event_loop: &ActiveEventLoop) {
         self.dispatch(PlatformEvent::Exiting, event_loop);
+    }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn f64_to_f32(value: f64) -> f32 {
+    if value.is_finite() {
+        value.clamp(f64::from(f32::MIN), f64::from(f32::MAX)) as f32
+    } else {
+        0.0
     }
 }
 
@@ -531,6 +628,7 @@ pub enum PlatformErrorKind {
     EventLoopCreation,
     WindowCreation,
     EventLoopRun,
+    Application,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -542,6 +640,13 @@ pub struct PlatformError {
 impl PlatformError {
     fn new(kind: PlatformErrorKind, message: String) -> Self {
         Self { kind, message }
+    }
+
+    /// Creates a typed terminal failure reported by a Meridian-owned native
+    /// application adapter.
+    #[must_use]
+    pub fn application(message: impl Into<String>) -> Self {
+        Self::new(PlatformErrorKind::Application, message.into())
     }
 
     #[must_use]
@@ -561,6 +666,16 @@ impl Error for PlatformError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct FailedApplication;
+
+    impl PlatformApplication for FailedApplication {
+        fn on_event(&mut self, _event: PlatformEvent, _context: &mut PlatformContext<'_>) {}
+
+        fn terminal_error(&self) -> Option<PlatformError> {
+            Some(PlatformError::application("synthetic application failure"))
+        }
+    }
 
     #[test]
     fn default_config_is_a_visible_resizable_waiting_window() {
@@ -596,18 +711,49 @@ mod tests {
     }
 
     #[test]
+    fn application_failures_remain_typed_platform_errors() {
+        let error = PlatformError::application("renderer initialization failed");
+
+        assert_eq!(error.kind(), PlatformErrorKind::Application);
+        assert_eq!(
+            error.to_string(),
+            "Application: renderer initialization failed"
+        );
+    }
+
+    #[test]
+    fn application_terminal_failure_is_returned_after_the_event_loop() {
+        let adapter = WinitApplication::new(PlatformConfig::default(), FailedApplication);
+
+        assert_eq!(
+            adapter
+                .completion_error()
+                .expect("failure is retained")
+                .kind(),
+            PlatformErrorKind::Application
+        );
+    }
+
+    #[test]
+    fn native_adapter_starts_without_a_redraw_before_window_creation() {
+        let adapter = WinitApplication::new(PlatformConfig::default(), FailedApplication);
+
+        assert!(!adapter.initial_redraw_pending);
+    }
+
+    #[test]
     fn lifecycle_covers_resize_suspend_surface_recovery_and_device_loss() {
         let mut lifecycle = RuntimeLifecycle::new();
         let initial_epoch = lifecycle.epoch();
-        lifecycle.observe_platform(PlatformEvent::Resumed);
-        lifecycle.observe_platform(PlatformEvent::Resized(WindowSize::new(1280, 720)));
+        lifecycle.observe_platform(&PlatformEvent::Resumed);
+        lifecycle.observe_platform(&PlatformEvent::Resized(WindowSize::new(1280, 720)));
         assert_eq!(lifecycle.state(), LifecycleState::Ready);
         assert_eq!(
             lifecycle.last_non_zero_size(),
             Some(WindowSize::new(1280, 720))
         );
         let focused_epoch = lifecycle.epoch();
-        lifecycle.observe_platform(PlatformEvent::Focused(false));
+        lifecycle.observe_platform(&PlatformEvent::Focused(false));
         assert_eq!(lifecycle.state(), LifecycleState::Ready);
         assert_eq!(lifecycle.epoch(), focused_epoch);
 
@@ -618,16 +764,16 @@ mod tests {
             lifecycle.observe_surface(SurfaceSignal::Occluded).current,
             LifecycleState::Occluded
         );
-        lifecycle.observe_platform(PlatformEvent::Suspended);
+        lifecycle.observe_platform(&PlatformEvent::Suspended);
         assert_eq!(lifecycle.state(), LifecycleState::Suspended);
-        lifecycle.observe_platform(PlatformEvent::Resumed);
+        lifecycle.observe_platform(&PlatformEvent::Resumed);
         assert_eq!(lifecycle.state(), LifecycleState::Ready);
 
-        let minimized = lifecycle.observe_platform(PlatformEvent::Resized(WindowSize::new(0, 0)));
+        let minimized = lifecycle.observe_platform(&PlatformEvent::Resized(WindowSize::new(0, 0)));
         assert_eq!(minimized.current, LifecycleState::ZeroExtent);
         assert!(minimized.epoch > initial_epoch);
         let restored =
-            lifecycle.observe_platform(PlatformEvent::Resized(WindowSize::new(800, 600)));
+            lifecycle.observe_platform(&PlatformEvent::Resized(WindowSize::new(800, 600)));
         assert_eq!(restored.rebuild, RuntimeRebuildAction::ReconfigureSurface);
         assert_eq!(restored.current, LifecycleState::Ready);
 
@@ -645,7 +791,7 @@ mod tests {
         );
         assert_eq!(lifecycle.state(), LifecycleState::DeviceLost);
 
-        let exiting = lifecycle.observe_platform(PlatformEvent::Exiting);
+        let exiting = lifecycle.observe_platform(&PlatformEvent::Exiting);
         assert_eq!(exiting.current, LifecycleState::Exiting);
         assert_eq!(exiting.rebuild, RuntimeRebuildAction::Exit);
     }

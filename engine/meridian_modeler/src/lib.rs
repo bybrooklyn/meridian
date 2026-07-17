@@ -9,9 +9,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
+use std::ffi::OsString;
 use std::fmt::{self, Display, Formatter};
-use std::fs;
-use std::path::Path;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use meridian_alluvium::{GeneratedOverride, OverrideReconciliation, OverrideStatus};
 use meridian_core::StableId;
@@ -24,6 +27,7 @@ pub const MODEL_SCHEMA: &str = "meridian.editable-model/v1";
 pub const MODEL_VERSION: u32 = 1;
 const RECOVERY_SCHEMA: &str = "meridian.modeler-recovery/v1";
 const COORDINATE_SYSTEM: &str = "right-handed-y-up-millimetres";
+static SOURCE_TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Persistent model IDs always use fixed-width hexadecimal JSON strings. This
 /// avoids lossy JSON number handling and permits durable map/set recovery.
@@ -328,6 +332,51 @@ impl ModelDocument {
             .map_err(|error| ModelError::Json(error.to_string()))
     }
 
+    /// Atomically writes canonical editable-model source to a regular project
+    /// path. Derived previews and recovery data are never written here.
+    ///
+    /// # Errors
+    ///
+    /// Rejects unsafe paths and leaves the existing accepted source intact when
+    /// a temporary write or replacement fails.
+    pub fn write_source(&self, path: impl AsRef<Path>) -> Result<(), ModelError> {
+        let path = path.as_ref();
+        let source = self.canonical_json()?;
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .ok_or_else(|| ModelError::Io("model source has no parent directory".to_owned()))?;
+        let parent_metadata = fs::symlink_metadata(parent)
+            .map_err(|error| ModelError::Io(format!("{}: {error}", parent.display())))?;
+        if !parent_metadata.file_type().is_dir() || parent_metadata.file_type().is_symlink() {
+            return Err(ModelError::InvalidSourcePath(parent.display().to_string()));
+        }
+        if path.exists() {
+            let metadata = fs::symlink_metadata(path)
+                .map_err(|error| ModelError::Io(format!("{}: {error}", path.display())))?;
+            if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+                return Err(ModelError::InvalidSourcePath(path.display().to_string()));
+            }
+        }
+        let temporary = source_temporary_path(path);
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| ModelError::Io(format!("{}: {error}", temporary.display())))?;
+        let result = (|| {
+            file.write_all(source.as_bytes())
+                .map_err(|error| ModelError::Io(error.to_string()))?;
+            file.sync_all()
+                .map_err(|error| ModelError::Io(error.to_string()))?;
+            fs::rename(&temporary, path).map_err(|error| ModelError::Io(error.to_string()))
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result
+    }
+
     /// Validates schema, source authority, stable identities, and topology.
     ///
     /// # Errors
@@ -486,6 +535,13 @@ impl ModelDocument {
     fn contains_any_id(&self, id: StableId) -> bool {
         id == self.document_id || self.element_kind(id).is_some()
     }
+}
+
+fn source_temporary_path(path: &Path) -> PathBuf {
+    let sequence = SOURCE_TEMPORARY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let mut temporary = OsString::from(path.as_os_str());
+    temporary.push(format!(".{}.{}.tmp", std::process::id(), sequence));
+    PathBuf::from(temporary)
 }
 
 /// The selectable kind of a source-model element.
@@ -1450,6 +1506,24 @@ mod tests {
         assert_eq!(parsed, source);
         assert_eq!(parsed.schema, MODEL_SCHEMA);
         assert_eq!(parsed.version, MODEL_VERSION);
+    }
+
+    #[test]
+    fn source_writes_atomically_to_a_regular_project_path() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("meridian-model-source-{unique}"));
+        fs::create_dir(&root).expect("temporary project directory");
+        let path = root.join("public.model.json");
+        let source = source();
+        source.write_source(&path).expect("source writes");
+        assert_eq!(
+            ModelDocument::read_source(&path).expect("source reads"),
+            source
+        );
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

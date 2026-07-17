@@ -274,6 +274,15 @@ impl UiOverlayRaster {
                     raster.fill_rect(*bounds, *color);
                     raster.report.solid_primitives += 1;
                 }
+                DisplayPrimitive::Border {
+                    bounds,
+                    color,
+                    width,
+                    ..
+                } => {
+                    raster.stroke_rect(*bounds, *color, u32::from(*width).max(1));
+                    raster.report.solid_primitives += 1;
+                }
                 DisplayPrimitive::FocusRing { bounds, color, .. } => {
                     raster.stroke_rect(*bounds, *color, 3);
                     raster.report.solid_primitives += 1;
@@ -351,6 +360,7 @@ impl UiOverlayRaster {
         }
         let origin_x = floor_to_i32(bounds.origin.x * self.scale_factor + glyph.origin.x);
         let origin_y = floor_to_i32(bounds.origin.y * self.scale_factor + glyph.origin.y);
+        let (clip_left, clip_top, clip_right, clip_bottom) = self.pixel_bounds(bounds);
         for glyph_y in 0..glyph.height {
             for glyph_x in 0..glyph.width {
                 let Some(x) = origin_x.checked_add(i32::try_from(glyph_x).unwrap_or(i32::MAX))
@@ -364,7 +374,7 @@ impl UiOverlayRaster {
                 let (Ok(x), Ok(y)) = (u32::try_from(x), u32::try_from(y)) else {
                     continue;
                 };
-                if x >= self.width || y >= self.height {
+                if x < clip_left || x >= clip_right || y < clip_top || y >= clip_bottom {
                     continue;
                 }
                 let offset = usize::try_from(glyph_y)
@@ -510,7 +520,10 @@ fn unit_f32_to_u8(value: f32) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use meridian_ui::{recovery_panel_document, UiFrameInput, UiRuntime};
+    use meridian_ui::{
+        recovery_panel_document, DisplayList, DisplayPrimitive, UiFrameInput, UiGlyphBitmap,
+        UiNodeId, UiPoint, UiRect, UiRuntime, UiTextLayout, UiTextRaster,
+    };
 
     use super::*;
 
@@ -525,10 +538,48 @@ mod tests {
             1.0,
         )
         .expect("recovery display list is bridgeable");
-        assert_eq!(raster.report.solid_primitives, 2);
+        assert_eq!(raster.report.solid_primitives, 3);
         assert_eq!(raster.report.text_primitives, 2);
         assert!(raster.report.rasterized_glyphs > 0);
         assert_eq!(raster.report.incomplete_text_primitives, 0);
         assert!(raster.pixels.iter().any(|pixel| *pixel != 0));
+    }
+
+    #[test]
+    fn text_raster_is_clipped_to_its_retained_text_bounds() {
+        let text_bounds = UiRect::new(UiPoint { x: 3.0, y: 3.0 }, UiSize::new(2.0, 2.0));
+        let display_list = DisplayList {
+            primitives: vec![DisplayPrimitive::Text {
+                node: UiNodeId::new(1),
+                bounds: text_bounds,
+                text: "clipped".to_owned(),
+                color: UiColor::rgba(1.0, 1.0, 1.0, 1.0),
+                layout: UiTextLayout::default(),
+                raster: UiTextRaster {
+                    glyphs: vec![UiGlyphBitmap {
+                        origin: UiPoint { x: 0.0, y: 0.0 },
+                        width: 6,
+                        height: 6,
+                        alpha: vec![255; 36],
+                    }],
+                    has_unrasterized_glyphs: false,
+                },
+            }],
+        };
+
+        let raster =
+            UiOverlayRaster::from_display_list(&display_list, UiSize::new(10.0, 10.0), 1.0)
+                .expect("clipped text display list is bridgeable");
+        let pixel = |x: u32, y: u32| {
+            let offset = usize::try_from(y * raster.width + x).expect("pixel offset") * 4;
+            raster.pixels[offset]
+        };
+
+        let clear = pixel(0, 0);
+        assert_ne!(pixel(3, 3), clear);
+        assert_ne!(pixel(4, 4), clear);
+        assert_eq!(pixel(2, 3), clear);
+        assert_eq!(pixel(5, 4), clear);
+        assert_eq!(pixel(3, 5), clear);
     }
 }

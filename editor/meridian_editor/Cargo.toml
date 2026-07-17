@@ -33,6 +33,7 @@ meridian-editor-core = { path = "../meridian_editor_core" }
 meridian-ui-editor = { path = "../meridian_ui_editor" }
 serde.workspace = true
 serde_json.workspace = true
+rfd.workspace = true
 
 [lints]
 workspace = true
