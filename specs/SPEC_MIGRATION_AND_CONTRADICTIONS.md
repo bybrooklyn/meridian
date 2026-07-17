@@ -93,7 +93,7 @@ documentation to be confused with complete software.
 | Native renderer smoke | `StructuralSmoke` | Six-face upload and pipeline/bind-group construction; occluded outcome is not visual evidence. |
 | Asset/world/streaming/save | `Partial` | Useful foundations; authoritative source/import/package pipeline incomplete. |
 | Rapier wrapper/controller | `Transitional` | Not Cairn-owned implementation. |
-| Meridian UI | `ImplementedFoundation` / `Active` | MS-02 qualified retained UI core; `WP-UI-002` is active. Professional interaction, docking, platform accessibility, renderer qualification, and production shell remain open. |
+| Meridian UI | `ImplementedFoundation` / `Partial` / `Active` | MS-02 qualified retained UI core; `WP-UI-002` and `WP-UI-003` are locally implemented but unqualified because hosted CI could not allocate a runner, and `WP-UI-004` is active under non-promoting `WVR-UI-001`. Platform accessibility, renderer qualification, and the production shell remain open. |
 | Creator Editor | `ImplementedFoundation` | `WP-EDT-001` persistent hub, source persistence, typed Creator journey, and bundle structure passed run `29605881704`; visual quality and platform screen-reader integration remain open UI/editor packages. |
 | Wavefront, Isobar, Basalt, vegetation | `Scaffold` unless narrower evidence is registered | Crate presence does not prove a usable product/system. |
 | Alluvium | `Partial` | `WP-PRC-001` has an active source delivery for text recipes, strict scalar evaluation, recovery, CLI, and a basic inspector; its CI evidence and all production/domain work remain open. |

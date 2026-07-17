@@ -153,8 +153,10 @@ pub enum PlatformEvent {
     TextCommit(String),
     ImePreedit {
         text: String,
+        /// Half-open UTF-8 byte range within `text`; `None` hides the cursor.
         cursor: Option<(usize, usize)>,
     },
+    ImeCancelled,
     RedrawRequested,
     CloseRequested,
     MemoryWarning,
@@ -275,6 +277,7 @@ impl RuntimeLifecycle {
             | PlatformEvent::PointerMoved { .. }
             | PlatformEvent::TextCommit(_)
             | PlatformEvent::ImePreedit { .. }
+            | PlatformEvent::ImeCancelled
             | PlatformEvent::RedrawRequested
             | PlatformEvent::MemoryWarning => {
                 return self.transition(self.state, RuntimeRebuildAction::None, false);
@@ -572,6 +575,7 @@ impl<A: PlatformApplication> ApplicationHandler for WinitApplication<A> {
             WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
                 Some(PlatformEvent::ImePreedit { text, cursor })
             }
+            WindowEvent::Ime(Ime::Disabled) => Some(PlatformEvent::ImeCancelled),
             WindowEvent::RedrawRequested => Some(PlatformEvent::RedrawRequested),
             _ => native_input.map(PlatformEvent::Input),
         };

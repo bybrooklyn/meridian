@@ -32,12 +32,18 @@ pub enum KeyCode {
     Delete,
     LeftShift,
     LeftControl,
+    X,
+    V,
     Z,
     Y,
     Up,
     Down,
     Left,
     Right,
+    Home,
+    End,
+    PageUp,
+    PageDown,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -93,7 +99,34 @@ pub enum AxisControl {
 pub enum NativeInputEvent {
     Button { control: ButtonControl, down: bool },
     MouseMotion { x: f32, y: f32 },
+    Scroll(NativeScrollEvent),
     FocusLost,
+}
+
+/// Unit retained from native scrolling before a UI adapter applies theme line height.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeScrollUnit {
+    Pixels,
+    Lines,
+}
+
+/// Native gesture phase. Momentum remains distinct when a platform reports it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NativeScrollPhase {
+    Begin,
+    Update,
+    Momentum,
+    End,
+    Cancel,
+}
+
+/// Backend-neutral scrolling without winit device or geometry types.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NativeScrollEvent {
+    pub phase: NativeScrollPhase,
+    pub unit: NativeScrollUnit,
+    pub x: f32,
+    pub y: f32,
 }
 
 /// Backend-neutral event normalized from one active gamepad.
@@ -347,6 +380,7 @@ impl InputState {
                 self.add_axis(AxisControl::MouseX, x);
                 self.add_axis(AxisControl::MouseY, y);
             }
+            NativeInputEvent::Scroll(_) => {}
             NativeInputEvent::FocusLost => self.clear_all(),
         }
     }
@@ -430,8 +464,14 @@ impl InputState {
 
 /// Native `winit` translation kept in an integration module.
 pub mod winit_adapter {
-    use super::{ButtonControl, KeyCode, MouseButton, NativeInputEvent};
-    use winit::event::{DeviceEvent, ElementState, MouseButton as WinitMouseButton, WindowEvent};
+    use super::{
+        ButtonControl, KeyCode, MouseButton, NativeInputEvent, NativeScrollEvent,
+        NativeScrollPhase, NativeScrollUnit,
+    };
+    use winit::event::{
+        DeviceEvent, ElementState, MouseButton as WinitMouseButton, MouseScrollDelta, TouchPhase,
+        WindowEvent,
+    };
     use winit::keyboard::{KeyCode as WinitKeyCode, PhysicalKey};
 
     /// Translates keyboard, mouse-button, and focus events into engine input.
@@ -450,6 +490,9 @@ pub mod winit_adapter {
                     control: ButtonControl::Mouse(button),
                     down: *state == ElementState::Pressed,
                 })
+            }
+            WindowEvent::MouseWheel { delta, phase, .. } => {
+                Some(translate_scroll_delta(delta, *phase))
             }
             WindowEvent::Focused(false) => Some(NativeInputEvent::FocusLost),
             _ => None,
@@ -486,12 +529,18 @@ pub mod winit_adapter {
             WinitKeyCode::Delete => KeyCode::Delete,
             WinitKeyCode::ShiftLeft => KeyCode::LeftShift,
             WinitKeyCode::ControlLeft => KeyCode::LeftControl,
+            WinitKeyCode::KeyX => KeyCode::X,
+            WinitKeyCode::KeyV => KeyCode::V,
             WinitKeyCode::KeyZ => KeyCode::Z,
             WinitKeyCode::KeyY => KeyCode::Y,
             WinitKeyCode::ArrowUp => KeyCode::Up,
             WinitKeyCode::ArrowDown => KeyCode::Down,
             WinitKeyCode::ArrowLeft => KeyCode::Left,
             WinitKeyCode::ArrowRight => KeyCode::Right,
+            WinitKeyCode::Home => KeyCode::Home,
+            WinitKeyCode::End => KeyCode::End,
+            WinitKeyCode::PageUp => KeyCode::PageUp,
+            WinitKeyCode::PageDown => KeyCode::PageDown,
             _ => return None,
         })
     }
@@ -507,12 +556,65 @@ pub mod winit_adapter {
         }
     }
 
+    fn translate_scroll_delta(delta: &MouseScrollDelta, phase: TouchPhase) -> NativeInputEvent {
+        let (x, y, unit) = match delta {
+            MouseScrollDelta::LineDelta(x, y) => (*x, *y, NativeScrollUnit::Lines),
+            MouseScrollDelta::PixelDelta(position) => (
+                f64_to_f32(position.x),
+                f64_to_f32(position.y),
+                NativeScrollUnit::Pixels,
+            ),
+        };
+        NativeInputEvent::Scroll(NativeScrollEvent {
+            phase: match phase {
+                TouchPhase::Started => NativeScrollPhase::Begin,
+                TouchPhase::Moved => NativeScrollPhase::Update,
+                TouchPhase::Ended => NativeScrollPhase::End,
+                TouchPhase::Cancelled => NativeScrollPhase::Cancel,
+            },
+            unit,
+            x,
+            y,
+        })
+    }
+
     #[allow(clippy::cast_possible_truncation)]
     fn f64_to_f32(value: f64) -> f32 {
         if value.is_finite() {
             value.clamp(f64::from(f32::MIN), f64::from(f32::MAX)) as f32
         } else {
             0.0
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use winit::dpi::PhysicalPosition;
+
+        #[test]
+        fn scrolling_preserves_line_pixel_and_gesture_phase() {
+            assert_eq!(
+                translate_scroll_delta(&MouseScrollDelta::LineDelta(1.5, -2.0), TouchPhase::Moved,),
+                NativeInputEvent::Scroll(NativeScrollEvent {
+                    phase: NativeScrollPhase::Update,
+                    unit: NativeScrollUnit::Lines,
+                    x: 1.5,
+                    y: -2.0,
+                })
+            );
+            assert_eq!(
+                translate_scroll_delta(
+                    &MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.25, -10.5)),
+                    TouchPhase::Started,
+                ),
+                NativeInputEvent::Scroll(NativeScrollEvent {
+                    phase: NativeScrollPhase::Begin,
+                    unit: NativeScrollUnit::Pixels,
+                    x: 0.25,
+                    y: -10.5,
+                })
+            );
         }
     }
 }

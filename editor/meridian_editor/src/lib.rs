@@ -39,7 +39,8 @@ use meridian_editor_core::{
     ProjectRecoveryStatus, ProjectStore, Translation, WorldPlacement,
 };
 use meridian_input::{
-    Action, ButtonControl, InputActionMap, InputState, KeyCode, NativeInputEvent,
+    Action, ButtonControl, InputActionMap, InputState, KeyCode, MouseButton as NativeMouseButton,
+    NativeInputEvent, NativeScrollEvent, NativeScrollPhase, NativeScrollUnit,
 };
 use meridian_modeler::{
     Edge, Millimetres3, ModelCommand, ModelDocument, ModelElementKind, ModelRecoveryStore,
@@ -71,9 +72,11 @@ use meridian_streaming::{
 };
 use meridian_tasks::{TaskClass, TaskContext};
 use meridian_ui::{
-    recovery_panel_document, runtime_overlay_document, SemanticDelta, UiCommandRequest,
-    UiDiagnostic, UiEvent, UiFrameInput, UiFrameOutput, UiNodeId, UiPoint, UiRuntime, UiSize,
-    UiTextCursorDirection,
+    recovery_panel_document, runtime_overlay_document, SemanticDelta, UiCollectionNavigation,
+    UiCommandRequest, UiDiagnostic, UiEvent, UiFrameInput, UiFrameOutput, UiInputDeviceId,
+    UiInputDeviceKind, UiNodeId, UiPoint, UiPointerButton, UiPointerEvent, UiPointerPhase,
+    UiRuntime, UiScrollDelta, UiScrollEvent, UiScrollPhase, UiScrollUnit, UiSize,
+    UiTextCursorDirection, UiWidgetKind,
 };
 use meridian_ui_editor::{
     creator_hub_document, creator_workspace_document, creator_workspace_document_with_view,
@@ -105,6 +108,7 @@ const SAVE_COMPONENT: &str = "meridian.ms01.position";
 const EVIDENCE_CAPACITY: usize = 512;
 const UI_SMOKE_MAX_PRESENT_ATTEMPTS: u8 = 3;
 const CREATOR_UI_SMOKE_VISIBLE_PRESENTATIONS: u8 = 2;
+const CREATOR_POINTER_DEVICE: UiInputDeviceId = UiInputDeviceId::new(1);
 static NEXT_DEFAULT_EVIDENCE_ID: AtomicU64 = AtomicU64::new(0);
 static NEXT_CREATOR_BUILD_ID: AtomicU64 = AtomicU64::new(0);
 static NEXT_CREATOR_SMOKE_PROJECT_ID: AtomicU64 = AtomicU64::new(0);
@@ -1407,7 +1411,7 @@ impl CreatorApplication {
         self.dispatch_ui_actions(commands, context.window());
         if clipboard_requested {
             self.set_status(
-                "Copy is unavailable until Meridian's platform clipboard adapter is active."
+                "Clipboard access is unavailable until Meridian's platform adapter is active."
                     .to_owned(),
             );
         }
@@ -1467,7 +1471,7 @@ impl CreatorApplication {
         self.dispatch_ui_actions(commands.iter().map(|command| command.action.clone()), None);
         if clipboard_requested {
             self.set_status(
-                "Copy is unavailable until Meridian's platform clipboard adapter is active."
+                "Clipboard access is unavailable until Meridian's platform adapter is active."
                     .to_owned(),
             );
         }
@@ -2172,16 +2176,37 @@ impl CreatorApplication {
     }
 
     fn route_input(&mut self, event: NativeInputEvent) {
-        let NativeInputEvent::Button { control, down } = event else {
-            return;
-        };
+        match event {
+            NativeInputEvent::Button { control, down } => self.route_button_input(control, down),
+            NativeInputEvent::Scroll(event) => self.route_scroll_input(event),
+            NativeInputEvent::FocusLost => {
+                self.pending_events.push(UiEvent::PointerCancel);
+                self.pending_events.push(UiEvent::CancelDrag);
+            }
+            NativeInputEvent::MouseMotion { .. } => {}
+        }
+    }
+
+    fn route_button_input(&mut self, control: ButtonControl, down: bool) {
         match control {
-            ButtonControl::Mouse(meridian_input::MouseButton::Left) => {
-                self.pending_events.push(if down {
-                    UiEvent::PointerDown(self.pointer)
-                } else {
-                    UiEvent::PointerUp(self.pointer)
-                });
+            ButtonControl::Mouse(button) => {
+                let button = match button {
+                    NativeMouseButton::Left => UiPointerButton::Primary,
+                    NativeMouseButton::Right => UiPointerButton::Secondary,
+                    NativeMouseButton::Middle => UiPointerButton::Middle,
+                    NativeMouseButton::Other(button) => UiPointerButton::Auxiliary(button),
+                };
+                self.pending_events.push(UiEvent::Pointer(UiPointerEvent {
+                    device: CREATOR_POINTER_DEVICE,
+                    kind: UiInputDeviceKind::Mouse,
+                    phase: if down {
+                        UiPointerPhase::Press
+                    } else {
+                        UiPointerPhase::Release
+                    },
+                    position: self.pointer,
+                    button: Some(button),
+                }));
             }
             _ if !down => {}
             ButtonControl::Key(KeyCode::Tab) => self.pending_events.push(if self.modifiers.shift {
@@ -2208,15 +2233,45 @@ impl CreatorApplication {
                     extend_selection: self.modifiers.shift,
                 });
             }
+            ButtonControl::Key(KeyCode::Up) => self.pending_events.push(
+                UiEvent::NavigateCollection(UiCollectionNavigation::Previous),
+            ),
+            ButtonControl::Key(KeyCode::Down) => self
+                .pending_events
+                .push(UiEvent::NavigateCollection(UiCollectionNavigation::Next)),
+            ButtonControl::Key(KeyCode::Home) => {
+                self.route_home_end(UiTextCursorDirection::Start, UiCollectionNavigation::Home);
+            }
+            ButtonControl::Key(KeyCode::End) => {
+                self.route_home_end(UiTextCursorDirection::End, UiCollectionNavigation::End);
+            }
+            ButtonControl::Key(KeyCode::PageUp) => self.pending_events.push(
+                UiEvent::NavigateCollection(UiCollectionNavigation::PageBackward),
+            ),
+            ButtonControl::Key(KeyCode::PageDown) => self.pending_events.push(
+                UiEvent::NavigateCollection(UiCollectionNavigation::PageForward),
+            ),
             ButtonControl::Key(KeyCode::Z) if self.modifiers.primary_command() => {
-                self.pending_actions.push(if self.modifiers.shift {
-                    "editor.redo".to_owned()
+                if self.text_input_focused() {
+                    self.pending_events.push(if self.modifiers.shift {
+                        UiEvent::RedoText
+                    } else {
+                        UiEvent::UndoText
+                    });
                 } else {
-                    "editor.undo".to_owned()
-                });
+                    self.pending_actions.push(if self.modifiers.shift {
+                        "editor.redo".to_owned()
+                    } else {
+                        "editor.undo".to_owned()
+                    });
+                }
             }
             ButtonControl::Key(KeyCode::Y) if self.modifiers.primary_command() => {
-                self.pending_actions.push("editor.redo".to_owned());
+                if self.text_input_focused() {
+                    self.pending_events.push(UiEvent::RedoText);
+                } else {
+                    self.pending_actions.push("editor.redo".to_owned());
+                }
             }
             ButtonControl::Key(KeyCode::A) if self.modifiers.primary_command() => {
                 self.pending_events.push(UiEvent::SelectAllText);
@@ -2224,7 +2279,84 @@ impl CreatorApplication {
             ButtonControl::Key(KeyCode::C) if self.modifiers.primary_command() => {
                 self.pending_events.push(UiEvent::CopySelection);
             }
+            ButtonControl::Key(KeyCode::X) if self.modifiers.primary_command() => {
+                self.pending_events.push(UiEvent::CutSelection);
+            }
+            ButtonControl::Key(KeyCode::Escape) => {
+                self.pending_events.push(UiEvent::CancelDrag);
+                self.pending_events.push(UiEvent::PointerCancel);
+            }
             _ => {}
+        }
+    }
+
+    fn route_home_end(
+        &mut self,
+        text_direction: UiTextCursorDirection,
+        collection: UiCollectionNavigation,
+    ) {
+        if self.text_input_focused() {
+            self.pending_events.push(UiEvent::MoveTextCursor {
+                direction: text_direction,
+                extend_selection: self.modifiers.shift,
+            });
+        } else {
+            self.pending_events
+                .push(UiEvent::NavigateCollection(collection));
+        }
+    }
+
+    fn text_input_focused(&self) -> bool {
+        self.frame.focused.is_some_and(|focused| {
+            self.ui.document().node(focused).is_some_and(|node| {
+                matches!(
+                    node.kind,
+                    UiWidgetKind::TextInput | UiWidgetKind::SearchInput
+                )
+            })
+        })
+    }
+
+    fn route_scroll_input(&mut self, event: NativeScrollEvent) {
+        let unit = match event.unit {
+            NativeScrollUnit::Pixels => UiScrollUnit::Pixels,
+            NativeScrollUnit::Lines => UiScrollUnit::Lines,
+        };
+        let kind = if unit == UiScrollUnit::Pixels {
+            UiInputDeviceKind::Trackpad
+        } else {
+            UiInputDeviceKind::Mouse
+        };
+        let phase = match event.phase {
+            NativeScrollPhase::Begin => UiScrollPhase::Begin,
+            NativeScrollPhase::Update => UiScrollPhase::Update,
+            NativeScrollPhase::Momentum => UiScrollPhase::Momentum,
+            NativeScrollPhase::End => UiScrollPhase::End,
+            NativeScrollPhase::Cancel => UiScrollPhase::Cancel,
+        };
+        self.pending_events.push(UiEvent::Scroll(UiScrollEvent {
+            device: CREATOR_POINTER_DEVICE,
+            kind,
+            phase,
+            position: self.pointer,
+            delta: UiScrollDelta {
+                x: -event.x,
+                y: -event.y,
+                unit,
+            },
+        }));
+        if unit == UiScrollUnit::Lines {
+            self.pending_events.push(UiEvent::Scroll(UiScrollEvent {
+                device: CREATOR_POINTER_DEVICE,
+                kind,
+                phase: UiScrollPhase::End,
+                position: self.pointer,
+                delta: UiScrollDelta {
+                    x: 0.0,
+                    y: 0.0,
+                    unit,
+                },
+            }));
         }
     }
 
@@ -2253,7 +2385,19 @@ impl CreatorApplication {
                     x: x / self.scale_factor,
                     y: y / self.scale_factor,
                 };
-                Ok(())
+                if self.frame.drag.is_some() {
+                    self.pending_events.push(UiEvent::Pointer(UiPointerEvent {
+                        device: CREATOR_POINTER_DEVICE,
+                        kind: UiInputDeviceKind::Mouse,
+                        phase: UiPointerPhase::Move,
+                        position: self.pointer,
+                        button: None,
+                    }));
+                    self.reconcile_ui(context)
+                        .map(|()| context.request_redraw())
+                } else {
+                    Ok(())
+                }
             }
             PlatformEvent::TextCommit(text) => {
                 self.pending_events.push(UiEvent::TextCommit(text));
@@ -2263,6 +2407,11 @@ impl CreatorApplication {
             PlatformEvent::ImePreedit { text, cursor } => {
                 self.pending_events
                     .push(UiEvent::ImePreedit { text, cursor });
+                self.reconcile_ui(context)
+                    .map(|()| context.request_redraw())
+            }
+            PlatformEvent::ImeCancelled => {
+                self.pending_events.push(UiEvent::ImeCancel);
                 self.reconcile_ui(context)
                     .map(|()| context.request_redraw())
             }
@@ -2279,6 +2428,7 @@ impl CreatorApplication {
             PlatformEvent::Focused(false) => {
                 self.modifiers = PlatformModifiers::default();
                 self.pending_events.push(UiEvent::PointerCancel);
+                self.pending_events.push(UiEvent::CancelDrag);
                 self.reconcile_ui(context)
             }
             PlatformEvent::Resumed => {
@@ -4470,6 +4620,7 @@ impl UiNativeSmokeApplication {
             | PlatformEvent::PointerMoved { .. }
             | PlatformEvent::TextCommit(_)
             | PlatformEvent::ImePreedit { .. }
+            | PlatformEvent::ImeCancelled
             | PlatformEvent::MemoryWarning => Ok(()),
         };
         if let Err(error) = result {
@@ -5025,6 +5176,7 @@ fn platform_event_name(event: &PlatformEvent) -> &'static str {
         PlatformEvent::PointerMoved { .. } => "pointer-moved",
         PlatformEvent::TextCommit(_) => "text-commit",
         PlatformEvent::ImePreedit { .. } => "ime-preedit",
+        PlatformEvent::ImeCancelled => "ime-cancelled",
         PlatformEvent::RedrawRequested => "redraw-requested",
         PlatformEvent::CloseRequested => "close-requested",
         PlatformEvent::MemoryWarning => "memory-warning",
@@ -5675,7 +5827,13 @@ mod tests {
         });
         assert_eq!(
             application.pending_events,
-            vec![UiEvent::PointerDown(application.pointer)]
+            vec![UiEvent::Pointer(UiPointerEvent {
+                device: CREATOR_POINTER_DEVICE,
+                kind: UiInputDeviceKind::Mouse,
+                phase: UiPointerPhase::Press,
+                position: application.pointer,
+                button: Some(UiPointerButton::Primary),
+            })]
         );
 
         application.route_input(NativeInputEvent::Button {
@@ -5685,10 +5843,77 @@ mod tests {
         assert_eq!(
             application.pending_events,
             vec![
-                UiEvent::PointerDown(application.pointer),
-                UiEvent::PointerUp(application.pointer)
+                UiEvent::Pointer(UiPointerEvent {
+                    device: CREATOR_POINTER_DEVICE,
+                    kind: UiInputDeviceKind::Mouse,
+                    phase: UiPointerPhase::Press,
+                    position: application.pointer,
+                    button: Some(UiPointerButton::Primary),
+                }),
+                UiEvent::Pointer(UiPointerEvent {
+                    device: CREATOR_POINTER_DEVICE,
+                    kind: UiInputDeviceKind::Mouse,
+                    phase: UiPointerPhase::Release,
+                    position: application.pointer,
+                    button: Some(UiPointerButton::Primary),
+                })
             ]
         );
+    }
+
+    #[test]
+    fn creator_scroll_routes_precise_and_discrete_deltas_without_double_smoothing() {
+        let mut application =
+            CreatorApplication::new(None, true).expect("Creator hub initializes for scroll input");
+        application.pointer = UiPoint { x: 140.0, y: 90.0 };
+
+        application.route_input(NativeInputEvent::Scroll(NativeScrollEvent {
+            phase: NativeScrollPhase::Update,
+            unit: NativeScrollUnit::Pixels,
+            x: 0.25,
+            y: -10.5,
+        }));
+        assert_eq!(
+            application.pending_events,
+            vec![UiEvent::Scroll(UiScrollEvent {
+                device: CREATOR_POINTER_DEVICE,
+                kind: UiInputDeviceKind::Trackpad,
+                phase: UiScrollPhase::Update,
+                position: application.pointer,
+                delta: UiScrollDelta {
+                    x: -0.25,
+                    y: 10.5,
+                    unit: UiScrollUnit::Pixels,
+                },
+            })]
+        );
+
+        application.pending_events.clear();
+        application.route_input(NativeInputEvent::Scroll(NativeScrollEvent {
+            phase: NativeScrollPhase::Update,
+            unit: NativeScrollUnit::Lines,
+            x: 0.0,
+            y: -2.0,
+        }));
+        assert_eq!(application.pending_events.len(), 2);
+        assert!(matches!(
+            application.pending_events.as_slice(),
+            [
+                UiEvent::Scroll(UiScrollEvent {
+                    phase: UiScrollPhase::Update,
+                    delta: UiScrollDelta {
+                        y: 2.0,
+                        unit: UiScrollUnit::Lines,
+                        ..
+                    },
+                    ..
+                }),
+                UiEvent::Scroll(UiScrollEvent {
+                    phase: UiScrollPhase::End,
+                    ..
+                })
+            ]
+        ));
     }
 
     #[test]
@@ -5709,6 +5934,11 @@ mod tests {
             .source_path()
             .to_path_buf();
         let source_before = fs::read(&source_path).expect("source reads");
+        let draft_before = application
+            .ui
+            .text_input_value(CREATOR_INSPECTOR_X_MM)
+            .expect("inspector draft")
+            .to_owned();
 
         application
             .reconcile_workspace_ui_events_for_smoke(vec![
@@ -5717,12 +5947,19 @@ mod tests {
                 UiEvent::CopySelection,
             ])
             .expect("copy request remains a typed UI result");
+        application
+            .reconcile_workspace_ui_events_for_smoke(vec![UiEvent::CutSelection])
+            .expect("unconfirmed cut remains non-destructive");
 
         let workspace = creator_workspace_for_smoke(&application).expect("workspace");
         assert_eq!(fs::read(&source_path).expect("source reads"), source_before);
         assert_eq!(
+            application.ui.text_input_value(CREATOR_INSPECTOR_X_MM),
+            Some(draft_before.as_str())
+        );
+        assert_eq!(
             workspace.status,
-            "Copy is unavailable until Meridian's platform clipboard adapter is active."
+            "Clipboard access is unavailable until Meridian's platform adapter is active."
         );
         fs::remove_dir_all(parent).expect("temporary project removes");
     }

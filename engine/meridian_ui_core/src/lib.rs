@@ -16,6 +16,14 @@ pub const MAX_DISPLAY_PRIMITIVES: usize = 4_096;
 pub const MAX_PRIMITIVES_PER_RETAINED_NODE: usize = 6;
 /// Structural retained-tree limit derived from the immutable frame bound.
 pub const MAX_RETAINED_NODES: usize = MAX_DISPLAY_PRIMITIVES / MAX_PRIMITIVES_PER_RETAINED_NODE;
+/// Maximum normalized platform events accepted at one immutable frame boundary.
+pub const MAX_FRAME_EVENTS: usize = MAX_RETAINED_NODES * 8;
+/// Structural item-count limit for one virtualized collection contract.
+pub const MAX_VIRTUAL_ITEMS: usize = u16::MAX as usize;
+/// Maximum accepted drag/drop kinds on one retained target.
+pub const MAX_DROP_KINDS: usize = 16;
+/// Complete built-in drop-operation vocabulary accepted by one target.
+pub const MAX_DROP_OPERATIONS: usize = 3;
 
 /// Sanitizes untrusted platform scale input to the supported 50-400% interval.
 #[must_use]
@@ -70,6 +78,257 @@ stable_ui_id!(
     "Stable identity for a focus scope or remembered target."
 );
 stable_ui_id!(CommandId, "Stable identity for a typed UI command.");
+stable_ui_id!(
+    UiInputDeviceId,
+    "Stable process-local identity for one normalized input device."
+);
+stable_ui_id!(
+    UiDragItemId,
+    "Stable identity carried by a typed drag proposal."
+);
+
+/// Meridian-owned device family; platform handles never cross this boundary.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum UiInputDeviceKind {
+    Mouse,
+    Trackpad,
+    Touch,
+    Pen,
+    Keyboard,
+    Controller,
+    Assistive,
+}
+
+/// Pointer buttons after platform normalization.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum UiPointerButton {
+    Primary,
+    Secondary,
+    Middle,
+    Auxiliary(u8),
+}
+
+/// Complete pointer lifecycle used for capture and release-based activation.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum UiPointerPhase {
+    Move,
+    Press,
+    Release,
+    Cancel,
+}
+
+/// Platform-neutral pointer event in logical coordinates.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UiPointerEvent {
+    pub device: UiInputDeviceId,
+    pub kind: UiInputDeviceKind,
+    pub phase: UiPointerPhase,
+    pub position: UiPoint,
+    pub button: Option<UiPointerButton>,
+}
+
+/// Unit carried by a normalized scroll delta. Pixel input is never rounded.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum UiScrollUnit {
+    Pixels,
+    Lines,
+}
+
+/// Scroll gesture lifecycle, keeping OS momentum distinct from direct input.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum UiScrollPhase {
+    Begin,
+    Update,
+    Momentum,
+    End,
+    Cancel,
+}
+
+/// Two-axis scroll delta before an axis-specific scroll container consumes it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UiScrollDelta {
+    pub x: f32,
+    pub y: f32,
+    pub unit: UiScrollUnit,
+}
+
+/// Platform-neutral scroll event with explicit gesture identity and phase.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UiScrollEvent {
+    pub device: UiInputDeviceId,
+    pub kind: UiInputDeviceKind,
+    pub phase: UiScrollPhase,
+    pub position: UiPoint,
+    pub delta: UiScrollDelta,
+}
+
+/// Typed drag families shared by pointer and keyboard alternatives.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum UiDragKind {
+    Asset,
+    Entity,
+    Panel,
+    Text,
+    File,
+    Command,
+    Domain(u16),
+}
+
+/// Host operation negotiated by a typed drop target.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum UiDropOperation {
+    Move,
+    Copy,
+    Link,
+}
+
+/// Authority-free drag data. A drop remains a proposal for a typed host command.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct UiDragPayload {
+    pub kind: UiDragKind,
+    pub item: UiDragItemId,
+    pub operation: UiDropOperation,
+}
+
+/// Bounded text validation that does not execute a caller-supplied expression.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiTextValidation {
+    NonEmpty,
+    Integer,
+    Decimal,
+    MaximumGraphemes(u16),
+}
+
+/// Stable collection-navigation actions shared by trees, tables, and lists.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiCollectionNavigation {
+    Previous,
+    Next,
+    Home,
+    End,
+    PageBackward,
+    PageForward,
+}
+
+/// Selection cursor that preserves identity when filtering hides the row.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiCollectionCursor {
+    pub selected: Option<UiNodeId>,
+}
+
+impl UiCollectionCursor {
+    /// Moves through currently visible stable identities without owning rows.
+    pub fn navigate(
+        &mut self,
+        visible: &[UiNodeId],
+        page_size: usize,
+        navigation: UiCollectionNavigation,
+    ) -> Option<UiNodeId> {
+        if visible.is_empty() {
+            return self.selected;
+        }
+        let current = self
+            .selected
+            .and_then(|selected| visible.iter().position(|id| *id == selected));
+        let last = visible.len() - 1;
+        let page_size = page_size.max(1);
+        let index = match navigation {
+            UiCollectionNavigation::Home => 0,
+            UiCollectionNavigation::End => last,
+            UiCollectionNavigation::Previous => current.unwrap_or(1).saturating_sub(1),
+            UiCollectionNavigation::Next => current.map_or(0, |index| (index + 1).min(last)),
+            UiCollectionNavigation::PageBackward => {
+                current.unwrap_or(page_size).saturating_sub(page_size)
+            }
+            UiCollectionNavigation::PageForward => {
+                current.map_or(0, |index| index.saturating_add(page_size).min(last))
+            }
+        };
+        self.selected = Some(visible[index]);
+        self.selected
+    }
+}
+
+/// Realized half-open range for a virtualized collection.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiVirtualRange {
+    pub start: usize,
+    pub end: usize,
+}
+
+/// Rejected virtualization request before row realization or allocation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiVirtualRangeError {
+    TooManyItems { count: usize, maximum: usize },
+    InvalidGeometry,
+    OverscanTooLarge { count: usize, maximum: usize },
+    RealizedRangeTooLarge { count: usize, maximum: usize },
+}
+
+/// Calculates only the visible row range; it never allocates the full collection.
+///
+/// # Errors
+///
+/// Rejects item counts above the structural bound, non-finite or negative
+/// geometry, zero item extent, overscan above the retained-node limit, and a
+/// viewport that would realize more rows than one retained frame can own.
+pub fn virtual_range(
+    item_count: usize,
+    item_extent: f32,
+    viewport_extent: f32,
+    offset: f32,
+    overscan: usize,
+) -> Result<UiVirtualRange, UiVirtualRangeError> {
+    if item_count > MAX_VIRTUAL_ITEMS {
+        return Err(UiVirtualRangeError::TooManyItems {
+            count: item_count,
+            maximum: MAX_VIRTUAL_ITEMS,
+        });
+    }
+    if overscan > MAX_RETAINED_NODES {
+        return Err(UiVirtualRangeError::OverscanTooLarge {
+            count: overscan,
+            maximum: MAX_RETAINED_NODES,
+        });
+    }
+    if !item_extent.is_finite()
+        || item_extent <= 0.0
+        || !viewport_extent.is_finite()
+        || viewport_extent < 0.0
+        || !offset.is_finite()
+        || offset < 0.0
+    {
+        return Err(UiVirtualRangeError::InvalidGeometry);
+    }
+    if item_count == 0 {
+        return Ok(UiVirtualRange::default());
+    }
+    let first = bounded_float_to_usize((offset / item_extent).floor(), item_count);
+    let visible_count = bounded_float_to_usize((viewport_extent / item_extent).ceil(), item_count)
+        .saturating_add(1);
+    let range = UiVirtualRange {
+        start: first.saturating_sub(overscan),
+        end: first
+            .saturating_add(visible_count)
+            .saturating_add(overscan)
+            .min(item_count),
+    };
+    let realized = range.end.saturating_sub(range.start);
+    if realized > MAX_RETAINED_NODES {
+        return Err(UiVirtualRangeError::RealizedRangeTooLarge {
+            count: realized,
+            maximum: MAX_RETAINED_NODES,
+        });
+    }
+    Ok(range)
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn bounded_float_to_usize(value: f32, maximum: usize) -> usize {
+    // Geometry is already finite and non-negative. Rust's saturating float cast
+    // plus the structural collection bound prevents an unchecked allocation.
+    (value as usize).min(maximum)
+}
 
 /// User-selected information density. It never reduces accessible hit targets.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -406,7 +665,7 @@ impl UiTheme {
     }
 }
 
-/// Widget behavior is intentionally a small, retained set for the MS-02 seam.
+/// Retained widget families shared by runtime and professional editor composition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UiWidgetKind {
     Panel,
@@ -416,7 +675,31 @@ pub enum UiWidgetKind {
     Toggle,
     Progress,
     TextInput,
+    SearchInput,
+    ComboBox,
+    ComboOption,
     Overlay,
+    MenuBar,
+    Menu,
+    ContextMenu,
+    MenuItem,
+    Tooltip,
+    Toast,
+    Tabs,
+    Tab,
+    Tree,
+    TreeItem,
+    Table,
+    TableRow,
+    TableCell,
+    PropertyGrid,
+    VirtualList,
+    ListItem,
+    Timeline,
+    Splitter,
+    CommandPalette,
+    Graph,
+    Canvas,
 }
 
 /// Primary direction for Flex and Scroll layout.
@@ -579,6 +862,39 @@ pub enum SemanticRole {
     ToggleButton,
     ProgressIndicator,
     TextInput,
+    SearchBox,
+    ComboBox,
+    Option,
+    MenuBar,
+    Menu,
+    MenuItem,
+    Tooltip,
+    LiveRegion,
+    TabList,
+    Tab,
+    Tree,
+    TreeItem,
+    Table,
+    Row,
+    Cell,
+    PropertyGrid,
+    List,
+    ListItem,
+    Timeline,
+    Splitter,
+    Dialog,
+    Graph,
+    Canvas,
+}
+
+/// Interaction state projected to semantics without platform-native values.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiControlState {
+    pub disabled: bool,
+    pub selected: bool,
+    pub expanded: bool,
+    pub invalid: bool,
 }
 
 /// Named semantics and a typed action token declared by a UI node.
@@ -588,6 +904,7 @@ pub struct UiSemantics {
     pub name: String,
     pub action: Option<String>,
     pub value: Option<String>,
+    pub state: UiControlState,
 }
 
 impl UiSemantics {
@@ -598,6 +915,7 @@ impl UiSemantics {
             name: name.into(),
             action: None,
             value: None,
+            state: UiControlState::default(),
         }
     }
 
@@ -608,6 +926,7 @@ impl UiSemantics {
             name: name.into(),
             action: None,
             value: None,
+            state: UiControlState::default(),
         }
     }
 
@@ -618,6 +937,7 @@ impl UiSemantics {
             name: name.into(),
             action: Some(action.into()),
             value: None,
+            state: UiControlState::default(),
         }
     }
 
@@ -628,6 +948,7 @@ impl UiSemantics {
             name: name.into(),
             action: None,
             value: None,
+            state: UiControlState::default(),
         }
     }
 
@@ -638,6 +959,10 @@ impl UiSemantics {
             name: name.into(),
             action: Some(action.into()),
             value: Some(if value { "on" } else { "off" }.to_owned()),
+            state: UiControlState {
+                selected: value,
+                ..UiControlState::default()
+            },
         }
     }
 
@@ -648,6 +973,18 @@ impl UiSemantics {
             name: name.into(),
             action: None,
             value: Some(format!("{}%", value.min(100))),
+            state: UiControlState::default(),
+        }
+    }
+
+    #[must_use]
+    pub fn professional(name: impl Into<String>, role: SemanticRole) -> Self {
+        Self {
+            role,
+            name: name.into(),
+            action: None,
+            value: None,
+            state: UiControlState::default(),
         }
     }
 }
@@ -881,6 +1218,10 @@ pub struct UiNode {
     pub semantics: UiSemantics,
     pub text: Option<String>,
     pub text_input: Option<UiTextInputOptions>,
+    pub text_validation: Option<UiTextValidation>,
+    pub drag_source: Option<UiDragKind>,
+    pub drop_accepts: Vec<UiDragKind>,
+    pub drop_operations: Vec<UiDropOperation>,
     pub focusable: bool,
     pub children: Vec<UiNodeId>,
 }
@@ -905,6 +1246,10 @@ impl UiNode {
             semantics: UiSemantics::group(name),
             text: None,
             text_input: None,
+            text_validation: None,
+            drag_source: None,
+            drop_accepts: Vec::new(),
+            drop_operations: Vec::new(),
             focusable: false,
             children,
         }
@@ -924,6 +1269,10 @@ impl UiNode {
             semantics: UiSemantics::status(name),
             text: Some(text.into()),
             text_input: None,
+            text_validation: None,
+            drag_source: None,
+            drop_accepts: Vec::new(),
+            drop_operations: Vec::new(),
             focusable: false,
             children: Vec::new(),
         }
@@ -948,6 +1297,10 @@ impl UiNode {
             semantics: UiSemantics::button(name, action),
             text: Some(text.into()),
             text_input: None,
+            text_validation: None,
+            drag_source: None,
+            drop_accepts: Vec::new(),
+            drop_operations: Vec::new(),
             focusable: true,
             children: Vec::new(),
         }
@@ -981,9 +1334,26 @@ impl UiNode {
                 initial_value.into()
             }),
             text_input: Some(options),
+            text_validation: None,
+            drag_source: None,
+            drop_accepts: Vec::new(),
+            drop_operations: Vec::new(),
             focusable: true,
             children: Vec::new(),
         }
+    }
+
+    /// Creates a retained search field with ordinary non-secret editing behavior.
+    #[must_use]
+    pub fn search_input(
+        id: UiNodeId,
+        name: impl Into<String>,
+        initial_value: impl Into<String>,
+    ) -> Self {
+        let mut node = Self::text_input(id, name, initial_value, UiTextInputOptions::default());
+        node.kind = UiWidgetKind::SearchInput;
+        node.semantics.role = SemanticRole::SearchBox;
+        node
     }
 
     /// Replaces this node's Meridian-owned visual treatment.
@@ -1011,6 +1381,54 @@ impl UiNode {
     #[must_use]
     pub const fn with_absolute_position(mut self, position: UiAbsolutePosition) -> Self {
         self.absolute_position = Some(position);
+        self
+    }
+
+    /// Applies bounded built-in validation to a retained text control.
+    #[must_use]
+    pub const fn with_text_validation(mut self, validation: UiTextValidation) -> Self {
+        self.text_validation = Some(validation);
+        self
+    }
+
+    /// Declares this node as a typed drag source; it grants no mutation authority.
+    #[must_use]
+    pub const fn with_drag_source(mut self, kind: UiDragKind) -> Self {
+        self.drag_source = Some(kind);
+        self
+    }
+
+    /// Declares a bounded set of typed drop proposals accepted by this node.
+    #[must_use]
+    pub fn accepting_drop(mut self, kinds: impl IntoIterator<Item = UiDragKind>) -> Self {
+        self.drop_accepts = kinds.into_iter().collect();
+        self.drop_operations = vec![UiDropOperation::Move];
+        self
+    }
+
+    /// Declares accepted payload families and host operations for drop negotiation.
+    #[must_use]
+    pub fn accepting_drop_operations(
+        mut self,
+        kinds: impl IntoIterator<Item = UiDragKind>,
+        operations: impl IntoIterator<Item = UiDropOperation>,
+    ) -> Self {
+        self.drop_accepts = kinds.into_iter().collect();
+        self.drop_operations = operations.into_iter().collect();
+        self
+    }
+
+    /// Projects enabled, selected, expanded, and validation state to semantics.
+    #[must_use]
+    pub const fn with_control_state(mut self, state: UiControlState) -> Self {
+        self.semantics.state = state;
+        self
+    }
+
+    /// Makes a named region keyboard focusable for collection or drop behavior.
+    #[must_use]
+    pub const fn with_focusable(mut self, focusable: bool) -> Self {
+        self.focusable = focusable;
         self
     }
 
@@ -1049,6 +1467,10 @@ impl UiNode {
             semantics: UiSemantics::toggle(name, action, value),
             text: Some(if value { "On" } else { "Off" }.to_owned()),
             text_input: None,
+            text_validation: None,
+            drag_source: None,
+            drop_accepts: Vec::new(),
+            drop_operations: Vec::new(),
             focusable: true,
             children: Vec::new(),
         }
@@ -1070,9 +1492,352 @@ impl UiNode {
             semantics: UiSemantics::progress(name, value),
             text: Some(format!("{value}%")),
             text_input: None,
+            text_validation: None,
+            drag_source: None,
+            drop_accepts: Vec::new(),
+            drop_operations: Vec::new(),
             focusable: false,
             children: Vec::new(),
         }
+    }
+
+    fn professional_container(
+        id: UiNodeId,
+        name: impl Into<String>,
+        kind: UiWidgetKind,
+        role: SemanticRole,
+        layout: UiLayout,
+        children: Vec<UiNodeId>,
+    ) -> Self {
+        let name = name.into();
+        let mut node = Self::container(id, name.clone(), layout, children);
+        node.kind = kind;
+        node.semantics = UiSemantics::professional(name, role);
+        node
+    }
+
+    /// Creates a keyboard-operable combo box with retained option children.
+    #[must_use]
+    pub fn combo_box(
+        id: UiNodeId,
+        name: impl Into<String>,
+        action: impl Into<String>,
+        value: impl Into<String>,
+        children: Vec<UiNodeId>,
+    ) -> Self {
+        let name = name.into();
+        let mut node = Self::button(id, name.clone(), action, value);
+        node.kind = UiWidgetKind::ComboBox;
+        node.layout = UiLayout::VerticalStack { gap: 0.0 };
+        node.style = UiStyle::text_field();
+        node.semantics.role = SemanticRole::ComboBox;
+        node.children = children;
+        node
+    }
+
+    /// Creates one typed, keyboard-operable combo-box option.
+    #[must_use]
+    pub fn combo_option(
+        id: UiNodeId,
+        name: impl Into<String>,
+        action: impl Into<String>,
+        selected: bool,
+    ) -> Self {
+        let name = name.into();
+        let mut node = Self::button(id, name.clone(), action, name);
+        node.kind = UiWidgetKind::ComboOption;
+        node.semantics.role = SemanticRole::Option;
+        node.semantics.state.selected = selected;
+        node
+    }
+
+    /// Creates a restrained horizontal menu bar.
+    #[must_use]
+    pub fn menu_bar(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_container(
+            id,
+            name,
+            UiWidgetKind::MenuBar,
+            SemanticRole::MenuBar,
+            UiLayout::HorizontalStack { gap: 4.0 },
+            children,
+        )
+    }
+
+    /// Creates a semantic menu container; menu items own activation commands.
+    #[must_use]
+    pub fn menu(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_container(
+            id,
+            name,
+            UiWidgetKind::Menu,
+            SemanticRole::Menu,
+            UiLayout::VerticalStack { gap: 0.0 },
+            children,
+        )
+    }
+
+    /// Creates a focus-preserving contextual menu surface.
+    #[must_use]
+    pub fn context_menu(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_container(
+            id,
+            name,
+            UiWidgetKind::ContextMenu,
+            SemanticRole::Menu,
+            UiLayout::VerticalStack { gap: 0.0 },
+            children,
+        )
+    }
+
+    /// Creates a named menu item with release-based typed activation.
+    #[must_use]
+    pub fn menu_item(
+        id: UiNodeId,
+        name: impl Into<String>,
+        action: impl Into<String>,
+        text: impl Into<String>,
+    ) -> Self {
+        let mut node = Self::button(id, name, action, text);
+        node.kind = UiWidgetKind::MenuItem;
+        node.semantics.role = SemanticRole::MenuItem;
+        node
+    }
+
+    /// Creates a non-focus-stealing semantic tooltip.
+    #[must_use]
+    pub fn tooltip(id: UiNodeId, name: impl Into<String>, text: impl Into<String>) -> Self {
+        let mut node = Self::label(id, name, text);
+        node.kind = UiWidgetKind::Tooltip;
+        node.semantics.role = SemanticRole::Tooltip;
+        node
+    }
+
+    /// Creates a bounded semantic live-region notification.
+    #[must_use]
+    pub fn toast(id: UiNodeId, name: impl Into<String>, text: impl Into<String>) -> Self {
+        let mut node = Self::label(id, name, text);
+        node.kind = UiWidgetKind::Toast;
+        node.semantics.role = SemanticRole::LiveRegion;
+        node
+    }
+
+    /// Creates a tab-list container.
+    #[must_use]
+    pub fn tabs(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_container(
+            id,
+            name,
+            UiWidgetKind::Tabs,
+            SemanticRole::TabList,
+            UiLayout::HorizontalStack { gap: 4.0 },
+            children,
+        )
+    }
+
+    /// Creates one keyboard-operable tab.
+    #[must_use]
+    pub fn tab(
+        id: UiNodeId,
+        name: impl Into<String>,
+        action: impl Into<String>,
+        selected: bool,
+    ) -> Self {
+        let name = name.into();
+        let mut node = Self::button(id, name.clone(), action, name);
+        node.kind = UiWidgetKind::Tab;
+        node.semantics.role = SemanticRole::Tab;
+        node.semantics.state.selected = selected;
+        node
+    }
+
+    /// Creates a virtualizable tree container.
+    #[must_use]
+    pub fn tree(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_container(
+            id,
+            name,
+            UiWidgetKind::Tree,
+            SemanticRole::Tree,
+            UiLayout::VerticalStack { gap: 0.0 },
+            children,
+        )
+    }
+
+    /// Creates a stable tree row with explicit selected and expanded state.
+    #[must_use]
+    pub fn tree_item(
+        id: UiNodeId,
+        name: impl Into<String>,
+        action: impl Into<String>,
+        selected: bool,
+        expanded: bool,
+    ) -> Self {
+        let name = name.into();
+        let mut node = Self::button(id, name.clone(), action, name);
+        node.kind = UiWidgetKind::TreeItem;
+        node.semantics.role = SemanticRole::TreeItem;
+        node.semantics.state.selected = selected;
+        node.semantics.state.expanded = expanded;
+        node
+    }
+
+    fn professional_region(
+        id: UiNodeId,
+        name: impl Into<String>,
+        kind: UiWidgetKind,
+        role: SemanticRole,
+        layout: UiLayout,
+        children: Vec<UiNodeId>,
+    ) -> Self {
+        Self::professional_container(id, name, kind, role, layout, children)
+    }
+
+    /// Creates a semantic table container.
+    #[must_use]
+    pub fn table(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_region(
+            id,
+            name,
+            UiWidgetKind::Table,
+            SemanticRole::Table,
+            UiLayout::VerticalStack { gap: 0.0 },
+            children,
+        )
+    }
+
+    /// Creates a semantic table row.
+    #[must_use]
+    pub fn table_row(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_region(
+            id,
+            name,
+            UiWidgetKind::TableRow,
+            SemanticRole::Row,
+            UiLayout::HorizontalStack { gap: 4.0 },
+            children,
+        )
+    }
+
+    /// Creates a semantic table cell.
+    #[must_use]
+    pub fn table_cell(id: UiNodeId, name: impl Into<String>, text: impl Into<String>) -> Self {
+        let mut node = Self::label(id, name, text);
+        node.kind = UiWidgetKind::TableCell;
+        node.semantics.role = SemanticRole::Cell;
+        node
+    }
+
+    /// Creates a stable focusable list row with a typed activation command.
+    #[must_use]
+    pub fn list_item(
+        id: UiNodeId,
+        name: impl Into<String>,
+        action: impl Into<String>,
+        selected: bool,
+    ) -> Self {
+        let name = name.into();
+        let mut node = Self::button(id, name.clone(), action, name);
+        node.kind = UiWidgetKind::ListItem;
+        node.semantics.role = SemanticRole::ListItem;
+        node.semantics.state.selected = selected;
+        node
+    }
+
+    /// Creates a semantic property grid.
+    #[must_use]
+    pub fn property_grid(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_region(
+            id,
+            name,
+            UiWidgetKind::PropertyGrid,
+            SemanticRole::PropertyGrid,
+            UiLayout::VerticalStack { gap: 4.0 },
+            children,
+        )
+    }
+
+    /// Creates a virtual-list semantic root; callers realize only `virtual_range` rows.
+    #[must_use]
+    pub fn virtual_list(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_region(
+            id,
+            name,
+            UiWidgetKind::VirtualList,
+            SemanticRole::List,
+            UiLayout::VerticalStack { gap: 0.0 },
+            children,
+        )
+    }
+
+    /// Creates a semantic timeline container.
+    #[must_use]
+    pub fn timeline(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_region(
+            id,
+            name,
+            UiWidgetKind::Timeline,
+            SemanticRole::Timeline,
+            UiLayout::Overlay,
+            children,
+        )
+    }
+
+    /// Creates a keyboard-operable splitter that proposes a typed resize command.
+    #[must_use]
+    pub fn splitter(
+        id: UiNodeId,
+        name: impl Into<String>,
+        action: impl Into<String>,
+        axis: UiAxis,
+    ) -> Self {
+        let mut node = Self::button(id, name, action, "");
+        node.kind = UiWidgetKind::Splitter;
+        node.semantics.role = SemanticRole::Splitter;
+        node.text = None;
+        node.layout = UiLayout::Flex { axis, gap: 0.0 };
+        node
+    }
+
+    /// Creates a command-palette dialog root with retained filter/list children.
+    #[must_use]
+    pub fn command_palette(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_region(
+            id,
+            name,
+            UiWidgetKind::CommandPalette,
+            SemanticRole::Dialog,
+            UiLayout::VerticalStack { gap: 4.0 },
+            children,
+        )
+    }
+
+    /// Creates a renderer-neutral graph interaction region.
+    #[must_use]
+    pub fn graph(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_region(
+            id,
+            name,
+            UiWidgetKind::Graph,
+            SemanticRole::Graph,
+            UiLayout::Absolute,
+            children,
+        )
+        .with_focusable(true)
+    }
+
+    /// Creates a renderer-neutral direct-manipulation canvas region.
+    #[must_use]
+    pub fn canvas(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
+        Self::professional_region(
+            id,
+            name,
+            UiWidgetKind::Canvas,
+            SemanticRole::Canvas,
+            UiLayout::Absolute,
+            children,
+        )
+        .with_focusable(true)
     }
 }
 
@@ -1098,7 +1863,30 @@ pub enum UiDocumentError {
     TextInputNotFocusable(UiNodeId),
     MissingTextInputOptions(UiNodeId),
     UnexpectedTextInputOptions(UiNodeId),
+    UnexpectedTextValidation(UiNodeId),
     PasswordInitialValue(UiNodeId),
+    DragSourceNotFocusable(UiNodeId),
+    DropTargetNotFocusable(UiNodeId),
+    TooManyDropKinds {
+        node: UiNodeId,
+        count: usize,
+        maximum: usize,
+    },
+    DuplicateDropKind {
+        node: UiNodeId,
+        kind: UiDragKind,
+    },
+    MissingDropOperation(UiNodeId),
+    UnexpectedDropOperation(UiNodeId),
+    DuplicateDropOperation {
+        node: UiNodeId,
+        operation: UiDropOperation,
+    },
+    TooManyDropOperations {
+        node: UiNodeId,
+        count: usize,
+        maximum: usize,
+    },
     TextTooLong {
         node: UiNodeId,
         bytes: usize,
@@ -1238,6 +2026,12 @@ impl UiDocument {
     }
 
     fn validate_control(id: UiNodeId, node: &UiNode) -> Result<(), UiDocumentError> {
+        Self::validate_semantics(id, node)?;
+        Self::validate_text_control(id, node)?;
+        Self::validate_drag_contract(id, node)
+    }
+
+    fn validate_semantics(id: UiNodeId, node: &UiNode) -> Result<(), UiDocumentError> {
         for (field, value) in [
             (UiSemanticField::Name, Some(node.semantics.name.as_str())),
             (UiSemanticField::Action, node.semantics.action.as_deref()),
@@ -1259,19 +2053,39 @@ impl UiDocument {
         }
         if matches!(
             node.kind,
-            UiWidgetKind::Button | UiWidgetKind::IconButton | UiWidgetKind::Toggle
+            UiWidgetKind::Button
+                | UiWidgetKind::IconButton
+                | UiWidgetKind::Toggle
+                | UiWidgetKind::MenuItem
+                | UiWidgetKind::Tab
+                | UiWidgetKind::TreeItem
+                | UiWidgetKind::ListItem
+                | UiWidgetKind::ComboBox
+                | UiWidgetKind::ComboOption
+                | UiWidgetKind::Splitter
         ) && node.semantics.action.is_none()
         {
             return Err(UiDocumentError::MissingButtonAction(id));
         }
-        if node.kind == UiWidgetKind::TextInput && !node.focusable {
+        Ok(())
+    }
+
+    fn validate_text_control(id: UiNodeId, node: &UiNode) -> Result<(), UiDocumentError> {
+        let is_text_input = matches!(
+            node.kind,
+            UiWidgetKind::TextInput | UiWidgetKind::SearchInput
+        );
+        if is_text_input && !node.focusable {
             return Err(UiDocumentError::TextInputNotFocusable(id));
         }
-        if node.kind == UiWidgetKind::TextInput && node.text_input.is_none() {
+        if is_text_input && node.text_input.is_none() {
             return Err(UiDocumentError::MissingTextInputOptions(id));
         }
-        if node.kind != UiWidgetKind::TextInput && node.text_input.is_some() {
+        if !is_text_input && node.text_input.is_some() {
             return Err(UiDocumentError::UnexpectedTextInputOptions(id));
+        }
+        if !is_text_input && node.text_validation.is_some() {
+            return Err(UiDocumentError::UnexpectedTextValidation(id));
         }
         if node.text_input.is_some_and(|options| options.password)
             && node.text.as_ref().is_some_and(|text| !text.is_empty())
@@ -1284,6 +2098,54 @@ impl UiDocument {
                     node: id,
                     bytes: text.len(),
                     maximum: MAX_TEXT_BYTES,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_drag_contract(id: UiNodeId, node: &UiNode) -> Result<(), UiDocumentError> {
+        if node.drag_source.is_some() && !node.focusable {
+            return Err(UiDocumentError::DragSourceNotFocusable(id));
+        }
+        if !node.drop_accepts.is_empty() && !node.focusable {
+            return Err(UiDocumentError::DropTargetNotFocusable(id));
+        }
+        if node.drop_accepts.len() > MAX_DROP_KINDS {
+            return Err(UiDocumentError::TooManyDropKinds {
+                node: id,
+                count: node.drop_accepts.len(),
+                maximum: MAX_DROP_KINDS,
+            });
+        }
+        let mut drop_kinds = BTreeSet::new();
+        for kind in &node.drop_accepts {
+            if !drop_kinds.insert(*kind) {
+                return Err(UiDocumentError::DuplicateDropKind {
+                    node: id,
+                    kind: *kind,
+                });
+            }
+        }
+        if !node.drop_accepts.is_empty() && node.drop_operations.is_empty() {
+            return Err(UiDocumentError::MissingDropOperation(id));
+        }
+        if node.drop_accepts.is_empty() && !node.drop_operations.is_empty() {
+            return Err(UiDocumentError::UnexpectedDropOperation(id));
+        }
+        if node.drop_operations.len() > MAX_DROP_OPERATIONS {
+            return Err(UiDocumentError::TooManyDropOperations {
+                node: id,
+                count: node.drop_operations.len(),
+                maximum: MAX_DROP_OPERATIONS,
+            });
+        }
+        let mut drop_operations = BTreeSet::new();
+        for operation in &node.drop_operations {
+            if !drop_operations.insert(*operation) {
+                return Err(UiDocumentError::DuplicateDropOperation {
+                    node: id,
+                    operation: *operation,
                 });
             }
         }
@@ -1413,7 +2275,7 @@ impl UiDocument {
         let Some(node) = self.nodes.get(&id) else {
             return;
         };
-        if node.focusable {
+        if node.focusable && !node.semantics.state.disabled {
             order.push(id);
         }
         for child in &node.children {
@@ -1559,6 +2421,200 @@ mod tests {
             Err(UiDocumentError::TooManyNodes {
                 count: MAX_RETAINED_NODES + 1,
                 maximum: MAX_RETAINED_NODES,
+            })
+        );
+    }
+
+    #[test]
+    fn virtual_range_realizes_only_a_bounded_visible_window() {
+        assert_eq!(
+            virtual_range(MAX_VIRTUAL_ITEMS, 20.0, 100.0, 50.0, 2),
+            Ok(UiVirtualRange { start: 0, end: 10 })
+        );
+        assert_eq!(
+            virtual_range(MAX_VIRTUAL_ITEMS + 1, 20.0, 100.0, 0.0, 0),
+            Err(UiVirtualRangeError::TooManyItems {
+                count: MAX_VIRTUAL_ITEMS + 1,
+                maximum: MAX_VIRTUAL_ITEMS,
+            })
+        );
+        assert_eq!(
+            virtual_range(10, f32::NAN, 100.0, 0.0, 0),
+            Err(UiVirtualRangeError::InvalidGeometry)
+        );
+        assert_eq!(
+            virtual_range(10, 20.0, 100.0, 0.0, MAX_RETAINED_NODES + 1),
+            Err(UiVirtualRangeError::OverscanTooLarge {
+                count: MAX_RETAINED_NODES + 1,
+                maximum: MAX_RETAINED_NODES,
+            })
+        );
+        assert_eq!(
+            virtual_range(MAX_VIRTUAL_ITEMS, 1.0, f32::from(u16::MAX), 0.0, 0,),
+            Err(UiVirtualRangeError::RealizedRangeTooLarge {
+                count: MAX_VIRTUAL_ITEMS,
+                maximum: MAX_RETAINED_NODES,
+            })
+        );
+    }
+
+    #[test]
+    fn collection_cursor_keeps_hidden_identity_until_the_user_navigates() {
+        let hidden = UiNodeId::new(2);
+        let first = UiNodeId::new(3);
+        let second = UiNodeId::new(4);
+        let mut cursor = UiCollectionCursor {
+            selected: Some(hidden),
+        };
+        assert_eq!(
+            cursor.navigate(&[], 10, UiCollectionNavigation::Next),
+            Some(hidden)
+        );
+        assert_eq!(
+            cursor.navigate(&[first, second], 10, UiCollectionNavigation::Next),
+            Some(first)
+        );
+    }
+
+    #[test]
+    fn professional_controls_publish_roles_states_and_keyboard_drop_contracts() {
+        let tree = UiNodeId::new(10);
+        let item = UiNodeId::new(11);
+        let document = UiDocument::new(
+            tree,
+            vec![
+                UiNode::tree(tree, "Hierarchy", vec![item]),
+                UiNode::tree_item(item, "Camera", "world.select_camera", true, true)
+                    .with_drag_source(UiDragKind::Entity)
+                    .accepting_drop([UiDragKind::Entity]),
+            ],
+        )
+        .expect("professional tree is valid");
+        let item = document.node(item).expect("item exists");
+        assert_eq!(item.kind, UiWidgetKind::TreeItem);
+        assert_eq!(item.semantics.role, SemanticRole::TreeItem);
+        assert!(item.semantics.state.selected);
+        assert!(item.semantics.state.expanded);
+        assert_eq!(item.drag_source, Some(UiDragKind::Entity));
+        assert_eq!(item.drop_accepts, vec![UiDragKind::Entity]);
+        assert_eq!(item.drop_operations, vec![UiDropOperation::Move]);
+    }
+
+    #[test]
+    fn professional_component_families_publish_owned_semantics() {
+        let root = UiNodeId::new(30);
+        let search = UiNodeId::new(31);
+        let option = UiNodeId::new(32);
+        let combo = UiNodeId::new(33);
+        let menu_item = UiNodeId::new(34);
+        let menu_bar = UiNodeId::new(35);
+        let context_item = UiNodeId::new(36);
+        let context_menu = UiNodeId::new(37);
+        let splitter = UiNodeId::new(38);
+        let graph = UiNodeId::new(39);
+        let canvas = UiNodeId::new(40);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Professional controls",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![
+                        search,
+                        combo,
+                        menu_bar,
+                        context_menu,
+                        splitter,
+                        graph,
+                        canvas,
+                    ],
+                ),
+                UiNode::search_input(search, "Search commands", "build"),
+                UiNode::combo_option(option, "Compact", "density.compact", true),
+                UiNode::combo_box(combo, "Density", "density.open", "Compact", vec![option]),
+                UiNode::menu_item(menu_item, "Build", "build.start", "Build"),
+                UiNode::menu_bar(menu_bar, "Application menu", vec![menu_item]),
+                UiNode::menu_item(context_item, "Rename", "entity.rename", "Rename"),
+                UiNode::context_menu(context_menu, "Entity actions", vec![context_item]),
+                UiNode::splitter(
+                    splitter,
+                    "Resize inspector",
+                    "inspector.resize",
+                    UiAxis::Horizontal,
+                ),
+                UiNode::graph(graph, "Material graph", Vec::new()),
+                UiNode::canvas(canvas, "World viewport", Vec::new()),
+            ],
+        )
+        .expect("professional component document is valid");
+
+        for (id, kind, role) in [
+            (search, UiWidgetKind::SearchInput, SemanticRole::SearchBox),
+            (combo, UiWidgetKind::ComboBox, SemanticRole::ComboBox),
+            (option, UiWidgetKind::ComboOption, SemanticRole::Option),
+            (menu_bar, UiWidgetKind::MenuBar, SemanticRole::MenuBar),
+            (context_menu, UiWidgetKind::ContextMenu, SemanticRole::Menu),
+            (splitter, UiWidgetKind::Splitter, SemanticRole::Splitter),
+            (graph, UiWidgetKind::Graph, SemanticRole::Graph),
+            (canvas, UiWidgetKind::Canvas, SemanticRole::Canvas),
+        ] {
+            let node = document.node(id).expect("professional node exists");
+            assert_eq!((node.kind, node.semantics.role), (kind, role));
+        }
+        assert!(document.focus_order().contains(&graph));
+        assert!(document.focus_order().contains(&canvas));
+    }
+
+    #[test]
+    fn malformed_drag_contracts_are_rejected_before_a_frame() {
+        let node = UiNodeId::new(20);
+        let invalid =
+            UiNode::label(node, "Read only", "Read only").accepting_drop([UiDragKind::Asset]);
+        assert_eq!(
+            UiDocument::new(node, vec![invalid]),
+            Err(UiDocumentError::DropTargetNotFocusable(node))
+        );
+
+        let duplicate = UiNode::button(node, "Drop", "drop", "Drop")
+            .accepting_drop([UiDragKind::Asset, UiDragKind::Asset]);
+        assert_eq!(
+            UiDocument::new(node, vec![duplicate]),
+            Err(UiDocumentError::DuplicateDropKind {
+                node,
+                kind: UiDragKind::Asset,
+            })
+        );
+
+        let duplicate_operation = UiNode::button(node, "Drop", "drop", "Drop")
+            .accepting_drop_operations(
+                [UiDragKind::Asset],
+                [UiDropOperation::Move, UiDropOperation::Move],
+            );
+        assert_eq!(
+            UiDocument::new(node, vec![duplicate_operation]),
+            Err(UiDocumentError::DuplicateDropOperation {
+                node,
+                operation: UiDropOperation::Move,
+            })
+        );
+
+        let too_many_operations = UiNode::button(node, "Drop", "drop", "Drop")
+            .accepting_drop_operations(
+                [UiDragKind::Asset],
+                [
+                    UiDropOperation::Move,
+                    UiDropOperation::Copy,
+                    UiDropOperation::Link,
+                    UiDropOperation::Move,
+                ],
+            );
+        assert_eq!(
+            UiDocument::new(node, vec![too_many_operations]),
+            Err(UiDocumentError::TooManyDropOperations {
+                node,
+                count: MAX_DROP_OPERATIONS + 1,
+                maximum: MAX_DROP_OPERATIONS,
             })
         );
     }

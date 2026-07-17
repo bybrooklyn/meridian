@@ -1,7 +1,11 @@
 //! Meridian-owned text contracts and the private Cosmic Text adapter.
 
+use std::collections::VecDeque;
+
 use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, SwashCache, SwashContent};
-use meridian_ui_core::{sanitized_scale_factor, UiNodeId, UiPoint, MAX_TEXT_BYTES};
+use meridian_ui_core::{
+    sanitized_scale_factor, UiNodeId, UiPoint, UiTextValidation, MAX_RETAINED_NODES, MAX_TEXT_BYTES,
+};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Aggregate alpha-mask budget accepted for one immutable UI frame.
@@ -14,6 +18,13 @@ pub enum UiTextCursorDirection {
     Forward,
     Start,
     End,
+}
+
+/// Rejected IME composition data before private editor state changes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiPreeditError {
+    TooLong,
+    InvalidCursor,
 }
 
 /// A half-open text selection in extended-grapheme positions.
@@ -76,7 +87,22 @@ pub struct UiTextInputSnapshot {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiClipboardRequest {
     pub source: UiNodeId,
+    pub operation: UiClipboardOperation,
     pub text: String,
+}
+
+/// Clipboard mutation requested from a capability-gated platform adapter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiClipboardOperation {
+    Copy,
+    Cut,
+}
+
+/// Completion query containing only a non-password retained prefix.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiCompletionRequest {
+    pub source: UiNodeId,
+    pub prefix: String,
 }
 
 /// Private-value text editing state owned by the text boundary.
@@ -89,6 +115,47 @@ pub struct UiTextInputState {
     selection: UiTextSelection,
     preedit: Option<(String, Option<(usize, usize)>)>,
     password: bool,
+    undo: UiTextHistory,
+    redo: UiTextHistory,
+}
+
+#[derive(Clone, Debug)]
+struct UiTextEditState {
+    value: String,
+    selection: UiTextSelection,
+}
+
+#[derive(Clone, Debug, Default)]
+struct UiTextHistory {
+    states: VecDeque<UiTextEditState>,
+    bytes: usize,
+}
+
+impl UiTextHistory {
+    fn push(&mut self, state: UiTextEditState) {
+        let state_bytes = state.value.len();
+        while self.states.len() >= MAX_RETAINED_NODES
+            || self.bytes.saturating_add(state_bytes) > MAX_TEXT_BYTES
+        {
+            let Some(removed) = self.states.pop_front() else {
+                break;
+            };
+            self.bytes = self.bytes.saturating_sub(removed.value.len());
+        }
+        self.bytes = self.bytes.saturating_add(state_bytes);
+        self.states.push_back(state);
+    }
+
+    fn pop(&mut self) -> Option<UiTextEditState> {
+        let state = self.states.pop_back()?;
+        self.bytes = self.bytes.saturating_sub(state.value.len());
+        Some(state)
+    }
+
+    fn clear(&mut self) {
+        self.states.clear();
+        self.bytes = 0;
+    }
 }
 
 impl UiTextInputState {
@@ -103,6 +170,8 @@ impl UiTextInputState {
             selection: UiTextSelection::default(),
             preedit: None,
             password,
+            undo: UiTextHistory::default(),
+            redo: UiTextHistory::default(),
         }
     }
 
@@ -138,6 +207,17 @@ impl UiTextInputState {
 
     /// Replaces the current grapheme selection within the shared text bound.
     pub fn commit(&mut self, replacement: &str) -> bool {
+        let before = self.edit_state();
+        if !self.replace_selection(replacement) {
+            return false;
+        }
+        if self.value != before.value {
+            self.record_edit(before);
+        }
+        true
+    }
+
+    fn replace_selection(&mut self, replacement: &str) -> bool {
         let selection = clamp_selection(self.selection, grapheme_count(&self.value));
         let start = byte_index_at_grapheme(&self.value, selection.start());
         let end = byte_index_at_grapheme(&self.value, selection.end());
@@ -151,13 +231,34 @@ impl UiTextInputState {
         true
     }
 
-    /// Stores a bounded IME pre-edit without committing it to the value.
-    pub fn set_preedit(&mut self, text: String, cursor: Option<(usize, usize)>) -> bool {
+    /// Stores bounded IME composition and a UTF-8 byte-range cursor.
+    ///
+    /// # Errors
+    ///
+    /// Rejects composition text above the shared text bound or a cursor range
+    /// that is reversed or outside the supplied composition.
+    pub fn set_preedit(
+        &mut self,
+        text: String,
+        cursor: Option<(usize, usize)>,
+    ) -> Result<(), UiPreeditError> {
         if text.len() > MAX_TEXT_BYTES {
-            return false;
+            return Err(UiPreeditError::TooLong);
+        }
+        if cursor.is_some_and(|(start, end)| {
+            start > end
+                || end > text.len()
+                || !text.is_char_boundary(start)
+                || !text.is_char_boundary(end)
+        }) {
+            return Err(UiPreeditError::InvalidCursor);
         }
         self.preedit = Some((text, cursor));
-        true
+        Ok(())
+    }
+
+    pub fn cancel_preedit(&mut self) {
+        self.preedit = None;
     }
 
     pub fn move_cursor(&mut self, direction: UiTextCursorDirection, extend_selection: bool) {
@@ -188,6 +289,7 @@ impl UiTextInputState {
     }
 
     pub fn delete(&mut self, backward: bool) {
+        let before = self.edit_state();
         let count = grapheme_count(&self.value);
         let selection = clamp_selection(self.selection, count);
         if selection.is_collapsed() {
@@ -206,7 +308,10 @@ impl UiTextInputState {
             self.selection = selection;
         }
         if !self.selection.is_collapsed() {
-            let _ = self.commit("");
+            let _ = self.replace_selection("");
+            if self.value != before.value {
+                self.record_edit(before);
+            }
         }
         self.preedit = None;
     }
@@ -232,6 +337,63 @@ impl UiTextInputState {
         self.value.get(start..end)
     }
 
+    /// Returns and removes a non-password selection for a capability-gated cut.
+    pub fn cut_selected_text(&mut self) -> Option<String> {
+        let selected = self.selected_text()?.to_owned();
+        let before = self.edit_state();
+        let _ = self.replace_selection("");
+        self.record_edit(before);
+        Some(selected)
+    }
+
+    /// Restores the preceding non-password edit state within the shared history bound.
+    pub fn undo(&mut self) -> bool {
+        if self.password {
+            return false;
+        }
+        let Some(previous) = self.undo.pop() else {
+            return false;
+        };
+        self.redo.push(self.edit_state());
+        self.restore_edit(previous);
+        true
+    }
+
+    /// Reapplies the next non-password edit state within the shared history bound.
+    pub fn redo(&mut self) -> bool {
+        if self.password {
+            return false;
+        }
+        let Some(next) = self.redo.pop() else {
+            return false;
+        };
+        self.undo.push(self.edit_state());
+        self.restore_edit(next);
+        true
+    }
+
+    #[must_use]
+    pub fn completion_prefix(&self) -> Option<String> {
+        if self.password {
+            return None;
+        }
+        let selection = clamp_selection(self.selection, grapheme_count(&self.value));
+        let end = byte_index_at_grapheme(&self.value, selection.focus);
+        self.value.get(..end).map(str::to_owned)
+    }
+
+    #[must_use]
+    pub fn is_valid(&self, validation: UiTextValidation) -> bool {
+        match validation {
+            UiTextValidation::NonEmpty => !self.value.trim().is_empty(),
+            UiTextValidation::Integer => self.value.parse::<i64>().is_ok(),
+            UiTextValidation::Decimal => self.value.parse::<f64>().is_ok_and(f64::is_finite),
+            UiTextValidation::MaximumGraphemes(maximum) => {
+                grapheme_count(&self.value) <= usize::from(maximum)
+            }
+        }
+    }
+
     #[must_use]
     pub fn preedit_text(&self) -> Option<&str> {
         (!self.password)
@@ -246,7 +408,30 @@ impl UiTextInputState {
         value.clone_into(&mut self.value);
         self.selection = UiTextSelection::default();
         self.preedit = None;
+        self.undo.clear();
+        self.redo.clear();
         true
+    }
+
+    fn edit_state(&self) -> UiTextEditState {
+        UiTextEditState {
+            value: self.value.clone(),
+            selection: self.selection,
+        }
+    }
+
+    fn record_edit(&mut self, before: UiTextEditState) {
+        if self.password {
+            return;
+        }
+        self.undo.push(before);
+        self.redo.clear();
+    }
+
+    fn restore_edit(&mut self, state: UiTextEditState) {
+        self.value = state.value;
+        self.selection = state.selection;
+        self.preedit = None;
     }
 }
 
@@ -414,4 +599,77 @@ fn bounded_count_as_f32(value: usize) -> f32 {
 #[allow(clippy::cast_precision_loss)]
 fn i32_to_f32(value: i32) -> f32 {
     value as f32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn completion_prefix_stops_at_the_grapheme_cursor() {
+        let mut state = UiTextInputState::new("alpha beta", false);
+        state.move_cursor(UiTextCursorDirection::End, false);
+        state.move_cursor(UiTextCursorDirection::Backward, false);
+        state.move_cursor(UiTextCursorDirection::Backward, false);
+        state.move_cursor(UiTextCursorDirection::Backward, false);
+        state.move_cursor(UiTextCursorDirection::Backward, false);
+        assert_eq!(state.completion_prefix().as_deref(), Some("alpha "));
+    }
+
+    #[test]
+    fn preedit_cursor_uses_valid_utf8_byte_boundaries() {
+        let mut state = UiTextInputState::new("", false);
+        assert_eq!(state.set_preedit("啊b".to_owned(), Some((3, 3))), Ok(()));
+        assert_eq!(
+            state.set_preedit("啊b".to_owned(), Some((1, 1))),
+            Err(UiPreeditError::InvalidCursor)
+        );
+        assert_eq!(state.preedit_text(), Some("啊b"));
+    }
+
+    #[test]
+    fn cut_and_validation_remain_grapheme_safe_and_password_private() {
+        let mut state = UiTextInputState::new("12👩‍🔬", false);
+        state.move_cursor(UiTextCursorDirection::End, false);
+        state.move_cursor(UiTextCursorDirection::Backward, true);
+        assert_eq!(state.cut_selected_text().as_deref(), Some("👩‍🔬"));
+        assert_eq!(state.value(), Some("12"));
+        assert!(state.is_valid(UiTextValidation::Integer));
+        assert!(!state.is_valid(UiTextValidation::MaximumGraphemes(1)));
+
+        let mut password = UiTextInputState::new("ignored", true);
+        assert!(password.commit("secret"));
+        password.select_all();
+        assert_eq!(password.selected_text(), None);
+        assert_eq!(password.cut_selected_text(), None);
+        assert_eq!(password.completion_prefix(), None);
+    }
+
+    #[test]
+    fn bounded_text_history_restores_value_and_selection_without_password_snapshots() {
+        let mut state = UiTextInputState::new("one", false);
+        state.select_all();
+        assert!(state.commit("two"));
+        assert_eq!(state.value(), Some("two"));
+        assert!(state.undo());
+        assert_eq!(state.value(), Some("one"));
+        assert_eq!(state.snapshot(UiNodeId::new(1)).selection.end(), 3);
+        assert!(state.redo());
+        assert_eq!(state.value(), Some("two"));
+
+        let mut password = UiTextInputState::new("", true);
+        assert!(password.commit("secret"));
+        assert!(!password.undo());
+        assert!(!password.redo());
+    }
+
+    #[test]
+    fn text_history_never_exceeds_shared_count_or_byte_bounds() {
+        let mut state = UiTextInputState::new("", false);
+        for _ in 0..1_000 {
+            assert!(state.commit("x"));
+        }
+        assert!(state.undo.states.len() <= MAX_RETAINED_NODES);
+        assert!(state.undo.bytes <= MAX_TEXT_BYTES);
+    }
 }

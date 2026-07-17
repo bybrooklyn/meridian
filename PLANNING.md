@@ -10,8 +10,12 @@ packages are closed with fresh evidence. `WP-UI-001` is an
 `WP-BLD-001`, `WP-PRC-001`, and `WP-EDT-001` are
 `ImplementedFoundation` after cross-platform GitHub Actions evidence. Run
 `29605881704` for `4463bad` qualified the persistent Creator behavioral
-foundation across Linux, Windows, and macOS. `WP-UI-002` is the sole active
-package for the modular retained framework and locked design system.
+foundation across Linux, Windows, and macOS. `WP-UI-002` and `WP-UI-003` are
+`Partial` after locally validated source packages; GitHub Actions run
+`29611418454` could not allocate a runner because of the account billing state
+and is recorded as `NotRun`, not failed implementation evidence. `WVR-UI-001`
+permits non-promoting local continuation, and `WP-UI-004` is the sole active
+package.
 `WP-MDL-001` remains `Partial`; MS-03 remains open.
 
 ## 1. Authority and stop rule
@@ -34,7 +38,7 @@ media, cost-prediction, or competitive-validation system.
 | Penumbra | `Partial` / `Transitional` | direct PBR, cascaded shadows, diffuse irradiance IBL, extraction/upload, typed pass timing, asynchronous visible capture, and structural/native GPU smokes exist |
 | Assets/world/streaming/save | `ImplementedFoundation` / `Partial` | one bounded public source family imports transactionally, packages, worker-streams, activates, saves, recovers, and reconstructs; production schemas/compression/signing remain incomplete |
 | Cairn | `Transitional` | current Rapier wrapper and grounded controller are evidence; Meridian-owned Cairn internals are not implemented |
-| Meridian UI | `ImplementedFoundation` / `Active` | the MS-02 core proof is qualified; `WP-UI-002` now owns the modular retained framework and locked design system, while interaction, docking, accessibility, and production shell packages remain planned |
+| Meridian UI | `ImplementedFoundation` / `Partial` / `Active` | the MS-02 core proof is qualified; `WP-UI-002` and `WP-UI-003` are locally implemented but lack cross-platform qualification, and `WP-UI-004` owns docking, workspaces, responsive layout, and persistence under non-promoting `WVR-UI-001` |
 | Creator Editor | `ImplementedFoundation` | persistent hub, source-authoritative project documents, typed actions, Creator journey, and universal app structure passed run `29605881704`; this is a behavioral foundation, not Meridian UI 1.0 visual completion |
 | Audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | implementation remains outside the current Creator Editor package |
 | Alluvium | `ImplementedFoundation` | canonical text recipes, strict scalar evaluation, derived-cache recovery, CLI, and a basic inspector are qualified; production/domain work remains open |
@@ -298,8 +302,9 @@ Forward+, specular IBL, Meridian UI, Creator Editor workflows, and game content
 remain outside MS-01.
 
 `MS-01` and `MS-02` are closed. `WP-BLD-001`, `WP-PRC-001`, and
-`WP-EDT-001` are qualified MS-03 foundations. `WP-UI-002` is the sole
-active package; `WP-MDL-001` is retained as `Partial` and cannot be promoted
+`WP-EDT-001` are qualified MS-03 foundations. `WP-UI-004` is the sole active
+package under `WVR-UI-001`; `WP-UI-002`, `WP-UI-003`, and `WP-MDL-001` are
+retained as `Partial` and cannot be promoted
 by UI work.
 Penumbra Stage 1 then proceeds through `WP-PEN-003` and
 `WP-PEN-010`, with `WP-PEN-009` as bounded parallel image-quality work and
@@ -347,7 +352,7 @@ unavailable, so the capture remains explicitly Offscreen; no production visual
 quality or calibrated benchmark claim
 Reviewers/sign-offs: GitHub Actions completed all required automated rows;
 separate human release approval is not recorded
-Next unblocked package: `WP-UI-002`, now active
+Next sequence: Meridian UI framework work continues in section 15.
 
 ## 10. Closed package — WP-UI-001 / MS-02 Meridian UI core proof
 
@@ -445,7 +450,7 @@ Windows, and macOS format/check/test/clippy, UI-headless, UI-free runtime, and
 dependency-audit rows successfully. The qualification is headless and no local
 capture establishes visual quality. `WP-BLD-001` subsequently qualified as the
 local-Cargo prerequisite; `WP-EDT-001` subsequently qualified as the Creator
-behavioral foundation, and `WP-UI-002` is active below.
+behavioral foundation; Meridian UI framework work continues in section 15.
 
 ## 11. Closed package — WP-BLD-001 / MS-03 observable build foundation
 
@@ -708,8 +713,8 @@ Linux, Windows, and macOS workspace rows passed, including the configured
 Windows BLD helper/build/artifact proof. The package is closed at its bounded
 local-Cargo foundation scope; `WP-BLD-002` remains planned.
 
-Next unblocked package: `WP-UI-002`, active below after the qualified Creator
-foundation.
+Next sequence: Meridian UI framework work continues in section 15 after the
+qualified Creator foundation.
 
 ## 12. Qualified foundation — WP-EDT-001 / MS-03 Creator Editor Alpha
 
@@ -803,7 +808,7 @@ and architectures, explicit exit, and exact capture hashes. These qualify only
 the Creator behavioral foundation. Platform screen-reader integration,
 Meridian UI 1.0 visual quality, and visible approval remain later evidence.
 
-Next unblocked package: `WP-UI-002`, active below.
+Next sequence: Meridian UI framework work continues in section 15.
 
 ## 13. Closed package — WP-PRC-001 / MS-03 Alluvium foundation
 
@@ -856,7 +861,7 @@ Known limits and unsupported rows: CI is headless; no native presented-surface,
 visual-quality, production-performance, graph-authoring, domain-adapter, or
 runtime-safe-evaluation claim is made.
 
-Next unblocked package: `WP-UI-002` remains the sole active package. The
+Next sequence: Meridian UI framework work continues in section 15. The
 delivered MS-03 subset of `WP-MDL-001` is recorded as `Partial` below and
 cannot become a second active package in this context.
 
@@ -911,10 +916,11 @@ its own full CI run. Native presented-surface screenshots and a keyboard/
 accessibility review remain required MS-03 integration evidence after the
 modeler source gate.
 
-Next unblocked package: `WP-UI-002`; the milestone cannot close before the
-Meridian UI framework, production shell, accessibility, and visible review.
+Next sequence: Meridian UI framework work continues in section 15; the
+milestone cannot close before the framework, production shell, accessibility,
+and visible review.
 
-## 15. Active package — WP-UI-002 / modular retained framework
+## 15. Partial package — WP-UI-002 / modular retained framework
 
 Work package: `WP-UI-002`
 
@@ -922,8 +928,9 @@ User-visible result: Meridian gains one locked, testable design system and a
 modular retained UI foundation capable of representing the permanent shell and
 basic controls without backend or editor types entering public contracts.
 
-Status: `Active`; implementation maturity: `Planned` until source and evidence
-exist.
+Status: `Partial`; implementation maturity: `Partial`. Source checkpoint
+`050b41ff5ab9dce309f94d7ea53f82de2acd27c6` is locally validated and pushed;
+cross-platform qualification is unavailable.
 
 Requirements: `REQ-UI-001`, `REQ-UI-002`
 
@@ -933,7 +940,7 @@ component, and workspace registries, the reviewed external design brief, and
 the generated 17-state mockup corpus define the accepted boundary. No renderer
 choice, AccessKit adapter, docking, or application rewrite is in this package.
 
-Deliverables: `meridian-ui-core`, `meridian-ui-text`,
+Delivered source: `meridian-ui-core`, `meridian-ui-text`,
 `meridian-ui-semantics`, `meridian-ui-render`, and `meridian-ui-runtime` crate
 boundaries; a compatibility `meridian-ui` facade; retained documents and stable
 node identities; incremental reconciliation; immutable frame snapshots;
@@ -957,7 +964,126 @@ backend/font/icon/editor type enters a public contract, mutable traversal can
 partially commit a frame, runtime UI gains an editor dependency, the locked
 palette/geometry drifts, or mockups are treated as capability evidence.
 
-Next package after fresh cross-platform evidence: `WP-UI-003`.
+Local validation passed targeted UI tests, full workspace tests,
+warning-denied Clippy, `meridian-spec check`, locked metadata, format, native
+and headless UI smokes, Creator journey, RHI/renderer structural smokes,
+dependency-boundary checks, and `git diff --check`. GitHub Actions run
+`29611418454` and its manual rerun executed zero steps because GitHub refused
+to allocate a hosted runner for the account billing state. Linux, Windows, and
+macOS rows are therefore `NotRun`. No package or milestone promotion follows.
+
+Next sequence: `WP-UI-004`, active only under non-promoting `WVR-UI-001`.
+
+## 15.1 Partial package — WP-UI-003 / professional interaction and controls
+
+Work package: `WP-UI-003`
+
+User-visible result: Meridian UI gains precise pointer and scrolling phases,
+complete bounded text and clipboard requests, typed drag/drop with cancellation
+and keyboard alternatives, stable collection navigation, professional retained
+control contracts, and deterministic virtualization without introducing editor
+or platform-library types into the framework.
+
+Status: `Partial`; implementation maturity: `Partial`. The public interaction
+contracts, failure paths, professional control families, editor bridge, and
+local validation exist. Hosted cross-platform qualification remains unavailable
+and cannot be waived into a completion claim.
+
+Requirements: `REQ-UI-001`, `REQ-UI-002`
+
+Dependencies and Definition of Ready: `WP-UI-002` supplies its locally proven
+crate, identity, frame, layout, display-list, and token boundaries but remains
+`Partial`. `WVR-UI-001` is a validation-role, non-promoting waiver expiring
+2026-08-17; it permits local continuation only and records the risk of
+unobserved Linux or Windows regressions. The package adds no third-party
+dependency and changes no source-authoritative editor or game format.
+
+Files/crates: `meridian-ui-core` owns typed device, scroll, drag/drop,
+validation, collection, and virtualization contracts; `meridian-ui-text` owns
+bounded editing behavior; `meridian-ui-runtime` owns gesture capture, nested
+scroll handoff, focus-stable interaction state, typed drop proposals, and frame
+snapshots; the compatibility facade and editor adapter migrate without exposing
+platform types.
+
+Tests: press/move/release/cancel and capture; line, pixel, momentum, gesture
+locking, and nested scroll handoff; IME, selection, cut/copy/paste and invalid
+text; pointer and keyboard drag completion/cancellation; stable Home/End/Page
+navigation and filtering; virtual-range bounds and stable identities; malformed
+event and aggregate-limit rollback; runtime/editor/UI-free dependency checks.
+
+Explicit non-goals: docking, saved workspaces, companion windows, animation,
+AccessKit/platform screen readers, renderer selection, the production
+application shell, or claims that incomplete domain panels function.
+
+Stop/rollback rule: stop if pointer activation occurs before a valid release,
+momentum is smoothed twice, a nested scroll loses residual delta, drag/drop
+mutates source directly, filtering replaces stable selection identity, virtual
+controls allocate the full collection, password text reaches semantics or a
+clipboard request, or a platform/editor type enters public framework contracts.
+
+Local validation passed `meridian-spec check`, locked metadata, format, full
+workspace tests, warning-denied workspace Clippy, native/headless UI and Creator
+journey smokes, RHI/renderer structural smokes, runtime/UI dependency checks,
+private-content and secret scans, and `git diff --check`. IME validation uses
+UTF-8 byte boundaries matching the private winit adapter while retained editing
+uses grapheme boundaries. `actionlint` is `NotRun` because it is not installed.
+Linux and Windows remain unobserved under `WVR-UI-001`; no package or milestone
+promotion follows.
+
+Next package: `WP-UI-004`, active only under non-promoting `WVR-UI-001`.
+
+## 15.2 Active package — WP-UI-004 / docking, workspaces, and persistence
+
+Work package: `WP-UI-004`
+
+User-visible result: Meridian UI gains transactional split/tab/floating dock
+trees, remembered workspace layouts, responsive region priorities, recoverable
+versioned persistence, and typed companion-window transfer without binding the
+framework to an editor domain or native windowing library.
+
+Status: `Active`; implementation maturity: `Planned` until the public dock and
+workspace contracts, corruption/recovery paths, and local validation exist.
+Hosted cross-platform qualification remains unavailable and cannot be waived
+into a completion claim.
+
+Requirements: `REQ-UI-001`, `REQ-UI-002`
+
+Dependencies and Definition of Ready: the locally proven `WP-UI-003` slice
+supplies stable input, focus, professional controls, typed drag/drop, and
+bounded virtualization while remaining `Partial`. `WVR-UI-001` permits only
+non-promoting local continuation. No third-party dependency, source-authoritative
+project format, game content, or native window type enters this package.
+
+Files/crates: `meridian-ui-editor` owns editor-only dock trees, panel IDs,
+workspace layouts, responsive priorities, companion-window descriptors, and
+versioned state persistence. Shared core/runtime crates gain only genuinely
+domain-neutral layout or focus contracts required by the public boundary.
+
+Deliverables: split/tab/floating trees; preview tabs, pinning, reorder,
+tear-off, collapse, maximize, minimum sizing, reset, and transactional rollback;
+named layouts with migration and corruption, missing-panel, and monitor-loss
+recovery; primary-frame and session-sharing companion-window descriptors;
+per-workspace document, selection, camera, query, expansion, scroll, pin, and
+focus state; responsive priorities that preserve the working canvas and
+accessible control sizes.
+
+Tests: invalid and cyclic dock trees; minimum-size rejection; split, reorder,
+tear-off, redock, maximize, collapse, reset, and rollback; schema migration,
+corrupt state, unknown panel, and missing monitor recovery; stable context
+through workspace switches; responsive collapse order; companion-window
+session isolation; aggregate and persistence bounds; editor/runtime dependency
+checks.
+
+Explicit non-goals: animation and shared-element effects, AccessKit or native
+screen-reader adapters, renderer qualification, production application shell,
+domain workspace behavior, or claims that a descriptor alone creates a native
+window.
+
+Stop/rollback rule: stop if an invalid dock mutation partially commits, a saved
+layout can allocate without bounds, monitor loss makes content unreachable,
+responsive adaptation shrinks controls below accessible sizes, companion
+windows gain separate source authority, unknown panels prevent recovery, or
+editor/native-window types enter runtime UI crates.
 
 ## 16. Evidence policy
 

@@ -1,6 +1,6 @@
 //! Meridian-owned semantic output projected by private platform adapters.
 
-use meridian_ui_core::{SemanticRole, UiNodeId, UiRect};
+use meridian_ui_core::{SemanticRole, UiControlState, UiNodeId, UiRect};
 
 /// Flat semantic tree; platform adapters turn this into their native tree/delta.
 #[derive(Clone, Debug, PartialEq)]
@@ -11,6 +11,7 @@ pub struct SemanticNode {
     pub name: String,
     pub action: Option<String>,
     pub value: Option<String>,
+    pub state: UiControlState,
     pub bounds: UiRect,
     pub focused: bool,
 }

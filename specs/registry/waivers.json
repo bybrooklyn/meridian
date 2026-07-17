@@ -1,1 +1,18 @@
-{"$schema":"../../schemas/governance/waivers.schema.json","version":"0.5","records":[]}
+{
+  "$schema": "../../schemas/governance/waivers.schema.json",
+  "version": "0.5",
+  "records": [
+    {
+      "id": "WVR-UI-001",
+      "status": "Active",
+      "owner": "UI lead",
+      "approver": "Project owner",
+      "approval_role": "Validation",
+      "expires": "2026-08-17",
+      "blocked_milestone": "MS-03",
+      "remediation_package": "WP-UI-002",
+      "reason": "GitHub-hosted runners are unavailable because the repository account cannot enable Actions billing; the project owner directed local sequential implementation to continue.",
+      "risk": "Linux and Windows regressions may remain unobserved until hosted or equivalent cross-platform validation becomes available; this waiver cannot qualify or promote any package or milestone."
+    }
+  ]
+}

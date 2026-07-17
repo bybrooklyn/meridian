@@ -1476,7 +1476,30 @@ mod tests {
                 SemanticRole::Group
                 | SemanticRole::Status
                 | SemanticRole::ToggleButton
-                | SemanticRole::ProgressIndicator => {
+                | SemanticRole::ProgressIndicator
+                | SemanticRole::SearchBox
+                | SemanticRole::ComboBox
+                | SemanticRole::Option
+                | SemanticRole::MenuBar
+                | SemanticRole::Menu
+                | SemanticRole::MenuItem
+                | SemanticRole::Tooltip
+                | SemanticRole::LiveRegion
+                | SemanticRole::TabList
+                | SemanticRole::Tab
+                | SemanticRole::Tree
+                | SemanticRole::TreeItem
+                | SemanticRole::Table
+                | SemanticRole::Row
+                | SemanticRole::Cell
+                | SemanticRole::PropertyGrid
+                | SemanticRole::List
+                | SemanticRole::ListItem
+                | SemanticRole::Timeline
+                | SemanticRole::Splitter
+                | SemanticRole::Dialog
+                | SemanticRole::Graph
+                | SemanticRole::Canvas => {
                     unreachable!("focusable filter is exact")
                 }
             }
