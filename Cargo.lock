@@ -1859,9 +1859,18 @@ dependencies = [
 name = "meridian-ui"
 version = "0.1.0"
 dependencies = [
- "cosmic-text",
+ "meridian-ui-core",
+ "meridian-ui-render",
+ "meridian-ui-runtime",
+ "meridian-ui-semantics",
+ "meridian-ui-text",
+]
+
+[[package]]
+name = "meridian-ui-core"
+version = "0.1.0"
+dependencies = [
  "meridian-core",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -1873,6 +1882,40 @@ dependencies = [
  "meridian-editor-core",
  "meridian-modeler",
  "meridian-ui",
+]
+
+[[package]]
+name = "meridian-ui-render"
+version = "0.1.0"
+dependencies = [
+ "meridian-ui-core",
+ "meridian-ui-text",
+]
+
+[[package]]
+name = "meridian-ui-runtime"
+version = "0.1.0"
+dependencies = [
+ "meridian-ui-core",
+ "meridian-ui-render",
+ "meridian-ui-semantics",
+ "meridian-ui-text",
+]
+
+[[package]]
+name = "meridian-ui-semantics"
+version = "0.1.0"
+dependencies = [
+ "meridian-ui-core",
+]
+
+[[package]]
+name = "meridian-ui-text"
+version = "0.1.0"
+dependencies = [
+ "cosmic-text",
+ "meridian-ui-core",
+ "unicode-segmentation",
 ]
 
 [[package]]

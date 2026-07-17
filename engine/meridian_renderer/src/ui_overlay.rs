@@ -13,10 +13,12 @@ use meridian_rhi::{
     GpuTextureBindGroup, Rhi, RhiError, TextureFormat, VertexAttribute, VertexFormat, VertexLayout,
     VertexLayoutError,
 };
-use meridian_ui::{DisplayList, DisplayPrimitive, UiColor, UiGlyphBitmap, UiRect, UiSize};
+use meridian_ui::{
+    DisplayList, DisplayListError, DisplayPrimitive, UiColor, UiGlyphBitmap, UiRect, UiSize,
+    MAX_DISPLAY_PRIMITIVES,
+};
 
 const MAX_RASTER_PIXELS: u64 = 16 * 1024 * 1024;
-const MAX_PRIMITIVES: usize = 4_096;
 const UI_VERTEX_BYTES: u64 = 20;
 const UI_INDEX_COUNT: u32 = 6;
 
@@ -35,6 +37,8 @@ pub enum UiOverlayRendererError {
     InvalidViewport,
     RasterTooLarge { pixels: u64, maximum: u64 },
     TooManyPrimitives { count: usize, maximum: usize },
+    InvalidDisplayList(DisplayListError),
+    UnsupportedPrimitive { kind: &'static str },
     BufferSizeOverflow,
     TextureRowOverflow,
     VertexLayout(VertexLayoutError),
@@ -57,6 +61,15 @@ impl Display for UiOverlayRendererError {
                     "UI display list has {count} primitives; maximum is {maximum}"
                 )
             }
+            Self::InvalidDisplayList(error) => {
+                write!(formatter, "invalid UI display list: {error}")
+            }
+            Self::UnsupportedPrimitive { kind } => {
+                write!(
+                    formatter,
+                    "temporary UI raster bridge does not support {kind}"
+                )
+            }
             Self::BufferSizeOverflow => formatter.write_str("UI bridge buffer size overflow"),
             Self::TextureRowOverflow => formatter.write_str("UI raster row size overflow"),
             Self::VertexLayout(error) => Display::fmt(error, formatter),
@@ -73,8 +86,10 @@ impl Error for UiOverlayRendererError {
             Self::InvalidViewport
             | Self::RasterTooLarge { .. }
             | Self::TooManyPrimitives { .. }
+            | Self::UnsupportedPrimitive { .. }
             | Self::BufferSizeOverflow
             | Self::TextureRowOverflow => None,
+            Self::InvalidDisplayList(error) => Some(error),
         }
     }
 }
@@ -227,6 +242,10 @@ struct UiOverlayRaster {
     report: UiOverlayRenderReport,
 }
 
+fn unsupported<T>(kind: &'static str) -> Result<T, UiOverlayRendererError> {
+    Err(UiOverlayRendererError::UnsupportedPrimitive { kind })
+}
+
 impl UiOverlayRaster {
     fn from_display_list(
         display_list: &DisplayList,
@@ -245,12 +264,15 @@ impl UiOverlayRaster {
                 maximum: MAX_RASTER_PIXELS,
             });
         }
-        if display_list.primitives.len() > MAX_PRIMITIVES {
+        if display_list.primitives.len() > MAX_DISPLAY_PRIMITIVES {
             return Err(UiOverlayRendererError::TooManyPrimitives {
                 count: display_list.primitives.len(),
-                maximum: MAX_PRIMITIVES,
+                maximum: MAX_DISPLAY_PRIMITIVES,
             });
         }
+        display_list
+            .validate()
+            .map_err(UiOverlayRendererError::InvalidDisplayList)?;
         let byte_count = usize::try_from(pixel_count)
             .ok()
             .and_then(|count| count.checked_mul(4))
@@ -269,45 +291,73 @@ impl UiOverlayRaster {
         };
         raster.clear(ClearColor::default());
         for primitive in &display_list.primitives {
-            match primitive {
-                DisplayPrimitive::Rect { bounds, color, .. } => {
-                    raster.fill_rect(*bounds, *color);
-                    raster.report.solid_primitives += 1;
-                }
-                DisplayPrimitive::Border {
-                    bounds,
-                    color,
-                    width,
-                    ..
-                } => {
-                    raster.stroke_rect(*bounds, *color, u32::from(*width).max(1));
-                    raster.report.solid_primitives += 1;
-                }
-                DisplayPrimitive::FocusRing { bounds, color, .. } => {
-                    raster.stroke_rect(*bounds, *color, 3);
-                    raster.report.solid_primitives += 1;
-                }
-                DisplayPrimitive::Text {
-                    bounds,
-                    color,
-                    raster: text,
-                    ..
-                } => {
-                    raster.report.text_primitives += 1;
-                    if text.has_unrasterized_glyphs {
-                        raster.report.incomplete_text_primitives += 1;
-                    }
-                    for glyph in &text.glyphs {
-                        if raster.draw_glyph(*bounds, glyph, *color) {
-                            raster.report.rasterized_glyphs += 1;
-                        } else {
-                            raster.report.incomplete_text_primitives += 1;
-                        }
-                    }
-                }
-            }
+            raster.draw_primitive(primitive)?;
         }
         Ok(raster)
+    }
+
+    fn draw_primitive(
+        &mut self,
+        primitive: &DisplayPrimitive,
+    ) -> Result<(), UiOverlayRendererError> {
+        match primitive {
+            DisplayPrimitive::Rect { bounds, color, .. } => {
+                self.fill_rect(*bounds, *color);
+                self.report.solid_primitives += 1;
+            }
+            DisplayPrimitive::Border {
+                bounds,
+                color,
+                width,
+                ..
+            } => {
+                self.stroke_rect(*bounds, *color, u32::from(*width).max(1));
+                self.report.solid_primitives += 1;
+            }
+            DisplayPrimitive::FocusRing { bounds, color, .. } => {
+                self.stroke_rect(*bounds, *color, 3);
+                self.report.solid_primitives += 1;
+            }
+            DisplayPrimitive::Text {
+                bounds,
+                color,
+                raster: text,
+                ..
+            }
+            | DisplayPrimitive::GlyphRun {
+                bounds,
+                color,
+                raster: text,
+                ..
+            } => self.draw_text(*bounds, *color, text),
+            DisplayPrimitive::RoundedRect { .. } => return unsupported("rounded rectangles"),
+            DisplayPrimitive::Path { .. } => return unsupported("paths"),
+            DisplayPrimitive::Image { .. } => return unsupported("images"),
+            DisplayPrimitive::Mesh { .. } => return unsupported("meshes"),
+            DisplayPrimitive::PushClip { .. } | DisplayPrimitive::PopClip { .. } => {
+                return unsupported("clips");
+            }
+            DisplayPrimitive::BeginLayer { .. } | DisplayPrimitive::EndLayer { .. } => {
+                return unsupported("layers");
+            }
+            DisplayPrimitive::Shadow { .. } => return unsupported("shadows"),
+            DisplayPrimitive::Backdrop { .. } => return unsupported("backdrop effects"),
+        }
+        Ok(())
+    }
+
+    fn draw_text(&mut self, bounds: UiRect, color: UiColor, text: &meridian_ui::UiTextRaster) {
+        self.report.text_primitives += 1;
+        if text.has_unrasterized_glyphs {
+            self.report.incomplete_text_primitives += 1;
+        }
+        for glyph in &text.glyphs {
+            if self.draw_glyph(bounds, glyph, color) {
+                self.report.rasterized_glyphs += 1;
+            } else {
+                self.report.incomplete_text_primitives += 1;
+            }
+        }
     }
 
     fn clear(&mut self, color: ClearColor) {
@@ -554,7 +604,13 @@ mod tests {
                 bounds: text_bounds,
                 text: "clipped".to_owned(),
                 color: UiColor::rgba(1.0, 1.0, 1.0, 1.0),
-                layout: UiTextLayout::default(),
+                layout: UiTextLayout {
+                    line_count: 1,
+                    glyph_count: 1,
+                    width: 6.0,
+                    height: 6.0,
+                    used_fallback_metrics: false,
+                },
                 raster: UiTextRaster {
                     glyphs: vec![UiGlyphBitmap {
                         origin: UiPoint { x: 0.0, y: 0.0 },

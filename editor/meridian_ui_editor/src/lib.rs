@@ -1473,7 +1473,10 @@ mod tests {
                     "{} text field height fell below its declared size",
                     node.name
                 ),
-                SemanticRole::Group | SemanticRole::Status => {
+                SemanticRole::Group
+                | SemanticRole::Status
+                | SemanticRole::ToggleButton
+                | SemanticRole::ProgressIndicator => {
                     unreachable!("focusable filter is exact")
                 }
             }
@@ -1672,10 +1675,22 @@ mod tests {
             .primitives
             .iter()
             .filter_map(|primitive| match primitive {
-                DisplayPrimitive::Text { text, .. } => Some(text.as_str()),
+                DisplayPrimitive::Text { text, .. } | DisplayPrimitive::GlyphRun { text, .. } => {
+                    Some(text.as_str())
+                }
                 DisplayPrimitive::Rect { .. }
                 | DisplayPrimitive::Border { .. }
-                | DisplayPrimitive::FocusRing { .. } => None,
+                | DisplayPrimitive::FocusRing { .. }
+                | DisplayPrimitive::RoundedRect { .. }
+                | DisplayPrimitive::Path { .. }
+                | DisplayPrimitive::Image { .. }
+                | DisplayPrimitive::Mesh { .. }
+                | DisplayPrimitive::PushClip { .. }
+                | DisplayPrimitive::PopClip { .. }
+                | DisplayPrimitive::BeginLayer { .. }
+                | DisplayPrimitive::EndLayer { .. }
+                | DisplayPrimitive::Shadow { .. }
+                | DisplayPrimitive::Backdrop { .. } => None,
             });
         for text in rendered_text {
             assert!(!text.contains("Unsigned"));
@@ -1722,10 +1737,22 @@ mod tests {
             .primitives
             .iter()
             .filter_map(|primitive| match primitive {
-                DisplayPrimitive::Text { text, .. } => Some(text.as_str()),
+                DisplayPrimitive::Text { text, .. } | DisplayPrimitive::GlyphRun { text, .. } => {
+                    Some(text.as_str())
+                }
                 DisplayPrimitive::Rect { .. }
                 | DisplayPrimitive::Border { .. }
-                | DisplayPrimitive::FocusRing { .. } => None,
+                | DisplayPrimitive::FocusRing { .. }
+                | DisplayPrimitive::RoundedRect { .. }
+                | DisplayPrimitive::Path { .. }
+                | DisplayPrimitive::Image { .. }
+                | DisplayPrimitive::Mesh { .. }
+                | DisplayPrimitive::PushClip { .. }
+                | DisplayPrimitive::PopClip { .. }
+                | DisplayPrimitive::BeginLayer { .. }
+                | DisplayPrimitive::EndLayer { .. }
+                | DisplayPrimitive::Shadow { .. }
+                | DisplayPrimitive::Backdrop { .. } => None,
             })
             .collect::<Vec<_>>();
         assert!(rendered_text

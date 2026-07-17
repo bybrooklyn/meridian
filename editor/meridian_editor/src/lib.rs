@@ -71,8 +71,8 @@ use meridian_streaming::{
 };
 use meridian_tasks::{TaskClass, TaskContext};
 use meridian_ui::{
-    recovery_panel_document, runtime_overlay_document, DisplayList, SemanticDelta,
-    UiCommandRequest, UiDiagnostic, UiEvent, UiFrameInput, UiNodeId, UiPoint, UiRuntime, UiSize,
+    recovery_panel_document, runtime_overlay_document, SemanticDelta, UiCommandRequest,
+    UiDiagnostic, UiEvent, UiFrameInput, UiFrameOutput, UiNodeId, UiPoint, UiRuntime, UiSize,
     UiTextCursorDirection,
 };
 use meridian_ui_editor::{
@@ -1198,7 +1198,7 @@ struct CreatorApplication {
     hub: CreatorHubState,
     screen: CreatorScreen,
     ui: UiRuntime,
-    display_list: DisplayList,
+    frame: UiFrameOutput,
     logical_viewport: UiSize,
     scale_factor: f32,
     physical_size: WindowSize,
@@ -1310,12 +1310,14 @@ impl CreatorApplication {
         };
         let document = creator_hub_document(&hub.views(), &hub_status)
             .map_err(|error| io::Error::other(format!("Creator hub UI invalid: {error:?}")))?;
+        let mut ui = UiRuntime::new(document);
+        let frame = ui.reconcile(UiFrameInput::new(UiSize::new(1280.0, 800.0)));
         let mut application = Self {
             hub_store,
             hub,
             screen: CreatorScreen::Hub,
-            ui: UiRuntime::new(document),
-            display_list: DisplayList::default(),
+            ui,
+            frame,
             logical_viewport: UiSize::new(1280.0, 800.0),
             scale_factor: 1.0,
             physical_size: WindowSize::new(1280, 800),
@@ -1358,7 +1360,7 @@ impl CreatorApplication {
         let mut input = UiFrameInput::new(self.logical_viewport);
         input.scale_factor = self.scale_factor;
         input.high_contrast = false;
-        self.display_list = self.ui.reconcile(input).display_list;
+        self.frame = self.ui.reconcile(input);
     }
 
     fn refresh_document_and_ui(&mut self) -> AppResult<()> {
@@ -1401,7 +1403,7 @@ impl CreatorApplication {
         let output = self.ui.reconcile(input);
         let clipboard_requested = !output.clipboard_requests.is_empty();
         let mut commands = self.pending_actions.drain(..).collect::<Vec<_>>();
-        commands.extend(output.commands.into_iter().map(|command| command.action));
+        commands.extend(output.commands.iter().map(|command| command.action.clone()));
         self.dispatch_ui_actions(commands, context.window());
         if clipboard_requested {
             self.set_status(
@@ -1446,7 +1448,7 @@ impl CreatorApplication {
         input.events = events;
         let output = self.ui.reconcile(input);
         let clipboard_requested = !output.clipboard_requests.is_empty();
-        let commands = output.commands;
+        let commands = output.commands.clone();
         for command in &commands {
             if matches!(
                 CreatorUiAction::parse(&command.action)?,
@@ -2039,7 +2041,7 @@ impl CreatorApplication {
         let renderer = rebuild_for_renderable_creator_surface(size, || {
             Ok(UiOverlayRenderer::new(
                 &mut rhi,
-                &self.display_list,
+                &self.frame.display_list,
                 self.logical_viewport,
                 self.scale_factor,
             )?)
@@ -2061,7 +2063,7 @@ impl CreatorApplication {
         let renderer = rebuild_for_renderable_creator_surface(self.physical_size, || {
             Ok(UiOverlayRenderer::new(
                 &mut rhi,
-                &self.display_list,
+                &self.frame.display_list,
                 self.logical_viewport,
                 self.scale_factor,
             )?)
@@ -2083,7 +2085,7 @@ impl CreatorApplication {
         let renderer = rebuild_for_renderable_creator_surface(self.physical_size, || {
             Ok(UiOverlayRenderer::new(
                 &mut rhi,
-                &self.display_list,
+                &self.frame.display_list,
                 self.logical_viewport,
                 self.scale_factor,
             )?)
@@ -4287,7 +4289,7 @@ enum UiSmokeStage {
 struct UiNativeSmokeApplication {
     recovery_runtime: UiRuntime,
     overlay_runtime: UiRuntime,
-    display_list: DisplayList,
+    frame: UiFrameOutput,
     logical_viewport: UiSize,
     scale_factor: f32,
     physical_size: WindowSize,
@@ -4304,10 +4306,15 @@ impl UiNativeSmokeApplication {
             .map_err(|error| io::Error::other(format!("recovery UI fixture invalid: {error:?}")))?;
         let overlay_document = runtime_overlay_document()
             .map_err(|error| io::Error::other(format!("runtime UI fixture invalid: {error:?}")))?;
+        let mut recovery_runtime = UiRuntime::new(recovery_document);
+        let mut initial_input = UiFrameInput::new(UiSize::new(960.0, 540.0));
+        initial_input.high_contrast = true;
+        initial_input.events.push(UiEvent::FocusNext);
+        let frame = recovery_runtime.reconcile(initial_input);
         let mut application = Self {
-            recovery_runtime: UiRuntime::new(recovery_document),
+            recovery_runtime,
             overlay_runtime: UiRuntime::new(overlay_document),
-            display_list: DisplayList::default(),
+            frame,
             logical_viewport: UiSize::new(960.0, 540.0),
             scale_factor: 1.0,
             physical_size: WindowSize::new(960, 540),
@@ -4334,16 +4341,16 @@ impl UiNativeSmokeApplication {
         if self.stage == UiSmokeStage::Recovery {
             input.events.push(UiEvent::FocusNext);
         }
-        self.display_list = match self.stage {
-            UiSmokeStage::Recovery => self.recovery_runtime.reconcile(input).display_list,
-            UiSmokeStage::RuntimeOverlay => self.overlay_runtime.reconcile(input).display_list,
+        self.frame = match self.stage {
+            UiSmokeStage::Recovery => self.recovery_runtime.reconcile(input),
+            UiSmokeStage::RuntimeOverlay => self.overlay_runtime.reconcile(input),
         };
     }
 
     fn build_renderer(&self, rhi: &mut Rhi) -> AppResult<UiOverlayRenderer> {
         UiOverlayRenderer::new(
             rhi,
-            &self.display_list,
+            &self.frame.display_list,
             self.logical_viewport,
             self.scale_factor,
         )

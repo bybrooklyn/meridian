@@ -1,834 +1,20 @@
-//! Retained, renderer-independent UI contracts.
-//!
-//! The data crossing this crate boundary is Meridian-owned.  Platform and
-//! renderer adapters consume [`DisplayList`] and [`SemanticTree`] rather than
-//! borrowing widget state or exposing their native types here.
-
-use std::collections::{BTreeMap, BTreeSet};
-
-use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, SwashCache, SwashContent};
-use meridian_core::StableId;
-use unicode_segmentation::UnicodeSegmentation;
-
-const MAX_TEXT_BYTES: usize = 64 * 1024;
-const MAX_GLYPH_RASTER_BYTES: usize = 1024 * 1024;
-
-/// A stable retained-document identity, suitable for saved UI state and tests.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct UiNodeId(StableId);
-
-impl UiNodeId {
-    #[must_use]
-    pub const fn new(value: u128) -> Self {
-        Self(StableId::new(value))
-    }
-
-    #[must_use]
-    pub const fn stable_id(self) -> StableId {
-        self.0
-    }
-}
-
-/// Logical-space point; adapters apply display scale at their boundary.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct UiPoint {
-    pub x: f32,
-    pub y: f32,
-}
-
-/// Logical-space size.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct UiSize {
-    pub width: f32,
-    pub height: f32,
-}
-
-impl UiSize {
-    #[must_use]
-    pub const fn new(width: f32, height: f32) -> Self {
-        Self { width, height }
-    }
-
-    #[must_use]
-    fn sanitized(self) -> Self {
-        Self::new(self.width.max(1.0), self.height.max(1.0))
-    }
-}
-
-/// Logical-space axis-aligned bounds.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct UiRect {
-    pub origin: UiPoint,
-    pub size: UiSize,
-}
-
-impl UiRect {
-    #[must_use]
-    pub const fn new(origin: UiPoint, size: UiSize) -> Self {
-        Self { origin, size }
-    }
-
-    #[must_use]
-    pub fn contains(self, point: UiPoint) -> bool {
-        let end_x = self.origin.x + self.size.width;
-        let end_y = self.origin.y + self.size.height;
-        point.x >= self.origin.x && point.x <= end_x && point.y >= self.origin.y && point.y <= end_y
-    }
-}
-
-/// Normalized RGBA colour owned by the UI contract.
-///
-/// Named design tokens preserve their authored sRGB channel values. Renderer
-/// adapters own any target colour-space conversion; third-party colour types
-/// never cross this boundary.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct UiColor {
-    pub red: f32,
-    pub green: f32,
-    pub blue: f32,
-    pub alpha: f32,
-}
-
-impl UiColor {
-    #[must_use]
-    pub const fn rgba(red: f32, green: f32, blue: f32, alpha: f32) -> Self {
-        Self {
-            red,
-            green,
-            blue,
-            alpha,
-        }
-    }
-
-    #[must_use]
-    pub const fn panel() -> Self {
-        Self::surface()
-    }
-
-    #[must_use]
-    pub const fn foreground() -> Self {
-        Self::text()
-    }
-
-    #[must_use]
-    pub const fn focus() -> Self {
-        Self::amber()
-    }
-
-    /// Meridian website background token (`#090b0b`).
-    #[must_use]
-    pub const fn background() -> Self {
-        Self::rgba(0.035_294_12, 0.043_137_256, 0.043_137_256, 1.0)
-    }
-
-    /// Meridian website surface token (`#121515`).
-    #[must_use]
-    pub const fn surface() -> Self {
-        Self::rgba(0.070_588_24, 0.082_352_94, 0.082_352_94, 1.0)
-    }
-
-    /// Meridian website border token (`#292d2c`).
-    #[must_use]
-    pub const fn border() -> Self {
-        Self::rgba(0.160_784_32, 0.176_470_6, 0.172_549_02, 1.0)
-    }
-
-    /// Meridian website primary-text token (`#e3e1d8`).
-    #[must_use]
-    pub const fn text() -> Self {
-        Self::rgba(0.890_196_1, 0.882_352_95, 0.847_058_83, 1.0)
-    }
-
-    /// Meridian website secondary-text token (`#929790`).
-    #[must_use]
-    pub const fn secondary_text() -> Self {
-        Self::rgba(0.572_549_05, 0.592_156_9, 0.564_705_9, 1.0)
-    }
-
-    /// Meridian website muted-text token (`#686e68`).
-    #[must_use]
-    pub const fn muted_text() -> Self {
-        Self::rgba(0.407_843_14, 0.431_372_55, 0.407_843_14, 1.0)
-    }
-
-    /// Meridian website destructive token (`#a73732`).
-    #[must_use]
-    pub const fn red() -> Self {
-        Self::rgba(0.654_902, 0.215_686_28, 0.196_078_43, 1.0)
-    }
-
-    /// Meridian website destructive-hover token (`#c04b44`).
-    #[must_use]
-    pub const fn red_hover() -> Self {
-        Self::rgba(0.752_941_2, 0.294_117_66, 0.266_666_68, 1.0)
-    }
-
-    /// Meridian website positive/grass token (`#8d8961`).
-    #[must_use]
-    pub const fn grass() -> Self {
-        Self::rgba(0.552_941_2, 0.537_254_9, 0.380_392_16, 1.0)
-    }
-
-    /// Meridian website warning/emphasis token (`#c0964e`).
-    #[must_use]
-    pub const fn amber() -> Self {
-        Self::rgba(0.752_941_2, 0.588_235_3, 0.305_882_36, 1.0)
-    }
-}
-
-/// Widget behavior is intentionally a small, retained set for the MS-02 seam.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum UiWidgetKind {
-    Panel,
-    Label,
-    Button,
-    TextInput,
-    Overlay,
-}
-
-/// Layout policy used by the retained document.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum UiLayout {
-    Overlay,
-    VerticalStack {
-        gap: f32,
-    },
-    HorizontalStack {
-        gap: f32,
-    },
-    /// Equal-sized cells arranged left-to-right, then top-to-bottom.
-    Grid {
-        columns: u8,
-        gap: f32,
-    },
-}
-
-/// Preferred sizing and flexible growth for a retained node.
-///
-/// A preferred dimension is a bounded starting point, not an absolute pixel
-/// requirement: the layout engine scales it down before overflowing a smaller
-/// viewport. Remaining space is shared by positive `grow` values.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct UiLayoutHints {
-    pub preferred_width: Option<f32>,
-    pub preferred_height: Option<f32>,
-    pub grow: f32,
-}
-
-impl UiLayoutHints {
-    /// Returns flexible hints that share remaining axis space equally.
-    #[must_use]
-    pub const fn flexible() -> Self {
-        Self {
-            preferred_width: None,
-            preferred_height: None,
-            grow: 1.0,
-        }
-    }
-
-    /// Returns a fixed-height hint that does not absorb surplus vertical space.
-    #[must_use]
-    pub const fn fixed_height(height: f32) -> Self {
-        Self {
-            preferred_width: None,
-            preferred_height: Some(height),
-            grow: 0.0,
-        }
-    }
-
-    /// Returns a fixed-width hint that does not absorb surplus horizontal space.
-    #[must_use]
-    pub const fn fixed_width(width: f32) -> Self {
-        Self {
-            preferred_width: Some(width),
-            preferred_height: None,
-            grow: 0.0,
-        }
-    }
-
-    /// Returns a preferred two-axis size without flexible growth.
-    #[must_use]
-    pub const fn fixed_size(width: f32, height: f32) -> Self {
-        Self {
-            preferred_width: Some(width),
-            preferred_height: Some(height),
-            grow: 0.0,
-        }
-    }
-}
-
-impl Default for UiLayoutHints {
-    fn default() -> Self {
-        Self::flexible()
-    }
-}
-
-/// Public semantic role independent of a platform accessibility API.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SemanticRole {
-    Group,
-    Status,
-    Button,
-    TextInput,
-}
-
-/// Named semantics and a typed action token declared by a UI node.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UiSemantics {
-    pub role: SemanticRole,
-    pub name: String,
-    pub action: Option<String>,
-}
-
-impl UiSemantics {
-    #[must_use]
-    pub fn group(name: impl Into<String>) -> Self {
-        Self {
-            role: SemanticRole::Group,
-            name: name.into(),
-            action: None,
-        }
-    }
-
-    #[must_use]
-    pub fn status(name: impl Into<String>) -> Self {
-        Self {
-            role: SemanticRole::Status,
-            name: name.into(),
-            action: None,
-        }
-    }
-
-    #[must_use]
-    pub fn button(name: impl Into<String>, action: impl Into<String>) -> Self {
-        Self {
-            role: SemanticRole::Button,
-            name: name.into(),
-            action: Some(action.into()),
-        }
-    }
-
-    #[must_use]
-    pub fn text_input(name: impl Into<String>) -> Self {
-        Self {
-            role: SemanticRole::TextInput,
-            name: name.into(),
-            action: None,
-        }
-    }
-}
-
-/// Rendering style, expressed only in Meridian-owned values.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct UiStyle {
-    pub background: Option<UiColor>,
-    pub border: Option<UiBorder>,
-    pub foreground: UiColor,
-    pub padding: f32,
-    pub font_size: f32,
-}
-
-/// A bounded rectangular stroke drawn around a retained node.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct UiBorder {
-    pub color: UiColor,
-    pub width: u8,
-}
-
-/// Policy applied to one retained text-input node.
-///
-/// Password values stay in the private runtime state: they are masked in the
-/// display list and never emitted through semantic or clipboard output.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct UiTextInputOptions {
-    pub password: bool,
-}
-
-impl UiStyle {
-    #[must_use]
-    pub const fn panel() -> Self {
-        Self {
-            background: Some(UiColor::panel()),
-            border: None,
-            foreground: UiColor::foreground(),
-            padding: 12.0,
-            font_size: 16.0,
-        }
-    }
-
-    #[must_use]
-    pub const fn text() -> Self {
-        Self {
-            background: None,
-            border: None,
-            foreground: UiColor::foreground(),
-            padding: 6.0,
-            font_size: 16.0,
-        }
-    }
-
-    /// A transparent structural group that does not create a visual surface.
-    #[must_use]
-    pub const fn transparent() -> Self {
-        Self {
-            background: None,
-            border: None,
-            foreground: UiColor::foreground(),
-            padding: 0.0,
-            font_size: 16.0,
-        }
-    }
-
-    /// The application canvas used behind a full native workspace.
-    #[must_use]
-    pub const fn canvas() -> Self {
-        Self {
-            background: Some(UiColor::background()),
-            border: None,
-            foreground: UiColor::foreground(),
-            padding: 24.0,
-            font_size: 16.0,
-        }
-    }
-
-    /// A raised application surface with a restrained border.
-    #[must_use]
-    pub const fn surface() -> Self {
-        Self {
-            background: Some(UiColor::surface()),
-            border: Some(UiBorder {
-                color: UiColor::border(),
-                width: 1,
-            }),
-            foreground: UiColor::foreground(),
-            padding: 14.0,
-            font_size: 16.0,
-        }
-    }
-
-    /// A subtly brighter surface for headers and currently important regions.
-    #[must_use]
-    pub const fn elevated_surface() -> Self {
-        Self {
-            background: Some(UiColor::surface()),
-            border: Some(UiBorder {
-                color: UiColor::grass(),
-                width: 1,
-            }),
-            foreground: UiColor::foreground(),
-            padding: 16.0,
-            font_size: 16.0,
-        }
-    }
-
-    /// Large, high-contrast display text.
-    #[must_use]
-    pub const fn heading() -> Self {
-        Self {
-            background: None,
-            border: None,
-            foreground: UiColor::text(),
-            padding: 0.0,
-            font_size: 28.0,
-        }
-    }
-
-    /// Compact section-label text.
-    #[must_use]
-    pub const fn section_heading() -> Self {
-        Self {
-            background: None,
-            border: None,
-            foreground: UiColor::text(),
-            padding: 0.0,
-            font_size: 16.0,
-        }
-    }
-
-    /// Supporting text that does not compete with the primary action.
-    #[must_use]
-    pub const fn muted_text() -> Self {
-        Self {
-            background: None,
-            border: None,
-            foreground: UiColor::muted_text(),
-            padding: 0.0,
-            font_size: 13.0,
-        }
-    }
-
-    /// The primary action treatment used once per decision group.
-    #[must_use]
-    pub const fn primary_action() -> Self {
-        Self {
-            background: Some(UiColor::red()),
-            border: Some(UiBorder {
-                color: UiColor::red_hover(),
-                width: 1,
-            }),
-            foreground: UiColor::text(),
-            padding: 12.0,
-            font_size: 16.0,
-        }
-    }
-
-    /// A secondary action with the same keyboard semantics as a primary action.
-    #[must_use]
-    pub const fn secondary_action() -> Self {
-        Self {
-            background: Some(UiColor::surface()),
-            border: Some(UiBorder {
-                color: UiColor::border(),
-                width: 1,
-            }),
-            foreground: UiColor::foreground(),
-            padding: 10.0,
-            font_size: 14.0,
-        }
-    }
-
-    /// A dense but still focusable action used inside bounded tool panels.
-    #[must_use]
-    pub const fn compact_action() -> Self {
-        Self {
-            background: Some(UiColor::surface()),
-            border: Some(UiBorder {
-                color: UiColor::border(),
-                width: 1,
-            }),
-            foreground: UiColor::foreground(),
-            padding: 3.0,
-            font_size: 11.0,
-        }
-    }
-
-    /// A clearly editable field surface.
-    #[must_use]
-    pub const fn text_field() -> Self {
-        Self {
-            background: Some(UiColor::background()),
-            border: Some(UiBorder {
-                color: UiColor::border(),
-                width: 1,
-            }),
-            foreground: UiColor::foreground(),
-            padding: 12.0,
-            font_size: 16.0,
-        }
-    }
-
-    /// A compact numeric or short-token field for a dense inspector row.
-    #[must_use]
-    pub const fn compact_text_field() -> Self {
-        Self {
-            background: Some(UiColor::background()),
-            border: Some(UiBorder {
-                color: UiColor::border(),
-                width: 1,
-            }),
-            foreground: UiColor::foreground(),
-            padding: 4.0,
-            font_size: 14.0,
-        }
-    }
-}
-
-/// One retained node.  Children are ordered for traversal, focus, and layout.
-#[derive(Clone, Debug, PartialEq)]
-pub struct UiNode {
-    pub id: UiNodeId,
-    pub kind: UiWidgetKind,
-    pub layout: UiLayout,
-    pub style: UiStyle,
-    pub layout_hints: UiLayoutHints,
-    pub semantics: UiSemantics,
-    pub text: Option<String>,
-    pub text_input: Option<UiTextInputOptions>,
-    pub focusable: bool,
-    pub children: Vec<UiNodeId>,
-}
-
-impl UiNode {
-    #[must_use]
-    pub fn container(
-        id: UiNodeId,
-        name: impl Into<String>,
-        layout: UiLayout,
-        children: Vec<UiNodeId>,
-    ) -> Self {
-        Self {
-            id,
-            kind: UiWidgetKind::Panel,
-            layout,
-            style: UiStyle::panel(),
-            layout_hints: UiLayoutHints::default(),
-            semantics: UiSemantics::group(name),
-            text: None,
-            text_input: None,
-            focusable: false,
-            children,
-        }
-    }
-
-    #[must_use]
-    pub fn label(id: UiNodeId, name: impl Into<String>, text: impl Into<String>) -> Self {
-        Self {
-            id,
-            kind: UiWidgetKind::Label,
-            layout: UiLayout::Overlay,
-            style: UiStyle::text(),
-            layout_hints: UiLayoutHints::default(),
-            semantics: UiSemantics::status(name),
-            text: Some(text.into()),
-            text_input: None,
-            focusable: false,
-            children: Vec::new(),
-        }
-    }
-
-    #[must_use]
-    pub fn button(
-        id: UiNodeId,
-        name: impl Into<String>,
-        action: impl Into<String>,
-        text: impl Into<String>,
-    ) -> Self {
-        Self {
-            id,
-            kind: UiWidgetKind::Button,
-            layout: UiLayout::Overlay,
-            style: UiStyle::secondary_action(),
-            layout_hints: UiLayoutHints::default(),
-            semantics: UiSemantics::button(name, action),
-            text: Some(text.into()),
-            text_input: None,
-            focusable: true,
-            children: Vec::new(),
-        }
-    }
-
-    /// Creates a focusable retained text input with Meridian-owned editing state.
-    ///
-    /// Password inputs always start empty so a retained document cannot carry a
-    /// password value. Their value can arrive only through a bounded text-input
-    /// event at the runtime boundary.
-    #[must_use]
-    pub fn text_input(
-        id: UiNodeId,
-        name: impl Into<String>,
-        initial_value: impl Into<String>,
-        options: UiTextInputOptions,
-    ) -> Self {
-        Self {
-            id,
-            kind: UiWidgetKind::TextInput,
-            layout: UiLayout::Overlay,
-            style: UiStyle::text_field(),
-            layout_hints: UiLayoutHints::default(),
-            semantics: UiSemantics::text_input(name),
-            text: Some(if options.password {
-                String::new()
-            } else {
-                initial_value.into()
-            }),
-            text_input: Some(options),
-            focusable: true,
-            children: Vec::new(),
-        }
-    }
-
-    /// Replaces this node's Meridian-owned visual treatment.
-    #[must_use]
-    pub const fn with_style(mut self, style: UiStyle) -> Self {
-        self.style = style;
-        self
-    }
-
-    /// Replaces this node's preferred size and flexible-growth behavior.
-    #[must_use]
-    pub const fn with_layout_hints(mut self, layout_hints: UiLayoutHints) -> Self {
-        self.layout_hints = layout_hints;
-        self
-    }
-}
-
-/// Invalid retained documents are rejected before rendering or accessibility output.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum UiDocumentError {
-    MissingRoot(UiNodeId),
-    DuplicateNode(UiNodeId),
-    DuplicateChild(UiNodeId),
-    MissingChild {
-        parent: UiNodeId,
-        child: UiNodeId,
-    },
-    MultipleParents(UiNodeId),
-    Cycle(UiNodeId),
-    Unreachable(UiNodeId),
-    UnnamedFocusable(UiNodeId),
-    MissingButtonAction(UiNodeId),
-    TextInputNotFocusable(UiNodeId),
-    MissingTextInputOptions(UiNodeId),
-    UnexpectedTextInputOptions(UiNodeId),
-    PasswordInitialValue(UiNodeId),
-    TextTooLong {
-        node: UiNodeId,
-        bytes: usize,
-        maximum: usize,
-    },
-}
-
-/// Validated retained UI document.
-#[derive(Clone, Debug)]
-pub struct UiDocument {
-    root: UiNodeId,
-    nodes: BTreeMap<UiNodeId, UiNode>,
-    parents: BTreeMap<UiNodeId, UiNodeId>,
-}
-
-impl UiDocument {
-    /// Builds and validates the whole tree before any frame can observe it.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when identity, reachability, focus semantics, or action
-    /// declarations would make the retained tree ambiguous or inaccessible.
-    pub fn new(root: UiNodeId, nodes: Vec<UiNode>) -> Result<Self, UiDocumentError> {
-        let mut by_id = BTreeMap::new();
-        for node in nodes {
-            let id = node.id;
-            if by_id.insert(id, node).is_some() {
-                return Err(UiDocumentError::DuplicateNode(id));
-            }
-        }
-        if !by_id.contains_key(&root) {
-            return Err(UiDocumentError::MissingRoot(root));
-        }
-
-        let mut parents = BTreeMap::new();
-        for (id, node) in &by_id {
-            if node.focusable && node.semantics.name.trim().is_empty() {
-                return Err(UiDocumentError::UnnamedFocusable(*id));
-            }
-            if node.kind == UiWidgetKind::Button && node.semantics.action.is_none() {
-                return Err(UiDocumentError::MissingButtonAction(*id));
-            }
-            if node.kind == UiWidgetKind::TextInput && !node.focusable {
-                return Err(UiDocumentError::TextInputNotFocusable(*id));
-            }
-            if node.kind == UiWidgetKind::TextInput && node.text_input.is_none() {
-                return Err(UiDocumentError::MissingTextInputOptions(*id));
-            }
-            if node.kind != UiWidgetKind::TextInput && node.text_input.is_some() {
-                return Err(UiDocumentError::UnexpectedTextInputOptions(*id));
-            }
-            if node.text_input.is_some_and(|options| options.password)
-                && node.text.as_ref().is_some_and(|text| !text.is_empty())
-            {
-                return Err(UiDocumentError::PasswordInitialValue(*id));
-            }
-            if let Some(text) = &node.text {
-                if text.len() > MAX_TEXT_BYTES {
-                    return Err(UiDocumentError::TextTooLong {
-                        node: *id,
-                        bytes: text.len(),
-                        maximum: MAX_TEXT_BYTES,
-                    });
-                }
-            }
-            let mut children = BTreeSet::new();
-            for child in &node.children {
-                if !children.insert(*child) {
-                    return Err(UiDocumentError::DuplicateChild(*child));
-                }
-                if !by_id.contains_key(child) {
-                    return Err(UiDocumentError::MissingChild {
-                        parent: *id,
-                        child: *child,
-                    });
-                }
-                if parents.insert(*child, *id).is_some() {
-                    return Err(UiDocumentError::MultipleParents(*child));
-                }
-            }
-        }
-
-        let mut visited = BTreeSet::new();
-        let mut visiting = BTreeSet::new();
-        Self::validate_reachable(root, &by_id, &mut visited, &mut visiting)?;
-        if let Some(id) = by_id.keys().find(|id| !visited.contains(id)) {
-            return Err(UiDocumentError::Unreachable(*id));
-        }
-
-        Ok(Self {
-            root,
-            nodes: by_id,
-            parents,
-        })
-    }
-
-    fn validate_reachable(
-        id: UiNodeId,
-        nodes: &BTreeMap<UiNodeId, UiNode>,
-        visited: &mut BTreeSet<UiNodeId>,
-        visiting: &mut BTreeSet<UiNodeId>,
-    ) -> Result<(), UiDocumentError> {
-        if !visiting.insert(id) {
-            return Err(UiDocumentError::Cycle(id));
-        }
-        let node = nodes.get(&id).ok_or(UiDocumentError::MissingRoot(id))?;
-        for child in &node.children {
-            if !visited.contains(child) {
-                Self::validate_reachable(*child, nodes, visited, visiting)?;
-            }
-        }
-        visiting.remove(&id);
-        visited.insert(id);
-        Ok(())
-    }
-
-    #[must_use]
-    pub const fn root(&self) -> UiNodeId {
-        self.root
-    }
-
-    #[must_use]
-    pub fn node(&self, id: UiNodeId) -> Option<&UiNode> {
-        self.nodes.get(&id)
-    }
-
-    #[must_use]
-    pub fn route_to(&self, target: UiNodeId) -> Option<Vec<UiNodeId>> {
-        self.nodes.get(&target)?;
-        let mut route = vec![target];
-        let mut current = target;
-        while let Some(parent) = self.parents.get(&current) {
-            route.push(*parent);
-            current = *parent;
-        }
-        route.reverse();
-        Some(route)
-    }
-
-    #[must_use]
-    pub fn focus_order(&self) -> Vec<UiNodeId> {
-        let mut order = Vec::new();
-        self.collect_focus_order(self.root, &mut order);
-        order
-    }
-
-    fn collect_focus_order(&self, id: UiNodeId, order: &mut Vec<UiNodeId>) {
-        let Some(node) = self.nodes.get(&id) else {
-            return;
-        };
-        if node.focusable {
-            order.push(id);
-        }
-        for child in &node.children {
-            self.collect_focus_order(*child, order);
-        }
-    }
-}
+//! Retained Meridian UI reconciliation and interaction runtime.
+
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use meridian_ui_core::{
+    sanitized_scale_factor, MotionPreference, ThemeId, UiAlignment, UiAxis, UiColor, UiConstraints,
+    UiContrast, UiDensity, UiDocument, UiDocumentDelta, UiDocumentError, UiLayout, UiLayoutHints,
+    UiNode, UiNodeId, UiPoint, UiRect, UiSize, UiTheme, UiWidgetKind, MAX_TEXT_BYTES,
+};
+use meridian_ui_render::{
+    DisplayList, DisplayListError, DisplayPrimitive, UiClipId, UiCornerRadii,
+};
+use meridian_ui_semantics::{SemanticDelta, SemanticNode, SemanticTree};
+use meridian_ui_text::{
+    UiClipboardRequest, UiTextCursorDirection, UiTextEngine, UiTextInputSnapshot, UiTextInputState,
+};
 
 /// Platform-normalized event delivered to the retained interaction model.
 #[derive(Clone, Debug, PartialEq)]
@@ -883,162 +69,6 @@ pub struct UiCommandRequest {
     pub action: String,
 }
 
-/// A cursor movement expressed in extended-grapheme positions, not UTF-8 bytes.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum UiTextCursorDirection {
-    Backward,
-    Forward,
-    Start,
-    End,
-}
-
-/// A half-open text selection in extended-grapheme positions.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct UiTextSelection {
-    pub anchor: usize,
-    pub focus: usize,
-}
-
-impl UiTextSelection {
-    #[must_use]
-    pub const fn cursor(position: usize) -> Self {
-        Self {
-            anchor: position,
-            focus: position,
-        }
-    }
-
-    #[must_use]
-    pub const fn start(self) -> usize {
-        if self.anchor < self.focus {
-            self.anchor
-        } else {
-            self.focus
-        }
-    }
-
-    #[must_use]
-    pub const fn end(self) -> usize {
-        if self.anchor > self.focus {
-            self.anchor
-        } else {
-            self.focus
-        }
-    }
-
-    #[must_use]
-    pub const fn is_collapsed(self) -> bool {
-        self.anchor == self.focus
-    }
-}
-
-/// Redacted observable editing state for one retained text-input node.
-///
-/// It intentionally reports no text value, so password text cannot escape
-/// through frame output, semantic output, or diagnostics.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UiTextInputSnapshot {
-    pub node: UiNodeId,
-    pub selection: UiTextSelection,
-    pub grapheme_count: usize,
-    pub password: bool,
-    pub has_preedit: bool,
-}
-
-/// A capability-gated request for a platform clipboard adapter.
-///
-/// The adapter must obtain normal clipboard permission before performing it.
-/// Password inputs never generate this request.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UiClipboardRequest {
-    pub source: UiNodeId,
-    pub text: String,
-}
-
-/// A renderer-neutral visual primitive consumed by the UI render adapter.
-#[derive(Clone, Debug, PartialEq)]
-pub enum DisplayPrimitive {
-    Rect {
-        node: UiNodeId,
-        bounds: UiRect,
-        color: UiColor,
-    },
-    Border {
-        node: UiNodeId,
-        bounds: UiRect,
-        color: UiColor,
-        width: u8,
-    },
-    Text {
-        node: UiNodeId,
-        bounds: UiRect,
-        text: String,
-        color: UiColor,
-        layout: UiTextLayout,
-        raster: UiTextRaster,
-    },
-    FocusRing {
-        node: UiNodeId,
-        bounds: UiRect,
-        color: UiColor,
-    },
-}
-
-/// Immutable frame display output.  It never contains GPU or text-adapter types.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct DisplayList {
-    pub primitives: Vec<DisplayPrimitive>,
-}
-
-/// Owned layout statistics, not glyphs or adapter structures.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct UiTextLayout {
-    pub line_count: usize,
-    pub glyph_count: usize,
-    pub width: f32,
-    pub height: f32,
-    pub used_fallback_metrics: bool,
-}
-
-/// One alpha-mask glyph bitmap relative to its text primitive's origin.
-#[derive(Clone, Debug, PartialEq)]
-pub struct UiGlyphBitmap {
-    pub origin: UiPoint,
-    pub width: u32,
-    pub height: u32,
-    pub alpha: Vec<u8>,
-}
-
-/// Meridian-owned text raster data. It exposes no font or shaping-library types.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct UiTextRaster {
-    pub glyphs: Vec<UiGlyphBitmap>,
-    pub has_unrasterized_glyphs: bool,
-}
-
-/// Flat semantic tree; platform adapters turn this into their native tree/delta.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SemanticNode {
-    pub id: UiNodeId,
-    pub parent: Option<UiNodeId>,
-    pub role: SemanticRole,
-    pub name: String,
-    pub action: Option<String>,
-    pub bounds: UiRect,
-    pub focused: bool,
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct SemanticTree {
-    pub nodes: Vec<SemanticNode>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum SemanticDelta {
-    Unchanged,
-    Replace(SemanticTree),
-}
-
 /// Non-fatal behavior reported to diagnostics and tests.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UiDiagnostic {
@@ -1050,6 +80,7 @@ pub enum UiDiagnostic {
     TextInputLimitExceeded { node: UiNodeId, maximum: usize },
     ClipboardDeniedForPassword { node: UiNodeId },
     AssistiveFocusDenied { node: UiNodeId },
+    FrameRejected(DisplayListError),
 }
 
 /// Input captured at a stable frame boundary.
@@ -1059,6 +90,10 @@ pub struct UiFrameInput {
     pub scale_factor: f32,
     pub high_contrast: bool,
     pub reduced_motion: bool,
+    pub theme: UiTheme,
+    pub density: UiDensity,
+    pub contrast: UiContrast,
+    pub motion: MotionPreference,
     pub events: Vec<UiEvent>,
 }
 
@@ -1070,14 +105,32 @@ impl UiFrameInput {
             scale_factor: 1.0,
             high_contrast: false,
             reduced_motion: false,
+            theme: UiTheme::meridian_dark(),
+            density: UiDensity::Standard,
+            contrast: UiContrast::Standard,
+            motion: MotionPreference::Full,
             events: Vec::new(),
         }
     }
 }
 
-/// Immutable frame result handed to a renderer and semantic adapter.
+/// Accepted logical geometry for one stable retained node.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UiLayoutSnapshot {
+    pub node: UiNodeId,
+    pub bounds: UiRect,
+}
+
+/// Immutable frame result handed to renderer and semantic adapters.
 #[derive(Clone, Debug, PartialEq)]
-pub struct UiFrameOutput {
+pub struct UiFrameSnapshot {
+    pub revision: u64,
+    pub layout: Vec<UiLayoutSnapshot>,
+    pub theme: ThemeId,
+    pub density: UiDensity,
+    pub contrast: UiContrast,
+    pub motion: MotionPreference,
+    pub scale_factor: f32,
     pub display_list: DisplayList,
     pub semantic_delta: SemanticDelta,
     pub event_routes: Vec<UiEventRoute>,
@@ -1089,162 +142,13 @@ pub struct UiFrameOutput {
     pub preedit: Option<String>,
 }
 
-/// Private text adapter.  The public result is [`UiTextLayout`].
-#[derive(Debug)]
-struct UiTextEngine {
-    fonts: FontSystem,
-    swash: SwashCache,
-}
+/// Shared immutable compatibility handle retained while callers migrate.
+pub type UiFrameOutput = Arc<UiFrameSnapshot>;
 
-impl Default for UiTextEngine {
-    fn default() -> Self {
-        let mut fonts = FontSystem::new();
-        fonts.db_mut().load_system_fonts();
-        Self {
-            fonts,
-            swash: SwashCache::new(),
-        }
-    }
-}
-
-impl UiTextEngine {
-    fn layout(
-        &mut self,
-        text: &str,
-        width: f32,
-        font_size: f32,
-        scale_factor: f32,
-    ) -> UiTextOutput {
-        let scale_factor = scale_factor.clamp(0.5, 4.0);
-        let metrics = Metrics::relative((font_size * scale_factor).max(1.0), 1.25);
-        let mut buffer = Buffer::new(&mut self.fonts, metrics);
-        buffer.set_size(Some((width * scale_factor).max(1.0)), None);
-        buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
-        let mut line_count = 0;
-        let mut glyph_count = 0;
-        let mut observed_width = 0.0_f32;
-        let mut height = 0.0_f32;
-        let mut physical_glyphs = Vec::new();
-        {
-            let mut borrowed = buffer.borrow_with(&mut self.fonts);
-            for run in borrowed.layout_runs() {
-                line_count += 1;
-                glyph_count += run.glyphs.len();
-                observed_width = observed_width.max(run.line_w);
-                height += run.line_height;
-                physical_glyphs.extend(
-                    run.glyphs
-                        .iter()
-                        .map(|glyph| glyph.physical((0.0, run.line_y), 1.0)),
-                );
-            }
-        }
-        let used_fallback_metrics = line_count == 0 && !text.is_empty();
-        if used_fallback_metrics {
-            line_count = text.lines().count().max(1);
-            observed_width =
-                (bounded_count_as_f32(text.chars().count()) * font_size * 0.6).min(width.max(1.0));
-            height = bounded_count_as_f32(line_count) * font_size * 1.25;
-        } else {
-            observed_width /= scale_factor;
-            height /= scale_factor;
-        }
-        let layout = UiTextLayout {
-            line_count,
-            glyph_count,
-            width: observed_width,
-            height,
-            used_fallback_metrics,
-        };
-        let mut raster = UiTextRaster::default();
-        let mut raster_bytes = 0_usize;
-        for glyph in physical_glyphs {
-            let Some(image) = self.swash.get_image(&mut self.fonts, glyph.cache_key) else {
-                raster.has_unrasterized_glyphs = true;
-                continue;
-            };
-            if image.content != SwashContent::Mask {
-                raster.has_unrasterized_glyphs = true;
-                continue;
-            }
-            let width = image.placement.width;
-            let height = image.placement.height;
-            let Some(byte_count) = usize::try_from(width).ok().and_then(|width| {
-                usize::try_from(height)
-                    .ok()
-                    .and_then(|height| width.checked_mul(height))
-            }) else {
-                raster.has_unrasterized_glyphs = true;
-                continue;
-            };
-            if image.data.len() != byte_count
-                || raster_bytes.saturating_add(byte_count) > MAX_GLYPH_RASTER_BYTES
-            {
-                raster.has_unrasterized_glyphs = true;
-                break;
-            }
-            raster_bytes += byte_count;
-            raster.glyphs.push(UiGlyphBitmap {
-                origin: UiPoint {
-                    x: i32_to_f32(glyph.x.saturating_add(image.placement.left)),
-                    y: i32_to_f32(glyph.y.saturating_sub(image.placement.top)),
-                },
-                width,
-                height,
-                alpha: image.data.clone(),
-            });
-        }
-        UiTextOutput { layout, raster }
-    }
-}
-
-struct UiTextOutput {
-    layout: UiTextLayout,
-    raster: UiTextRaster,
-}
-
-fn grapheme_count(text: &str) -> usize {
-    text.graphemes(true).count()
-}
-
-fn clamp_selection(selection: UiTextSelection, grapheme_count: usize) -> UiTextSelection {
-    UiTextSelection {
-        anchor: selection.anchor.min(grapheme_count),
-        focus: selection.focus.min(grapheme_count),
-    }
-}
-
-fn byte_index_at_grapheme(text: &str, position: usize) -> usize {
-    text.grapheme_indices(true)
-        .nth(position)
-        .map_or(text.len(), |(byte_index, _)| byte_index)
-}
-
-fn selected_text(text: &str, selection: UiTextSelection) -> Option<&str> {
-    let selection = clamp_selection(selection, grapheme_count(text));
-    if selection.is_collapsed() {
-        return None;
-    }
-    let start = byte_index_at_grapheme(text, selection.start());
-    let end = byte_index_at_grapheme(text, selection.end());
-    text.get(start..end)
-}
-
-fn replace_selection(state: &mut UiTextInputState, replacement: &str) -> bool {
-    let selection = clamp_selection(state.selection, grapheme_count(&state.value));
-    let start = byte_index_at_grapheme(&state.value, selection.start());
-    let end = byte_index_at_grapheme(&state.value, selection.end());
-    let retained_bytes = state.value.len().saturating_sub(end.saturating_sub(start));
-    if replacement.len() > MAX_TEXT_BYTES.saturating_sub(retained_bytes) {
-        return false;
-    }
-    state.value.replace_range(start..end, replacement);
-    state.selection = UiTextSelection::cursor(selection.start() + grapheme_count(replacement));
-    true
-}
-
-fn password_mask(text: &str) -> String {
-    "•".repeat(grapheme_count(text))
+/// Typed frame rejection before any mutated interaction state is committed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiFrameError {
+    InvalidDisplayList(DisplayListError),
 }
 
 fn bounded_count_as_f32(value: usize) -> f32 {
@@ -1273,9 +177,41 @@ fn inset_bounds(bounds: UiRect, inset: f32) -> UiRect {
     )
 }
 
-#[allow(clippy::cast_precision_loss)]
-fn i32_to_f32(value: i32) -> f32 {
-    value as f32
+fn resolve_constraints(bounds: UiRect, constraints: UiConstraints) -> UiRect {
+    let maximum = constraints
+        .maximum
+        .unwrap_or(UiSize::new(f32::MAX, f32::MAX));
+    let mut width = bounds
+        .size
+        .width
+        .clamp(constraints.minimum.width, maximum.width);
+    let mut height = bounds
+        .size
+        .height
+        .clamp(constraints.minimum.height, maximum.height);
+    if let Some(aspect) = constraints.aspect_ratio {
+        let width_from_height = height * aspect;
+        if width_from_height <= width {
+            width = width_from_height;
+        } else {
+            height = width / aspect;
+        }
+    }
+    let horizontal_space = (bounds.size.width - width).max(0.0);
+    let vertical_space = (bounds.size.height - height).max(0.0);
+    let x = bounds.origin.x
+        + match constraints.horizontal_alignment {
+            UiAlignment::Start | UiAlignment::Stretch => 0.0,
+            UiAlignment::Center => horizontal_space / 2.0,
+            UiAlignment::End => horizontal_space,
+        };
+    let y = bounds.origin.y
+        + match constraints.vertical_alignment {
+            UiAlignment::Start | UiAlignment::Stretch => 0.0,
+            UiAlignment::Center => vertical_space / 2.0,
+            UiAlignment::End => vertical_space,
+        };
+    UiRect::new(UiPoint { x, y }, UiSize::new(width, height))
 }
 
 struct UiEmission<'a> {
@@ -1285,26 +221,7 @@ struct UiEmission<'a> {
     display: &'a mut DisplayList,
     semantic_nodes: &'a mut Vec<SemanticNode>,
     diagnostics: &'a mut Vec<UiDiagnostic>,
-}
-
-#[derive(Clone, Debug)]
-struct UiTextInputState {
-    value: String,
-    selection: UiTextSelection,
-    preedit: Option<(String, Option<(usize, usize)>)>,
-    password: bool,
-}
-
-impl UiTextInputState {
-    fn snapshot(&self, node: UiNodeId) -> UiTextInputSnapshot {
-        UiTextInputSnapshot {
-            node,
-            selection: self.selection,
-            grapheme_count: grapheme_count(&self.value),
-            password: self.password,
-            has_preedit: self.preedit.is_some(),
-        }
-    }
+    next_scope: u64,
 }
 
 /// Retained runtime state.  All mutation is applied between immutable outputs.
@@ -1316,24 +233,24 @@ pub struct UiRuntime {
     focused: Option<UiNodeId>,
     pointer_capture: Option<UiNodeId>,
     previous_semantics: Option<SemanticTree>,
+    revision: u64,
+    last_document_delta: UiDocumentDelta,
+    last_snapshot: Option<Arc<UiFrameSnapshot>>,
 }
 
 impl UiRuntime {
     #[must_use]
     pub fn new(document: UiDocument) -> Self {
         let text_inputs = document
-            .nodes
-            .values()
+            .nodes()
             .filter_map(|node| {
                 node.text_input.map(|options| {
                     (
                         node.id,
-                        UiTextInputState {
-                            value: node.text.clone().unwrap_or_default(),
-                            selection: UiTextSelection::default(),
-                            preedit: None,
-                            password: options.password,
-                        },
+                        UiTextInputState::new(
+                            node.text.clone().unwrap_or_default(),
+                            options.password,
+                        ),
                     )
                 })
             })
@@ -1345,6 +262,9 @@ impl UiRuntime {
             focused: None,
             pointer_capture: None,
             previous_semantics: None,
+            revision: 0,
+            last_document_delta: UiDocumentDelta::default(),
+            last_snapshot: None,
         }
     }
 
@@ -1358,27 +278,23 @@ impl UiRuntime {
     ///
     /// A caller may rebuild presentation from authoritative source without
     /// copying text values into that source or emitting them through semantics.
-    pub fn replace_document(&mut self, document: UiDocument) {
+    pub fn replace_document(&mut self, document: UiDocument) -> UiDocumentDelta {
+        let delta = self.document.delta_to(&document);
         let previous_inputs = std::mem::take(&mut self.text_inputs);
         self.text_inputs = document
-            .nodes
-            .values()
+            .nodes()
             .filter_map(|node| {
                 let options = node.text_input?;
                 let state = previous_inputs
                     .get(&node.id)
-                    .filter(|state| state.password == options.password);
+                    .filter(|state| state.is_password() == options.password);
                 Some((
                     node.id,
-                    state.cloned().unwrap_or(UiTextInputState {
-                        value: if options.password {
-                            String::new()
-                        } else {
-                            node.text.clone().unwrap_or_default()
-                        },
-                        selection: UiTextSelection::default(),
-                        preedit: None,
-                        password: options.password,
+                    state.cloned().unwrap_or_else(|| {
+                        UiTextInputState::new(
+                            node.text.clone().unwrap_or_default(),
+                            options.password,
+                        )
                     }),
                 ))
             })
@@ -1392,6 +308,28 @@ impl UiRuntime {
         self.pointer_capture = None;
         self.previous_semantics = None;
         self.document = document;
+        self.last_document_delta.clone_from(&delta);
+        delta
+    }
+
+    /// Returns the most recent accepted identity reconciliation summary.
+    #[must_use]
+    pub const fn last_document_delta(&self) -> &UiDocumentDelta {
+        &self.last_document_delta
+    }
+
+    /// Validates and atomically accepts a replacement document.
+    ///
+    /// # Errors
+    ///
+    /// A rejected tree leaves document, focus, private text, and frame state intact.
+    pub fn try_replace_document(
+        &mut self,
+        root: UiNodeId,
+        nodes: Vec<UiNode>,
+    ) -> Result<UiDocumentDelta, UiDocumentError> {
+        let document = UiDocument::new(root, nodes)?;
+        Ok(self.replace_document(document))
     }
 
     /// Returns one non-password text value kept privately by the runtime.
@@ -1401,8 +339,7 @@ impl UiRuntime {
     pub fn text_input_value(&self, node: UiNodeId) -> Option<&str> {
         self.text_inputs
             .get(&node)
-            .filter(|state| !state.password)
-            .map(|state| state.value.as_str())
+            .and_then(UiTextInputState::value)
     }
 
     /// Restores one non-password text control to the current document value.
@@ -1427,14 +364,58 @@ impl UiRuntime {
         let Some(state) = self.text_inputs.get_mut(&node) else {
             return false;
         };
-        default_value.clone_into(&mut state.value);
-        state.selection = UiTextSelection::default();
-        state.preedit = None;
-        true
+        state.reset_from_document(default_value)
     }
 
     /// Processes events, resolves retained layout, and returns only immutable output.
     pub fn reconcile(&mut self, input: UiFrameInput) -> UiFrameOutput {
+        let fallback_theme = input.theme.id;
+        let fallback_density = input.density;
+        let fallback_contrast = input.contrast;
+        let fallback_motion = input.motion;
+        let fallback_scale = sanitized_scale_factor(input.scale_factor);
+        match self.try_reconcile(input) {
+            Ok(snapshot) => snapshot,
+            Err(UiFrameError::InvalidDisplayList(error)) => {
+                let mut fallback = self.last_snapshot.clone().unwrap_or_else(|| {
+                    Arc::new(UiFrameSnapshot {
+                        revision: self.revision,
+                        layout: Vec::new(),
+                        theme: fallback_theme,
+                        density: fallback_density,
+                        contrast: fallback_contrast,
+                        motion: fallback_motion,
+                        scale_factor: fallback_scale,
+                        display_list: DisplayList::default(),
+                        semantic_delta: SemanticDelta::Unchanged,
+                        event_routes: Vec::new(),
+                        commands: Vec::new(),
+                        clipboard_requests: Vec::new(),
+                        text_inputs: Vec::new(),
+                        diagnostics: Vec::new(),
+                        focused: self.focused,
+                        preedit: self.focused_preedit(),
+                    })
+                });
+                Arc::make_mut(&mut fallback)
+                    .diagnostics
+                    .push(UiDiagnostic::FrameRejected(error));
+                fallback
+            }
+        }
+    }
+
+    /// Transactionally computes one immutable frame.
+    ///
+    /// # Errors
+    ///
+    /// Invalid display output restores interaction state and preserves the last
+    /// accepted snapshot.
+    pub fn try_reconcile(&mut self, input: UiFrameInput) -> Result<UiFrameOutput, UiFrameError> {
+        let previous_text_inputs = self.text_inputs.clone();
+        let previous_focused = self.focused;
+        let previous_pointer_capture = self.pointer_capture;
+        let previous_semantics = self.previous_semantics.clone();
         let mut layout = BTreeMap::new();
         self.layout_node(
             self.document.root(),
@@ -1457,15 +438,34 @@ impl UiRuntime {
         }
         let mut display_list = DisplayList::default();
         let mut semantic_nodes = Vec::new();
+        let contrast = if input.high_contrast {
+            UiContrast::High
+        } else {
+            input.contrast
+        };
+        let motion = if input.reduced_motion {
+            MotionPreference::Reduced
+        } else {
+            input.motion
+        };
+        let high_contrast = contrast == UiContrast::High;
         let mut emission = UiEmission {
             layout: &layout,
-            scale_factor: input.scale_factor.clamp(0.5, 4.0),
-            high_contrast: input.high_contrast,
+            scale_factor: sanitized_scale_factor(input.scale_factor),
+            high_contrast,
             display: &mut display_list,
             semantic_nodes: &mut semantic_nodes,
             diagnostics: &mut diagnostics,
+            next_scope: 1,
         };
-        self.emit_node(self.document.root(), None, &mut emission);
+        let emission_result = self.emit_node(self.document.root(), None, &mut emission);
+        if let Err(error) = emission_result.and_then(|()| display_list.validate()) {
+            self.text_inputs = previous_text_inputs;
+            self.focused = previous_focused;
+            self.pointer_capture = previous_pointer_capture;
+            self.previous_semantics = previous_semantics;
+            return Err(UiFrameError::InvalidDisplayList(error));
+        }
         let tree = SemanticTree {
             nodes: semantic_nodes,
         };
@@ -1475,7 +475,21 @@ impl UiRuntime {
             SemanticDelta::Replace(tree.clone())
         };
         self.previous_semantics = Some(tree);
-        UiFrameOutput {
+        self.revision = self.revision.saturating_add(1);
+        let snapshot = Arc::new(UiFrameSnapshot {
+            revision: self.revision,
+            layout: layout
+                .iter()
+                .map(|(node, bounds)| UiLayoutSnapshot {
+                    node: *node,
+                    bounds: *bounds,
+                })
+                .collect(),
+            theme: input.theme.id,
+            density: input.density,
+            contrast,
+            motion,
+            scale_factor: sanitized_scale_factor(input.scale_factor),
             display_list,
             semantic_delta,
             event_routes: routes,
@@ -1489,14 +503,17 @@ impl UiRuntime {
             diagnostics,
             focused: self.focused,
             preedit: self.focused_preedit(),
-        }
+        });
+        self.last_snapshot = Some(Arc::clone(&snapshot));
+        Ok(snapshot)
     }
 
     fn layout_node(&self, id: UiNodeId, bounds: UiRect, layout: &mut BTreeMap<UiNodeId, UiRect>) {
-        layout.insert(id, bounds);
         let Some(node) = self.document.node(id) else {
             return;
         };
+        let bounds = resolve_constraints(bounds, node.constraints);
+        layout.insert(id, bounds);
         let count = node.children.len();
         if count == 0 {
             return;
@@ -1517,6 +534,84 @@ impl UiRuntime {
             UiLayout::HorizontalStack { gap } => {
                 self.layout_stack(&node.children, content_bounds, gap, false, layout);
             }
+            UiLayout::Flex { axis, gap } => {
+                self.layout_stack(
+                    &node.children,
+                    content_bounds,
+                    gap,
+                    axis == UiAxis::Vertical,
+                    layout,
+                );
+            }
+            UiLayout::Absolute => {
+                for child in &node.children {
+                    let child_bounds = self
+                        .document
+                        .node(*child)
+                        .and_then(|child| child.absolute_position)
+                        .map_or(content_bounds, |position| {
+                            UiRect::new(
+                                UiPoint {
+                                    x: content_bounds.origin.x + position.left,
+                                    y: content_bounds.origin.y + position.top,
+                                },
+                                UiSize::new(
+                                    position.width.unwrap_or(content_bounds.size.width),
+                                    position.height.unwrap_or(content_bounds.size.height),
+                                ),
+                            )
+                        });
+                    self.layout_node(*child, child_bounds, layout);
+                }
+            }
+            UiLayout::Scroll { axis, offset } => {
+                self.layout_scroll(&node.children, content_bounds, axis, offset, layout);
+            }
+        }
+    }
+
+    fn layout_scroll(
+        &self,
+        children: &[UiNodeId],
+        bounds: UiRect,
+        axis: UiAxis,
+        offset: f32,
+        layout: &mut BTreeMap<UiNodeId, UiRect>,
+    ) {
+        let mut cursor = if axis == UiAxis::Vertical {
+            bounds.origin.y - finite_nonnegative(offset)
+        } else {
+            bounds.origin.x - finite_nonnegative(offset)
+        };
+        for child in children {
+            let hints = self
+                .document
+                .node(*child)
+                .map_or_else(UiLayoutHints::default, |node| node.layout_hints);
+            let child_bounds = if axis == UiAxis::Vertical {
+                let height = hints.preferred_height.unwrap_or(bounds.size.height);
+                let result = UiRect::new(
+                    UiPoint {
+                        x: bounds.origin.x,
+                        y: cursor,
+                    },
+                    UiSize::new(bounds.size.width, height),
+                );
+                cursor += height;
+                result
+            } else {
+                let width = hints.preferred_width.unwrap_or(bounds.size.width);
+                let result = UiRect::new(
+                    UiPoint {
+                        x: cursor,
+                        y: bounds.origin.y,
+                    },
+                    UiSize::new(width, bounds.size.height),
+                );
+                cursor += width;
+                result
+            };
+            self.layout_node(*child, child_bounds, layout);
         }
     }
 
@@ -1747,14 +842,12 @@ impl UiRuntime {
             .text_inputs
             .get_mut(&target)
             .expect("focused text input has retained state");
-        if !replace_selection(state, text) {
+        if !state.commit(text) {
             diagnostics.push(UiDiagnostic::TextInputLimitExceeded {
                 node: target,
                 maximum: MAX_TEXT_BYTES,
             });
-            return;
         }
-        state.preedit = None;
     }
 
     fn set_preedit(
@@ -1768,17 +861,17 @@ impl UiRuntime {
             return;
         };
         self.dispatch(target, routes);
-        if text.len() > MAX_TEXT_BYTES {
+        let accepted = self
+            .text_inputs
+            .get_mut(&target)
+            .expect("focused text input has retained state")
+            .set_preedit(text, cursor);
+        if !accepted {
             diagnostics.push(UiDiagnostic::TextInputLimitExceeded {
                 node: target,
                 maximum: MAX_TEXT_BYTES,
             });
-            return;
         }
-        self.text_inputs
-            .get_mut(&target)
-            .expect("focused text input has retained state")
-            .preedit = Some((text, cursor));
     }
 
     fn move_text_cursor(
@@ -1792,34 +885,10 @@ impl UiRuntime {
             return;
         };
         self.dispatch(target, routes);
-        let state = self
-            .text_inputs
+        self.text_inputs
             .get_mut(&target)
-            .expect("focused text input has retained state");
-        let count = grapheme_count(&state.value);
-        let selection = clamp_selection(state.selection, count);
-        let origin = if !extend_selection && !selection.is_collapsed() {
-            match direction {
-                UiTextCursorDirection::Backward | UiTextCursorDirection::Start => selection.start(),
-                UiTextCursorDirection::Forward | UiTextCursorDirection::End => selection.end(),
-            }
-        } else {
-            selection.focus
-        };
-        let destination = match direction {
-            UiTextCursorDirection::Backward => origin.saturating_sub(1),
-            UiTextCursorDirection::Forward => origin.saturating_add(1).min(count),
-            UiTextCursorDirection::Start => 0,
-            UiTextCursorDirection::End => count,
-        };
-        state.selection = if extend_selection {
-            UiTextSelection {
-                anchor: selection.anchor,
-                focus: destination,
-            }
-        } else {
-            UiTextSelection::cursor(destination)
-        };
+            .expect("focused text input has retained state")
+            .move_cursor(direction, extend_selection);
     }
 
     fn delete_text(
@@ -1832,31 +901,10 @@ impl UiRuntime {
             return;
         };
         self.dispatch(target, routes);
-        let state = self
-            .text_inputs
+        self.text_inputs
             .get_mut(&target)
-            .expect("focused text input has retained state");
-        let count = grapheme_count(&state.value);
-        let selection = clamp_selection(state.selection, count);
-        if selection.is_collapsed() {
-            state.selection = if backward {
-                UiTextSelection {
-                    anchor: selection.focus.saturating_sub(1),
-                    focus: selection.focus,
-                }
-            } else {
-                UiTextSelection {
-                    anchor: selection.focus,
-                    focus: selection.focus.saturating_add(1).min(count),
-                }
-            };
-        } else {
-            state.selection = selection;
-        }
-        if !state.selection.is_collapsed() {
-            let _ = replace_selection(state, "");
-        }
-        state.preedit = None;
+            .expect("focused text input has retained state")
+            .delete(backward);
     }
 
     fn select_all_text(
@@ -1868,14 +916,10 @@ impl UiRuntime {
             return;
         };
         self.dispatch(target, routes);
-        let state = self
-            .text_inputs
+        self.text_inputs
             .get_mut(&target)
-            .expect("focused text input has retained state");
-        state.selection = UiTextSelection {
-            anchor: 0,
-            focus: grapheme_count(&state.value),
-        };
+            .expect("focused text input has retained state")
+            .select_all();
     }
 
     fn copy_selection(
@@ -1892,11 +936,11 @@ impl UiRuntime {
             .text_inputs
             .get(&target)
             .expect("focused text input has retained state");
-        if state.password {
+        if state.is_password() {
             diagnostics.push(UiDiagnostic::ClipboardDeniedForPassword { node: target });
             return;
         }
-        if let Some(text) = selected_text(&state.value, state.selection) {
+        if let Some(text) = state.selected_text() {
             clipboard_requests.push(UiClipboardRequest {
                 source: target,
                 text: text.to_owned(),
@@ -1907,8 +951,8 @@ impl UiRuntime {
     fn focused_preedit(&self) -> Option<String> {
         self.focused
             .and_then(|target| self.text_inputs.get(&target))
-            .filter(|state| !state.password)
-            .and_then(|state| state.preedit.as_ref().map(|(text, _)| text.clone()))
+            .and_then(UiTextInputState::preedit_text)
+            .map(str::to_owned)
     }
 
     fn move_focus(&mut self, forward: bool, diagnostics: &mut Vec<UiDiagnostic>) {
@@ -1986,43 +1030,89 @@ impl UiRuntime {
         node.focusable.then_some(id)
     }
 
-    fn emit_node(&mut self, id: UiNodeId, parent: Option<UiNodeId>, emission: &mut UiEmission<'_>) {
+    fn emit_node(
+        &mut self,
+        id: UiNodeId,
+        parent: Option<UiNodeId>,
+        emission: &mut UiEmission<'_>,
+    ) -> Result<(), DisplayListError> {
         let Some(node) = self.document.node(id) else {
-            return;
+            return Ok(());
         };
         let Some(bounds) = emission.layout.get(&id).copied() else {
-            return;
+            return Ok(());
         };
         let foreground = if emission.high_contrast {
             UiColor::rgba(1.0, 1.0, 1.0, 1.0)
         } else {
             node.style.foreground
         };
+        let clip = node.constraints.clip;
+        let semantics = node.semantics.clone();
+        let children = node.children.clone();
+        let clip_id = if clip {
+            let id = UiClipId(emission.next_scope);
+            emission.next_scope = emission.next_scope.saturating_add(1);
+            emission.display.try_push(DisplayPrimitive::PushClip {
+                id,
+                bounds,
+                radii: UiCornerRadii::default(),
+            })?;
+            Some(id)
+        } else {
+            None
+        };
+        self.emit_node_visuals(id, bounds, foreground, emission)?;
+        emission.semantic_nodes.push(SemanticNode {
+            id,
+            parent,
+            role: semantics.role,
+            name: semantics.name,
+            action: semantics.action,
+            value: semantics.value,
+            bounds,
+            focused: self.focused == Some(id),
+        });
+        for child in children {
+            self.emit_node(child, Some(id), emission)?;
+        }
+        if let Some(id) = clip_id {
+            emission
+                .display
+                .try_push(DisplayPrimitive::PopClip { id })?;
+        }
+        Ok(())
+    }
+
+    fn emit_node_visuals(
+        &mut self,
+        id: UiNodeId,
+        bounds: UiRect,
+        foreground: UiColor,
+        emission: &mut UiEmission<'_>,
+    ) -> Result<(), DisplayListError> {
+        let Some(node) = self.document.node(id) else {
+            return Ok(());
+        };
         if let Some(background) = node.style.background {
-            emission.display.primitives.push(DisplayPrimitive::Rect {
+            emission.display.try_push(DisplayPrimitive::Rect {
                 node: id,
                 bounds,
                 color: background,
-            });
+            })?;
         }
         if let Some(border) = node.style.border {
-            emission.display.primitives.push(DisplayPrimitive::Border {
+            emission.display.try_push(DisplayPrimitive::Border {
                 node: id,
                 bounds,
                 color: border.color,
                 width: border.width.max(1),
-            });
+            })?;
         }
         let rendered_text = self
             .text_inputs
             .get(&id)
-            .map(|state| {
-                if state.password {
-                    password_mask(&state.value)
-                } else {
-                    state.value.clone()
-                }
-            })
+            .map(UiTextInputState::rendered_text)
             .or_else(|| node.text.clone());
         if let Some(text) = rendered_text {
             let text_bounds = UiRect::new(
@@ -2051,38 +1141,23 @@ impl UiRuntime {
                     .diagnostics
                     .push(UiDiagnostic::TextRasterIncomplete { node: id });
             }
-            emission.display.primitives.push(DisplayPrimitive::Text {
+            emission.display.try_push(DisplayPrimitive::Text {
                 node: id,
                 bounds: text_bounds,
                 text,
                 color: foreground,
                 layout: text_output.layout,
                 raster: text_output.raster,
-            });
+            })?;
         }
         if self.focused == Some(id) {
-            emission
-                .display
-                .primitives
-                .push(DisplayPrimitive::FocusRing {
-                    node: id,
-                    bounds,
-                    color: UiColor::focus(),
-                });
+            emission.display.try_push(DisplayPrimitive::FocusRing {
+                node: id,
+                bounds,
+                color: UiColor::focus(),
+            })?;
         }
-        emission.semantic_nodes.push(SemanticNode {
-            id,
-            parent,
-            role: node.semantics.role,
-            name: node.semantics.name.clone(),
-            action: node.semantics.action.clone(),
-            bounds,
-            focused: self.focused == Some(id),
-        });
-        let children = node.children.clone();
-        for child in children {
-            self.emit_node(child, Some(id), emission);
-        }
+        Ok(())
     }
 }
 
@@ -2137,6 +1212,8 @@ pub fn runtime_overlay_document() -> Result<UiDocument, UiDocumentError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use meridian_ui_core::{UiAbsolutePosition, UiStyle, UiTextInputOptions};
+    use meridian_ui_text::UiTextSelection;
 
     fn frame(events: Vec<UiEvent>) -> UiFrameInput {
         UiFrameInput {
@@ -2447,11 +1524,33 @@ mod tests {
         assert!((normal_layout.width - hidpi_layout.width).abs() < 0.1);
         assert!(hidpi_raster.glyphs[0].width >= normal_raster.glyphs[0].width);
         assert_eq!(*hidpi_color, UiColor::rgba(1.0, 1.0, 1.0, 1.0));
+        assert_eq!(hidpi.theme, UiTheme::meridian_dark().id);
+        assert_eq!(hidpi.contrast, UiContrast::High);
+        assert_eq!(hidpi.motion, MotionPreference::Reduced);
+        assert!((hidpi.scale_factor - 2.0).abs() < f32::EPSILON);
         assert!(hidpi
             .display_list
             .primitives
             .iter()
             .any(|primitive| matches!(primitive, DisplayPrimitive::FocusRing { .. })));
+    }
+
+    #[test]
+    fn one_x_and_two_x_frames_are_deterministic_for_identical_inputs() {
+        let reconcile_at = |scale_factor| {
+            let mut runtime =
+                UiRuntime::new(recovery_panel_document().expect("recovery fixture is valid"));
+            let mut input = frame(vec![UiEvent::FocusNext]);
+            input.scale_factor = scale_factor;
+            runtime.reconcile(input)
+        };
+        let one_x_a = reconcile_at(1.0);
+        let one_x_b = reconcile_at(1.0);
+        let two_x_a = reconcile_at(2.0);
+        let two_x_b = reconcile_at(2.0);
+        assert_eq!(one_x_a, one_x_b);
+        assert_eq!(two_x_a, two_x_b);
+        assert_eq!(one_x_a.layout, two_x_a.layout);
     }
 
     #[test]
@@ -2528,26 +1627,14 @@ mod tests {
                 has_preedit: true,
             }]
         );
-        assert_eq!(
-            runtime
-                .text_inputs
-                .get(&input)
-                .map(|state| state.value.as_str()),
-            Some("axe\u{301}")
-        );
+        assert_eq!(runtime.text_input_value(input), Some("axe\u{301}"));
 
         let output = runtime.reconcile(frame(vec![
             UiEvent::TextCommit("!".to_owned()),
             UiEvent::DeleteTextBackward,
         ]));
         assert_eq!(output.preedit, None);
-        assert_eq!(
-            runtime
-                .text_inputs
-                .get(&input)
-                .map(|state| state.value.as_str()),
-            Some("axe\u{301}")
-        );
+        assert_eq!(runtime.text_input_value(input), Some("axe\u{301}"));
     }
 
     #[test]
@@ -2608,13 +1695,7 @@ mod tests {
                 node: input,
                 maximum: MAX_TEXT_BYTES,
             }));
-        assert_eq!(
-            runtime
-                .text_inputs
-                .get(&input)
-                .map(|state| state.value.as_str()),
-            Some("safe")
-        );
+        assert_eq!(runtime.text_input_value(input), Some("safe"));
     }
 
     #[test]
@@ -2684,5 +1765,163 @@ mod tests {
         let mut password_runtime = UiRuntime::new(password_document);
         assert!(!password_runtime.reset_text_input_from_document(password));
         assert_eq!(password_runtime.text_input_value(password), None);
+    }
+
+    #[test]
+    fn flex_absolute_scroll_and_clipping_emit_stable_geometry_and_valid_scopes() {
+        let root = UiNodeId::new(0x500);
+        let absolute = UiNodeId::new(0x501);
+        let positioned = UiNodeId::new(0x502);
+        let scroll = UiNodeId::new(0x503);
+        let first = UiNodeId::new(0x504);
+        let second = UiNodeId::new(0x505);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Layout modes",
+                    UiLayout::Flex {
+                        axis: UiAxis::Horizontal,
+                        gap: 8.0,
+                    },
+                    vec![absolute, scroll],
+                )
+                .with_style(UiStyle::transparent()),
+                UiNode::container(absolute, "Absolute", UiLayout::Absolute, vec![positioned])
+                    .with_style(UiStyle::transparent()),
+                UiNode::label(positioned, "Positioned", "Positioned").with_absolute_position(
+                    UiAbsolutePosition {
+                        left: 12.0,
+                        top: 16.0,
+                        width: Some(80.0),
+                        height: Some(32.0),
+                    },
+                ),
+                UiNode::container(
+                    scroll,
+                    "Scroll",
+                    UiLayout::Scroll {
+                        axis: UiAxis::Vertical,
+                        offset: 10.0,
+                    },
+                    vec![first, second],
+                )
+                .with_style(UiStyle::transparent())
+                .with_constraints(UiConstraints {
+                    clip: true,
+                    ..UiConstraints::default()
+                }),
+                UiNode::label(first, "First", "First")
+                    .with_layout_hints(UiLayoutHints::fixed_height(40.0)),
+                UiNode::label(second, "Second", "Second")
+                    .with_layout_hints(UiLayoutHints::fixed_height(40.0)),
+            ],
+        )
+        .expect("layout-mode document");
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(UiFrameInput::new(UiSize::new(400.0, 200.0)));
+        let bounds = |id| {
+            output
+                .layout
+                .iter()
+                .find(|entry| entry.node == id)
+                .map(|entry| entry.bounds)
+                .expect("node has geometry")
+        };
+        let absolute_bounds = bounds(absolute);
+        let positioned_bounds = bounds(positioned);
+        assert!((positioned_bounds.origin.x - (absolute_bounds.origin.x + 12.0)).abs() < 0.1);
+        assert!((positioned_bounds.origin.y - (absolute_bounds.origin.y + 16.0)).abs() < 0.1);
+        assert_eq!(positioned_bounds.size, UiSize::new(80.0, 32.0));
+        assert!(bounds(first).origin.y < bounds(scroll).origin.y);
+        assert_eq!(output.display_list.validate(), Ok(()));
+        assert!(matches!(
+            output.display_list.primitives.first(),
+            Some(
+                DisplayPrimitive::PushClip { .. }
+                    | DisplayPrimitive::Rect { .. }
+                    | DisplayPrimitive::Text { .. }
+            )
+        ));
+    }
+
+    #[test]
+    fn rejected_document_update_preserves_runtime_state_and_snapshot_revision() {
+        let (document, input) = text_input_document("safe", false);
+        let mut runtime = UiRuntime::new(document.clone());
+        let first = runtime.reconcile(frame(vec![
+            UiEvent::FocusNext,
+            UiEvent::SelectAllText,
+            UiEvent::TextCommit("retained".to_owned()),
+        ]));
+        let invalid = UiNode::container(input, "Cycle", UiLayout::Overlay, vec![input]);
+        assert_eq!(
+            runtime.try_replace_document(input, vec![invalid]),
+            Err(UiDocumentError::Cycle(input))
+        );
+        assert_eq!(runtime.document(), &document);
+        assert_eq!(runtime.text_input_value(input), Some("retained"));
+        let second = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(second.revision, first.revision + 1);
+        assert_eq!(second.focused, Some(input));
+        assert_eq!(runtime.last_document_delta(), &UiDocumentDelta::default());
+    }
+
+    #[test]
+    fn accepted_replacement_reports_incremental_identity_changes() {
+        let root = UiNodeId::new(0x510);
+        let stable = UiNodeId::new(0x511);
+        let initial = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Initial", UiLayout::Overlay, vec![stable]),
+                UiNode::label(stable, "Stable", "Before"),
+            ],
+        )
+        .expect("initial document");
+        let replacement = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Replacement", UiLayout::Overlay, vec![stable]),
+                UiNode::label(stable, "Stable", "After"),
+            ],
+        )
+        .expect("replacement document");
+        let mut runtime = UiRuntime::new(initial);
+        let delta = runtime.replace_document(replacement);
+        assert_eq!(delta.retained, vec![root, stable]);
+        assert_eq!(delta.updated, vec![root, stable]);
+        assert!(delta.inserted.is_empty());
+        assert!(delta.removed.is_empty());
+        assert_eq!(runtime.last_document_delta(), &delta);
+    }
+
+    #[test]
+    fn malformed_frame_rolls_back_to_the_last_accepted_immutable_snapshot() {
+        let valid = recovery_panel_document().expect("valid recovery document");
+        let mut runtime = UiRuntime::new(valid);
+        let accepted = runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        let root = UiNodeId::new(0x520);
+        let mut invalid_node = UiNode::label(root, "Invalid pixels", "Invalid pixels");
+        invalid_node.style.foreground = UiColor::rgba(f32::NAN, 1.0, 1.0, 1.0);
+        let invalid = UiDocument::new(root, vec![invalid_node]).expect("logical tree is valid");
+        runtime.replace_document(invalid);
+
+        assert!(matches!(
+            runtime.try_reconcile(frame(Vec::new())),
+            Err(UiFrameError::InvalidDisplayList(
+                DisplayListError::InvalidGeometry { .. }
+            ))
+        ));
+        let fallback = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(fallback.revision, accepted.revision);
+        assert_eq!(fallback.display_list, accepted.display_list);
+        assert!(matches!(
+            fallback.diagnostics.last(),
+            Some(UiDiagnostic::FrameRejected(
+                DisplayListError::InvalidGeometry { .. }
+            ))
+        ));
     }
 }

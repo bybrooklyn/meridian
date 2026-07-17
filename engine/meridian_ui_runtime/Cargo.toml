@@ -1,5 +1,5 @@
 [package]
-name = "meridian-ui"
+name = "meridian-ui-runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,6 @@ license.workspace = true
 [dependencies]
 meridian-ui-core = { path = "../meridian_ui_core" }
 meridian-ui-render = { path = "../meridian_ui_render" }
-meridian-ui-runtime = { path = "../meridian_ui_runtime" }
 meridian-ui-semantics = { path = "../meridian_ui_semantics" }
 meridian-ui-text = { path = "../meridian_ui_text" }
 
