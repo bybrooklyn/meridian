@@ -218,6 +218,7 @@ fn run(config: &Config) -> Result<Vec<Issue>, String> {
             validate_work_package_graph(&context, &mut issues);
             validate_program_boundaries(&context, &mut issues);
             validate_marquee_policy(&context, &mut issues);
+            validate_ui_contracts(&config.root, &context, &mut issues);
             validate_validation_projects(&context, &mut issues);
             validate_dependency_strategy(&context, &mut issues);
             validate_adrs(&config.root, &context, &mut issues);
@@ -237,6 +238,7 @@ fn run(config: &Config) -> Result<Vec<Issue>, String> {
             validate_work_package_graph(&context, &mut issues);
             validate_program_boundaries(&context, &mut issues);
             validate_marquee_policy(&context, &mut issues);
+            validate_ui_contracts(&config.root, &context, &mut issues);
             validate_validation_projects(&context, &mut issues);
             validate_dependency_strategy(&context, &mut issues);
             validate_cross_references(&context, &mut issues);
@@ -1175,6 +1177,422 @@ fn validate_marquee_ai_boundary(policy: &Value, path: &Path, issues: &mut Vec<Is
     }
 }
 
+fn validate_ui_contracts(root: &Path, context: &Context, issues: &mut Vec<Issue>) {
+    if !context
+        .records
+        .iter()
+        .any(|record| record.id == "REQ-UI-002")
+    {
+        return;
+    }
+
+    validate_ui_token_contract(context, issues);
+    validate_ui_component_contract(context, issues);
+    validate_ui_workspace_contract(context, issues);
+    validate_ui_package_sequence(context, issues);
+    validate_ui_mockup_contract(root, issues);
+}
+
+fn validate_ui_token_contract(context: &Context, issues: &mut Vec<Issue>) {
+    let Some(registry) = registry_named(context, "ui-design-tokens.json") else {
+        push(
+            issues,
+            "missing-ui-design-tokens",
+            "workloads",
+            Path::new("specs/registry/ui-design-tokens.json"),
+            "REQ-UI-002 requires the versioned Meridian UI design-token registry",
+        );
+        return;
+    };
+
+    let actual: BTreeMap<_, _> = records_array(&registry.value)
+        .filter_map(|record| {
+            Some((
+                record.get("id")?.as_str()?.to_owned(),
+                record.get("value")?.clone(),
+            ))
+        })
+        .collect();
+    let expected_strings = [
+        ("token.color.background", "#090b0b"),
+        ("token.color.surface", "#121515"),
+        ("token.color.border", "#292d2c"),
+        ("token.color.text-primary", "#e3e1d8"),
+        ("token.color.text-secondary", "#929790"),
+        ("token.color.muted", "#686e68"),
+        ("token.color.destructive", "#a73732"),
+        ("token.color.destructive-hover", "#c04b44"),
+        ("token.color.positive", "#8d8961"),
+        ("token.color.warning", "#c0964e"),
+        ("token.font.interface", "Mona Sans"),
+        ("token.font.display", "Hubot Sans"),
+        ("token.font.mono", "JetBrains Mono"),
+    ];
+    for (id, value) in expected_strings {
+        if actual.get(id).and_then(Value::as_str) != Some(value) {
+            push(
+                issues,
+                "invalid-ui-token",
+                "workloads",
+                &registry.path,
+                format!("{id} must be exactly {value}"),
+            );
+        }
+    }
+
+    let expected_numbers = [
+        ("token.spacing.base", 4),
+        ("token.spacing.dock-gutter", 8),
+        ("token.border.standard", 1),
+        ("token.radius.compact", 4),
+        ("token.radius.control", 6),
+        ("token.radius.panel", 10),
+        ("token.radius.floating", 14),
+        ("token.size.application-row", 44),
+        ("token.size.workspace-row", 36),
+        ("token.size.status-row", 24),
+        ("token.size.activity-rail-collapsed", 44),
+        ("token.size.activity-rail-expanded", 160),
+        ("token.size.browser", 264),
+        ("token.size.world-inspector", 344),
+        ("token.size.bottom-shelf-peek", 32),
+        ("token.size.bottom-shelf-expanded", 240),
+        ("token.motion.state-min", 100),
+        ("token.motion.state-max", 160),
+    ];
+    for (id, value) in expected_numbers {
+        if actual.get(id).and_then(Value::as_u64) != Some(value) {
+            push(
+                issues,
+                "invalid-ui-token",
+                "workloads",
+                &registry.path,
+                format!("{id} must be exactly {value}"),
+            );
+        }
+    }
+
+    let policies = registry.value.get("policies");
+    let policy_is_valid = policies.is_some_and(|policy| {
+        policy.get("dense_content").and_then(Value::as_str) == Some("opaque")
+            && policy.get("focus_geometry").and_then(Value::as_str)
+                == Some("rectangular-edge-contrast-shape")
+            && policy.get("decorative_ring").and_then(Value::as_bool) == Some(false)
+            && policy.get("scene_tinted_chrome").and_then(Value::as_bool) == Some(false)
+            && policy.get("blur").and_then(Value::as_str)
+                == Some("floating-overlays-and-title-chrome-with-opaque-fallback")
+    });
+    if !policy_is_valid {
+        push(
+            issues,
+            "invalid-ui-visual-policy",
+            "workloads",
+            &registry.path,
+            "Meridian UI must keep dense content opaque, reject rings and scene-tinted chrome, and provide an opaque blur fallback",
+        );
+    }
+}
+
+fn validate_ui_component_contract(context: &Context, issues: &mut Vec<Issue>) {
+    let Some(registry) = registry_named(context, "ui-components.json") else {
+        push(
+            issues,
+            "missing-ui-components",
+            "workloads",
+            Path::new("specs/registry/ui-components.json"),
+            "REQ-UI-002 requires the versioned component behavior registry",
+        );
+        return;
+    };
+    let required: BTreeSet<_> = [
+        "component.button",
+        "component.icon-button",
+        "component.toggle",
+        "component.text-field",
+        "component.search-field",
+        "component.combo-box",
+        "component.menu",
+        "component.menu-bar",
+        "component.context-menu",
+        "component.tooltip",
+        "component.toast",
+        "component.tabs",
+        "component.tree",
+        "component.table",
+        "component.property-grid",
+        "component.virtual-list",
+        "component.timeline",
+        "component.splitter",
+        "component.progress",
+        "component.command-palette",
+        "component.graph-canvas",
+        "component.viewport-canvas",
+    ]
+    .into_iter()
+    .collect();
+    let actual: BTreeSet<_> = records_array(&registry.value)
+        .filter_map(|record| record.get("id").and_then(Value::as_str))
+        .collect();
+    let missing: Vec<_> = required.difference(&actual).copied().collect();
+    if !missing.is_empty() {
+        push(
+            issues,
+            "incomplete-ui-components",
+            "workloads",
+            &registry.path,
+            format!("component registry is missing {}", missing.join(", ")),
+        );
+    }
+}
+
+fn validate_ui_workspace_contract(context: &Context, issues: &mut Vec<Issue>) {
+    let Some(registry) = registry_named(context, "ui-workspaces.json") else {
+        push(
+            issues,
+            "missing-ui-workspaces",
+            "workloads",
+            Path::new("specs/registry/ui-workspaces.json"),
+            "REQ-UI-002 requires the versioned workspace composition registry",
+        );
+        return;
+    };
+    let shell = registry.value.get("shell");
+    let shell_is_valid = shell.is_some_and(|value| {
+        value.get("application_row").and_then(Value::as_u64) == Some(44)
+            && value.get("workspace_row").and_then(Value::as_u64) == Some(36)
+            && value.get("status_row").and_then(Value::as_u64) == Some(24)
+            && value.get("rows_merge").and_then(Value::as_bool) == Some(false)
+            && value.get("narrow_strategy").and_then(Value::as_str)
+                == Some("compress-utilities-and-controlled-workspace-overflow")
+    });
+    if !shell_is_valid {
+        push(
+            issues,
+            "invalid-ui-shell",
+            "workloads",
+            &registry.path,
+            "the permanent shell must keep exact 44, 36, and 24 pixel rows separate at every supported width",
+        );
+    }
+
+    let required: BTreeSet<_> = [
+        "workspace.hub",
+        "workspace.world",
+        "workspace.code",
+        "workspace.modeler",
+        "workspace.ui-authoring",
+        "workspace.materials",
+        "workspace.alluvium",
+        "workspace.build",
+        "workspace.profile",
+        "workspace.settings",
+        "workspace.recovery",
+    ]
+    .into_iter()
+    .collect();
+    let actual: BTreeSet<_> = records_array(&registry.value)
+        .filter_map(|record| record.get("id").and_then(Value::as_str))
+        .collect();
+    let missing: Vec<_> = required.difference(&actual).copied().collect();
+    if !missing.is_empty() {
+        push(
+            issues,
+            "incomplete-ui-workspaces",
+            "workloads",
+            &registry.path,
+            format!("workspace registry is missing {}", missing.join(", ")),
+        );
+    }
+}
+
+fn validate_ui_package_sequence(context: &Context, issues: &mut Vec<Issue>) {
+    let expected: [(&str, &[&str], &[&str]); 6] = [
+        ("WP-UI-002", &["WP-UI-001"], &[]),
+        ("WP-UI-003", &["WP-UI-002"], &[]),
+        ("WP-UI-004", &["WP-UI-003"], &[]),
+        ("WP-UI-005", &["WP-UI-004"], &["RG-UI-001"]),
+        ("WP-EDT-002", &["WP-EDT-001", "WP-UI-005"], &[]),
+        (
+            "WP-EDT-003",
+            &["WP-EDT-002", "WP-BLD-001", "WP-PRC-001", "WP-MDL-001"],
+            &[],
+        ),
+    ];
+    for (id, required_dependencies, required_gates) in expected {
+        let Some(record) = context.records.iter().find(|record| record.id == id) else {
+            push(
+                issues,
+                "missing-ui-package",
+                "workloads",
+                Path::new("specs/registry/work-packages.json"),
+                format!("Meridian UI 1.0 requires {id}"),
+            );
+            continue;
+        };
+        let dependencies: BTreeSet<_> = strings_for_keys(&record.value, &["depends_on"])
+            .into_iter()
+            .collect();
+        let gates: BTreeSet<_> = strings_for_keys(&record.value, &["gates"])
+            .into_iter()
+            .collect();
+        if required_dependencies
+            .iter()
+            .any(|dependency| !dependencies.contains(*dependency))
+            || required_gates.iter().any(|gate| !gates.contains(*gate))
+        {
+            push(
+                issues,
+                "invalid-ui-package-sequence",
+                "workloads",
+                &record.path,
+                format!("{id} does not preserve the adopted dependency and research-gate sequence"),
+            );
+        }
+    }
+}
+
+fn validate_ui_mockup_contract(root: &Path, issues: &mut Vec<Issue>) {
+    let manifest_path = root.join("docs/production/ui-mockups/mockups.json");
+    let Some(manifest) = load_ui_mockup_manifest(&manifest_path, issues) else {
+        return;
+    };
+    validate_ui_mockup_manifest_identity(root, &manifest_path, &manifest, issues);
+
+    let outputs: BTreeSet<_> = manifest
+        .get("outputs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.get("file").and_then(Value::as_str))
+        .collect();
+    validate_ui_mockup_output_set(&manifest_path, &outputs, issues);
+    validate_ui_mockup_files(root, &manifest_path, outputs, issues);
+}
+
+fn load_ui_mockup_manifest(path: &Path, issues: &mut Vec<Issue>) -> Option<Value> {
+    let Ok(text) = fs::read_to_string(path) else {
+        push(
+            issues,
+            "missing-ui-mockup-manifest",
+            "workloads",
+            path,
+            "REQ-UI-002 requires the versioned 17-state mockup manifest",
+        );
+        return None;
+    };
+    let Ok(manifest) = serde_json::from_str::<Value>(&text) else {
+        push(
+            issues,
+            "invalid-ui-mockup-manifest",
+            "workloads",
+            path,
+            "UI mockup manifest is not valid JSON",
+        );
+        return None;
+    };
+    Some(manifest)
+}
+
+fn validate_ui_mockup_manifest_identity(
+    root: &Path,
+    path: &Path,
+    manifest: &Value,
+    issues: &mut Vec<Issue>,
+) {
+    let generator_path = root.join("scripts/generate_ui_mockups.py");
+    if manifest.get("schema").and_then(Value::as_str) != Some("meridian.ui-mockup-set/v1")
+        || manifest.get("generator_version").and_then(Value::as_str) != Some("1.0.0")
+        || !generator_path.is_file()
+    {
+        push(
+            issues,
+            "invalid-ui-mockup-manifest",
+            "workloads",
+            path,
+            "mockup manifest must use v1, generator 1.0.0, and the checked-in generator",
+        );
+    }
+}
+
+fn validate_ui_mockup_output_set(path: &Path, outputs: &BTreeSet<&str>, issues: &mut Vec<Issue>) {
+    let required: BTreeSet<_> = [
+        "hub.svg",
+        "world.svg",
+        "code-contextual.svg",
+        "code-full.svg",
+        "modeler.svg",
+        "ui-authoring.svg",
+        "materials.svg",
+        "alluvium.svg",
+        "build.svg",
+        "profile.svg",
+        "settings.svg",
+        "recovery.svg",
+        "high-contrast.svg",
+        "narrow.svg",
+        "retina.svg",
+        "1440p.svg",
+        "ultrawide.svg",
+    ]
+    .into_iter()
+    .collect();
+    if *outputs != required {
+        push(
+            issues,
+            "incomplete-ui-mockup-corpus",
+            "workloads",
+            path,
+            "mockup manifest must contain the exact 17 required review states",
+        );
+    }
+}
+
+fn validate_ui_mockup_files(
+    root: &Path,
+    manifest_path: &Path,
+    outputs: BTreeSet<&str>,
+    issues: &mut Vec<Issue>,
+) {
+    for output in outputs {
+        let path = manifest_path.parent().unwrap_or(root).join(output);
+        let Ok(svg) = fs::read_to_string(&path) else {
+            push(
+                issues,
+                "missing-ui-mockup",
+                "workloads",
+                &path,
+                format!("mockup manifest output {output} does not exist"),
+            );
+            continue;
+        };
+        let generated = svg.contains("Generated by scripts/generate_ui_mockups.py")
+            && svg.contains("meridian.ui-mockup-set/v1")
+            && svg.contains("regenerate: python3 scripts/generate_ui_mockups.py");
+        let shell = svg.contains("y=\"44\"")
+            && svg.contains("height=\"36\"")
+            && svg.contains("World")
+            && svg.contains("Modeler")
+            && svg.contains("Alluvium")
+            && svg.contains("Profile");
+        let prohibited = svg.to_ascii_lowercase();
+        if !generated
+            || !shell
+            || prohibited.contains("#00ffff")
+            || prohibited.contains("cyan")
+            || prohibited.contains("meridian ring")
+            || prohibited.contains("project meridian")
+        {
+            push(
+                issues,
+                "inconsistent-ui-mockup",
+                "workloads",
+                &path,
+                "generated mockup must retain metadata, the two-row shell, public content, and the no-cyan/no-ring policy",
+            );
+        }
+    }
+}
+
 fn reject_premature_marquee_packages(context: &Context, issues: &mut Vec<Issue>) {
     for record in &context.records {
         if record.id.starts_with("WP-PRM-") {
@@ -1570,6 +1988,7 @@ fn references(value: &Value) -> Vec<String> {
             "programs",
             "program",
             "depends_on",
+            "gates",
             "critical_path",
             "packages",
             "requires",

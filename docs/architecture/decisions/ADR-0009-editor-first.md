@@ -3,12 +3,12 @@
 - Status: Adopted
 - Date: 2026-07-15
 - Spec version: v0.3
-- Implementation status: Transitional editor shell; Meridian UI core proof qualified, Creator Editor Alpha planned
+- Implementation status: Qualified Creator behavioral foundation; Meridian UI 1.0 sequential packages active/planned
 - Owners: meridian-editor-core, meridian-ui, meridian-editor-egui-bootstrap
 - Supersedes: none
 - Superseded by: none
 
-Amendment notice: [ADR-0017](ADR-0017-alluvium.md) applies this command/schema parity to Alluvium textual recipes, headless execution, the basic inspector, and the later visual graph editor.
+Amendment notice: [ADR-0017](ADR-0017-alluvium.md) applies this command/schema parity to Alluvium textual recipes, headless execution, the basic inspector, and the later visual graph editor. [ADR-0028](ADR-0028-meridian-ui-retained-framework-and-shell.md) owns the retained-framework package sequence, locked design system, permanent shell, and adapter boundaries.
 
 ## Context
 

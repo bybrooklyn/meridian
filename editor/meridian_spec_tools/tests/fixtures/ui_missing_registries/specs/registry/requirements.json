@@ -1,0 +1,6 @@
+{
+  "version": "0.5",
+  "records": [
+    {"id":"REQ-UI-002","title":"UI contract","domain":"UI","status":"Normative","work_packages":[],"evidence_classes":["schema-test"]}
+  ]
+}

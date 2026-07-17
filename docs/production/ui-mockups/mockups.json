@@ -1,0 +1,23 @@
+{
+  "schema": "meridian.ui-mockup-set/v1",
+  "generator_version": "1.0.0",
+  "outputs": [
+    {"file":"hub.svg","title":"Project Hub","workspace":"Hub","width":1440,"height":900,"variant":"standard"},
+    {"file":"world.svg","title":"World Workspace","workspace":"World","width":1440,"height":900,"variant":"standard"},
+    {"file":"code-contextual.svg","title":"Code Contextual","workspace":"Code","width":1440,"height":900,"variant":"contextual"},
+    {"file":"code-full.svg","title":"Code Focus Layout","workspace":"Code","width":1440,"height":900,"variant":"focus"},
+    {"file":"modeler.svg","title":"Modeler Workspace","workspace":"Modeler","width":1440,"height":900,"variant":"standard"},
+    {"file":"ui-authoring.svg","title":"UI Authoring Workspace","workspace":"UI","width":1440,"height":900,"variant":"standard"},
+    {"file":"materials.svg","title":"Materials Workspace","workspace":"Materials","width":1440,"height":900,"variant":"standard"},
+    {"file":"alluvium.svg","title":"Alluvium Workspace","workspace":"Alluvium","width":1440,"height":900,"variant":"standard"},
+    {"file":"build.svg","title":"Build Workspace","workspace":"Build","width":1440,"height":900,"variant":"standard"},
+    {"file":"profile.svg","title":"Profile Workspace","workspace":"Profile","width":1440,"height":900,"variant":"standard"},
+    {"file":"settings.svg","title":"Settings","workspace":"Settings","width":1440,"height":900,"variant":"standard"},
+    {"file":"recovery.svg","title":"Recovery","workspace":"Recovery","width":1440,"height":900,"variant":"standard"},
+    {"file":"high-contrast.svg","title":"World High Contrast","workspace":"World","width":1440,"height":900,"variant":"high-contrast"},
+    {"file":"narrow.svg","title":"World Narrow","workspace":"World","width":1024,"height":768,"variant":"narrow"},
+    {"file":"retina.svg","title":"World Retina 2x","workspace":"World","width":2880,"height":1800,"logical_width":1440,"logical_height":900,"variant":"retina"},
+    {"file":"1440p.svg","title":"World 1440p","workspace":"World","width":2560,"height":1440,"variant":"large"},
+    {"file":"ultrawide.svg","title":"World Ultrawide","workspace":"World","width":3440,"height":1440,"variant":"ultrawide"}
+  ]
+}

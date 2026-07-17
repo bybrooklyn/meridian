@@ -1,13 +1,14 @@
 # MS-03 Creator Alpha native review
 
-Status: local pre-delivery review recorded; fresh three-platform CI and the
-post-CI source revision are still required before `WP-EDT-001` or MS-03 can be
-closed.
+Status: local native review recorded and the Creator behavioral foundation
+qualified by GitHub Actions run `29605881704` for `4463bad`. `WP-EDT-001` is
+`ImplementedFoundation`; MS-03 remains open for the Meridian UI framework,
+production shell/World workspace, platform accessibility, and visible approval.
 
 This review covers the Creator application surface, not renderer visual
-quality. The app was built locally from the pending MS-03 delivery on an Apple
-M4 (`arm64`) running macOS 27.0 (26A5368g) on 2026-07-17. The local candidate
-was intentionally not yet a committed or CI-qualified revision.
+quality. The app was built locally from `4463bad` on an Apple M4 (`arm64`)
+running macOS 27.0 (26A5368g) on 2026-07-17. The same source revision passed
+governance and the complete Linux, Windows, and macOS CI rows.
 
 ![Meridian Creator hub after a fresh launch](evidence/ms03-creator-alpha-hub-20260717.jpeg)
 
@@ -58,7 +59,7 @@ SHA-256: `cc66f16f21a051836ce32c0aaf6c09fa353923fb9f0ace7e0b231d87ccc0ebc0`
   standard Gatekeeper authorization as described in
   [the unsigned preview notes](MACOS_UNSIGNED_PREVIEW.md).
 
-The CI macOS artifact retains the distributable app archive, binary hash,
-Creator journey evidence, this checklist, and these refreshed local captures
-for the candidate run. They are evidence for review, not a substitute for the
-required Linux, Windows, and macOS CI results.
+The CI macOS artifact retained the distributable app archive, binary hash,
+Creator journey evidence, and review checklist. These captures qualify the
+transitional Creator foundation only; the future `WP-EDT-002` presented review
+must use its own native artifacts and cannot inherit a visual-quality claim.

@@ -144,6 +144,30 @@ fn missing_dependency_strategy_records_are_rejected() {
 }
 
 #[test]
+fn ui_contracts_require_all_three_registries() {
+    let (ok, output) = run(
+        "tests/fixtures/ui_missing_registries",
+        &["validate", "workloads"],
+    );
+    assert!(!ok, "{output}");
+    assert!(output.contains("missing-ui-design-tokens"), "{output}");
+    assert!(output.contains("missing-ui-components"), "{output}");
+    assert!(output.contains("missing-ui-workspaces"), "{output}");
+}
+
+#[test]
+fn ui_contracts_reject_palette_and_component_drift() {
+    let (ok, output) = run(
+        "tests/fixtures/ui_invalid_contracts",
+        &["validate", "workloads"],
+    );
+    assert!(!ok, "{output}");
+    assert!(output.contains("invalid-ui-token"), "{output}");
+    assert!(output.contains("incomplete-ui-components"), "{output}");
+    assert!(output.contains("incomplete-ui-workspaces"), "{output}");
+}
+
+#[test]
 fn missing_v05_migration_ledger_is_rejected() {
     let (ok, output) = run("tests/fixtures/missing_v05_ledger", &["list-unmapped"]);
     assert!(!ok, "{output}");

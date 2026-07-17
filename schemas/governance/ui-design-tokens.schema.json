@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Meridian UI design tokens",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "theme", "policies", "records"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": "1.0"},
+    "theme": {"const": "meridian-dark"},
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dense_content", "focus_geometry", "decorative_ring", "scene_tinted_chrome", "blur"],
+      "properties": {
+        "dense_content": {"const": "opaque"},
+        "focus_geometry": {"const": "rectangular-edge-contrast-shape"},
+        "decorative_ring": {"const": false},
+        "scene_tinted_chrome": {"const": false},
+        "blur": {"const": "floating-overlays-and-title-chrome-with-opaque-fallback"}
+      }
+    },
+    "records": {
+      "type": "array",
+      "minItems": 28,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "category", "value", "unit", "purpose"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^token\\.[a-z0-9.-]+$"},
+          "category": {"enum": ["color", "font", "spacing", "border", "radius", "size", "motion", "effect"]},
+          "value": {"type": ["string", "number"]},
+          "unit": {"enum": ["hex-srgb", "font-family", "logical-px", "milliseconds", "policy", "ratio"]},
+          "purpose": {"type": "string", "minLength": 3}
+        }
+      }
+    }
+  }
+}

@@ -1,229 +1,447 @@
 # Editor and Meridian UI Specification
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [ADR-0018](../docs/architecture/decisions/ADR-0018-general-purpose-single-application.md) · [Accessibility](ACCESSIBILITY_DOCUMENTATION_AND_PONDER_SPEC.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Shader language](MERIDIAN_SHADER_LANGUAGE_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [Commands](AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [ADR-0028](../docs/architecture/decisions/ADR-0028-meridian-ui-retained-framework-and-shell.md) · [Accessibility](ACCESSIBILITY_DOCUMENTATION_AND_PONDER_SPEC.md) · [Commands](AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md) · [Reviewed design brief](../docs/production/MERIDIAN_UI_DESIGN_BRIEF_REVIEW.md)
 
-version 0.5 · 2026-07-15 · Normative · Meridian UI core proof ImplementedFoundation, egui shell Transitional
+version 0.5 · 2026-07-17 · Normative · ImplementationReady
 
-Documentation maturity: `ImplementationReady`. Implementation maturity:
-`ImplementedFoundation`. Governing IDs: `REQ-UI-001`, `REQ-EDT-001`, `WP-UI-001`,
-`WP-EDT-001`, `RG-UI-001`.
+Implementation maturity: `ImplementedFoundation` for `WP-UI-001` and the
+qualified Creator behavioral baseline; the Meridian UI 1.0 framework and final
+workspace composition remain sequential package work. Governing IDs:
+`REQ-UI-001`, `REQ-UI-002`, `REQ-EDT-001`, `REQ-EDT-002`, `WP-UI-001` through
+`WP-UI-005`, `WP-EDT-001` through `WP-EDT-003`, and `RG-UI-001`.
 
-Current package truth: `WP-EDT-001` is active corrective work. GitHub Actions
-run `29508496428` passed governance and Linux, Windows, and macOS rows for
-`ec2a6334`, but that evidence qualifies only the former source/session/UI/build
-foundation. It does not qualify persistent native Creator interaction or a
-presented Creator application. `WP-PRC-001` remains `ImplementedFoundation`.
-`meridian-editor-core` now owns the UI-free Creator Alpha project session,
-typed transactions/inverses/checkpoints, generation-checked selection, Play
-fork/apply/discard, and durable recovery. `meridian-ui-editor` declares the
-accessible project, hierarchy, viewport, inspector/history, asset/import/build,
-recipe, modeler, diagnostics, and recovery panels; `meridian-editor` composes
-them. The public Creator Alpha smoke is also included in the qualified workspace
-suite. It does not qualify a presented native surface or the modeler package.
-The active Alluvium package adds textual recipe semantics and a basic inspector.
+This document owns Meridian application/editor UI architecture, design tokens,
+components, input behavior, accessibility, workspace composition, responsive
+behavior, persistence, recovery, and platform integration. Typed registries
+make its fixed contracts machine-verifiable. Domain specifications continue to
+own world, model, procedural, material, build, profiling, and gameplay source
+semantics; UI does not manufacture capabilities those domains have not earned.
 
-Research anchors: [AccessKit](https://accesskit.dev/) and [AccessKit Rust API](https://docs.rs/accesskit) inform accessibility adapter boundaries; [OpenXR 1.1](https://registry.khronos.org/OpenXR/specs/1.1/html/xrspec.html) informs later XR panel timing and composition boundaries. Meridian owns UI IR, semantics, layout, commands, and persistence.
+## 1. Product contract
 
-## 1. Goals and non-goals
+The product is one native application named **Meridian**. World editing,
+modeling, UI authoring, code, materials, Alluvium, build, profiling, VCS,
+diagnostics, documentation, and later tools are workspaces in that application,
+not separately branded Studio or IDE products.
 
-Meridian UI is the in-tree retained application framework shared by the editor, runtime game UI, and Meridian-native tools. The single user-facing creator application is named **Meridian**. Project management, IDE, world editor, native modeler, material/shader, animation, Alluvium, profiler, debugger, build, VCS, and future Marquee surfaces are Meridian workspaces and panels, not separate Studio/IDE applications. Shared UI means layout, text, rendering, input routing, focus, semantics, styling, animation, document binding, and diagnostics. Editor and runtime widget libraries remain separable so shipping games do not pull editor code.
+Meridian UI is the in-tree retained framework shared by the application,
+editor-only controls, runtime game UI, and Meridian-native tools. It owns the
+logical UI document, stable node identity, reconciliation, layout, input,
+focus, semantics, styling, motion, renderer-neutral display list, workspace
+state, diagnostics, and recovery contracts. Adapter libraries remain private.
 
-Goals: responsive native desktop UI, deterministic document operations, accessible semantics, high-DPI text, virtualized large views, docking, command integration, theming, testability, and minimal runtime builds.
+Goals are a modern native desktop experience, deterministic document
+operations, accessible semantics, excellent high-DPI text, virtualized
+professional controls, transactional docking, testability, and a small runtime
+profile. Non-goals are a web production shell, permanent egui architecture,
+backend widget objects in source, decorative brand geometry, a generic chat
+sidebar, or hidden domain authority.
 
-Non-goals: embedding egui as permanent architecture, duplicating a game UI engine, storing backend widget objects in project files, forcing web technology, or making every visual change a mutable global style operation.
+## 2. Permanent application shell
 
-## 2. Crate boundaries
+Every normal application workspace uses two distinct rows:
 
-- meridian-ui-core: tree, IDs, properties, events, focus, layout interfaces.
-- meridian-ui-text: shaping, font fallback, line breaking, editing, IME.
-- meridian-ui-render: display list, clipping, caching, renderer bridge.
-- meridian-ui-semantics: accessible tree and actions.
-- meridian-ui-runtime: shipping widgets and runtime document loader.
-- meridian-ui-editor: docking, inspector, outliner, graphs, asset browser, diagnostics.
-- meridian-editor-core: document sessions, selection, commands, undo, play mode.
-- meridian-editor-egui-bootstrap: current temporary shell and migration adapters.
+~~~text
+┌────────────────────────────────────────────────────────────────────┐
+│ ● ● ●  Meridian · Project       Play · Build · Search · Settings   │
+├────────────────────────────────────────────────────────────────────┤
+│ World  Modeler  UI  Code  Materials  Alluvium  Build  Profile      │
+└────────────────────────────────────────────────────────────────────┘
+~~~
 
-No egui type enters ui-core, editor-core, source documents, commands, or plugins. AccessKit is consumed only by a platform adapter from Meridian semantics. `WP-UI-001` adopts `cosmic-text` under `DEP-UI-001` only as the text shaping, fallback, layout, and rasterization adapter, and `unicode-segmentation` under `DEP-UI-002` only for extended-grapheme editing boundaries. `WP-EDT-001` adopts `rfd` under `DEP-UI-003` only for an explicit native project-directory picker in `meridian-editor`; its types never cross the private adapter. Meridian-owned text, display-list, semantic, event, clipboard-policy, diagnostic, path-validation, and command types remain the public boundary. Platform accessibility adapters are a separately scoped MS-03 spike, and `RG-UI-001` selects no production display-list renderer before its MS-02 entry gate.
+The application row is 44 logical pixels, the workspace row is 36, and the
+permanent status row is 24. They never merge at supported widths. When space is
+tight, utility labels compress, workspace tabs enter a controlled overflow,
+and lower-priority regions collapse before the canvas. Play is the strongest
+utility; Build is visibly stateful; Search stays visible; Settings remains
+quiet. No window size may reduce an interactive target below its accessible
+minimum.
 
-## 3. Data model
+On macOS the application respects traffic-light placement, title-bar drag
+regions, native menus, native fullscreen, platform focus rules, and native file
+pickers. Window controls are not imitated in content. Other platforms retain
+their native ownership and behavior. Product-specific settings, diagnostics,
+recovery, import details, and commands use Meridian UI.
+
+Panel headers are restrained: context and provenance on the left; essential
+actions and a single overflow affordance on the right. Repeated chrome cannot
+be louder than the working surface.
+
+## 3. Locked design system
+
+### 3.1 Color roles
+
+The default dark theme uses the website palette exactly:
+
+| Role | Value | Use |
+|---|---:|---|
+| Background | `#090b0b` | application and deepest canvas surround |
+| Surface | `#121515` | panels and dense opaque content |
+| Border | `#292d2c` | one-pixel separators and control outlines |
+| Primary text | `#e3e1d8` | labels and readable content |
+| Secondary text | `#929790` | supporting content |
+| Muted | `#686e68` | passive metadata and disabled content |
+| Destructive | `#a73732` | destructive intent |
+| Destructive hover | `#c04b44` | hovered destructive intent |
+| Positive | `#8d8961` | success and safe affirmative state |
+| Warning/emphasis | `#c0964e` | warning, emphasis, active Build state |
+
+There is no cyan/teal identity, decorative glowing ring, orb, scene-derived
+ambient tint over product chrome, or color-only state. Selection, focus,
+warnings, source authority, and destructive actions combine contrast with
+shape, text, or edge indicators.
+
+### 3.2 Typography and icons
+
+Mona Sans is the interface face. Hubot Sans is limited to restrained display
+headings. JetBrains Mono is used for code, logs, identifiers, measurements, and
+technical tabular data. Fallbacks are declared and substitution is diagnosed.
+Fonts are pinned, hashed, licensed, and packaged only in their owning source
+slice.
+
+Icons use a pinned audited Lucide SVG subset behind Meridian-owned `IconId`
+values, plus necessary custom domain icons. No third-party SVG parser or icon
+type enters a public API. Every shipped asset has an exact source, revision,
+hash, SPDX identity, notice, modification record, tests, and update strategy.
+
+### 3.3 Geometry, density, and effects
+
+Spacing uses a four-pixel base. Borders are one logical pixel. Dock gutters are
+eight. Radii are hierarchical: 4 for compact controls, 6 for fields and small
+cards, 10 for panels and menus, and 14 for large floating surfaces. Dense code,
+tables, property grids, and timelines remain crisp rather than becoming a grid
+of rounded capsules.
+
+Default shell geometry is:
+
+| Region | Logical size |
+|---|---:|
+| Application row | 44 px |
+| Workspace row | 36 px |
+| Status row | 24 px |
+| Activity rail | 44 px collapsed; 160 px expanded |
+| Browser | 264 px |
+| World Inspector | 344 px |
+| Bottom shelf | 32 px peek; 240 px initial expanded |
+
+Dense content is opaque. GPU blur is allowed only for floating overlays and
+title chrome, is bounded in area and layer count, and always has an opaque
+fallback. Shadows communicate hierarchy; they do not replace boundaries.
+
+## 4. Crate and dependency boundaries
+
+- `meridian-ui-core`: retained document, stable IDs, properties, state,
+  reconciliation, layout contracts, focus, commands, input, preferences.
+- `meridian-ui-text`: shaping, fallback, line breaking, editing, selection,
+  clipboard requests, IME, and text cache contracts.
+- `meridian-ui-semantics`: Meridian semantic roles, actions, reading order,
+  live regions, and platform-neutral accessible tree.
+- `meridian-ui-render`: display list, clipping, layers, effects, cache keys,
+  renderer bridge, diagnostics, and immutable frame snapshots.
+- `meridian-ui-runtime`: shipping controls and runtime document loading without
+  editor dependencies.
+- `meridian-ui`: compatibility facade while callers migrate.
+- `meridian-ui-editor`: editor-only docking, complex controls, workspaces, and
+  platform adapter composition.
+- `meridian-editor-core`: source-authoritative project sessions, typed command
+  transactions, selection, undo, Play forks, persistence, and recovery.
+- `meridian-editor`: native application composition and private adapters.
+
+Runtime crates never depend on editor controls, picker adapters, or bootstrap
+UI. egui remains a bounded transitional bootstrap until parity evidence allows
+its deletion. AccessKit, windowing, rendering, font, icon, picker, and platform
+types stop at private adapters.
+
+## 5. Public Meridian interfaces
+
+Public APIs use Meridian-owned types. Exact representations may evolve through
+compatible package work, but these responsibilities may not be omitted:
 
 ~~~rust
 pub struct UiNodeId(pub StableId);
-pub struct UiDocument { schema: SchemaVersion, root: UiNodeId, nodes: NodeTable, styles: StyleSheets }
-pub struct UiNode {
-    id: UiNodeId,
-    kind: WidgetKind,
-    properties: PropertyBag,
-    children: Vec<UiNodeId>,
-    semantics: Semantics,
-    bindings: Vec<Binding>,
-}
-pub struct UiFrameInput { viewport: Viewport, events: Vec<UiEvent>, time: PresentationTime }
-pub struct UiFrameOutput { display: DisplayList, semantics: SemanticsDelta, commands: Vec<CommandRequest> }
+pub struct UiDocument { /* schema, root, nodes, styles */ }
+pub struct UiFrameInput { /* viewport, device events, presentation time */ }
+pub struct UiFrameSnapshot { /* immutable layout, display, semantics */ }
+pub struct ThemeId(pub StableId);
+pub struct TokenId(pub StableId);
+pub enum UiDensity { Compact, Standard, Comfortable }
+pub enum UiContrast { Standard, High }
+pub enum MotionPreference { Full, Reduced }
+pub enum LayoutMode { Flex, Grid, Overlay, Absolute, Scroll }
+pub enum DevicePhase { Press, Move, Release, Cancel }
+pub enum ScrollUnit { Pixel, Line }
+pub struct FocusId(pub StableId);
+pub struct CommandId(pub StableId);
+pub struct SemanticNode { /* role, name, value, state, actions */ }
+pub struct DisplayList { /* renderer-neutral ordered primitives */ }
+pub enum DisplayPrimitive { RoundedRect, Path, GlyphRun, Image, Mesh, Clip, Layer, Shadow, Backdrop }
+pub struct DockTree { /* split, tab, floating and collapsed nodes */ }
+pub struct PanelId(pub StableId);
+pub struct WorkspaceLayout { /* versioned named layout and region state */ }
 ~~~
 
-Node IDs are persistent in editable documents. Runtime nodes created from repeated data use stable composite IDs. Layout/render cache handles are process-local and generation checked.
+Input also has typed pointer IDs, positions, buttons, modifiers, capture,
+scroll momentum, text/composition events, drag payload descriptors, and device
+classes. Editor interfaces include panel sizing, preview/pinned tabs, focus
+layouts, companion-window identity, and versioned workspace-state persistence.
 
-## 4. Frame pipeline
+## 6. Retained document and frame pipeline
 
-1. apply committed document/model changes;
-2. reconcile logical tree and component instances;
-3. resolve inherited style and state selectors;
-4. shape changed text and measure intrinsic sizes;
-5. run incremental constraint/layout passes;
-6. build hit-test and focus indexes;
-7. route queued input through capture, target, bubble;
-8. execute semantic commands through the registry;
-9. update animation on presentation time;
-10. emit retained display-list delta and semantic-tree delta;
-11. submit UI render pass and platform accessibility adapter update;
-12. record invalidation, layout, shaping, draw, and event diagnostics.
+Editable UI documents have stable node identities. Repeated runtime nodes use
+stable composite identities. Cache handles remain process-local and generation
+checked. Reconciliation compares immutable prior and accepted logical state,
+retains identity where semantics match, and reports duplicate or unstable keys.
 
-Mutation during traversal is prohibited. Event handlers enqueue commands/state updates for the next reconciliation barrier.
+Each frame:
 
-## 5. Layout and rendering
+1. accepts committed document and model changes;
+2. incrementally reconciles logical nodes and component instances;
+3. resolves tokens, inherited styles, variants, and state selectors;
+4. shapes changed text and measures intrinsic size;
+5. computes incremental layout and clips;
+6. builds hit-test, focus, and semantic indexes;
+7. routes queued input through capture, target, and bubble;
+8. enqueues typed commands/state updates for the next barrier;
+9. advances bounded presentation motion;
+10. emits an immutable display list and semantic delta;
+11. submits renderer and accessibility adapter updates;
+12. records layout, shaping, drawing, event, focus, and cache diagnostics.
 
-Required layout modes: block/stack, flex row/column, grid, overlay, scroll, virtual list/tree/table, absolute canvas, and docking. Constraints are min/preferred/max plus aspect and alignment. Cycles produce a diagnostic with the constraint chain and a bounded fallback.
+Mutation during traversal is prohibited. A rejected command or layout update
+preserves the last accepted snapshot.
 
-Rendering uses a backend-neutral display list: glyph runs, paths, rounded rectangles, images, meshes, clips, layers, and effects. Text shaping and glyph raster/cache ownership remain in UI crates; the renderer consumes immutable batches. A future Vello/native path is a measured backend option, not a public API.
+## 7. Layout, display list, and rendering
 
-Large lists MUST virtualize data and accessibility nodes. Caches are keyed by content, font/style, scale, and capability. Cache eviction is visible in diagnostics.
+Required layout modes are Flex row/column, Grid, Overlay, Absolute, and Scroll.
+They support minimum/preferred/maximum constraints, alignment, aspect, padding,
+gap, and clipping. Constraint cycles emit the involved chain and use the last
+accepted geometry or a bounded fallback.
 
-## 6. Text and input
+The renderer-neutral display list supports rounded rectangles, paths, glyph
+runs, images, meshes, nested clips, layers, shadows, and bounded backdrop
+effects. It contains no backend resource or command encoder. Cache keys include
+content, token/font state, scale, contrast, and renderer capability. Device loss
+rebuilds caches from logical state.
 
-Text supports Unicode shaping, bidirectional text, grapheme navigation, fallback fonts, IME composition, selection, clipboard policy, password redaction, undo, and locale-aware line breaking. Key bindings use semantic commands and context, not raw widget callbacks.
+`RG-UI-001` evaluates the real editor/runtime display-list corpus for
+correctness, text quality, accessibility compatibility, latency, memory,
+recovery, platform coverage, maintenance, and license burden. No renderer is
+promoted from a toy scene or one platform.
 
-Pointer capture, hover, drag/drop, keyboard focus, gamepad navigation, touch, pen, and assistive actions converge on typed UiEvent. Runtime UI MAY disable device classes but cannot fork the semantic model.
+## 8. Input and activation
 
-## 7. Editor shell
+Pointer press, move, release, capture, cancel, and activation are distinct.
+Press may capture a target; activation occurs only on a valid release over the
+appropriate enabled target. Focus loss, modal takeover, device removal, or
+escape cancels capture and any preview transaction. Hover is never activation.
 
-Core panels:
+Focus uses stable semantic identity, not row index. Filtering, virtualization,
+Play transitions, reconciliation, workspace changes, and companion-window moves
+restore the same focus where it remains valid; otherwise focus moves by a
+documented deterministic rule.
 
-- project/start/recovery;
-- world viewport and hierarchy;
-- inspector and property history;
-- asset browser/import/build;
-- logic/material/Alluvium/UI editors;
-- native modeler, UV/material-region, collision/LOD, animation/rig, navigation, and 2D scene tools;
-- Rust IDE/debug/test/profile surfaces and later optional Luau language tools;
-- diagnostics, profiler, build output, tests;
-- source/VCS/collaboration;
-- Ponder documentation.
-- post-1.0 Marquee campaign, source/rights, template, proof, approval, and export panels after `PRG-PRM-001` activation.
+Precise trackpad pixel deltas and platform momentum are preserved. Discrete
+wheel lines are normalized separately. A gesture locks its intended target;
+nested scroll regions hand remaining delta to an ancestor at bounds. Meridian
+does not apply a second smoothing curve over OS momentum.
 
-Panels declare ID, commands, query dependencies, layout hints, permissions, serialization version, and unavailable-state view. Workspace layout is user state, separate from project source. A corrupted layout can reset without changing project data.
+Controller navigation follows the same focus graph and semantic commands as
+keyboard navigation. Device-specific bindings cannot fork command meaning.
 
-Alluvium sequencing is explicit: `WP-PRC-001` first provides textual recipe
-editing, typed parameter controls, preview, diagnostics, field/object/dependency/
-cache/override/provenance/license inspection, and headless parity. The full
-visual graph editor belongs to `WP-PRC-007`. It may not become the only source,
-migration, validation, bake, recovery, or accessibility path.
+## 9. Text, IME, clipboard, and editing
 
-The native modeler follows [its owning specification](NATIVE_MODELING_AND_DCC_SPEC.md). Meridian UI owns accessible interaction, commands, layout, and workspaces; `MDL` owns editable mesh semantics and topology lineage. Shader/material text and graphs follow [the ShaderIr authority](MERIDIAN_SHADER_LANGUAGE_SPEC.md). Animation, navigation, and 2D panels likewise edit typed source owned by their domains. UI state cannot become their hidden source authority.
+Text supports Unicode shaping, bidirectional content, grapheme navigation,
+fallback, line breaking, IME composition/commit/cancel, selection, validation,
+completion, editing commands, password redaction, and bounded undo. Composition
+state follows the focused editor and platform candidate-window location.
 
-## 8. Documents, commands, and undo
+Clipboard access is explicit policy-mediated read/write. If no platform adapter
+exists, the command returns a truthful diagnostic; success is never fabricated.
+Secret fields do not enter the clipboard, semantic tree, logs, undo snapshots,
+or agent context.
 
-All edits flow through typed commands with preview, validation, transaction, inverse or checkpoint, affected stable IDs, and audit metadata. Property controls are generated from schema metadata but can be specialized without changing storage.
+## 10. Drag, drop, and professional controls
 
-Play mode creates a forked runtime world. Apply-back is an explicit semantic diff; stopping play discards runtime changes by default. Asset/build operations are not smuggled into UI callbacks.
+Drag/drop uses typed payloads, accepted-operation negotiation, preview,
+auto-scroll, cancellation, transaction commit, rollback, and a keyboard
+alternative. Raw file paths, process commands, or arbitrary serialized objects
+are not accepted as internal authority.
 
-## 9. Beginner and expert workflows
+The professional component set includes buttons, icon buttons, toggles, fields,
+search, combo boxes, menus, menu bars, context menus, tooltips, toasts, tabs,
+trees, tables, property grids, virtual lists, timelines, splitters, progress,
+command palette, and graph/canvas primitives. Each component registry entry
+defines states, semantics, input, motion, keyboard behavior, disabled behavior,
+validation, and ownership. Components remain composable; workspaces do not
+fork look-alike private controls.
 
-Beginner: select object, edit labeled property, see immediate preview, press Undo, and receive a plain diagnostic with Fix and Learn actions.
+## 11. Docking, workspaces, and companion windows
 
-Expert: inspect schema path, command payload, provenance, invalidation cost, and generated source; invoke the same command from CLI/Rust/MCP; pin profiler fields and compare traces.
+Editor docking supports split, tab, floating, collapsed, and maximized nodes;
+preview tabs; pinning; reorder; tear-off; minimum sizes; reset; and
+transactional rollback. A failed move never loses a panel. Named layouts are
+versioned and migratable. Corruption, unknown versions, missing panels, and
+monitor loss recover visibly without changing project source.
 
-The UI may guide but must not hide destructive scope, external service use, package cost, or permission changes.
+One primary application frame may own session-sharing native companion windows.
+Companions use the same command/session authority, can re-dock, and restore to a
+visible monitor. They are not separate product instances.
 
-Planned CLI and MCP operations use the same command registry:
+Workspace state preserves selection, active document, camera, browser query,
+tree expansion, scroll, panel pins, focus layout, and companion placement.
+Explicit pins and named user layouts outrank rule-based adaptation or learned
+preferences. Reset, history, migration, and recovery are always available.
 
-~~~text
-meridian ui check <document.mui>
-meridian ui bake <document.mui> --target desktop|runtime|xr
-meridian ui trace --panel <panel-id>
-mcp.ui.insert_node
-mcp.ui.set_property
-mcp.ui.run_accessibility_check
-~~~
+## 12. Responsive behavior
 
-These names are interface contracts, not implemented commands today. They are valid only after the command schema, permission policy, and undo transaction are implemented.
+Supported layouts preserve the permanent two-row shell and working canvas.
+Adaptation first tightens nonessential spacing, then shortens low-priority
+labels, then collapses low-priority regions, then uses controlled workspace
+overflow. It never overlays dense panels indiscriminately, shrinks targets
+below accessible sizes, hides active errors, or merges application and workspace
+rows.
 
-## 10. Persistence
+The default activity rail is 44 pixels and may expand to 160. The World browser
+is compact at 264; its Inspector is deliberately wider at 344 because it owns
+detailed editing controls. The viewport receives remaining space. A bottom
+shelf peeks at 32 and initially expands to 240. At 100–400% text scaling,
+regions reflow, scroll, or collapse according to their registry priorities.
 
-Source UI documents use a versioned human-readable structure plus binary sidecars only for large immutable assets. Canonicalization preserves stable IDs and unknown optional properties. Theme/style tokens are named and versioned.
+## 13. Motion and effects
 
-Editor workspace state stores panel layout, recent views, selections, and local preferences under user state. It is not shipped unless explicitly exported. Runtime settings and accessibility preferences have separate schemas.
+Interruptible springs communicate physical panel movement and shared-element
+relocation only. Hover, focus, selection, color, and opacity transitions are
+restrained to 100–160ms. Reversal begins from current presentation state;
+interruption cannot leave invisible input surfaces or stale hit regions.
 
-## 11. Threading and memory
+Reduced Motion removes spatial animation, applies layout immediately, and may
+use only a brief opacity transition. High contrast disables nonessential blur,
+strengthens boundaries, and preserves semantic hierarchy without creating a
+separate component system.
 
-Logical UI mutation occurs on the owning presentation/editor thread. Background tasks may shape batches, load images, query indexes, or compile documents from immutable inputs; results are generation checked. Render submission consumes immutable display-list snapshots.
+## 14. Accessibility contract
 
-Per-frame transient allocation uses arenas. Long-lived node state is slab/arena owned by document epoch. Text/glyph/image caches have budgets and attribution. No UI work blocks the audio callback or fixed simulation.
+Meridian owns semantic roles, names, descriptions, values, states, actions,
+relationships, reading order, live regions, and focus. A private AccessKit
+adapter maps accepted semantic snapshots to each supported platform.
 
-## 12. Diagnostics and recovery
+Every visible workflow has keyboard operation, pane cycling, focus restoration,
+Home/End/Page behavior where applicable, accessible names, non-color state,
+error recovery, high-contrast behavior, text scaling, and Reduced Motion. The
+visual focus indicator is a rectangular outline, edge indicator, contrast, or
+shape change—never a decorative ring.
 
-Required metrics: node count, reconciled nodes, layout roots, layout time, text shaping, glyph cache, display primitives, batches, overdraw estimate, clip/layer count, event latency, focus changes, semantic nodes, and virtualized range.
+Virtualization keeps the active/focused semantic neighborhood available and
+reports collection position/size without instantiating millions of nodes.
+Asynchronous build, import, validation, and recovery status uses bounded live
+regions that do not repeatedly steal focus.
 
-Failure examples:
+## 15. Canonical workspace composition
 
-- malformed UI source opens read-only with schema path diagnostics;
-- plugin panel crash is isolated or disabled and the workspace reopens;
-- missing font uses declared fallback and reports substitution;
-- layout cycle highlights involved nodes and uses last valid geometry;
-- GPU UI backend loss rebuilds caches from logical documents.
+| Workspace | Canonical composition and truth boundary |
+|---|---|
+| Hub | Create, Open, bounded Recents, invalid-recent remediation, recovery, and native picker actions; no project opens implicitly. |
+| World | Slim rail, compact browser, dominant live viewport, wider Inspector, bottom shelf, permanent status. Debug overlays are deliberate, not permanent labels over the scene. |
+| Code | First activation opens beside the live viewport for contextual edits; second activation enters its remembered full IDE layout. Same action or Escape returns. |
+| Modeler | Dominant modeling canvas; tools/structure left; properties/history right; compact real-world preview. Incomplete topology/UV/modifier features are typed unavailable states. |
+| UI | Hierarchy/components left, visual canvas center, properties/states right, responsive/state/animation tools below. |
+| Materials | Synchronized graph, parameters, readable source, and visual preview. All lower to the domain-owned material/shader authority. |
+| Alluvium | Synchronized recipe graph, parameters, canonical source, generated result, provenance, license status, and diagnostics. Text and parameters remain first-class. |
+| Build | Dense tasks, artifact tables, logs, filters, progress, recovery, and comparison using asynchronous BLD authority. |
+| Profile | Timelines, traces, flame graphs, counters, filters, drill-down, and comparison; unsupported capture data is labeled unavailable. |
+| Settings | Searchable product preferences, theme/accessibility/input/workspace controls, reset/history, and platform-owned links where required. |
+| Recovery | Source authority, autosave/checkpoint state, affected scope, safe choices, diagnostics, and keyboard-first restoration. |
 
-## 13. Security
+Workspace switching preserves context and morphs between remembered layouts.
+Second activation enters a remembered focus layout. A polished workspace may
+show an explicit typed unavailable state for an incomplete domain, but cannot
+simulate that domain or present planned controls as operational.
 
-Rich text and documentation do not execute script by default. Links show destination and require policy checks. Clipboard, file drop, external process, network image, agent, and package actions use capabilities. Secret fields never enter accessibility text, logs, undo snapshots, or agent context.
+## 16. Assistant behavior
 
-## 14. Tiers and zero-cost behavior
+The assistant is quiet until explicitly invoked. It is not a permanent generic
+chat sidebar. It operates through the same typed commands, permissions,
+selection, transaction, preview, validation, audit, undo, and rollback as human
+tools. The review surface prioritizes the request, Meridian’s typed
+interpretation, visual/source diff, affected scope, validation, and Apply,
+Adjust, or Cancel. Conversation is secondary to the work.
 
-- Core runtime: text, layout, focus, semantics, basic widgets.
-- Editor: docking, complex inspectors, graphs, profiling.
-- Rich effects: optional path/effect backend.
-- Remote/collaborative cursors: optional sync pack.
+## 17. Persistence, source authority, and recovery
 
-Editor widgets and bootstrap egui are absent from minimal runtime package/dependency graph. A headless build includes no UI task.
+Project/editor source documents are versioned, canonical, bounded, validated,
+and atomically written. An accepted edit validates, commits the in-memory
+transaction, writes authoritative source, then updates recovery state. Write or
+recovery failure restores the in-memory transaction and preserves the last
+accepted source authority.
 
-## 15. Tests and benchmarks
+Workspace layouts and local preferences are user state, not project source.
+They are independently versioned, atomically written, and recoverable. Unknown
+optional fields survive compatible round trips. Derived previews, display
+lists, layout caches, glyphs, and compiled artifacts are rebuildable caches.
 
-- golden layout fixtures over DPI, locale, fonts, and viewport sizes;
-- event capture/bubble, focus, gamepad, IME, drag/drop tests;
-- semantic tree/action snapshots;
-- property command and undo/redo round trips;
-- virtualized million-row synthetic view with bounded memory;
-- glyph cache churn and display-list benchmark;
-- renderer device-loss recovery;
-- bootstrap migration test proving each migrated panel has no egui data dependency.
+Play creates a runtime fork. Apply-back is an explicit semantic diff; Discard is
+the safe default. UI state cannot silently change source authority.
 
-Thresholds are calibrated on the UI corpus, not invented globally.
+## 18. Security and platform integration
 
-## 16. Algorithm alternatives and research gates
+Project, import, source, layout, font, icon, clipboard, drop, link, build, and
+agent input is untrusted. Validate type and limits before allocation. Rich text
+does not execute script. Links expose destination and pass policy. File/process/
+network actions use explicit capabilities and typed commands. No shell string,
+ambient filesystem authority, secret, or third-party object crosses a public
+UI boundary.
 
-| Problem | Baseline | Alternative | Gate |
-|---|---|---|---|
-| Layout | flex/grid/virtualized primitives | general constraint solver | Add solver only after editor-panel corpus proves need and diagnostics remain understandable. |
-| Text | Meridian-owned text pipeline using focused shaping libraries behind adapters | custom shaping stack | Custom stack requires correctness tests for Unicode, bidi, IME, fallback, and selection. |
-| Renderer bridge | retained display list consumed by renderer | immediate GPU widget callbacks | Raw GPU callbacks require trusted capability and measured need. |
-| Editor migration | panel-by-panel egui replacement | big-bang rewrite | Big-bang migration is rejected unless bootstrap panel state can be preserved and tested. |
+Native menus, pickers, fullscreen, window chrome, screen-reader connection,
+clipboard, IME, and drag sources are platform-owned workflows behind Meridian
+adapters. Product workflows remain consistent Meridian UI.
 
-## 17. Delivery mapping
+## 19. Diagnostics and performance evidence
 
-- MS-02: UI core proof, text/layout/semantics, first runtime overlay.
-- MS-01/MS-03/MS-04: editor core and bootstrap bridge.
-- MS-02/MS-03: first Meridian-native inspector/diagnostics panels.
-- MS-03/MS-05: Alluvium textual recipe and basic inspector foundation.
-- MS-03/MS-05: native editable-model foundation required before the Project Meridian prototype.
-- MS-06/MS-07: accessible pause/settings/interaction UI for the opening slice.
-- MS-04/MS-05/MS-08: migrate remaining core editor panels and remove their egui paths.
-- MS-08: selected modeler, animation, navigation, 2D, ShaderIr, Rust IDE, and Alluvium visual-authoring panels after their source/headless foundations;
-  delete bootstrap crate after parity, accessibility, recovery, and performance evidence.
-- Post-1.0: Marquee panels use the same commands, semantics, accessibility, and recovery model; they do not alter MS-00 through MS-10 or create a separate application.
+Required diagnostics include accepted/reconciled node count, layout roots and
+time, shaping work, glyph/image cache state, display primitives and batches,
+clips/layers/effects, overdraw estimate, event latency, capture state, focus
+changes, semantic nodes, virtualized ranges, animation count, and recovery
+events. Thresholds are calibrated on the registered UI corpus; no global number
+is invented in this specification.
 
-## 18. Examples
+The framework supports deterministic 1× and 2× snapshots, logical/physical
+scale separation, device loss, font substitution, corrupt-state recovery, and
+display-list replay. Visual evidence must be presented; headless or occluded
+submission cannot claim visual quality.
 
-End-to-end: editing fog density in the inspector generates SetProperty, validates range and capability, commits to the weather document, invalidates only affected preview data, renders the change, and is undoable from UI or CLI.
+## 20. Delivery packages and completion
 
-Failure/recovery: a custom panel emits an invalid command. Validation rejects it before mutation, the UI links to the schema field, and the transaction remains clean.
+The rewrite is sequential and has one active package at a time:
 
-Performance debug: scrolling a large asset browser shows virtual range, query latency, thumbnail decode jobs, glyph/image cache churn, and display batches. Selecting a trace span jumps to the responsible panel and query.
+| Package | Deliverable | Dependency |
+|---|---|---|
+| `WP-UI-002` | Modular retained core, locked tokens, typography/icon contracts, layout, display list, basic controls | `WP-UI-001` |
+| `WP-UI-003` | Input, scrolling, text/IME, drag/drop, professional controls, virtualization | `WP-UI-002` |
+| `WP-UI-004` | Docking, workspaces, responsive layouts, persistence, companion windows | `WP-UI-003` |
+| `WP-UI-005` | Motion, effects, high contrast, platform accessibility, renderer qualification | `WP-UI-004`, `RG-UI-001` |
+| `WP-EDT-002` | Exact application shell, hub, and production-quality World workspace | `WP-EDT-001`, `WP-UI-005` |
+| `WP-EDT-003` | Remaining workspace composition and cross-workspace consistency | `WP-EDT-002` plus applicable domain foundations |
+
+`WP-EDT-001` remains the behavioral baseline for project/session persistence,
+recovery, Creator commands, and build integration. It is not expanded into the
+framework rewrite. `WP-MDL-001` remains `Partial` until its broader scope is
+complete.
+
+Each package runs schema/token/mockup checks; targeted tests; locked metadata;
+format; full workspace tests; warning-denied Clippy; UI, editor, RHI, renderer,
+and dependency-boundary smokes; supported native/accessibility checks; and
+`git diff --check`. Every pushed source package requires Linux, Windows, and
+macOS CI before evidence and the next activation are recorded.
+
+The interaction matrix covers layout rejection, press/release/cancel/capture,
+line/pixel/momentum and nested scrolling, IME, clipboard, focus stability,
+drag rollback, virtualization, docking migration/corruption/monitor loss,
+animation interruption, semantic adapters, 100–400% scaling, high contrast,
+Reduced Motion, and 1×/2× output.
+
+The editor journey covers create/open/import/edit/undo/redo, Play Apply/Discard,
+workspace/focus switching, Code contextual/full activation, recipe/model
+actions, asynchronous build/artifacts, crash recovery, and explicit exit.
+`MS-03` stays open until `WP-EDT-002`, native evidence, accessibility review,
+and visible application approval pass. Planned workspace presentation never
+closes a domain package.

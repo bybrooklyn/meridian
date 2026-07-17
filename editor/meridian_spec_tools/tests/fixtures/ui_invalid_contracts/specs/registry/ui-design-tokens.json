@@ -1,0 +1,7 @@
+{
+  "version": "1.0",
+  "policies": {"dense_content":"opaque","focus_geometry":"rectangular-edge-contrast-shape","decorative_ring":false,"scene_tinted_chrome":false,"blur":"floating-overlays-and-title-chrome-with-opaque-fallback"},
+  "records": [
+    {"id":"token.color.background","value":"#00ffff"}
+  ]
+}

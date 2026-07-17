@@ -31,17 +31,20 @@ GitHub Actions run `29457181283` for `fb8323f`: governance plus Linux, Windows,
 and macOS workspace, UI-headless, UI-free runtime, and dependency-audit rows
 passed. `WP-BLD-001` is `ImplementedFoundation` after GitHub Actions run
 `29505405013` for `becef55486d434460c3afebfb96e734655dfcb09` passed governance
-and the Linux, Windows, and macOS workspace/BLD rows. `WP-EDT-001` is the sole
-active corrective package. GitHub Actions run `29508496428` for `ec2a6334`
-remains foundation-only evidence; persistent native Creator interaction,
-source-authoritative project persistence, and the unsigned macOS developer
-preview require fresh evidence.
+and the Linux, Windows, and macOS workspace/BLD rows. `WP-EDT-001` is
+`ImplementedFoundation`: GitHub Actions run `29605881704` for `4463bad` passed
+governance and the complete Linux, Windows, and macOS rows for the persistent
+Creator hub, source-authoritative project persistence, native picker boundary,
+Creator journey, and universal macOS bundle. That evidence does not qualify the
+Meridian UI 1.0 framework, production shell, platform accessibility, or visual
+quality. `WP-UI-002` is the sole active package.
 `WP-PRC-001` is `ImplementedFoundation` after GitHub Actions run
 `29511174569` for `9c88cc152878b1eb22f18c236c00ad1abd984fa5` passed governance
 and the Linux, Windows, and macOS workspace rows. `WP-MDL-001` is `Partial`:
-its MS-03 bounded editable-model foundation remains available to the active
-Creator corrective package, while the broader modeler and Alluvium programs
-remain incomplete.
+its MS-03 bounded editable-model foundation remains available to later editor
+composition, while the broader modeler and Alluvium programs remain incomplete.
+MS-03 remains open until `WP-UI-002` through `WP-UI-005`, `WP-EDT-002`, native
+accessibility evidence, and visible application review pass.
 
 ## 3. Repository and private-game boundary
 

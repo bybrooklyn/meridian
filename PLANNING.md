@@ -1,17 +1,18 @@
 # Meridian Active Work Plan
 
-version 0.5 · 2026-07-16
+version 0.5 · 2026-07-17
 
 Status: `MS-01` and `WP-REL-002` passed qualification on GitHub Actions run
 `29452928922` for source checkpoint `010db80`: governance plus Linux, Windows,
 and macOS workspace/headless-smoke rows passed. All named MS-01 implementation
 packages are closed with fresh evidence. `WP-UI-001` is an
 `ImplementedFoundation` and MS-02 is `Pass` from cross-platform CI evidence.
-`WP-BLD-001` and `WP-PRC-001` are `ImplementedFoundation` after cross-platform
-GitHub Actions evidence. `WP-EDT-001` is the sole active corrective package:
-its prior CI qualifies only the foundation, while persistent native Creator
-interaction, source persistence, and the unsigned macOS preview require fresh
-evidence below. `WP-MDL-001` remains `Partial`.
+`WP-BLD-001`, `WP-PRC-001`, and `WP-EDT-001` are
+`ImplementedFoundation` after cross-platform GitHub Actions evidence. Run
+`29605881704` for `4463bad` qualified the persistent Creator behavioral
+foundation across Linux, Windows, and macOS. `WP-UI-002` is the sole active
+package for the modular retained framework and locked design system.
+`WP-MDL-001` remains `Partial`; MS-03 remains open.
 
 ## 1. Authority and stop rule
 
@@ -33,8 +34,8 @@ media, cost-prediction, or competitive-validation system.
 | Penumbra | `Partial` / `Transitional` | direct PBR, cascaded shadows, diffuse irradiance IBL, extraction/upload, typed pass timing, asynchronous visible capture, and structural/native GPU smokes exist |
 | Assets/world/streaming/save | `ImplementedFoundation` / `Partial` | one bounded public source family imports transactionally, packages, worker-streams, activates, saves, recovers, and reconstructs; production schemas/compression/signing remain incomplete |
 | Cairn | `Transitional` | current Rapier wrapper and grounded controller are evidence; Meridian-owned Cairn internals are not implemented |
-| Meridian UI | `ImplementedFoundation` | retained layout, text input, semantics, deterministic fixtures, an opt-in raster bridge, and local native/headless smokes are qualified for the MS-02 core proof; Creator Editor workflows remain planned |
-| Creator Editor | `Active` | Creator Alpha foundation is qualified, but persistent native hub/workspace interaction, source-authoritative project persistence, and the macOS preview are active corrective work |
+| Meridian UI | `ImplementedFoundation` / `Active` | the MS-02 core proof is qualified; `WP-UI-002` now owns the modular retained framework and locked design system, while interaction, docking, accessibility, and production shell packages remain planned |
+| Creator Editor | `ImplementedFoundation` | persistent hub, source-authoritative project documents, typed actions, Creator journey, and universal app structure passed run `29605881704`; this is a behavioral foundation, not Meridian UI 1.0 visual completion |
 | Audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | implementation remains outside the current Creator Editor package |
 | Alluvium | `ImplementedFoundation` | canonical text recipes, strict scalar evaluation, derived-cache recovery, CLI, and a basic inspector are qualified; production/domain work remains open |
 | Native modeler | `Partial` | bounded editable-model source, stable topology lineage, semantic recovery, and a derived preview exist; broad modeling remains later scope |
@@ -44,8 +45,10 @@ media, cost-prediction, or competitive-validation system.
 | Marquee | `Deferred` | ResearchReady post-1.0 architecture; no crate, active package, service integration, or promotional-quality evidence |
 | Competitive performance and quality leadership | `Deferred` | ResearchReady post-1.0 comparison, environmental-convergence, and claim architecture; no calibrated corpus, optimization, comparator integration, or superiority evidence |
 
-The verified local workspace suite proves only its present test boundaries; it does not prove the Creator Editor,
-game, Forward+, weather, terrain, simulation, or release roadmap.
+The verified workspace and CI suites prove only their present test boundaries;
+they do not prove Meridian UI 1.0 visual quality, platform screen-reader
+qualification, the game, Forward+, weather, terrain, simulation, or the release
+roadmap.
 
 ## 3. Closed renderer foundation package
 
@@ -294,9 +297,10 @@ encoding remain provisional. Compression, signing, patches, encryption,
 Forward+, specular IBL, Meridian UI, Creator Editor workflows, and game content
 remain outside MS-01.
 
-`MS-01` and `MS-02` are closed. `WP-BLD-001` and `WP-PRC-001` are qualified
-MS-03 prerequisites. `WP-EDT-001` is the sole active corrective package;
-`WP-MDL-001` is retained as `Partial` and cannot be promoted by this work.
+`MS-01` and `MS-02` are closed. `WP-BLD-001`, `WP-PRC-001`, and
+`WP-EDT-001` are qualified MS-03 foundations. `WP-UI-002` is the sole
+active package; `WP-MDL-001` is retained as `Partial` and cannot be promoted
+by UI work.
 Penumbra Stage 1 then proceeds through `WP-PEN-003` and
 `WP-PEN-010`, with `WP-PEN-009` as bounded parallel image-quality work and
 `WP-PEN-011` as the later executable/calibrated forest corpus. `RG-PEN-001`
@@ -343,7 +347,7 @@ unavailable, so the capture remains explicitly Offscreen; no production visual
 quality or calibrated benchmark claim
 Reviewers/sign-offs: GitHub Actions completed all required automated rows;
 separate human release approval is not recorded
-Next unblocked package: `WP-EDT-001`, now active
+Next unblocked package: `WP-UI-002`, now active
 
 ## 10. Closed package — WP-UI-001 / MS-02 Meridian UI core proof
 
@@ -440,7 +444,8 @@ is `Pass`. GitHub Actions run `29457181283` completed governance and Linux,
 Windows, and macOS format/check/test/clippy, UI-headless, UI-free runtime, and
 dependency-audit rows successfully. The qualification is headless and no local
 capture establishes visual quality. `WP-BLD-001` subsequently qualified as the
-local-Cargo prerequisite; `WP-EDT-001` is active below.
+local-Cargo prerequisite; `WP-EDT-001` subsequently qualified as the Creator
+behavioral foundation, and `WP-UI-002` is active below.
 
 ## 11. Closed package — WP-BLD-001 / MS-03 observable build foundation
 
@@ -703,9 +708,10 @@ Linux, Windows, and macOS workspace rows passed, including the configured
 Windows BLD helper/build/artifact proof. The package is closed at its bounded
 local-Cargo foundation scope; `WP-BLD-002` remains planned.
 
-Next unblocked package: `WP-EDT-001`, active below.
+Next unblocked package: `WP-UI-002`, active below after the qualified Creator
+foundation.
 
-## 12. Active corrective package — WP-EDT-001 / MS-03 Creator Editor Alpha
+## 12. Qualified foundation — WP-EDT-001 / MS-03 Creator Editor Alpha
 
 Work package: `WP-EDT-001`
 
@@ -715,7 +721,7 @@ transactions, undo/redo, enter isolated Play and explicitly apply or discard
 its diff, recover a durable session, inspect an accessible Meridian-native
 workspace, and submit a request-bound one-worker local Cargo build artifact.
 
-Status: `Active`; implementation maturity: `ImplementedFoundation`
+Status: `ImplementedFoundation`; implementation maturity: `ImplementedFoundation`
 
 Requirements: `REQ-EDT-001`, `REQ-CORE-001`
 
@@ -726,8 +732,8 @@ license/provenance boundary. The current workspace, public
 `examples/creator-alpha/` source, existing Meridian UI semantics, durable save
 boundary, and BLD command/event/artifact seam were inspected. No private game
 input, new UI toolkit, remote service, or platform credential is required.
-`WP-EDT-001` is the sole active package and can stop without changing
-runtime/game authority.
+This package is closed as the behavioral baseline and can remain stable while
+the sequential UI packages proceed without changing runtime/game authority.
 
 Files/crates/formats changed: `meridian-editor-core` owns canonical
 `meridian.creator-project/v1` source documents, source-authoritative project
@@ -757,9 +763,9 @@ checkpoints, stale selection, Play isolation/apply/discard, and ordered
 recovery; hub creation/open/recents and typed-action rejection; input-to-command
 routing and keyboard semantics; UI panel/action semantic fixtures; durable
 asynchronous BLD status; a process-level Creator Alpha journey that verifies
-the request-bound artifact; and a lifecycle-policy test plus native review for
-normal-app persistence. The next validation step is the complete package gate
-and fresh GitHub Actions matrix.
+the request-bound artifact; and lifecycle-policy/native review for normal-app
+persistence. GitHub Actions run `29605881704` passed the complete Linux,
+Windows, and macOS package matrix for `4463bad`.
 
 Accessibility and recovery: hub and workspace controls are focusable semantic
 Meridian controls with named commands. Tab/shift-tab, pointer, text/IME,
@@ -789,17 +795,15 @@ commands, a derived preview becomes source authority, a Play change applies
 without explicit diff, a stale selection mutates source, recovery loses a valid
 source document, or a Cargo/build type crosses into runtime crates.
 
-Prior foundation evidence only: GitHub Actions run `29508496428` for
-`ec2a6334dd19506b1d2b353e60557ef13d86b153` passed governance plus Linux,
-Windows, and macOS format, workspace test, warning-denied clippy, editor,
-runtime, BLD-helper, and dependency-audit rows. The workspace suite includes
-the previous Creator Alpha process journey. It does not cover this persistent
-native hub/workspace, project-source persistence, or macOS bundle. Fresh Linux,
-Windows, and macOS CI plus the native app, screenshots, and keyboard/
-accessibility checklist remain required MS-03 integration evidence.
+Qualification evidence: `EV-EDT-20260717-002` records GitHub Actions run
+`29605881704` for `4463bad5244697bf482e08ce755723928fccca31`; governance and
+the complete Linux, Windows, and macOS rows passed. `EV-EDT-20260717-003`
+records the local persistent native launch, first-frame redraw, bundle identity
+and architectures, explicit exit, and exact capture hashes. These qualify only
+the Creator behavioral foundation. Platform screen-reader integration,
+Meridian UI 1.0 visual quality, and visible approval remain later evidence.
 
-Next unblocked package: `WP-EDT-001` remains active until its fresh CI and
-visible review evidence are recorded.
+Next unblocked package: `WP-UI-002`, active below.
 
 ## 13. Closed package — WP-PRC-001 / MS-03 Alluvium foundation
 
@@ -852,9 +856,9 @@ Known limits and unsupported rows: CI is headless; no native presented-surface,
 visual-quality, production-performance, graph-authoring, domain-adapter, or
 runtime-safe-evaluation claim is made.
 
-Next unblocked package: `WP-EDT-001` remains the sole active corrective
-package. The delivered MS-03 subset of `WP-MDL-001` is recorded as `Partial`
-below and cannot become a second active package in this context.
+Next unblocked package: `WP-UI-002` remains the sole active package. The
+delivered MS-03 subset of `WP-MDL-001` is recorded as `Partial` below and
+cannot become a second active package in this context.
 
 ## 14. Partial package — WP-MDL-001 / MS-03 native modeler foundation
 
@@ -875,8 +879,8 @@ Dependencies and Definition of Ready: `WP-DAT-002`, `WP-UI-001`, the
 qualified `WP-EDT-001` foundation, and `WP-PRC-001` are available. The package
 owns only a Meridian-native source-document/modeling kernel and editor composition; it adds
 no runtime, physics, animation, game, private-content, external-DCC, or new
-third-party dependency edge. It remains `Partial` while `WP-EDT-001` is the
-sole active corrective package.
+third-party dependency edge. It remains `Partial` while the sequential
+UI/editor composition packages run.
 
 Files/crates/formats changed: this source delivery adds `meridian-modeler` for
 a versioned editable-model document, immutable revisions, stable element IDs,
@@ -907,16 +911,61 @@ its own full CI run. Native presented-surface screenshots and a keyboard/
 accessibility review remain required MS-03 integration evidence after the
 modeler source gate.
 
-Next unblocked package: `WP-EDT-001` remains active until fresh CI and the
-separate native review are recorded; the milestone cannot close before then.
+Next unblocked package: `WP-UI-002`; the milestone cannot close before the
+Meridian UI framework, production shell, accessibility, and visible review.
 
-## 15. Evidence policy
+## 15. Active package — WP-UI-002 / modular retained framework
+
+Work package: `WP-UI-002`
+
+User-visible result: Meridian gains one locked, testable design system and a
+modular retained UI foundation capable of representing the permanent shell and
+basic controls without backend or editor types entering public contracts.
+
+Status: `Active`; implementation maturity: `Planned` until source and evidence
+exist.
+
+Requirements: `REQ-UI-001`, `REQ-UI-002`
+
+Dependencies and Definition of Ready: `WP-UI-001` is
+`ImplementedFoundation`. ADR-0028, the normative UI specification, exact token,
+component, and workspace registries, the reviewed external design brief, and
+the generated 17-state mockup corpus define the accepted boundary. No renderer
+choice, AccessKit adapter, docking, or application rewrite is in this package.
+
+Deliverables: `meridian-ui-core`, `meridian-ui-text`,
+`meridian-ui-semantics`, `meridian-ui-render`, and `meridian-ui-runtime` crate
+boundaries; a compatibility `meridian-ui` facade; retained documents and stable
+node identities; incremental reconciliation; immutable frame snapshots;
+Flex/Grid/Overlay/Absolute/Scroll layout; renderer-neutral display primitives,
+clips/layers/shadows/bounded backdrop descriptors; locked token/theme/density/
+contrast/motion descriptors; typography and audited-icon asset boundaries; and
+basic controls.
+
+Tests: schema and registry rejection; stable identity and reconciliation;
+layout constraints/cycles/rollback; display-list ordering/clips/effect bounds;
+1×/2× deterministic output; theme/high-contrast/reduced-motion descriptors;
+runtime/editor dependency isolation; and compatibility-facade migration.
+
+Explicit non-goals: text editing/IME, complete pointer/scroll/drag behavior,
+professional controls, virtualization, docking, companion windows, platform
+accessibility adapters, renderer promotion, or final application panels. Those
+belong to `WP-UI-003` through `WP-EDT-003`.
+
+Stop/rollback rule: stop if stable identity is derived from row position, a
+backend/font/icon/editor type enters a public contract, mutable traversal can
+partially commit a frame, runtime UI gains an editor dependency, the locked
+palette/geometry drifts, or mockups are treated as capability evidence.
+
+Next package after fresh cross-platform evidence: `WP-UI-003`.
+
+## 16. Evidence policy
 
 Every run records source checkpoint, BuildId when available, corpus/build hashes, hardware, OS, backend, driver, capability profile, settings, cache/warmup state, distributions rather than averages alone, memory, artifacts, and missing features. Occluded structural evidence cannot satisfy visual quality. Unavailable hardware or capabilities are `NotRun`, `UnsupportedPlatform`, or `UnsupportedCapability`, never Pass.
 
 No benchmark report may generalize beyond its measured workload/profile. No uncalibrated number becomes a release gate.
 
-## 16. Mandatory package sign-off
+## 17. Mandatory package sign-off
 
 ~~~text
 Work package:

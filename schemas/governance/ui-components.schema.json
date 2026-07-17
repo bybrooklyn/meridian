@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Meridian UI component contracts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "records"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"const": "1.0"},
+    "records": {
+      "type": "array",
+      "minItems": 22,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "owner", "states", "semantic_role", "input", "keyboard", "motion", "package_dependencies"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^component\\.[a-z0-9.-]+$"},
+          "owner": {"enum": ["runtime", "editor"]},
+          "states": {"type": "array", "minItems": 3, "uniqueItems": true, "items": {"type": "string", "minLength": 2}},
+          "semantic_role": {"type": "string", "minLength": 2},
+          "input": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["pointer", "keyboard", "controller", "text", "ime", "scroll", "drag-drop", "assistive-action"]}},
+          "keyboard": {"type": "string", "minLength": 3},
+          "motion": {"enum": ["none", "state-transition", "physical-spring"]},
+          "virtualized": {"type": "boolean"},
+          "package_dependencies": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^WP-(UI|EDT)-[0-9]{3}$"}}
+        }
+      }
+    }
+  }
+}

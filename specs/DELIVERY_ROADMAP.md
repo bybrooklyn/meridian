@@ -30,8 +30,8 @@ Every milestone review records:
 | Governance and release | GOV, REL, SEC | truthful specifications, evidence, trust, compatibility, and release policy | v0.5 closure passed locally; remote Actions remains `NotRun` |
 | Runtime and platform | CORE, RUN | clocks, tasks, diagnostics, input, platform lifecycle, recovery | implemented foundations; platform matrix incomplete |
 | RHI and Penumbra | RHI, PEN | capability-driven GPU abstraction and Meridian-owned renderer | direct PBR/shadow/diffuse-IBL foundation; production Forward+ incomplete |
-| Creator experience | UI, EDT | Meridian UI and an accessible, recoverable editor | MS-02 UI core proof and Creator Editor Alpha foundation are qualified; milestone review remains |
-| Data and production | DAT, BLD, MDL, DCC | source authority, imports, worlds, packages, saves, build graph, native modeling, optional DCC tools | partial data foundations; `WP-MDL-001` retains its bounded editable-model foundation while `WP-EDT-001` is active corrective work for the persistent Creator application |
+| Creator experience | UI, EDT | Meridian UI and an accessible, recoverable editor | MS-02 UI core proof and `WP-EDT-001` Creator behavior are qualified; `WP-UI-002` is active and the production shell remains open |
+| Data and production | DAT, BLD, MDL, DCC | source authority, imports, worlds, packages, saves, build graph, native modeling, optional DCC tools | build and Creator foundations are qualified; `WP-MDL-001` retains its bounded editable-model foundation as `Partial` |
 | World authoring and simulation | PHY, ISO, BAS, VEG, PRC, TOR | Cairn, Isobar, Basalt, vegetation, Alluvium, and coupled simulation | physics wrapper transitional; named environmental crates scaffold; Alluvium `WP-PRC-001` is `ImplementedFoundation` |
 | Game and media | GAM, FWK, ANI, NAV, PRJ, AUD | Rust-first gameplay, optional Luau, reusable frameworks, animation/navigation, Project Meridian, Wavefront | game external; Wavefront scaffold; other domains planned |
 | Rendering languages and 2D | SHD, TWO | one ShaderIr plus dedicated first-class 2D paths | planned; current WGSL/3D foundations do not implement them |
@@ -135,9 +135,23 @@ Primary packages begin at `WP-UI-001`. A full editor is not required here.
 
 ## 8. MS-03 — Creator Editor Alpha
 
-User-visible result: a creator opens a project, imports an asset, edits a world through hierarchy/viewport/inspector, undoes changes, enters isolated Play mode, builds/runs a sample, and recovers an interrupted session.
+User-visible result: a creator opens a project in the permanent Meridian shell,
+imports an asset, edits a world through hierarchy/viewport/inspector, undoes
+changes, enters isolated Play mode, builds/runs a sample, changes workspace and
+focus layouts, and recovers an interrupted session.
 
-Required capabilities: project/session model, typed commands, undo/checkpoints, crash recovery, viewport, hierarchy, inspector, asset import/browser, Play/Stop isolation, build/run, accessibility, diagnostics, and beginner/expert workflows. Meridian UI is the product framework; any bootstrap UI remains isolated and has a deletion ledger.
+Required capabilities: the qualified `WP-EDT-001` project/session, persistence,
+typed command, undo/checkpoint, recovery, Play, and build behavior; sequential
+`WP-UI-002` through `WP-UI-005` retained framework, professional interaction,
+docking/state, motion/effects, renderer decision, and platform accessibility;
+then `WP-EDT-002` permanent shell, hub, production World workspace, native
+captures, and visible review. Bootstrap UI remains isolated and deletable.
+
+The critical path is `WP-UI-002 -> WP-UI-003 -> WP-UI-004 -> WP-UI-005 ->
+WP-EDT-002`. A source package advances only after its Linux, Windows, and macOS
+evidence passes. `WP-EDT-003` completes the remaining editor composition in
+MS-08 as its domain foundations become real; polished unavailable states cannot
+substitute for those domains.
 
 Alluvium contributes textual recipe, headless validation/evaluation, and basic
 typed-inspector foundations through `WP-PRC-001`. The complete visual graph

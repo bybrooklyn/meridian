@@ -3,7 +3,7 @@
 - Status: Adopted
 - Date: 2026-07-15
 - Spec version: v0.5
-- Implementation status: Planned architecture; existing foundations only
+- Implementation status: Creator behavioral foundation qualified; production UI composition planned
 - Owners: architecture, runtime, editor, build, release
 - Amends: ADR-0002, ADR-0009, ADR-0014
 - Supersedes: none
@@ -13,6 +13,10 @@
 Project Meridian is the first proving game, but Meridian must support unrelated 2D, 3D, headless, networked, stylized, simulation, action, strategy, and creator-tool projects without importing Project Meridian assumptions into engine contracts. The v0.4 suite has strong subsystem boundaries but lacks explicit animation, navigation, framework, 2D, modeler, shader-language, online-ecosystem, distributed-world, and integrity authorities.
 
 The product must remain understandable. Separate branded technologies do not imply a collection of unrelated user-facing applications.
+
+[ADR-0028](ADR-0028-meridian-ui-retained-framework-and-shell.md) amends this
+decision with the exact two-row shell, design system, retained-framework
+boundaries, and sequential UI/editor package plan.
 
 ## Decision
 

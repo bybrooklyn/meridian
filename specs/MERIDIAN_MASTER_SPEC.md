@@ -175,6 +175,15 @@ observed traces remain evidence rather than authored truth.
 
 Meridian is one application with project, editor, IDE, modeler, shader/material, animation, profiler, build, version-control, and play/debug workspaces. The native modeler is core because first-party creation must not require Blender; Blender and other DCC applications remain optional expert companions. Model source uses stable mesh-element identity and explicit topology lineage so Alluvium generation, overrides, undo, materials, collision, and later animation can survive edits or report recoverable conflicts.
 
+The normative Meridian UI 1.0 contract is
+[EDITOR_AND_MERIDIAN_UI_SPEC.md](EDITOR_AND_MERIDIAN_UI_SPEC.md) and ADR-0028.
+It fixes the website palette, two-row native shell, design metrics,
+Meridian-owned retained interfaces, typed interaction, workspace persistence,
+accessibility, and capability-truth rules. `WP-UI-002` through `WP-UI-005`
+implement the framework sequentially; `WP-EDT-002` composes the MS-03
+production shell and World workspace; `WP-EDT-003` composes later domain
+workspaces without promoting their implementation maturity.
+
 Gameplay begins with Rust modules, generated reflection, typed commands/events, save/headless hooks, and isolated Play-session rebuild/restart when safe native reload is unavailable. Luau is the first optional embedded high-level language only after these contracts stabilize.
 
 First-class 2D shares runtime, data, build, UI, audio, and diagnostics where semantics match, while Penumbra and Cairn provide dedicated 2D paths. Navigation owns traversability and queries; gameplay/frameworks own decisions. Wavefront owns audio capture, DSP, mixing, acoustics, and device output; Collective owns optional voice-session policy and the broader modular online-service surface.

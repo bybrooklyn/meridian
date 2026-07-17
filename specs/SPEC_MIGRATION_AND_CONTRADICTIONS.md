@@ -1,6 +1,6 @@
 # Meridian Specification Migration and Contradiction Register
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [v0.1 heading ledger](../docs/migrations/V0_1_DOCUMENT_MIGRATION.md) · [v0.3 roadmap ledger](../docs/migrations/V0_3_ROADMAP_MIGRATION.md) · [v0.4 Alluvium ledger](../docs/migrations/V0_4_ALLUVIUM_AMENDMENT.md) · [v0.5 general-purpose ledger](../docs/migrations/V0_5_GENERAL_PURPOSE_PLATFORM_AMENDMENT.md) · [v0.5 Marquee ledger](../docs/migrations/V0_5_MARQUEE_AMENDMENT.md) · [v0.5 performance/quality ledger](../docs/migrations/V0_5_PERFORMANCE_QUALITY_AMENDMENT.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [v0.1 heading ledger](../docs/migrations/V0_1_DOCUMENT_MIGRATION.md) · [v0.3 roadmap ledger](../docs/migrations/V0_3_ROADMAP_MIGRATION.md) · [v0.4 Alluvium ledger](../docs/migrations/V0_4_ALLUVIUM_AMENDMENT.md) · [v0.5 general-purpose ledger](../docs/migrations/V0_5_GENERAL_PURPOSE_PLATFORM_AMENDMENT.md) · [v0.5 Marquee ledger](../docs/migrations/V0_5_MARQUEE_AMENDMENT.md) · [v0.5 performance/quality ledger](../docs/migrations/V0_5_PERFORMANCE_QUALITY_AMENDMENT.md) · [v0.5 Meridian UI 1.0 ledger](../docs/migrations/V0_5_MERIDIAN_UI_1_0_AMENDMENT.md)
 
 version 0.5 · 2026-07-15 · Normative migration/history record
 
@@ -50,7 +50,8 @@ documentation to be confused with complete software.
 | Scaffold names | Empty weather and terrain crates used generic names. | Empty packages are renamed `meridian-isobar` and `meridian-basalt`; no Torsant crate exists until real implementation starts. |
 | Physics | Rapier wrapper could be mistaken for final engine ownership. | Cairn owns long-term contracts and provenance-controlled migration; current Rapier wrapper remains Transitional evidence. |
 | ECS | bevy_ecs could become persistence/network authority. | It remains transitional behind Meridian persistent IDs, schemas, commands, and snapshots; replacement requires evidence. |
-| UI | egui could become permanent editor/runtime architecture. | Meridian UI is the permanent shared framework; any bootstrap UI is isolated, transitional, and deletable. |
+| UI | egui could become permanent editor/runtime architecture, or visual work could become an unbounded Creator rewrite. | Meridian UI is the permanent shared retained framework; any bootstrap UI is isolated and deletable. ADR-0028 fixes the two-row shell and sequential `WP-UI-002` through `WP-EDT-003` package path. |
+| UI visual identity | Cyan branding, decorative rings, scene-responsive chrome, private-game imagery, and inconsistent concept screens could become accidental product authority. | The exact website palette, Mona/Hubot/JetBrains typography roles, 4px geometry system, no-ring focus policy, and generated 17-state public mockup corpus are canonical. Dense content is opaque and capability claims remain domain-owned. |
 | Data | Built artifacts or one-file worlds/packages could become authority. | Schema-defined source directories/documents are authoritative; artifacts/chunks are rebuildable caches; saves are transactional journals/snapshots. |
 | Gameplay | Several initial languages could multiply bindings and tooling; earlier wording let Luau block the first game path. | Rust gameplay modules, reflection, typed APIs, and isolated Play rebuild/restart are first in `WP-GAM-001`. Luau remains the first optional embedded high-level language in `WP-GAM-002` and cannot block MS-06/MS-07. |
 | Commands and agents | AI-specific APIs could bypass user tools. | UI, CLI, Rust, MCP, and agents share typed commands/queries, permissions, transactions, audit, undo, and rollback. |
@@ -92,8 +93,9 @@ documentation to be confused with complete software.
 | Native renderer smoke | `StructuralSmoke` | Six-face upload and pipeline/bind-group construction; occluded outcome is not visual evidence. |
 | Asset/world/streaming/save | `Partial` | Useful foundations; authoritative source/import/package pipeline incomplete. |
 | Rapier wrapper/controller | `Transitional` | Not Cairn-owned implementation. |
-| Meridian UI | `ImplementedFoundation` | MS-02 qualified retained UI core; this does not claim Creator Editor workflows or platform accessibility adapters. |
-| Creator Editor, Wavefront, Isobar, Basalt, vegetation | `Scaffold` unless narrower evidence is registered | Crate presence does not prove a usable product/system. |
+| Meridian UI | `ImplementedFoundation` / `Active` | MS-02 qualified retained UI core; `WP-UI-002` is active. Professional interaction, docking, platform accessibility, renderer qualification, and production shell remain open. |
+| Creator Editor | `ImplementedFoundation` | `WP-EDT-001` persistent hub, source persistence, typed Creator journey, and bundle structure passed run `29605881704`; visual quality and platform screen-reader integration remain open UI/editor packages. |
+| Wavefront, Isobar, Basalt, vegetation | `Scaffold` unless narrower evidence is registered | Crate presence does not prove a usable product/system. |
 | Alluvium | `Partial` | `WP-PRC-001` has an active source delivery for text recipes, strict scalar evaluation, recovery, CLI, and a basic inspector; its CI evidence and all production/domain work remain open. |
 | Native modeler, Rust gameplay modules, optional Luau, animation, navigation, frameworks, first-class 2D, Meridian Shader Language, Collective | `Planned` or `Deferred` | Documentation/contracts and registries only; no runtime/editor implementation claim. |
 | Torsant, networking, XR, mods, VCS/sync, agents | `Planned`, `Research`, or `Deferred` | No production implementation claim. |
@@ -118,6 +120,7 @@ maps every prior procedural heading and amendment subject with zero unmapped row
 The [v0.5 general-purpose platform ledger](../docs/migrations/V0_5_GENERAL_PURPOSE_PLATFORM_AMENDMENT.md) maps all 40 review areas, 20 resolved decisions, and 6 stale prompt terms: 66 mapped rows and zero unmapped rows.
 The [v0.5 Marquee amendment ledger](../docs/migrations/V0_5_MARQUEE_AMENDMENT.md) maps all promotional decisions and prior headings with zero unmapped rows.
 The [v0.5 competitive performance and environmental quality amendment ledger](../docs/migrations/V0_5_PERFORMANCE_QUALITY_AMENDMENT.md) maps all 11 amendment subjects with zero unmapped rows.
+The [v0.5 Meridian UI 1.0 amendment ledger](../docs/migrations/V0_5_MERIDIAN_UI_1_0_AMENDMENT.md) maps all 24 interview/brief/package subjects with zero unmapped rows.
 
 ## 5. Open research, not contradictions
 

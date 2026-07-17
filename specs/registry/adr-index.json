@@ -29,6 +29,7 @@
     {"id":"ADR-0024","status":"Adopted","path":"docs/architecture/decisions/ADR-0024-post-one-programs.md"},
     {"id":"ADR-0025","status":"Adopted","path":"docs/architecture/decisions/ADR-0025-marquee-promotional-media.md"},
     {"id":"ADR-0026","status":"Adopted","path":"docs/architecture/decisions/ADR-0026-environmental-performance-contracts.md"},
-    {"id":"ADR-0027","status":"Adopted","path":"docs/architecture/decisions/ADR-0027-competitive-performance-quality-program.md"}
+    {"id":"ADR-0027","status":"Adopted","path":"docs/architecture/decisions/ADR-0027-competitive-performance-quality-program.md"},
+    {"id":"ADR-0028","status":"Adopted","path":"docs/architecture/decisions/ADR-0028-meridian-ui-retained-framework-and-shell.md"}
   ]
 }
