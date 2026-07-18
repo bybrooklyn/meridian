@@ -1,5 +1,9 @@
 //! Retained Meridian UI reconciliation and interaction runtime.
 
+mod motion;
+
+pub use motion::*;
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -14,7 +18,9 @@ use meridian_ui_core::{
 use meridian_ui_render::{
     DisplayList, DisplayListError, DisplayPrimitive, UiClipId, UiCornerRadii,
 };
-use meridian_ui_semantics::{SemanticDelta, SemanticNode, SemanticTree};
+use meridian_ui_semantics::{
+    SemanticAction, SemanticDelta, SemanticLive, SemanticNode, SemanticTree, SemanticTreeError,
+};
 use meridian_ui_text::{
     UiClipboardOperation, UiClipboardRequest, UiCompletionRequest, UiPreeditError,
     UiTextCursorDirection, UiTextEngine, UiTextInputSnapshot, UiTextInputState,
@@ -73,6 +79,11 @@ pub enum UiEvent {
     /// keyboard and pointer input.
     AssistiveFocus(UiNodeId),
     AssistiveActivate(UiNodeId),
+    AssistiveSetValue {
+        target: UiNodeId,
+        text: String,
+        replace_selection: bool,
+    },
 }
 
 impl UiEvent {
@@ -81,7 +92,9 @@ impl UiEvent {
             Self::TextCommit(text) | Self::PasteText(text) | Self::CollectionTypeahead(text) => {
                 text.len()
             }
-            Self::ImePreedit { text, .. } | Self::ConfirmClipboardCut { text, .. } => text.len(),
+            Self::ImePreedit { text, .. }
+            | Self::ConfirmClipboardCut { text, .. }
+            | Self::AssistiveSetValue { text, .. } => text.len(),
             Self::FocusNext
             | Self::FocusPrevious
             | Self::Activate
@@ -219,6 +232,9 @@ pub enum UiDiagnostic {
     AssistiveActivateDenied {
         node: UiNodeId,
     },
+    AssistiveEditDenied {
+        node: UiNodeId,
+    },
     InvalidPointerEvent,
     InvalidScrollEvent,
     ScrollTargetUnavailable,
@@ -255,6 +271,7 @@ pub enum UiDiagnostic {
         maximum: usize,
     },
     FrameRejected(DisplayListError),
+    SemanticTreeRejected(SemanticTreeError),
 }
 
 /// Input captured at a stable frame boundary.
@@ -306,6 +323,7 @@ pub struct UiFrameSnapshot {
     pub motion: MotionPreference,
     pub scale_factor: f32,
     pub display_list: DisplayList,
+    pub semantic_tree: SemanticTree,
     pub semantic_delta: SemanticDelta,
     pub event_routes: Vec<UiEventRoute>,
     pub commands: Vec<UiCommandRequest>,
@@ -333,6 +351,7 @@ pub enum UiFrameError {
     TooManyEffects { count: usize, maximum: usize },
     TooManyEffectBytes { bytes: usize, maximum: usize },
     InvalidDisplayList(DisplayListError),
+    SemanticTreeRejected(SemanticTreeError),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -366,6 +385,32 @@ fn finite_nonnegative(value: f32) -> f32 {
     } else {
         0.0
     }
+}
+
+fn semantic_actions(
+    role: meridian_ui_core::SemanticRole,
+    has_command: bool,
+    focusable: bool,
+    state: meridian_ui_core::UiControlState,
+) -> Vec<SemanticAction> {
+    if state.disabled {
+        return Vec::new();
+    }
+    let mut actions = Vec::new();
+    if focusable {
+        actions.push(SemanticAction::Focus);
+    }
+    if has_command {
+        actions.push(SemanticAction::Activate);
+    }
+    match role {
+        meridian_ui_core::SemanticRole::TextInput | meridian_ui_core::SemanticRole::SearchBox => {
+            actions.push(SemanticAction::ReplaceSelectedText);
+            actions.push(SemanticAction::SetValue);
+        }
+        _ => {}
+    }
+    actions
 }
 
 fn inset_bounds(bounds: UiRect, inset: f32) -> UiRect {
@@ -709,6 +754,14 @@ impl UiRuntime {
                 fallback_scale,
                 UiDiagnostic::FrameRejected(error),
             ),
+            Err(UiFrameError::SemanticTreeRejected(error)) => self.rejected_snapshot(
+                fallback_theme,
+                fallback_density,
+                fallback_contrast,
+                fallback_motion,
+                fallback_scale,
+                UiDiagnostic::SemanticTreeRejected(error),
+            ),
         }
     }
 
@@ -731,6 +784,7 @@ impl UiRuntime {
                 motion,
                 scale_factor,
                 display_list: DisplayList::default(),
+                semantic_tree: SemanticTree::default(),
                 semantic_delta: SemanticDelta::Unchanged,
                 event_routes: Vec::new(),
                 commands: Vec::new(),
@@ -814,14 +868,14 @@ impl UiRuntime {
         }
         self.ensure_effect_bound(&effects, &checkpoint)?;
         let tree = SemanticTree {
+            root: Some(self.document.root()),
+            focus: self.focused,
             nodes: semantic_nodes,
         };
-        let semantic_delta = if self.previous_semantics.as_ref() == Some(&tree) {
-            SemanticDelta::Unchanged
-        } else {
-            SemanticDelta::Replace(tree.clone())
-        };
-        self.previous_semantics = Some(tree);
+        let semantic_delta = tree
+            .delta_from(self.previous_semantics.as_ref())
+            .map_err(UiFrameError::SemanticTreeRejected)?;
+        self.previous_semantics = Some(tree.clone());
         self.revision = self.revision.saturating_add(1);
         let snapshot = Arc::new(UiFrameSnapshot {
             revision: self.revision,
@@ -838,6 +892,7 @@ impl UiRuntime {
             motion,
             scale_factor: sanitized_scale_factor(input.scale_factor),
             display_list,
+            semantic_tree: tree,
             semantic_delta,
             event_routes: effects.routes,
             commands: effects.commands,
@@ -1219,6 +1274,11 @@ impl UiRuntime {
             }
             UiEvent::AssistiveFocus(target) => self.assistive_focus(target, effects),
             UiEvent::AssistiveActivate(target) => self.assistive_activate(target, effects),
+            UiEvent::AssistiveSetValue {
+                target,
+                text,
+                replace_selection,
+            } => self.assistive_set_value(target, &text, replace_selection, effects),
             UiEvent::TextCommit(text) | UiEvent::PasteText(text) => {
                 self.commit_text(&text, &mut effects.routes, &mut effects.diagnostics);
             }
@@ -1328,6 +1388,49 @@ impl UiRuntime {
             effects
                 .diagnostics
                 .push(UiDiagnostic::AssistiveActivateDenied { node: target });
+        }
+    }
+
+    fn assistive_set_value(
+        &mut self,
+        target: UiNodeId,
+        text: &str,
+        replace_selection: bool,
+        effects: &mut UiFrameEffects,
+    ) {
+        let editable = self.document.node(target).is_some_and(|node| {
+            node.focusable
+                && !node.semantics.state.disabled
+                && matches!(
+                    node.semantics.role,
+                    meridian_ui_core::SemanticRole::TextInput
+                        | meridian_ui_core::SemanticRole::SearchBox
+                )
+        });
+        if !editable {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::AssistiveEditDenied { node: target });
+            return;
+        }
+        self.dispatch(target, &mut effects.routes);
+        self.set_focus(target);
+        let Some(editor) = self.text_inputs.get_mut(&target) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::AssistiveEditDenied { node: target });
+            return;
+        };
+        if !replace_selection {
+            editor.select_all();
+        }
+        if !editor.commit(text) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TextInputLimitExceeded {
+                    node: target,
+                    maximum: MAX_TEXT_BYTES,
+                });
         }
     }
 
@@ -2378,6 +2481,7 @@ impl UiRuntime {
                 .is_none_or(|state| !state.is_valid(rule));
         }
         let children = node.children.clone();
+        let focusable = node.focusable;
         let clip_id = if clip {
             let id = UiClipId(emission.next_scope);
             emission.next_scope = emission.next_scope.saturating_add(1);
@@ -2396,9 +2500,22 @@ impl UiRuntime {
             parent,
             role: semantics.role,
             name: semantics.name,
-            action: semantics.action,
+            description: None,
+            actions: semantic_actions(
+                semantics.role,
+                semantics.action.is_some(),
+                focusable,
+                semantics.state,
+            ),
+            command: semantics.action,
             value: semantics.value,
             state: semantics.state,
+            live: match semantics.role {
+                meridian_ui_core::SemanticRole::LiveRegion
+                | meridian_ui_core::SemanticRole::Status => SemanticLive::Polite,
+                _ => SemanticLive::Off,
+            },
+            collection_item: None,
             bounds,
             focused: self.focused == Some(id),
         });
@@ -2480,11 +2597,13 @@ impl UiRuntime {
             })?;
         }
         if self.focused == Some(id) {
-            emission.display.try_push(DisplayPrimitive::FocusRing {
-                node: id,
-                bounds,
-                color: UiColor::focus(),
-            })?;
+            emission
+                .display
+                .try_push(DisplayPrimitive::FocusIndicator {
+                    node: id,
+                    bounds,
+                    color: UiColor::focus(),
+                })?;
         }
         Ok(())
     }
@@ -2612,6 +2731,7 @@ mod tests {
         let tree = match &output.semantic_delta {
             SemanticDelta::Replace(tree) => tree,
             SemanticDelta::Unchanged => panic!("first frame must publish semantics"),
+            SemanticDelta::Update(_) => panic!("first frame cannot be incremental"),
         };
         let bounds = |id| {
             tree.nodes
@@ -2863,11 +2983,11 @@ mod tests {
             .display_list
             .primitives
             .iter()
-            .any(|primitive| matches!(primitive, DisplayPrimitive::FocusRing { .. })));
+            .any(|primitive| matches!(primitive, DisplayPrimitive::FocusIndicator { .. })));
     }
 
     #[test]
-    fn one_x_and_two_x_frames_are_deterministic_for_identical_inputs() {
+    fn one_to_four_x_frames_are_deterministic_for_identical_inputs() {
         let reconcile_at = |scale_factor| {
             let mut runtime =
                 UiRuntime::new(recovery_panel_document().expect("recovery fixture is valid"));
@@ -2879,9 +2999,14 @@ mod tests {
         let one_x_b = reconcile_at(1.0);
         let two_x_a = reconcile_at(2.0);
         let two_x_b = reconcile_at(2.0);
+        let four_x_a = reconcile_at(4.0);
+        let four_x_b = reconcile_at(4.0);
         assert_eq!(one_x_a, one_x_b);
         assert_eq!(two_x_a, two_x_b);
+        assert_eq!(four_x_a, four_x_b);
         assert_eq!(one_x_a.layout, two_x_a.layout);
+        assert_eq!(one_x_a.layout, four_x_a.layout);
+        assert!((four_x_a.scale_factor - 4.0).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -3077,11 +3202,24 @@ mod tests {
         let mut runtime = UiRuntime::new(document);
 
         let output = runtime.reconcile(frame(vec![
-            UiEvent::AssistiveFocus(input),
+            UiEvent::AssistiveSetValue {
+                target: input,
+                text: "125".to_owned(),
+                replace_selection: false,
+            },
             UiEvent::SelectAllText,
-            UiEvent::TextCommit("250".to_owned()),
+            UiEvent::AssistiveSetValue {
+                target: input,
+                text: "250".to_owned(),
+                replace_selection: true,
+            },
             UiEvent::AssistiveFocus(label),
             UiEvent::AssistiveActivate(label),
+            UiEvent::AssistiveSetValue {
+                target: label,
+                text: "denied".to_owned(),
+                replace_selection: false,
+            },
         ]));
 
         assert_eq!(output.focused, Some(input));
@@ -3092,6 +3230,9 @@ mod tests {
         assert!(output
             .diagnostics
             .contains(&UiDiagnostic::AssistiveActivateDenied { node: label }));
+        assert!(output
+            .diagnostics
+            .contains(&UiDiagnostic::AssistiveEditDenied { node: label }));
         assert!(output.commands.is_empty());
     }
 
@@ -3739,6 +3880,12 @@ mod tests {
                 .find(|node| node.id == input)
                 .map(|node| node.state)
                 .expect("input semantic node"),
+            SemanticDelta::Update(delta) => delta
+                .updated
+                .iter()
+                .find(|node| node.id == input)
+                .map(|node| node.state)
+                .expect("changed input semantic node"),
             SemanticDelta::Unchanged => panic!("first frame publishes semantics"),
         };
         assert!(semantic_state.invalid);

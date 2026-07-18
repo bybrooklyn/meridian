@@ -401,6 +401,36 @@ impl DockTree {
             .collect()
     }
 
+    fn visible_panel_order(&self) -> Result<Vec<PanelId>, DockError> {
+        self.validate()?;
+        if let Some(maximized) = self.maximized {
+            return Ok(vec![maximized]);
+        }
+        let mut panels = Vec::new();
+        self.collect_visible_panels(self.root, &mut panels)?;
+        for floating in &self.floating {
+            self.collect_visible_panels(floating.root, &mut panels)?;
+        }
+        Ok(panels)
+    }
+
+    fn collect_visible_panels(
+        &self,
+        node: DockNodeId,
+        panels: &mut Vec<PanelId>,
+    ) -> Result<(), DockError> {
+        match self.nodes.get(&node).ok_or(DockError::MissingNode(node))? {
+            DockNode::Split { first, second, .. } => {
+                self.collect_visible_panels(*first, panels)?;
+                self.collect_visible_panels(*second, panels)
+            }
+            DockNode::Tabs { active, .. } | DockNode::Collapsed { active, .. } => {
+                panels.push(*active);
+                Ok(())
+            }
+        }
+    }
+
     /// Applies one dock mutation atomically and restores the prior tree on rejection.
     ///
     /// # Errors
@@ -1119,20 +1149,6 @@ impl WorkspaceLayout {
             return Err(WorkspaceStateError::DuplicateExpandedIdentity);
         }
         let mut panels = self.dock.panels().into_iter().collect::<BTreeSet<_>>();
-        let mut scroll_panels = BTreeSet::new();
-        for memory in &self.scroll {
-            if !panels.contains(&memory.panel) {
-                return Err(WorkspaceStateError::UnknownContextPanel(memory.panel));
-            }
-            if !scroll_panels.insert(memory.panel) {
-                return Err(WorkspaceStateError::DuplicateScrollPanel(memory.panel));
-            }
-        }
-        if let Some(panel) = self.focused_panel {
-            if !panels.contains(&panel) {
-                return Err(WorkspaceStateError::UnknownContextPanel(panel));
-            }
-        }
         if self.companions.len() > MAX_RETAINED_NODES {
             return Err(WorkspaceStateError::TooManyCompanions);
         }
@@ -1174,7 +1190,47 @@ impl WorkspaceLayout {
                 }
             }
         }
+        let mut scroll_panels = BTreeSet::new();
+        for memory in &self.scroll {
+            if !panels.contains(&memory.panel) {
+                return Err(WorkspaceStateError::UnknownContextPanel(memory.panel));
+            }
+            if !scroll_panels.insert(memory.panel) {
+                return Err(WorkspaceStateError::DuplicateScrollPanel(memory.panel));
+            }
+        }
+        if let Some(panel) = self.focused_panel {
+            if !panels.contains(&panel) {
+                return Err(WorkspaceStateError::UnknownContextPanel(panel));
+            }
+        }
         Ok(())
+    }
+
+    fn cycle_panel_focus(&mut self, forward: bool) -> Result<PanelId, WorkspaceStateError> {
+        let mut order = self
+            .dock
+            .visible_panel_order()
+            .map_err(WorkspaceStateError::Dock)?;
+        order.extend(self.companions.iter().map(|window| window.active));
+        if order.is_empty() {
+            return Err(WorkspaceStateError::NoFocusablePanel);
+        }
+        let current = self
+            .focused_panel
+            .and_then(|panel| order.iter().position(|candidate| *candidate == panel));
+        let index = match (current, forward) {
+            (Some(index), true) => (index + 1) % order.len(),
+            (Some(0) | None, false) => order.len() - 1,
+            (Some(index), false) => index - 1,
+            (None, true) => 0,
+        };
+        let focused = order
+            .get(index)
+            .copied()
+            .ok_or(WorkspaceStateError::NoFocusablePanel)?;
+        self.focused_panel = Some(focused);
+        Ok(focused)
     }
 
     fn tear_off_companion(
@@ -1545,6 +1601,37 @@ impl WorkspaceStateDocument {
         Ok(activation)
     }
 
+    /// Cycles keyboard focus through visible panes in visual dock order and
+    /// then through session-sharing companion windows.
+    ///
+    /// # Errors
+    ///
+    /// Returns a layout, dock, validation, or revision error without changing
+    /// the previously accepted workspace state.
+    pub fn cycle_panel_focus(
+        &mut self,
+        workspace: WorkspaceKind,
+        layout_name: &str,
+        forward: bool,
+    ) -> Result<PanelId, WorkspaceStateError> {
+        let before = self.clone();
+        let result = (|| {
+            let focused = self
+                .layout_mut(workspace, layout_name)?
+                .cycle_panel_focus(forward)?;
+            self.revision = self
+                .revision
+                .checked_add(1)
+                .ok_or(WorkspaceStateError::RevisionExhausted)?;
+            self.validate()?;
+            Ok(focused)
+        })();
+        if result.is_err() {
+            *self = before;
+        }
+        result
+    }
+
     /// Moves one tab to a session-sharing companion descriptor transactionally.
     ///
     /// # Errors
@@ -1793,6 +1880,7 @@ pub enum WorkspaceStateError {
     MultipleCompanionPreviews(CompanionWindowId),
     DuplicateWorkspacePanel(PanelId),
     UnknownCompanion(CompanionWindowId),
+    NoFocusablePanel,
     NoMonitor,
     DuplicateMonitor(MonitorId),
     MultiplePrimaryMonitors,
@@ -2347,6 +2435,47 @@ mod tests {
             Err(WorkspaceStateError::RevisionExhausted)
         ));
         assert_eq!(document, before);
+    }
+
+    #[test]
+    fn pane_cycle_preserves_focus_across_primary_and_companion_windows() {
+        let mut document = workspace_fixture();
+        document
+            .tear_off_companion(
+                WorkspaceKind::World,
+                "Default",
+                PanelId::new(4),
+                CompanionWindowId::new(1),
+                MonitorId::new(1),
+                DockRect::new(20, 20, 480, 320),
+            )
+            .expect("companion tear off");
+        assert_eq!(
+            document
+                .cycle_panel_focus(WorkspaceKind::World, "Default", true)
+                .expect("forward cycle reaches companion"),
+            PanelId::new(4)
+        );
+        assert_eq!(
+            document
+                .cycle_panel_focus(WorkspaceKind::World, "Default", true)
+                .expect("forward cycle wraps to primary"),
+            PanelId::new(1)
+        );
+        assert_eq!(
+            document
+                .cycle_panel_focus(WorkspaceKind::World, "Default", false)
+                .expect("reverse cycle wraps to companion"),
+            PanelId::new(4)
+        );
+        let persisted = document
+            .canonical_json()
+            .expect("focused companion persists");
+        assert_eq!(
+            WorkspaceStateDocument::from_json(persisted.as_bytes())
+                .expect("focused companion restores"),
+            document
+        );
     }
 
     #[test]

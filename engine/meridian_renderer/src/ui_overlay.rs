@@ -4,6 +4,7 @@
 //! uploadable image. It is not a production UI renderer selection; glyph atlas,
 //! batching, effects, and cache policy remain behind `RG-UI-001`.
 
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
@@ -29,6 +30,92 @@ pub struct UiOverlayRenderReport {
     pub text_primitives: usize,
     pub rasterized_glyphs: usize,
     pub incomplete_text_primitives: usize,
+}
+
+/// Renderer-neutral primitive categories measured by `RG-UI-001`.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum UiPrimitiveKind {
+    Rect,
+    Border,
+    Text,
+    GlyphRun,
+    FocusIndicator,
+    RoundedRect,
+    Path,
+    Image,
+    Mesh,
+    PushClip,
+    PopClip,
+    BeginLayer,
+    EndLayer,
+    Shadow,
+    Backdrop,
+}
+
+/// Structural coverage of one validated real display-list corpus.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiRendererQualificationReport {
+    pub primitive_count: usize,
+    pub observed_kinds: BTreeSet<UiPrimitiveKind>,
+    pub raster_bridge_unsupported: BTreeSet<UiPrimitiveKind>,
+}
+
+/// Validates and classifies a real Meridian display-list corpus without
+/// presenting structural coverage as visual or performance qualification.
+///
+/// # Errors
+///
+/// Returns the display-list validation failure before reporting coverage.
+pub fn qualify_ui_display_list(
+    display_list: &DisplayList,
+) -> Result<UiRendererQualificationReport, DisplayListError> {
+    display_list.validate()?;
+    let observed_kinds = display_list
+        .primitives
+        .iter()
+        .map(primitive_kind)
+        .collect::<BTreeSet<_>>();
+    let raster_bridge_unsupported = observed_kinds
+        .iter()
+        .copied()
+        .filter(|kind| !raster_bridge_supports(*kind))
+        .collect();
+    Ok(UiRendererQualificationReport {
+        primitive_count: display_list.primitives.len(),
+        observed_kinds,
+        raster_bridge_unsupported,
+    })
+}
+
+fn primitive_kind(primitive: &DisplayPrimitive) -> UiPrimitiveKind {
+    match primitive {
+        DisplayPrimitive::Rect { .. } => UiPrimitiveKind::Rect,
+        DisplayPrimitive::Border { .. } => UiPrimitiveKind::Border,
+        DisplayPrimitive::Text { .. } => UiPrimitiveKind::Text,
+        DisplayPrimitive::GlyphRun { .. } => UiPrimitiveKind::GlyphRun,
+        DisplayPrimitive::FocusIndicator { .. } => UiPrimitiveKind::FocusIndicator,
+        DisplayPrimitive::RoundedRect { .. } => UiPrimitiveKind::RoundedRect,
+        DisplayPrimitive::Path { .. } => UiPrimitiveKind::Path,
+        DisplayPrimitive::Image { .. } => UiPrimitiveKind::Image,
+        DisplayPrimitive::Mesh { .. } => UiPrimitiveKind::Mesh,
+        DisplayPrimitive::PushClip { .. } => UiPrimitiveKind::PushClip,
+        DisplayPrimitive::PopClip { .. } => UiPrimitiveKind::PopClip,
+        DisplayPrimitive::BeginLayer { .. } => UiPrimitiveKind::BeginLayer,
+        DisplayPrimitive::EndLayer { .. } => UiPrimitiveKind::EndLayer,
+        DisplayPrimitive::Shadow { .. } => UiPrimitiveKind::Shadow,
+        DisplayPrimitive::Backdrop { .. } => UiPrimitiveKind::Backdrop,
+    }
+}
+
+const fn raster_bridge_supports(kind: UiPrimitiveKind) -> bool {
+    matches!(
+        kind,
+        UiPrimitiveKind::Rect
+            | UiPrimitiveKind::Border
+            | UiPrimitiveKind::Text
+            | UiPrimitiveKind::GlyphRun
+            | UiPrimitiveKind::FocusIndicator
+    )
 }
 
 /// Errors raised while creating an owned temporary UI overlay pass.
@@ -314,7 +401,7 @@ impl UiOverlayRaster {
                 self.stroke_rect(*bounds, *color, u32::from(*width).max(1));
                 self.report.solid_primitives += 1;
             }
-            DisplayPrimitive::FocusRing { bounds, color, .. } => {
+            DisplayPrimitive::FocusIndicator { bounds, color, .. } => {
                 self.stroke_rect(*bounds, *color, 3);
                 self.report.solid_primitives += 1;
             }
@@ -571,11 +658,127 @@ fn unit_f32_to_u8(value: f32) -> u8 {
 #[cfg(test)]
 mod tests {
     use meridian_ui::{
-        recovery_panel_document, DisplayList, DisplayPrimitive, UiFrameInput, UiGlyphBitmap,
-        UiNodeId, UiPoint, UiRect, UiRuntime, UiTextLayout, UiTextRaster,
+        recovery_panel_document, DisplayList, DisplayPrimitive, UiBackdropDescriptor, UiClipId,
+        UiCornerRadii, UiFrameInput, UiGlyphBitmap, UiImageHandle, UiLayerId, UiMeshHandle,
+        UiNodeId, UiPathCommand, UiPoint, UiRect, UiRuntime, UiTextLayout, UiTextRaster,
     };
 
     use super::*;
+
+    fn corpus_text(node: UiNodeId, bounds: UiRect, glyph_run: bool) -> DisplayPrimitive {
+        let text = "M".to_owned();
+        let color = UiColor::text();
+        let layout = UiTextLayout {
+            line_count: 1,
+            glyph_count: 0,
+            width: 8.0,
+            height: 12.0,
+            used_fallback_metrics: false,
+        };
+        let raster = UiTextRaster::default();
+        if glyph_run {
+            DisplayPrimitive::GlyphRun {
+                node,
+                bounds,
+                text,
+                color,
+                layout,
+                raster,
+            }
+        } else {
+            DisplayPrimitive::Text {
+                node,
+                bounds,
+                text,
+                color,
+                layout,
+                raster,
+            }
+        }
+    }
+
+    fn qualification_corpus() -> DisplayList {
+        let node = UiNodeId::new(1);
+        let bounds = UiRect::new(UiPoint { x: 1.0, y: 1.0 }, UiSize::new(32.0, 24.0));
+        let clip = UiClipId(1);
+        let layer = UiLayerId(2);
+        DisplayList {
+            primitives: vec![
+                DisplayPrimitive::PushClip {
+                    id: clip,
+                    bounds,
+                    radii: UiCornerRadii::uniform(6.0),
+                },
+                DisplayPrimitive::BeginLayer {
+                    id: layer,
+                    opacity: 0.9,
+                },
+                DisplayPrimitive::Rect {
+                    node,
+                    bounds,
+                    color: UiColor::background(),
+                },
+                DisplayPrimitive::Border {
+                    node,
+                    bounds,
+                    color: UiColor::border(),
+                    width: 1,
+                },
+                corpus_text(node, bounds, false),
+                corpus_text(node, bounds, true),
+                DisplayPrimitive::FocusIndicator {
+                    node,
+                    bounds,
+                    color: UiColor::focus(),
+                },
+                DisplayPrimitive::RoundedRect {
+                    node,
+                    bounds,
+                    radii: UiCornerRadii::uniform(6.0),
+                    color: UiColor::surface(),
+                },
+                DisplayPrimitive::Path {
+                    node,
+                    commands: vec![
+                        UiPathCommand::MoveTo(bounds.origin),
+                        UiPathCommand::LineTo(UiPoint { x: 8.0, y: 8.0 }),
+                    ],
+                    color: UiColor::text(),
+                },
+                DisplayPrimitive::Image {
+                    node,
+                    bounds,
+                    image: UiImageHandle(1),
+                    opacity: 1.0,
+                },
+                DisplayPrimitive::Mesh {
+                    node,
+                    bounds,
+                    mesh: UiMeshHandle(1),
+                    tint: UiColor::text(),
+                },
+                DisplayPrimitive::Shadow {
+                    node,
+                    bounds,
+                    radii: UiCornerRadii::uniform(6.0),
+                    offset: UiPoint { x: 0.0, y: 4.0 },
+                    spread: 2.0,
+                    color: UiColor::rgba(0.0, 0.0, 0.0, 0.5),
+                },
+                DisplayPrimitive::Backdrop {
+                    node,
+                    descriptor: UiBackdropDescriptor {
+                        bounds,
+                        sample_bounds: bounds,
+                        tint: UiColor::surface(),
+                        opaque_fallback: UiColor::background(),
+                    },
+                },
+                DisplayPrimitive::EndLayer { id: layer },
+                DisplayPrimitive::PopClip { id: clip },
+            ],
+        }
+    }
 
     #[test]
     fn recovery_display_list_produces_rasterized_text_and_panel_geometry() {
@@ -593,6 +796,29 @@ mod tests {
         assert!(raster.report.rasterized_glyphs > 0);
         assert_eq!(raster.report.incomplete_text_primitives, 0);
         assert!(raster.pixels.iter().any(|pixel| *pixel != 0));
+    }
+
+    #[test]
+    fn qualification_corpus_covers_every_display_primitive_without_overclaiming_bridge_support() {
+        let corpus = qualification_corpus();
+        let report = qualify_ui_display_list(&corpus).expect("full corpus validates");
+        assert_eq!(report.primitive_count, 15);
+        assert_eq!(report.observed_kinds.len(), 15);
+        assert_eq!(
+            report.raster_bridge_unsupported,
+            BTreeSet::from([
+                UiPrimitiveKind::RoundedRect,
+                UiPrimitiveKind::Path,
+                UiPrimitiveKind::Image,
+                UiPrimitiveKind::Mesh,
+                UiPrimitiveKind::PushClip,
+                UiPrimitiveKind::PopClip,
+                UiPrimitiveKind::BeginLayer,
+                UiPrimitiveKind::EndLayer,
+                UiPrimitiveKind::Shadow,
+                UiPrimitiveKind::Backdrop,
+            ])
+        );
     }
 
     #[test]

@@ -1,12 +1,28 @@
 //! Renderer-neutral platform window and application lifecycle.
 
+#[cfg(feature = "accessibility")]
+mod accessibility;
+
+#[cfg(feature = "accessibility")]
+use accessibility::AccessKitBridge;
+#[cfg(feature = "accessibility")]
+pub use accessibility::{
+    PlatformAccessibilityActionData, PlatformAccessibilityActionRequest, PlatformAccessibilityError,
+};
+
 use std::error::Error;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::sync::Arc;
+#[cfg(feature = "accessibility")]
+use std::sync::Mutex;
 use std::time::Instant;
 
+#[cfg(feature = "accessibility")]
+use accesskit::{ActivationHandler, TreeUpdate};
 use meridian_core::{MonotonicNs, RuntimeEpoch};
 use meridian_input::{winit_adapter, NativeInputEvent};
+#[cfg(feature = "accessibility")]
+use meridian_ui_semantics::SemanticTree;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, Ime, WindowEvent};
@@ -15,6 +31,32 @@ use winit::raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
 };
 use winit::window::{Window, WindowId};
+
+#[cfg(feature = "accessibility")]
+#[derive(Debug)]
+enum PlatformUserEvent {
+    Accessibility(accesskit_winit::Event),
+}
+
+#[cfg(feature = "accessibility")]
+impl From<accesskit_winit::Event> for PlatformUserEvent {
+    fn from(event: accesskit_winit::Event) -> Self {
+        Self::Accessibility(event)
+    }
+}
+
+#[cfg(not(feature = "accessibility"))]
+type PlatformUserEvent = ();
+
+#[cfg(feature = "accessibility")]
+struct InitialAccessibilityTree(Arc<Mutex<TreeUpdate>>);
+
+#[cfg(feature = "accessibility")]
+impl ActivationHandler for InitialAccessibilityTree {
+    fn request_initial_tree(&mut self) -> Option<TreeUpdate> {
+        self.0.lock().ok().map(|tree| tree.clone())
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WindowSize {
@@ -157,6 +199,10 @@ pub enum PlatformEvent {
         cursor: Option<(usize, usize)>,
     },
     ImeCancelled,
+    #[cfg(feature = "accessibility")]
+    AccessibilityAction(PlatformAccessibilityActionRequest),
+    #[cfg(feature = "accessibility")]
+    AccessibilityRejected(PlatformAccessibilityError),
     RedrawRequested,
     CloseRequested,
     MemoryWarning,
@@ -270,6 +316,10 @@ impl RuntimeLifecycle {
             }
             PlatformEvent::CloseRequested | PlatformEvent::Exiting => {
                 (LifecycleState::Exiting, RuntimeRebuildAction::Exit, true)
+            }
+            #[cfg(feature = "accessibility")]
+            PlatformEvent::AccessibilityAction(_) | PlatformEvent::AccessibilityRejected(_) => {
+                return self.transition(self.state, RuntimeRebuildAction::None, false);
             }
             PlatformEvent::Focused(_)
             | PlatformEvent::ModifiersChanged(_)
@@ -386,6 +436,14 @@ pub trait PlatformApplication {
     fn terminal_error(&self) -> Option<PlatformError> {
         None
     }
+
+    /// Returns the current validated Meridian semantics tree for the private
+    /// native accessibility adapter. Applications without a visible Meridian
+    /// UI leave accessibility disabled by returning `None`.
+    #[cfg(feature = "accessibility")]
+    fn accessibility_tree(&self) -> Option<SemanticTree> {
+        None
+    }
 }
 
 /// Starts the native event loop and runs `application` until it requests exit.
@@ -398,15 +456,21 @@ pub fn run<A: PlatformApplication>(
     config: PlatformConfig,
     application: A,
 ) -> Result<(), PlatformError> {
-    let event_loop = EventLoop::new().map_err(|error| {
-        PlatformError::new(PlatformErrorKind::EventLoopCreation, error.to_string())
-    })?;
+    let event_loop = EventLoop::<PlatformUserEvent>::with_user_event()
+        .build()
+        .map_err(|error| {
+            PlatformError::new(PlatformErrorKind::EventLoopCreation, error.to_string())
+        })?;
     event_loop.set_control_flow(match config.event_loop_mode {
         EventLoopMode::Wait => ControlFlow::Wait,
         EventLoopMode::Poll => ControlFlow::Poll,
     });
 
     let mut adapter = WinitApplication::new(config, application);
+    #[cfg(feature = "accessibility")]
+    {
+        adapter.event_proxy = Some(event_loop.create_proxy());
+    }
     event_loop
         .run_app(&mut adapter)
         .map_err(|error| PlatformError::new(PlatformErrorKind::EventLoopRun, error.to_string()))?;
@@ -431,6 +495,14 @@ struct WinitApplication<A> {
     next_event_sequence: u64,
     lifecycle: RuntimeLifecycle,
     initial_redraw_pending: bool,
+    #[cfg(feature = "accessibility")]
+    event_proxy: Option<winit::event_loop::EventLoopProxy<PlatformUserEvent>>,
+    #[cfg(feature = "accessibility")]
+    accessibility_adapter: Option<accesskit_winit::Adapter>,
+    #[cfg(feature = "accessibility")]
+    accessibility_bridge: AccessKitBridge,
+    #[cfg(feature = "accessibility")]
+    accessibility_tree_cache: Option<Arc<Mutex<TreeUpdate>>>,
 }
 
 impl<A: PlatformApplication> WinitApplication<A> {
@@ -445,6 +517,14 @@ impl<A: PlatformApplication> WinitApplication<A> {
             next_event_sequence: 1,
             lifecycle: RuntimeLifecycle::new(),
             initial_redraw_pending: false,
+            #[cfg(feature = "accessibility")]
+            event_proxy: None,
+            #[cfg(feature = "accessibility")]
+            accessibility_adapter: None,
+            #[cfg(feature = "accessibility")]
+            accessibility_bridge: AccessKitBridge::default(),
+            #[cfg(feature = "accessibility")]
+            accessibility_tree_cache: None,
         }
     }
 
@@ -476,6 +556,9 @@ impl<A: PlatformApplication> WinitApplication<A> {
             &mut context,
         );
 
+        #[cfg(feature = "accessibility")]
+        self.update_accessibility(event_loop);
+
         if control.redraw_requested {
             if let Some(window) = &self.window {
                 window.request_redraw();
@@ -487,6 +570,12 @@ impl<A: PlatformApplication> WinitApplication<A> {
     }
 
     fn create_window(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(feature = "accessibility")]
+        let accessibility_tree = self.application.accessibility_tree();
+        #[cfg(feature = "accessibility")]
+        let initially_visible = self.config.visible && accessibility_tree.is_none();
+        #[cfg(not(feature = "accessibility"))]
+        let initially_visible = self.config.visible;
         let attributes = Window::default_attributes()
             .with_title(self.config.title.clone())
             .with_inner_size(LogicalSize::new(
@@ -494,24 +583,60 @@ impl<A: PlatformApplication> WinitApplication<A> {
                 f64::from(self.config.initial_size.height),
             ))
             .with_resizable(self.config.resizable)
-            .with_visible(self.config.visible);
+            .with_visible(initially_visible);
 
         match event_loop.create_window(attributes) {
             Ok(window) => {
                 window.set_ime_allowed(true);
                 self.native_window_id = Some(window.id());
+
+                #[cfg(feature = "accessibility")]
+                if let Some(tree) = accessibility_tree {
+                    let initial = match self.accessibility_bridge.project(&tree) {
+                        Ok(initial) => initial,
+                        Err(error) => {
+                            self.startup_error = Some(PlatformError::new(
+                                PlatformErrorKind::Accessibility,
+                                error.to_string(),
+                            ));
+                            event_loop.exit();
+                            return;
+                        }
+                    };
+                    let Some(event_proxy) = self.event_proxy.clone() else {
+                        self.startup_error = Some(PlatformError::new(
+                            PlatformErrorKind::Accessibility,
+                            "accessibility event proxy was not initialized".to_owned(),
+                        ));
+                        event_loop.exit();
+                        return;
+                    };
+                    let tree_cache = Arc::new(Mutex::new(initial));
+                    self.accessibility_adapter =
+                        Some(accesskit_winit::Adapter::with_mixed_handlers(
+                            event_loop,
+                            &window,
+                            InitialAccessibilityTree(Arc::clone(&tree_cache)),
+                            event_proxy,
+                        ));
+                    self.accessibility_tree_cache = Some(tree_cache);
+                    if self.config.visible {
+                        window.set_visible(true);
+                    }
+                }
+
                 self.window = Some(PlatformWindow {
                     inner: Arc::new(window),
                 });
                 self.initial_redraw_pending = self.config.visible;
-                let window = self.window.as_ref().expect("window was just stored");
-                self.dispatch(
-                    PlatformEvent::WindowCreated {
-                        size: window.size(),
-                        scale_factor: window.scale_factor(),
-                    },
-                    event_loop,
-                );
+                if let Some(window) = self.window.as_ref() {
+                    let size = window.size();
+                    let scale_factor = window.scale_factor();
+                    self.dispatch(
+                        PlatformEvent::WindowCreated { size, scale_factor },
+                        event_loop,
+                    );
+                }
             }
             Err(error) => {
                 self.startup_error = Some(PlatformError::new(
@@ -522,9 +647,50 @@ impl<A: PlatformApplication> WinitApplication<A> {
             }
         }
     }
+
+    #[cfg(feature = "accessibility")]
+    fn update_accessibility(&mut self, event_loop: &ActiveEventLoop) {
+        if self.accessibility_adapter.is_none() {
+            return;
+        }
+        let Some(tree) = self.application.accessibility_tree() else {
+            return;
+        };
+        let update = match self.accessibility_bridge.project(&tree) {
+            Ok(update) => update,
+            Err(error) => {
+                self.startup_error = Some(PlatformError::new(
+                    PlatformErrorKind::Accessibility,
+                    error.to_string(),
+                ));
+                event_loop.exit();
+                return;
+            }
+        };
+        let Some(tree_cache) = &self.accessibility_tree_cache else {
+            self.startup_error = Some(PlatformError::new(
+                PlatformErrorKind::Accessibility,
+                "accessibility recovery cache was not initialized".to_owned(),
+            ));
+            event_loop.exit();
+            return;
+        };
+        let Ok(mut cached) = tree_cache.lock() else {
+            self.startup_error = Some(PlatformError::new(
+                PlatformErrorKind::Accessibility,
+                "accessibility recovery cache was unavailable".to_owned(),
+            ));
+            event_loop.exit();
+            return;
+        };
+        update.clone_into(&mut cached);
+        if let Some(adapter) = &mut self.accessibility_adapter {
+            adapter.update_if_active(|| update);
+        }
+    }
 }
 
-impl<A: PlatformApplication> ApplicationHandler for WinitApplication<A> {
+impl<A: PlatformApplication> ApplicationHandler<PlatformUserEvent> for WinitApplication<A> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.dispatch(PlatformEvent::Resumed, event_loop);
         if self.window.is_none() && self.startup_error.is_none() {
@@ -540,6 +706,13 @@ impl<A: PlatformApplication> ApplicationHandler for WinitApplication<A> {
     ) {
         if self.native_window_id != Some(window_id) {
             return;
+        }
+
+        #[cfg(feature = "accessibility")]
+        if let (Some(adapter), Some(window)) =
+            (&mut self.accessibility_adapter, self.window.as_ref())
+        {
+            adapter.process_event(&window.inner, &event);
         }
 
         let native_input = winit_adapter::translate_window_event(&event);
@@ -596,6 +769,34 @@ impl<A: PlatformApplication> ApplicationHandler for WinitApplication<A> {
         }
     }
 
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: PlatformUserEvent) {
+        #[cfg(feature = "accessibility")]
+        match event {
+            PlatformUserEvent::Accessibility(event) => {
+                if self.native_window_id != Some(event.window_id) {
+                    return;
+                }
+                match event.window_event {
+                    accesskit_winit::WindowEvent::InitialTreeRequested => {
+                        self.update_accessibility(event_loop);
+                    }
+                    accesskit_winit::WindowEvent::ActionRequested(request) => {
+                        let platform_event =
+                            match self.accessibility_bridge.translate_action(request) {
+                                Ok(request) => PlatformEvent::AccessibilityAction(request),
+                                Err(error) => PlatformEvent::AccessibilityRejected(error),
+                            };
+                        self.dispatch(platform_event, event_loop);
+                    }
+                    accesskit_winit::WindowEvent::AccessibilityDeactivated => {}
+                }
+            }
+        }
+
+        #[cfg(not(feature = "accessibility"))]
+        let _ = (event_loop, event);
+    }
+
     fn suspended(&mut self, event_loop: &ActiveEventLoop) {
         self.dispatch(PlatformEvent::Suspended, event_loop);
     }
@@ -632,6 +833,7 @@ pub enum PlatformErrorKind {
     EventLoopCreation,
     WindowCreation,
     EventLoopRun,
+    Accessibility,
     Application,
 }
 

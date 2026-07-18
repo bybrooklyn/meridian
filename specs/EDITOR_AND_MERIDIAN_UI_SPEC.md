@@ -223,10 +223,13 @@ effects. It contains no backend resource or command encoder. Cache keys include
 content, token/font state, scale, contrast, and renderer capability. Device loss
 rebuilds caches from logical state.
 
-`RG-UI-001` evaluates the real editor/runtime display-list corpus for
-correctness, text quality, accessibility compatibility, latency, memory,
-recovery, platform coverage, maintenance, and license burden. No renderer is
-promoted from a toy scene or one platform.
+`RG-UI-001` evaluated the real editor/runtime display-list contract and is
+decided by `ADR-0029`: a Penumbra-owned direct GPU consumer is the production
+direction, while the bounded full-frame CPU raster bridge remains structural
+and recovery-only. The decision does not claim the direct path complete or
+establish visual/performance qualification. Corpus correctness, text quality,
+accessibility compatibility, latency, memory, recovery, and platform evidence
+remain required before implementation promotion.
 
 ## 8. Input and activation
 

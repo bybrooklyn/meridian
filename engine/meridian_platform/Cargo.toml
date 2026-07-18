@@ -4,9 +4,21 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+accessibility = [
+    "dep:accesskit",
+    "dep:accesskit_winit",
+    "dep:meridian-ui-core",
+    "dep:meridian-ui-semantics",
+]
+
 [dependencies]
+accesskit = { workspace = true, optional = true }
+accesskit_winit = { workspace = true, optional = true }
 meridian-core = { path = "../meridian_core" }
 meridian-input = { path = "../meridian_input" }
+meridian-ui-core = { path = "../meridian_ui_core", optional = true }
+meridian-ui-semantics = { path = "../meridian_ui_semantics", optional = true }
 winit.workspace = true
 
 [lints]

@@ -85,6 +85,37 @@ pub struct UiBackdropDescriptor {
     pub opaque_fallback: UiColor,
 }
 
+/// Renderer capabilities used to resolve optional effects before submission.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiEffectCapabilities {
+    pub backdrop_filtering: bool,
+}
+
+/// Backdrop policy resolved without exposing a backend effect type.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ResolvedBackdrop {
+    Effect(UiBackdropDescriptor),
+    Opaque { bounds: UiRect, color: UiColor },
+}
+
+/// Resolves selective backdrop effects to their mandatory opaque fallback for
+/// high contrast or a renderer without bounded backdrop support.
+#[must_use]
+pub const fn resolve_backdrop(
+    descriptor: UiBackdropDescriptor,
+    contrast: UiContrast,
+    capabilities: UiEffectCapabilities,
+) -> ResolvedBackdrop {
+    if matches!(contrast, UiContrast::Standard) && capabilities.backdrop_filtering {
+        ResolvedBackdrop::Effect(descriptor)
+    } else {
+        ResolvedBackdrop::Opaque {
+            bounds: descriptor.bounds,
+            color: descriptor.opaque_fallback,
+        }
+    }
+}
+
 /// Renderer cache identity includes every presentation input that changes pixels.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct UiRenderCacheKey {
@@ -125,7 +156,7 @@ pub enum DisplayPrimitive {
         layout: UiTextLayout,
         raster: UiTextRaster,
     },
-    FocusRing {
+    FocusIndicator {
         node: UiNodeId,
         bounds: UiRect,
         color: UiColor,
@@ -357,7 +388,7 @@ fn validate_primitive(
         | DisplayPrimitive::Border { bounds, .. }
         | DisplayPrimitive::Text { bounds, .. }
         | DisplayPrimitive::GlyphRun { bounds, .. }
-        | DisplayPrimitive::FocusRing { bounds, .. }
+        | DisplayPrimitive::FocusIndicator { bounds, .. }
         | DisplayPrimitive::Mesh { bounds, .. } => validate_rect(*bounds, index),
         DisplayPrimitive::Image {
             bounds, opacity, ..
@@ -515,7 +546,7 @@ fn validate_primitive_colors(
         | DisplayPrimitive::Border { color, .. }
         | DisplayPrimitive::Text { color, .. }
         | DisplayPrimitive::GlyphRun { color, .. }
-        | DisplayPrimitive::FocusRing { color, .. }
+        | DisplayPrimitive::FocusIndicator { color, .. }
         | DisplayPrimitive::RoundedRect { color, .. }
         | DisplayPrimitive::Path { color, .. }
         | DisplayPrimitive::Shadow { color, .. } => valid(*color),
@@ -613,6 +644,49 @@ mod tests {
             ],
         };
         assert_eq!(list.validate(), Ok(()));
+    }
+
+    #[test]
+    fn high_contrast_and_missing_effect_support_use_the_opaque_fallback() {
+        let bounds = UiRect::new(UiPoint::default(), UiSize::new(100.0, 80.0));
+        let descriptor = UiBackdropDescriptor {
+            bounds,
+            sample_bounds: bounds,
+            tint: UiColor::surface(),
+            opaque_fallback: UiColor::background(),
+        };
+        assert!(matches!(
+            resolve_backdrop(
+                descriptor,
+                UiContrast::Standard,
+                UiEffectCapabilities {
+                    backdrop_filtering: true
+                }
+            ),
+            ResolvedBackdrop::Effect(_)
+        ));
+        for resolution in [
+            resolve_backdrop(
+                descriptor,
+                UiContrast::High,
+                UiEffectCapabilities {
+                    backdrop_filtering: true,
+                },
+            ),
+            resolve_backdrop(
+                descriptor,
+                UiContrast::Standard,
+                UiEffectCapabilities::default(),
+            ),
+        ] {
+            assert_eq!(
+                resolution,
+                ResolvedBackdrop::Opaque {
+                    bounds,
+                    color: UiColor::background(),
+                }
+            );
+        }
     }
 
     #[test]

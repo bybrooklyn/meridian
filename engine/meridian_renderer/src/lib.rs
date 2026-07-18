@@ -40,7 +40,10 @@ pub use snapshot::{
     RenderSnapshotBuilder, SnapshotError, TextureHandle, Transform,
 };
 #[cfg(feature = "ui-raster-bridge")]
-pub use ui_overlay::{UiOverlayRenderReport, UiOverlayRenderer, UiOverlayRendererError};
+pub use ui_overlay::{
+    qualify_ui_display_list, UiOverlayRenderReport, UiOverlayRenderer, UiOverlayRendererError,
+    UiPrimitiveKind, UiRendererQualificationReport,
+};
 pub use upload::{
     RenderUploadBatch, RenderUploadError, RenderUploadOperation, RenderUploadTracker,
 };

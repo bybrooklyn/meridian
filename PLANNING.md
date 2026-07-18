@@ -10,12 +10,14 @@ packages are closed with fresh evidence. `WP-UI-001` is an
 `WP-BLD-001`, `WP-PRC-001`, and `WP-EDT-001` are
 `ImplementedFoundation` after cross-platform GitHub Actions evidence. Run
 `29605881704` for `4463bad` qualified the persistent Creator behavioral
-foundation across Linux, Windows, and macOS. `WP-UI-002`, `WP-UI-003`, and
-`WP-UI-004` are `Partial` after locally validated source packages; GitHub
-Actions runs `29611418454` and `29621896632` could not allocate runners because
-of the account billing state and are recorded as `NotRun`, not failed
-implementation evidence. `WVR-UI-001` permits non-promoting local
-continuation; `RG-UI-001` is open and `WP-UI-005` is the sole active package.
+foundation across Linux, Windows, and macOS. `WP-UI-002` through `WP-UI-005`
+are `Partial` after locally validated source packages; GitHub Actions runs
+`29611418454`, `29621896632`, and `29622972884` could not allocate runners
+because of the account billing state and are recorded as `NotRun`, not failed
+implementation evidence. `ADR-0029` decided `RG-UI-001` for the Penumbra-owned
+direct display-list path without claiming renderer completion. `WVR-UI-001`
+permits non-promoting local continuation; `WP-EDT-002` is the sole active
+package.
 `WP-MDL-001` remains `Partial`; MS-03 remains open.
 
 ## 1. Authority and stop rule
@@ -38,7 +40,7 @@ media, cost-prediction, or competitive-validation system.
 | Penumbra | `Partial` / `Transitional` | direct PBR, cascaded shadows, diffuse irradiance IBL, extraction/upload, typed pass timing, asynchronous visible capture, and structural/native GPU smokes exist |
 | Assets/world/streaming/save | `ImplementedFoundation` / `Partial` | one bounded public source family imports transactionally, packages, worker-streams, activates, saves, recovers, and reconstructs; production schemas/compression/signing remain incomplete |
 | Cairn | `Transitional` | current Rapier wrapper and grounded controller are evidence; Meridian-owned Cairn internals are not implemented |
-| Meridian UI | `ImplementedFoundation` / `Partial` / `Active` | the MS-02 core proof is qualified; `WP-UI-002` through `WP-UI-004` are locally implemented but lack cross-platform qualification, and `WP-UI-005` owns motion, accessibility, effects, and renderer qualification under non-promoting `WVR-UI-001` |
+| Meridian UI | `ImplementedFoundation` / `Partial` | the MS-02 core proof is qualified; `WP-UI-002` through `WP-UI-005` are locally implemented but lack cross-platform qualification, with the full direct display-list renderer and real screen-reader/visual evidence still open |
 | Creator Editor | `ImplementedFoundation` | persistent hub, source-authoritative project documents, typed actions, Creator journey, and universal app structure passed run `29605881704`; this is a behavioral foundation, not Meridian UI 1.0 visual completion |
 | Audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | implementation remains outside the current Creator Editor package |
 | Alluvium | `ImplementedFoundation` | canonical text recipes, strict scalar evaluation, derived-cache recovery, CLI, and a basic inspector are qualified; production/domain work remains open |
@@ -302,10 +304,10 @@ Forward+, specular IBL, Meridian UI, Creator Editor workflows, and game content
 remain outside MS-01.
 
 `MS-01` and `MS-02` are closed. `WP-BLD-001`, `WP-PRC-001`, and
-`WP-EDT-001` are qualified MS-03 foundations. `WP-UI-005` is the sole active
-package and `RG-UI-001` is open under `WVR-UI-001`; `WP-UI-002` through
-`WP-UI-004` and `WP-MDL-001` are retained as `Partial` and cannot be promoted
-by UI work.
+`WP-EDT-001` are qualified MS-03 foundations. `RG-UI-001` is `Decided` by
+`ADR-0029`; `WP-UI-002` through `WP-UI-005` and `WP-MDL-001` are retained as
+`Partial` under `WVR-UI-001` and cannot be promoted by local UI work.
+`WP-EDT-002` is the sole active package.
 Penumbra Stage 1 then proceeds through `WP-PEN-003` and
 `WP-PEN-010`, with `WP-PEN-009` as bounded parallel image-quality work and
 `WP-PEN-011` as the later executable/calibrated forest corpus. `RG-PEN-001`
@@ -972,8 +974,8 @@ dependency-boundary checks, and `git diff --check`. GitHub Actions run
 to allocate a hosted runner for the account billing state. Linux, Windows, and
 macOS rows are therefore `NotRun`. No package or milestone promotion follows.
 
-Current sequence: `WP-UI-004` is locally delivered as `Partial`; `WP-UI-005`
-is active only under non-promoting `WVR-UI-001`.
+Current sequence: `WP-UI-002` through `WP-UI-005` are locally delivered as
+`Partial`; `WP-EDT-002` is active only under non-promoting `WVR-UI-001`.
 
 ## 15.1 Partial package — WP-UI-003 / professional interaction and controls
 
@@ -1112,10 +1114,9 @@ smokes, the UI-free runtime dependency check, and `git diff --check`.
 `actionlint` is `NotRun` because it is not installed. Linux and Windows remain
 unobserved under `WVR-UI-001`; no package or milestone promotion follows.
 
-Next package: `WP-UI-005` is active and its `RG-UI-001` display-list renderer
-gate is open only under non-promoting `WVR-UI-001`.
+Next package: `WP-EDT-002` is active only under non-promoting `WVR-UI-001`.
 
-## 15.3 Active package — WP-UI-005 / motion, accessibility, and renderer qualification
+## 15.3 Partial package — WP-UI-005 / motion, accessibility, and renderer qualification
 
 Work package: `WP-UI-005`
 
@@ -1124,20 +1125,23 @@ reduced-motion substitutions, bounded overlay effects, complete Meridian-owned
 semantics with private platform adapters, and an evidence-backed display-list
 renderer decision without allowing adapter types into public APIs.
 
-Status: `Active`; implementation maturity: `Planned` until the motion,
-accessibility, semantic-adapter, renderer-corpus, and recovery contracts have
-real local evidence. `RG-UI-001` is `Open`. Hosted cross-platform
-qualification remains unavailable and cannot be waived into a completion
-claim.
+Status: `Partial`; implementation maturity: `Partial`. Interruptible bounded
+motion, Reduced Motion, effect fallback, complete Meridian semantic snapshots,
+private AccessKit projection/action routing/recovery, pane-focus cycling,
+100–400% scale fixtures, and the complete 15-category display-list corpus have
+real local evidence. `RG-UI-001` is `Decided` by `ADR-0029`. The selected direct
+GPU path is not complete, real screen-reader/visual review is absent, and hosted
+cross-platform qualification remains unavailable; none can be waived into a
+completion claim.
 
 Requirements: `REQ-UI-001`, `REQ-UI-002`; gate: `RG-UI-001`
 
 Dependencies and Definition of Ready: the locally proven `WP-UI-004` slice
 supplies transactional docking, persisted workspaces, responsive priorities,
 and companion-window descriptors while remaining `Partial`. MS-02 has passed,
-so `RG-UI-001` may open. `WVR-UI-001` permits only non-promoting local
-continuation. AccessKit remains a research dependency until an exact version,
-provenance, license, adapter boundary, and platform fixtures are recorded.
+so `RG-UI-001` could open. `WVR-UI-001` permits only non-promoting local
+continuation. `DEP-UI-004` records exact AccessKit versions, checksums, licenses,
+features, private adapter boundaries, recovery, and platform fixtures.
 
 Files/crates: shared UI crates own interruptible motion, shared-element,
 contrast, scale, semantics, live-region, reading-order, and recovery contracts;
@@ -1170,6 +1174,38 @@ Motion retains spatial animation, inaccessible content is hidden behind an
 effect, semantic identity follows row position, adapter objects cross public
 boundaries, device loss strands focus/recovery, or occluded structural output
 is described as visual quality.
+
+Local validation passed motion interruption, Reduced Motion, semantic-tree and
+untrusted-action tests, AccessKit projection/reactivation, companion focus
+restoration, high contrast and 100–400% scale, effect fallback, all 15 display
+primitive categories, explicit fallback gaps, targeted Clippy, and
+`meridian-spec check`. The complete proportional gates are rerun before source
+delivery. Cross-platform CI remains required before promotion.
+
+## 15.4 Active package — WP-EDT-002 / permanent shell and World workspace
+
+Work package: `WP-EDT-002`
+
+User-visible result: normal `meridian` launches the exact permanent two-row
+application shell, a production-quality hub, and the World workspace with the
+locked palette, hierarchy/browser, real viewport, wider inspector, shelf,
+status, persistent context, and native accessibility.
+
+Status: `Active` only under non-promoting `WVR-UI-001`; implementation maturity:
+`Planned`. The qualified `WP-EDT-001` Creator behavior and locally proven
+`WP-UI-005` framework boundary satisfy the bounded entry dependency without
+promoting either unqualified UI package.
+
+Deliverables: exact separate 44px application and 36px workspace rows;
+macOS-correct title chrome; persistent hub; World composition over real
+Creator source/import/edit/Play/build/recovery authority; typed unavailable
+states for incomplete domains; remembered focus/context; keyboard and assistive
+journeys; native captures; and visible review.
+
+Explicit non-goals: completing later domain workspaces, simulating unavailable
+capabilities, a web shell, a generic assistant sidebar, decorative rings,
+private game content, signing/notarization claims, or milestone promotion
+without fresh Linux, Windows, macOS, accessibility, and visible evidence.
 
 ## 16. Evidence policy
 

@@ -430,7 +430,7 @@ pub struct UiGeometryTokens {
     pub bottom_shelf_expanded: f32,
 }
 
-/// Locked timing descriptors; spring behavior remains a later presentation package.
+/// Locked state-transition timing descriptors consumed by the presentation runtime.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UiMotionTokens {
     pub state_transition_min_ms: u16,

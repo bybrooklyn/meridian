@@ -1450,6 +1450,7 @@ mod tests {
         let output = runtime.reconcile(input);
         let tree = match &output.semantic_delta {
             SemanticDelta::Replace(tree) => tree,
+            SemanticDelta::Update(_) => panic!("first Creator frame cannot be incremental"),
             SemanticDelta::Unchanged => panic!("first Creator frame must publish semantics"),
         };
         let visible_focusable = tree
@@ -1513,6 +1514,7 @@ mod tests {
     fn semantic_bounds(output: &meridian_ui::UiFrameOutput, id: UiNodeId) -> meridian_ui::UiRect {
         let tree = match &output.semantic_delta {
             SemanticDelta::Replace(tree) => tree,
+            SemanticDelta::Update(_) => panic!("first fixture frame cannot be incremental"),
             SemanticDelta::Unchanged => panic!("first fixture frame must publish semantics"),
         };
         tree.nodes
@@ -1707,7 +1709,7 @@ mod tests {
                 }
                 DisplayPrimitive::Rect { .. }
                 | DisplayPrimitive::Border { .. }
-                | DisplayPrimitive::FocusRing { .. }
+                | DisplayPrimitive::FocusIndicator { .. }
                 | DisplayPrimitive::RoundedRect { .. }
                 | DisplayPrimitive::Path { .. }
                 | DisplayPrimitive::Image { .. }
@@ -1769,7 +1771,7 @@ mod tests {
                 }
                 DisplayPrimitive::Rect { .. }
                 | DisplayPrimitive::Border { .. }
-                | DisplayPrimitive::FocusRing { .. }
+                | DisplayPrimitive::FocusIndicator { .. }
                 | DisplayPrimitive::RoundedRect { .. }
                 | DisplayPrimitive::Path { .. }
                 | DisplayPrimitive::Image { .. }

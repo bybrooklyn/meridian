@@ -53,6 +53,7 @@ Use the status vocabulary from the master specification:
 | [ADR-0026](ADR-0026-environmental-performance-contracts.md) | Environmental Performance Contracts | Adopted | Contract architecture adopted; implementation deferred |
 | [ADR-0027](ADR-0027-competitive-performance-quality-program.md) | Competitive Performance and Quality Program | Adopted | ResearchReady program; implementation deferred |
 | [ADR-0028](ADR-0028-meridian-ui-retained-framework-and-shell.md) | Meridian UI Retained Framework and Permanent Application Shell | Adopted | Planned sequential packages after qualified foundations |
+| [ADR-0029](ADR-0029-meridian-ui-display-list-renderer.md) | Meridian UI Display-List Renderer Direction | Adopted | Partial direct-path implementation; bounded fallback retained |
 
 ## Template
 

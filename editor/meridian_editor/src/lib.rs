@@ -49,7 +49,8 @@ use meridian_modeler::{
 };
 use meridian_package::{MountedPackage, PackageBuilder, PackageChunk, PackageLimits};
 use meridian_platform::{
-    run as run_platform, EventLoopMode, PlatformApplication, PlatformConfig, PlatformContext,
+    run as run_platform, EventLoopMode, PlatformAccessibilityActionData,
+    PlatformAccessibilityActionRequest, PlatformApplication, PlatformConfig, PlatformContext,
     PlatformError, PlatformEvent, PlatformEventEnvelope, PlatformModifiers, PlatformWindow,
     RuntimeLifecycle, SurfaceSignal, WindowSize,
 };
@@ -72,10 +73,10 @@ use meridian_streaming::{
 };
 use meridian_tasks::{TaskClass, TaskContext};
 use meridian_ui::{
-    recovery_panel_document, runtime_overlay_document, SemanticDelta, UiCollectionNavigation,
-    UiCommandRequest, UiDiagnostic, UiEvent, UiFrameInput, UiFrameOutput, UiInputDeviceId,
-    UiInputDeviceKind, UiNodeId, UiPoint, UiPointerButton, UiPointerEvent, UiPointerPhase,
-    UiRuntime, UiScrollDelta, UiScrollEvent, UiScrollPhase, UiScrollUnit, UiSize,
+    recovery_panel_document, runtime_overlay_document, SemanticAction, SemanticDelta, SemanticTree,
+    UiCollectionNavigation, UiCommandRequest, UiDiagnostic, UiEvent, UiFrameInput, UiFrameOutput,
+    UiInputDeviceId, UiInputDeviceKind, UiNodeId, UiPoint, UiPointerButton, UiPointerEvent,
+    UiPointerPhase, UiRuntime, UiScrollDelta, UiScrollEvent, UiScrollPhase, UiScrollUnit, UiSize,
     UiTextCursorDirection, UiWidgetKind,
 };
 use meridian_ui_editor::{
@@ -568,7 +569,7 @@ fn run_ui_headless_smoke() -> AppResult<()> {
     let recovery_output = recovery.reconcile(recovery_input);
     let semantic_node_count = match &recovery_output.semantic_delta {
         SemanticDelta::Replace(tree) => tree.nodes.len(),
-        SemanticDelta::Unchanged => 0,
+        SemanticDelta::Update(_) | SemanticDelta::Unchanged => 0,
     };
     if recovery_output.commands.len() != 1
         || recovery_output.commands[0].action != "project.retry_open"
@@ -2360,6 +2361,38 @@ impl CreatorApplication {
         }
     }
 
+    fn route_accessibility_action(&mut self, request: PlatformAccessibilityActionRequest) {
+        match (request.action, request.data) {
+            (SemanticAction::Focus, None) => {
+                self.pending_events
+                    .push(UiEvent::AssistiveFocus(request.target));
+            }
+            (SemanticAction::Activate, None) => {
+                self.pending_events
+                    .push(UiEvent::AssistiveActivate(request.target));
+            }
+            (
+                SemanticAction::SetValue | SemanticAction::ReplaceSelectedText,
+                Some(PlatformAccessibilityActionData::Text(text)),
+            ) => self.pending_events.push(UiEvent::AssistiveSetValue {
+                target: request.target,
+                text,
+                replace_selection: request.action == SemanticAction::ReplaceSelectedText,
+            }),
+            (SemanticAction::SetValue, Some(PlatformAccessibilityActionData::Numeric(value))) => {
+                self.pending_events.push(UiEvent::AssistiveSetValue {
+                    target: request.target,
+                    text: value.to_string(),
+                    replace_selection: false,
+                });
+            }
+            _ => {
+                "Accessibility action was rejected because the control did not authorize it"
+                    .clone_into(&mut self.hub_status);
+            }
+        }
+    }
+
     fn handle_event(&mut self, event: PlatformEvent, context: &mut PlatformContext<'_>) {
         let result: AppResult<()> = match event {
             PlatformEvent::WindowCreated { .. } => match context.window().cloned() {
@@ -2415,6 +2448,16 @@ impl CreatorApplication {
                 self.reconcile_ui(context)
                     .map(|()| context.request_redraw())
             }
+            PlatformEvent::AccessibilityAction(request) => {
+                self.route_accessibility_action(request);
+                self.reconcile_ui(context)
+                    .map(|()| context.request_redraw())
+            }
+            PlatformEvent::AccessibilityRejected(error) => {
+                self.hub_status = format!("Accessibility request rejected: {error}");
+                self.reconcile_ui(context)
+                    .map(|()| context.request_redraw())
+            }
             PlatformEvent::Input(event) => {
                 self.route_input(event);
                 self.reconcile_ui(context)
@@ -2462,6 +2505,10 @@ impl PlatformApplication for CreatorApplication {
 
     fn terminal_error(&self) -> Option<PlatformError> {
         self.terminal_error.clone()
+    }
+
+    fn accessibility_tree(&self) -> Option<SemanticTree> {
+        Some(self.frame.semantic_tree.clone())
     }
 }
 
@@ -4621,6 +4668,8 @@ impl UiNativeSmokeApplication {
             | PlatformEvent::TextCommit(_)
             | PlatformEvent::ImePreedit { .. }
             | PlatformEvent::ImeCancelled
+            | PlatformEvent::AccessibilityAction(_)
+            | PlatformEvent::AccessibilityRejected(_)
             | PlatformEvent::MemoryWarning => Ok(()),
         };
         if let Err(error) = result {
@@ -4633,6 +4682,10 @@ impl UiNativeSmokeApplication {
 impl PlatformApplication for UiNativeSmokeApplication {
     fn on_event(&mut self, event: PlatformEvent, context: &mut PlatformContext<'_>) {
         self.handle_event(event, context);
+    }
+
+    fn accessibility_tree(&self) -> Option<SemanticTree> {
+        Some(self.frame.semantic_tree.clone())
     }
 }
 
@@ -5177,6 +5230,8 @@ fn platform_event_name(event: &PlatformEvent) -> &'static str {
         PlatformEvent::TextCommit(_) => "text-commit",
         PlatformEvent::ImePreedit { .. } => "ime-preedit",
         PlatformEvent::ImeCancelled => "ime-cancelled",
+        PlatformEvent::AccessibilityAction(_) => "accessibility-action",
+        PlatformEvent::AccessibilityRejected(_) => "accessibility-rejected",
         PlatformEvent::RedrawRequested => "redraw-requested",
         PlatformEvent::CloseRequested => "close-requested",
         PlatformEvent::MemoryWarning => "memory-warning",
