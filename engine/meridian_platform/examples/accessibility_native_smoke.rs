@@ -15,7 +15,9 @@ mod enabled {
         PlatformContext, PlatformError, PlatformErrorKind, PlatformEvent, WindowSize,
     };
     use meridian_ui_core::{SemanticRole, UiControlState, UiNodeId, UiPoint, UiRect, UiSize};
-    use meridian_ui_semantics::{SemanticAction, SemanticLive, SemanticNode, SemanticTree};
+    use meridian_ui_semantics::{
+        SemanticAction, SemanticLive, SemanticNode, SemanticRelationships, SemanticTree,
+    };
 
     const ROOT: UiNodeId = UiNodeId::new(1);
     const PROJECT_NAME: UiNodeId = UiNodeId::new(2);
@@ -24,8 +26,7 @@ mod enabled {
     const EXIT_AFTER_REDRAWS: u8 = 4;
     const SYNTHETIC_ACTION_LIMITATION: &str =
         "AccessKit/winit has no supported synthetic native assistive-client activation/action API";
-    const REACTIVATION_LIMITATION: &str =
-        "native reactivation is assistive-client driven and not observable through the Meridian application boundary";
+    const REACTIVATION_LIMITATION: &str = "native reactivation is assistive-client driven and not observable through the Meridian application boundary";
 
     #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
     enum NativeOutcome {
@@ -140,6 +141,7 @@ mod enabled {
             actions: Vec::new(),
             value: None,
             state: UiControlState::default(),
+            relationships: SemanticRelationships::default(),
             live: SemanticLive::Off,
             collection_item: None,
             bounds,

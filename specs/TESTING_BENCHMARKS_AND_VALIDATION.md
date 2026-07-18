@@ -111,6 +111,33 @@ An expired or materially invalidated claim is `Stale` or retracted. A new engine
 version, driver, renderer path, corpus, setting, quality method, or material
 feature-parity change creates a new record rather than mutating the old result.
 
+### Direct-UI renderer evidence contract
+
+The `WP-UI-005` direct-renderer runners are distinct evidence rows. The hidden
+qualification path uses a copy-capable offscreen target and exact raw-RGBA
+fixtures bound to an explicit RHI profile, fixture schema/generator/input
+schema, corpus hashes, dimensions, and raw hashes. It may report `Pass` only
+when every required case passes on the exact registered profile, but that is a
+runner outcome rather than package qualification. A missing or different
+profile is `NotRun`; a matched-fixture pixel difference is `Fail`; both runner
+failures and mismatches leave machine-readable portable artifacts. Source state
+and source checkpoints are caller-declared path-free labels rather than trusted
+attestation, and artifact references are relative so evidence can be moved
+without publishing checkout paths. Local or dirty working-tree reports remain
+`Inconclusive` evidence and cannot promote `WP-UI-005`.
+
+The controlled device-loss path is an explicit non-default fault-injection
+test: it calls the backend device destruction seam, observes the real loss
+callback, proves typed stale-resource rejection after rebuild, and compares a
+replayed immutable corpus to its baseline. It is not spontaneous hardware or
+driver-loss qualification. The performance path keeps raw JSONL samples and
+separates resource setup from steady reuse; it reports wall-clock stages,
+typed GPU-timing availability, capture diagnostics, and payload accounting.
+It does not invent thresholds, label readback wait as GPU or interactive
+latency, infer allocator/VRAM/residency, establish a calibrated result, or
+replace presented visual, real screen-reader, accessibility, or cross-platform
+review.
+
 ## 4. Test portfolio
 
 - compile/static: format, clippy, type/API/schema, forbidden edges, unsafe,

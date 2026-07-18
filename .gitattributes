@@ -1,1 +1,2 @@
 third_party/licenses/*.txt -whitespace
+engine/meridian_renderer/tests/fixtures/**/*.rgba binary

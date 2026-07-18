@@ -18,8 +18,14 @@ implementation steps ran; the skipped platform rows are `NotRun`, not failed
 implementation evidence. `ADR-0029` decided `RG-UI-001` for the Penumbra-owned
 direct display-list path without claiming renderer completion. `WVR-UI-001`
 permits non-promoting local continuation. `WP-UI-005` is reactivated as the
-sole corrective package to close framework renderer, diagnostics, recovery,
-and platform-evidence gaps. In-progress `WP-EDT-002` source is preserved but
+sole corrective package. It now has local profile-bound exact offscreen golden
+capture, controlled device-destruction replay, and uncalibrated raw performance
+output. That output remains `Inconclusive` qualification evidence for current
+local/dirty source because provenance is caller-declared; this preserves
+unavailable timing/memory states and does not establish visual review, real
+screen-reader, accessibility, or cross-platform qualification.
+Fresh Linux, Windows, and macOS evidence is still `NotRun` because hosted
+runners cannot be allocated. In-progress `WP-EDT-002` source is preserved but
 paused; no editor completion or maturity claim follows.
 `WP-MDL-001` remains `Partial`; MS-03 remains open.
 
@@ -43,7 +49,7 @@ media, cost-prediction, or competitive-validation system.
 | Penumbra | `Partial` / `Transitional` | direct PBR, cascaded shadows, diffuse irradiance IBL, extraction/upload, typed pass timing, asynchronous visible capture, and structural/native GPU smokes exist |
 | Assets/world/streaming/save | `ImplementedFoundation` / `Partial` | one bounded public source family imports transactionally, packages, worker-streams, activates, saves, recovers, and reconstructs; production schemas/compression/signing remain incomplete |
 | Cairn | `Transitional` | current Rapier wrapper and grounded controller are evidence; Meridian-owned Cairn internals are not implemented |
-| Meridian UI | `ImplementedFoundation` / `Partial` | the MS-02 core proof is qualified; `WP-UI-002` through `WP-UI-005` are locally implemented but lack cross-platform qualification, with golden visual qualification and real screen-reader/visible-review evidence still open |
+| Meridian UI | `ImplementedFoundation` / `Partial` | the MS-02 core proof is qualified; `WP-UI-002` through `WP-UI-005` are locally implemented but lack cross-platform qualification, with profile-bound offscreen golden correctness, controlled replay, and raw uncalibrated timing output local-only and `Inconclusive`; presented visual, real screen-reader, accessibility, and cross-platform evidence remain open |
 | Creator Editor | `ImplementedFoundation` | persistent hub, source-authoritative project documents, typed actions, Creator journey, and universal app structure passed run `29605881704`; this is a behavioral foundation, not Meridian UI 1.0 visual completion |
 | Audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | implementation remains outside the current Creator Editor package |
 | Alluvium | `ImplementedFoundation` | canonical text recipes, strict scalar evaluation, derived-cache recovery, CLI, and a basic inspector are qualified; production/domain work remains open |
@@ -1140,9 +1146,12 @@ real local evidence. `RG-UI-001` is `Decided` by `ADR-0029`. The selected direct
 GPU path now has bounded isolated/nested layer targets and a local native
 `Presented` structural smoke with bounded surface readback. It also has the
 bounded direct backdrop and geometry/color-quality treatments described below,
-but no golden-image qualification. Real screen-reader and visible-review
-evidence is absent, and hosted cross-platform qualification remains
-unavailable; none can be waived into a completion claim.
+plus local profile-bound offscreen raw-RGBA golden comparison, controlled
+device-destruction replay, and raw uncalibrated performance samples. These are
+`Inconclusive` qualification evidence for current local/dirty source and are
+not presented visual, accessibility, or cross-platform qualification. Real
+screen-reader and visible-review evidence is absent, and hosted cross-platform
+qualification remains unavailable; none can be waived into a completion claim.
 
 Requirements: `REQ-UI-001`, `REQ-UI-002`; gate: `RG-UI-001`
 
@@ -1208,10 +1217,21 @@ geometry treatment, fully clipped draws, resource and effect-target bounds,
 stencil depth, binding requirements, nested composition, and rejected-frame
 state are regression-tested. Native presented-surface readback also validates
 bounded RGBA8 sRGB metadata and non-uniform output; this is local structural
-evidence, not a visual-quality claim. Golden visual qualification, device-loss
-replay evidence, calibrated renderer measurements, real screen-reader and
-visible-review evidence, and cross-platform CI remain open. This is not
-renderer or package completion. The complete proportional
+evidence, not a visual-quality claim. Local profile-bound raw-RGBA comparison,
+controlled device-destruction replay, and raw uncalibrated performance samples
+are recorded as `EV-UI-20260718-001` through `EV-UI-20260718-003`: the settled
+local working-tree runner outputs are profile-bound 3/3 exact raw-RGBA goldens
+at `target/meridian-evidence/ui-direct-qualification/20260718-settled/`, a
+controlled `Destroyed` -> `DeviceLost` recovery with a zero-difference
+57,600-pixel replay at
+`target/meridian-evidence/ui-direct-device-loss-replay/20260718-settled/`, and
+three warmups plus ten samples per mode at
+`target/meridian-evidence/ui-direct-performance/20260718-settled/`. Each is
+`Inconclusive`, caller-declared working-tree evidence and is non-promoting.
+Presented
+visual qualification, calibrated renderer measurements, real screen-reader and
+visible-review evidence, accessibility qualification, and cross-platform CI
+remain open. This is not renderer or package completion. The complete proportional
 gates are rerun before source delivery. Cross-platform CI remains required
 before promotion.
 

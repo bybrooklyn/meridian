@@ -1,0 +1,65 @@
+{
+  "schema": "meridian.ui-direct-golden-fixtures/v1",
+  "version": 1,
+  "generator": "meridian-benchmark/ui_direct_qualification",
+  "regeneration_command": "MERIDIAN_ALLOW_GOLDEN_FIXTURE_WRITE=1 MERIDIAN_SOURCE_STATE=clean-commit MERIDIAN_SOURCE_CHECKPOINT=<40-lowercase-commit-sha> cargo run -p meridian-benchmark --example ui_direct_qualification --features ui-direct-qualification -- --write-fixtures --evidence target/meridian-evidence/ui-direct-qualification/<unique>",
+  "input_schema": "meridian.ui-direct-qualification/v1",
+  "source_checkpoint": "meridian.ui-direct-qualification-corpus.v1",
+  "profile": {
+    "backend": "Metal",
+    "adapter_name": "Apple M4",
+    "driver": "NotAvailable",
+    "driver_info": "NotAvailable",
+    "vendor_id": 0,
+    "device_id": 0,
+    "surface_format": "Bgra8UnormSrgb",
+    "operating_system": "macos",
+    "architecture": "aarch64",
+    "adapter_kind": "Integrated",
+    "memory_class": "Unified",
+    "timestamp_query_capability": "Enabled",
+    "hdr_surface_formats_capability": "Supported",
+    "max_sampled_textures_per_shader_stage": 96,
+    "enabled_features": [
+      "MeshShaders",
+      "SubgroupOperations",
+      "TextureAtomics",
+      "RayQueries",
+      "BindlessTextures"
+    ],
+    "configuration": {
+      "power_preference": "HighPerformance",
+      "preferred_backend": null,
+      "allow_software_adapter": false,
+      "present_policy": "Vsync",
+      "desired_maximum_frame_latency": 2,
+      "enable_timestamps": true
+    }
+  },
+  "cases": [
+    {
+      "id": "standard-1x",
+      "corpus_hash": "fnv1a64:091a0a440c3a1435",
+      "width": 320,
+      "height": 180,
+      "rgba": "metal-apple-m4-standard-1x.rgba",
+      "pixel_hash": "a4489b8484c142b18aafbd09f3ba371f9c692503f45c0e3de690b222f638e394"
+    },
+    {
+      "id": "standard-2x",
+      "corpus_hash": "fnv1a64:54201954972dc170",
+      "width": 640,
+      "height": 360,
+      "rgba": "metal-apple-m4-standard-2x.rgba",
+      "pixel_hash": "691aa483ca544c55d2746c08f882f34e0d121f906a96eb1c0e6e17d7bca1b3d9"
+    },
+    {
+      "id": "high-contrast-opaque-1x",
+      "corpus_hash": "fnv1a64:89a12dce9db8fa27",
+      "width": 320,
+      "height": 180,
+      "rgba": "metal-apple-m4-high-contrast-opaque-1x.rgba",
+      "pixel_hash": "3f0618e9975b542c6de796b2065010bfc4a4ea7920cd768eb4592c8156499873"
+    }
+  ]
+}

@@ -7,7 +7,7 @@ use std::fmt::{self, Display, Formatter};
 
 use meridian_ui_core::{
     MotionPreference, UiColor, UiMotionTokens, UiNodeId, UiPoint, UiRect, UiSize,
-    MAX_RETAINED_NODES,
+    UiSpatialMotionKind, MAX_RETAINED_NODES,
 };
 
 const SETTLED_POSITION_EPSILON: f32 = 0.01;
@@ -21,13 +21,6 @@ pub enum UiMotionChannel {
     Spatial,
     Opacity,
     Color,
-}
-
-/// Why a spatial spring exists. Decorative movement is not accepted.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum UiSpatialMotionKind {
-    PhysicalPanel,
-    SharedElement,
 }
 
 /// Presentation value returned without changing authoritative geometry or state.
@@ -333,6 +326,17 @@ impl UiMotionSystem {
                 active: track.active,
             },
         })
+    }
+
+    /// Returns every retained track in stable node/channel order for an
+    /// immutable runtime frame. The registry's retained-node cap bounds this
+    /// allocation and no adapter state crosses this boundary.
+    #[must_use]
+    pub fn snapshots(&self) -> Vec<UiMotionSnapshot> {
+        self.tracks
+            .iter()
+            .filter_map(|((node, channel), _)| self.snapshot(*node, *channel))
+            .collect()
     }
 
     /// Returns authoritative spatial geometry, never lagging presentation motion.

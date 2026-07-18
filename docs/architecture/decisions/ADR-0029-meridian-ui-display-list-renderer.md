@@ -65,10 +65,20 @@ reached the RHI `Presented` outcome and captured bounded non-uniform RGBA8 sRGB
 surface pixels; that proves submission, presentation, and readback plumbing,
 not golden pixel correctness or review quality.
 
-This is an architecture decision, not renderer completion. The direct GPU path
-still needs golden-image qualification, calibrated
-latency/memory/cache evidence, device-loss replay evidence, real screen-reader
-evidence, cross-platform CI, and presented native visual review.
+The machine-validated [renderer-path evaluation registry](../../../specs/registry/renderer-path-evaluations.json)
+records both the selected direct path and the CPU bridge's explicitly
+non-production fallback role. It is authoritative for the architecture
+selection boundary; evidence records remain authoritative for qualification.
+
+The direct path now has local profile-bound raw-RGBA golden comparison,
+controlled device-destruction replay, and uncalibrated raw performance samples.
+Those runners emit typed `NotRun`, `Fail`, or unavailable states rather than
+manufacturing a green result. Current local/dirty reports are `Inconclusive`
+qualification evidence because their source provenance is caller-declared, not
+trusted source attestation; they do not change this architecture decision into
+renderer completion. It still needs qualified Linux/Windows/macOS evidence,
+calibrated latency/memory/cache evidence, real screen-reader evidence, and
+presented native visual review.
 
 ## Intended v0.5 Links
 

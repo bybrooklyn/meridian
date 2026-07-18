@@ -89,6 +89,10 @@ stable_ui_id!(
     UiDragItemId,
     "Stable identity carried by a typed drag proposal."
 );
+stable_ui_id!(
+    UiSharedElementId,
+    "Stable identity pairing source and destination presentations across retained nodes."
+);
 
 /// Meridian-owned device family; platform handles never cross this boundary.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -356,6 +360,40 @@ pub enum MotionPreference {
     #[default]
     Full,
     Reduced,
+}
+
+/// The only retained reasons that may request spatial presentation motion.
+///
+/// Logical layout, hit testing, focus, and semantics always use the accepted
+/// target geometry. This descriptor authorizes only the renderer-facing
+/// presentation interpolation between retained layouts.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiSpatialMotionKind {
+    PhysicalPanel,
+    SharedElement,
+}
+
+/// Presentation-only intent declared by one retained node.
+///
+/// The opacity target is part of the retained visual source, while its current
+/// interpolated value is owned by the runtime. It cannot change layout,
+/// interaction, or semantic authority.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UiPresentationOptions {
+    pub spatial_motion: Option<UiSpatialMotionKind>,
+    /// Required when `spatial_motion` is `SharedElement`; never aliases a node ID.
+    pub shared_element: Option<UiSharedElementId>,
+    pub opacity: f32,
+}
+
+impl Default for UiPresentationOptions {
+    fn default() -> Self {
+        Self {
+            spatial_motion: None,
+            shared_element: None,
+            opacity: 1.0,
+        }
+    }
 }
 
 /// Normative Meridian layout families.
@@ -946,14 +984,56 @@ pub struct UiControlState {
     pub invalid: bool,
 }
 
+/// A Meridian-owned relationship between two retained semantic nodes.
+///
+/// The owning node declares the relationship and document validation resolves
+/// every target against the accepted retained tree. Platform adapters remain
+/// private and may only project this bounded vocabulary.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum UiSemanticRelationshipKind {
+    LabelledBy,
+    DescribedBy,
+    Controls,
+    Details,
+    FlowTo,
+    ErrorMessage,
+}
+
+/// Stable relationships declared by one retained semantic node.
+///
+/// Structural parent/child ownership remains the retained document tree. These
+/// relations add only non-structural assistive context and never grant command
+/// or filesystem authority.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct UiSemanticRelationships {
+    pub labelled_by: Vec<UiNodeId>,
+    pub described_by: Vec<UiNodeId>,
+    pub controls: Vec<UiNodeId>,
+    pub details: Vec<UiNodeId>,
+    pub flow_to: Vec<UiNodeId>,
+    pub error_message: Option<UiNodeId>,
+}
+
+/// Position metadata for one realized item in a potentially virtualized
+/// collection. The collection itself is never materialized merely to publish
+/// this bounded semantic context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiSemanticCollectionItem {
+    pub position: u32,
+    pub set_size: u32,
+}
+
 /// Named semantics and a typed action token declared by a UI node.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiSemantics {
     pub role: SemanticRole,
     pub name: String,
+    pub description: Option<String>,
     pub action: Option<String>,
     pub value: Option<String>,
     pub state: UiControlState,
+    pub relationships: UiSemanticRelationships,
+    pub collection_item: Option<UiSemanticCollectionItem>,
 }
 
 impl UiSemantics {
@@ -962,9 +1042,12 @@ impl UiSemantics {
         Self {
             role: SemanticRole::Group,
             name: name.into(),
+            description: None,
             action: None,
             value: None,
             state: UiControlState::default(),
+            relationships: UiSemanticRelationships::default(),
+            collection_item: None,
         }
     }
 
@@ -973,9 +1056,12 @@ impl UiSemantics {
         Self {
             role: SemanticRole::Status,
             name: name.into(),
+            description: None,
             action: None,
             value: None,
             state: UiControlState::default(),
+            relationships: UiSemanticRelationships::default(),
+            collection_item: None,
         }
     }
 
@@ -984,9 +1070,12 @@ impl UiSemantics {
         Self {
             role: SemanticRole::Button,
             name: name.into(),
+            description: None,
             action: Some(action.into()),
             value: None,
             state: UiControlState::default(),
+            relationships: UiSemanticRelationships::default(),
+            collection_item: None,
         }
     }
 
@@ -995,9 +1084,12 @@ impl UiSemantics {
         Self {
             role: SemanticRole::TextInput,
             name: name.into(),
+            description: None,
             action: None,
             value: None,
             state: UiControlState::default(),
+            relationships: UiSemanticRelationships::default(),
+            collection_item: None,
         }
     }
 
@@ -1006,12 +1098,15 @@ impl UiSemantics {
         Self {
             role: SemanticRole::ToggleButton,
             name: name.into(),
+            description: None,
             action: Some(action.into()),
             value: Some(if value { "on" } else { "off" }.to_owned()),
             state: UiControlState {
                 selected: value,
                 ..UiControlState::default()
             },
+            relationships: UiSemanticRelationships::default(),
+            collection_item: None,
         }
     }
 
@@ -1020,9 +1115,12 @@ impl UiSemantics {
         Self {
             role: SemanticRole::ProgressIndicator,
             name: name.into(),
+            description: None,
             action: None,
             value: Some(format!("{}%", value.min(100))),
             state: UiControlState::default(),
+            relationships: UiSemanticRelationships::default(),
+            collection_item: None,
         }
     }
 
@@ -1031,9 +1129,12 @@ impl UiSemantics {
         Self {
             role,
             name: name.into(),
+            description: None,
             action: None,
             value: None,
             state: UiControlState::default(),
+            relationships: UiSemanticRelationships::default(),
+            collection_item: None,
         }
     }
 }
@@ -2017,6 +2118,8 @@ pub struct UiNode {
     pub absolute_position: Option<UiAbsolutePosition>,
     pub icon: Option<IconId>,
     pub font_role: UiFontRole,
+    /// Retained presentation intent; never authoritative geometry or state.
+    pub presentation: UiPresentationOptions,
     pub semantics: UiSemantics,
     pub text: Option<String>,
     pub text_input: Option<UiTextInputOptions>,
@@ -2047,6 +2150,7 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::group(name),
             text: None,
             text_input: None,
@@ -2072,6 +2176,7 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::status(name),
             text: Some(text.into()),
             text_input: None,
@@ -2102,6 +2207,7 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::button(name, action),
             text: Some(text.into()),
             text_input: None,
@@ -2137,6 +2243,7 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::text_input(name),
             text: Some(if options.password {
                 String::new()
@@ -2210,10 +2317,64 @@ impl UiNode {
         self
     }
 
+    /// Permits only physical-panel or shared-element presentation interpolation.
+    #[must_use]
+    pub const fn with_spatial_motion(mut self, kind: UiSpatialMotionKind) -> Self {
+        self.presentation.spatial_motion = Some(kind);
+        self
+    }
+
+    /// Pairs this retained node with a prior or future shared-element target.
+    ///
+    /// The identity remains distinct from `UiNodeId` so relocation can bridge
+    /// an outgoing and incoming retained node without changing source or
+    /// interaction authority.
+    #[must_use]
+    pub const fn with_shared_element_motion(mut self, shared_element: UiSharedElementId) -> Self {
+        self.presentation.spatial_motion = Some(UiSpatialMotionKind::SharedElement);
+        self.presentation.shared_element = Some(shared_element);
+        self
+    }
+
+    /// Sets a bounded retained opacity target for runtime presentation.
+    ///
+    /// Document validation rejects non-finite values and values outside the
+    /// closed unit interval before a frame can observe them.
+    #[must_use]
+    pub const fn with_presentation_opacity(mut self, opacity: f32) -> Self {
+        self.presentation.opacity = opacity;
+        self
+    }
+
     /// Applies bounded built-in validation to a retained text control.
     #[must_use]
     pub const fn with_text_validation(mut self, validation: UiTextValidation) -> Self {
         self.text_validation = Some(validation);
+        self
+    }
+
+    /// Adds bounded explanatory text to this node's semantic contract.
+    #[must_use]
+    pub fn with_semantic_description(mut self, description: impl Into<String>) -> Self {
+        self.semantics.description = Some(description.into());
+        self
+    }
+
+    /// Declares validated non-structural semantic relationships for this node.
+    #[must_use]
+    pub fn with_semantic_relationships(mut self, relationships: UiSemanticRelationships) -> Self {
+        self.semantics.relationships = relationships;
+        self
+    }
+
+    /// Publishes this realized row's position without realizing its full
+    /// collection for assistive technology.
+    #[must_use]
+    pub const fn with_semantic_collection_item(
+        mut self,
+        collection_item: UiSemanticCollectionItem,
+    ) -> Self {
+        self.semantics.collection_item = Some(collection_item);
         self
     }
 
@@ -2292,6 +2453,7 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::toggle(name, action, value),
             text: Some(if value { "On" } else { "Off" }.to_owned()),
             text_input: None,
@@ -2319,6 +2481,7 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::progress(name, value),
             text: Some(format!("{value}%")),
             text_input: None,
@@ -2695,6 +2858,7 @@ pub enum UiDocumentError {
     UnexpectedTextInputOptions(UiNodeId),
     UnexpectedTextValidation(UiNodeId),
     PasswordInitialValue(UiNodeId),
+    PasswordSemanticValue(UiNodeId),
     DragSourceNotFocusable(UiNodeId),
     DropTargetNotFocusable(UiNodeId),
     TooManyDropKinds {
@@ -2726,18 +2890,48 @@ pub enum UiDocumentError {
     MinimumExceedsMaximum(UiNodeId),
     InvalidAspectRatio(UiNodeId),
     InvalidLayoutValue(UiNodeId),
+    InvalidPresentationOpacity(UiNodeId),
+    SharedElementIdentityMissing(UiNodeId),
+    UnexpectedSharedElementIdentity(UiNodeId),
+    DuplicateSharedElementIdentity {
+        first: UiNodeId,
+        second: UiNodeId,
+        shared_element: UiSharedElementId,
+    },
     SemanticTextTooLong {
         node: UiNodeId,
         field: UiSemanticField,
         bytes: usize,
         maximum: usize,
     },
+    SemanticRelationshipMissingTarget {
+        node: UiNodeId,
+        relationship: UiSemanticRelationshipKind,
+        target: UiNodeId,
+    },
+    SemanticRelationshipSelfReference {
+        node: UiNodeId,
+        relationship: UiSemanticRelationshipKind,
+    },
+    DuplicateSemanticRelationship {
+        node: UiNodeId,
+        relationship: UiSemanticRelationshipKind,
+        target: UiNodeId,
+    },
+    TooManySemanticRelationshipTargets {
+        node: UiNodeId,
+        relationship: UiSemanticRelationshipKind,
+        count: usize,
+        maximum: usize,
+    },
+    InvalidSemanticCollectionItem(UiNodeId),
 }
 
 /// Bounded semantic string field reported by document validation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UiSemanticField {
     Name,
+    Description,
     Action,
     Value,
 }
@@ -2780,6 +2974,10 @@ impl UiDocument {
             Self::validate_geometry(*id, node)?;
             Self::validate_control(*id, node)?;
             Self::register_children(*id, node, &by_id, &mut parents)?;
+        }
+        Self::validate_presentation_identities(&by_id)?;
+        for (id, node) in &by_id {
+            Self::validate_semantic_relationships(*id, node, &by_id)?;
         }
 
         let mut visited = BTreeSet::new();
@@ -2853,6 +3051,41 @@ impl UiDocument {
         {
             return Err(UiDocumentError::InvalidAspectRatio(id));
         }
+        if !node.presentation.opacity.is_finite()
+            || !(0.0..=1.0).contains(&node.presentation.opacity)
+        {
+            return Err(UiDocumentError::InvalidPresentationOpacity(id));
+        }
+        Ok(())
+    }
+
+    fn validate_presentation_identities(
+        nodes: &BTreeMap<UiNodeId, UiNode>,
+    ) -> Result<(), UiDocumentError> {
+        let mut shared_elements = BTreeMap::new();
+        for (id, node) in nodes {
+            match (
+                node.presentation.spatial_motion,
+                node.presentation.shared_element,
+            ) {
+                (Some(UiSpatialMotionKind::SharedElement), None) => {
+                    return Err(UiDocumentError::SharedElementIdentityMissing(*id));
+                }
+                (Some(UiSpatialMotionKind::SharedElement), Some(shared_element)) => {
+                    if let Some(first) = shared_elements.insert(shared_element, *id) {
+                        return Err(UiDocumentError::DuplicateSharedElementIdentity {
+                            first,
+                            second: *id,
+                            shared_element,
+                        });
+                    }
+                }
+                (None | Some(UiSpatialMotionKind::PhysicalPanel), Some(_)) => {
+                    return Err(UiDocumentError::UnexpectedSharedElementIdentity(*id));
+                }
+                (None | Some(UiSpatialMotionKind::PhysicalPanel), None) => {}
+            }
+        }
         Ok(())
     }
 
@@ -2865,6 +3098,10 @@ impl UiDocument {
     fn validate_semantics(id: UiNodeId, node: &UiNode) -> Result<(), UiDocumentError> {
         for (field, value) in [
             (UiSemanticField::Name, Some(node.semantics.name.as_str())),
+            (
+                UiSemanticField::Description,
+                node.semantics.description.as_deref(),
+            ),
             (UiSemanticField::Action, node.semantics.action.as_deref()),
             (UiSemanticField::Value, node.semantics.value.as_deref()),
         ] {
@@ -2901,6 +3138,103 @@ impl UiDocument {
         Ok(())
     }
 
+    fn validate_semantic_relationships(
+        id: UiNodeId,
+        node: &UiNode,
+        nodes: &BTreeMap<UiNodeId, UiNode>,
+    ) -> Result<(), UiDocumentError> {
+        let relationships = &node.semantics.relationships;
+        for (relationship, targets) in [
+            (
+                UiSemanticRelationshipKind::LabelledBy,
+                relationships.labelled_by.as_slice(),
+            ),
+            (
+                UiSemanticRelationshipKind::DescribedBy,
+                relationships.described_by.as_slice(),
+            ),
+            (
+                UiSemanticRelationshipKind::Controls,
+                relationships.controls.as_slice(),
+            ),
+            (
+                UiSemanticRelationshipKind::Details,
+                relationships.details.as_slice(),
+            ),
+            (
+                UiSemanticRelationshipKind::FlowTo,
+                relationships.flow_to.as_slice(),
+            ),
+        ] {
+            if targets.len() > MAX_RETAINED_NODES {
+                return Err(UiDocumentError::TooManySemanticRelationshipTargets {
+                    node: id,
+                    relationship,
+                    count: targets.len(),
+                    maximum: MAX_RETAINED_NODES,
+                });
+            }
+            let mut seen = BTreeSet::new();
+            for target in targets {
+                Self::validate_semantic_relationship_target(
+                    id,
+                    relationship,
+                    *target,
+                    nodes,
+                    &mut seen,
+                )?;
+            }
+        }
+        if let Some(target) = relationships.error_message {
+            let mut seen = BTreeSet::new();
+            Self::validate_semantic_relationship_target(
+                id,
+                UiSemanticRelationshipKind::ErrorMessage,
+                target,
+                nodes,
+                &mut seen,
+            )?;
+        }
+        if let Some(item) = node.semantics.collection_item {
+            let maximum = u32::from(u16::MAX);
+            if item.position == 0
+                || item.set_size == 0
+                || item.position > item.set_size
+                || item.set_size > maximum
+            {
+                return Err(UiDocumentError::InvalidSemanticCollectionItem(id));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_semantic_relationship_target(
+        node: UiNodeId,
+        relationship: UiSemanticRelationshipKind,
+        target: UiNodeId,
+        nodes: &BTreeMap<UiNodeId, UiNode>,
+        seen: &mut BTreeSet<UiNodeId>,
+    ) -> Result<(), UiDocumentError> {
+        if node == target {
+            return Err(UiDocumentError::SemanticRelationshipSelfReference { node, relationship });
+        }
+        if !nodes.contains_key(&target) {
+            return Err(UiDocumentError::SemanticRelationshipMissingTarget {
+                node,
+                relationship,
+                target,
+            });
+        }
+        if !seen.insert(target) {
+            return Err(UiDocumentError::DuplicateSemanticRelationship {
+                node,
+                relationship,
+                target,
+            });
+        }
+        Ok(())
+    }
+
     fn validate_text_control(id: UiNodeId, node: &UiNode) -> Result<(), UiDocumentError> {
         let is_text_input = matches!(
             node.kind,
@@ -2922,6 +3256,10 @@ impl UiDocument {
             && node.text.as_ref().is_some_and(|text| !text.is_empty())
         {
             return Err(UiDocumentError::PasswordInitialValue(id));
+        }
+        if node.text_input.is_some_and(|options| options.password) && node.semantics.value.is_some()
+        {
+            return Err(UiDocumentError::PasswordSemanticValue(id));
         }
         if let Some(text) = &node.text {
             if text.len() > MAX_TEXT_BYTES {
@@ -3359,6 +3697,56 @@ mod tests {
     }
 
     #[test]
+    fn presentation_and_password_semantic_contracts_reject_unsafe_source() {
+        let root = UiNodeId::new(70);
+        let field = UiNodeId::new(71);
+        let mut password = UiNode::text_input(
+            field,
+            "Recovery password",
+            "",
+            UiTextInputOptions { password: true },
+        );
+        password.semantics.value = Some("must-not-project".to_owned());
+        assert_eq!(
+            UiDocument::new(
+                root,
+                vec![
+                    UiNode::container(root, "Recovery", UiLayout::Overlay, vec![field]),
+                    password,
+                ],
+            ),
+            Err(UiDocumentError::PasswordSemanticValue(field))
+        );
+
+        assert_eq!(
+            UiDocument::new(
+                root,
+                vec![UiNode::label(root, "Opacity", "Invalid").with_presentation_opacity(1.01)],
+            ),
+            Err(UiDocumentError::InvalidPresentationOpacity(root))
+        );
+
+        let first = UiNodeId::new(72);
+        let second = UiNodeId::new(73);
+        let shared = UiSharedElementId::new(0xabc);
+        assert_eq!(
+            UiDocument::new(
+                root,
+                vec![
+                    UiNode::container(root, "Shared", UiLayout::Overlay, vec![first, second]),
+                    UiNode::label(first, "First", "First").with_shared_element_motion(shared),
+                    UiNode::label(second, "Second", "Second").with_shared_element_motion(shared),
+                ],
+            ),
+            Err(UiDocumentError::DuplicateSharedElementIdentity {
+                first,
+                second,
+                shared_element: shared,
+            })
+        );
+    }
+
+    #[test]
     fn basic_controls_have_named_typed_semantics() {
         let icon = UiNode::icon_button(UiNodeId::new(1), "Build", "build.start", IconId::Build);
         let toggle = UiNode::toggle(UiNodeId::new(2), "Snap", "model.snap", true);
@@ -3369,6 +3757,146 @@ mod tests {
         assert_eq!(icon.semantics.action.as_deref(), Some("build.start"));
         assert_eq!(toggle.semantics.value.as_deref(), Some("on"));
         assert_eq!(progress.semantics.value.as_deref(), Some("100%"));
+    }
+
+    #[test]
+    fn retained_semantic_metadata_preserves_descriptions_relations_and_virtual_items() {
+        let root = UiNodeId::new(100);
+        let label = UiNodeId::new(101);
+        let description = UiNodeId::new(102);
+        let error = UiNodeId::new(103);
+        let field = UiNodeId::new(104);
+        let row = UiNodeId::new(105);
+        let relationships = UiSemanticRelationships {
+            labelled_by: vec![label],
+            described_by: vec![description],
+            controls: vec![row],
+            details: vec![error],
+            flow_to: vec![row],
+            error_message: Some(error),
+        };
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Semantic metadata",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![label, description, error, field, row],
+                ),
+                UiNode::label(label, "Project label", "Project label"),
+                UiNode::tooltip(description, "Project help", "Used in the title bar"),
+                UiNode::label(error, "Project error", "Project names must be unique"),
+                UiNode::text_input(
+                    field,
+                    "Project name",
+                    "Creator Alpha",
+                    UiTextInputOptions::default(),
+                )
+                .with_control_state(UiControlState {
+                    invalid: true,
+                    ..UiControlState::default()
+                })
+                .with_semantic_description("The saved project display name")
+                .with_semantic_relationships(relationships.clone()),
+                UiNode::list_item(row, "Scene", "scene.open", false).with_semantic_collection_item(
+                    UiSemanticCollectionItem {
+                        position: 3,
+                        set_size: 9,
+                    },
+                ),
+            ],
+        )
+        .expect("valid semantic metadata is retained");
+        let field = document.node(field).expect("field is retained");
+        assert_eq!(
+            field.semantics.description.as_deref(),
+            Some("The saved project display name")
+        );
+        assert_eq!(field.semantics.relationships, relationships);
+        assert_eq!(
+            document
+                .node(row)
+                .expect("row is retained")
+                .semantics
+                .collection_item,
+            Some(UiSemanticCollectionItem {
+                position: 3,
+                set_size: 9,
+            })
+        );
+    }
+
+    #[test]
+    fn malformed_semantic_relationships_and_collection_items_are_rejected() {
+        let root = UiNodeId::new(110);
+        let field = UiNodeId::new(111);
+        let valid_root =
+            || UiNode::container(root, "Semantic metadata", UiLayout::Overlay, vec![field]);
+        let valid_field =
+            || UiNode::text_input(field, "Project name", "", UiTextInputOptions::default());
+
+        let missing = valid_field().with_semantic_relationships(UiSemanticRelationships {
+            described_by: vec![UiNodeId::new(999)],
+            ..UiSemanticRelationships::default()
+        });
+        assert_eq!(
+            UiDocument::new(root, vec![valid_root(), missing]),
+            Err(UiDocumentError::SemanticRelationshipMissingTarget {
+                node: field,
+                relationship: UiSemanticRelationshipKind::DescribedBy,
+                target: UiNodeId::new(999),
+            })
+        );
+
+        let self_reference = valid_field().with_semantic_relationships(UiSemanticRelationships {
+            controls: vec![field],
+            ..UiSemanticRelationships::default()
+        });
+        assert_eq!(
+            UiDocument::new(root, vec![valid_root(), self_reference]),
+            Err(UiDocumentError::SemanticRelationshipSelfReference {
+                node: field,
+                relationship: UiSemanticRelationshipKind::Controls,
+            })
+        );
+
+        let duplicate = valid_field().with_semantic_relationships(UiSemanticRelationships {
+            flow_to: vec![root, root],
+            ..UiSemanticRelationships::default()
+        });
+        assert_eq!(
+            UiDocument::new(root, vec![valid_root(), duplicate]),
+            Err(UiDocumentError::DuplicateSemanticRelationship {
+                node: field,
+                relationship: UiSemanticRelationshipKind::FlowTo,
+                target: root,
+            })
+        );
+
+        let too_many = valid_field().with_semantic_relationships(UiSemanticRelationships {
+            controls: vec![root; MAX_RETAINED_NODES + 1],
+            ..UiSemanticRelationships::default()
+        });
+        assert_eq!(
+            UiDocument::new(root, vec![valid_root(), too_many]),
+            Err(UiDocumentError::TooManySemanticRelationshipTargets {
+                node: field,
+                relationship: UiSemanticRelationshipKind::Controls,
+                count: MAX_RETAINED_NODES + 1,
+                maximum: MAX_RETAINED_NODES,
+            })
+        );
+
+        let invalid_item = UiNode::list_item(field, "Scene", "scene.open", false)
+            .with_semantic_collection_item(UiSemanticCollectionItem {
+                position: 0,
+                set_size: 1,
+            });
+        assert_eq!(
+            UiDocument::new(root, vec![valid_root(), invalid_item]),
+            Err(UiDocumentError::InvalidSemanticCollectionItem(field))
+        );
     }
 
     #[test]

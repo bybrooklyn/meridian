@@ -975,12 +975,13 @@ pub struct GpuTexture {
 
 /// Device-owned sampled color target whose backend resources remain private.
 pub struct GpuRenderTarget {
-    _texture: wgpu::Texture,
+    texture: wgpu::Texture,
     view: wgpu::TextureView,
     sampler: wgpu::Sampler,
     size: WindowSize,
     format: wgpu::TextureFormat,
     device_generation: u64,
+    capture_capable: bool,
 }
 
 impl GpuRenderTarget {
@@ -1405,11 +1406,14 @@ const CLEAR_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("clear");
 const BOOTSTRAP_PIPELINE_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("bootstrap_pipeline");
 const SHADOW_DEPTH_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("shadow_depth");
 const INDEXED_MESH_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("indexed_mesh");
+const OFFSCREEN_CAPTURE_COPY_PASS_LABEL: PassTimingLabel =
+    PassTimingLabel::new("offscreen_capture_copy");
 static NEXT_RHI_DEVICE_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 pub struct Rhi {
     instance: wgpu::Instance,
     window: PlatformWindow,
+    config: RhiConfig,
     surface: wgpu::Surface<'static>,
     adapter: wgpu::Adapter,
     device: wgpu::Device,
@@ -1446,6 +1450,38 @@ impl Rhi {
     /// creation, surface configuration, or render-graph compilation fails.
     pub fn new(window: PlatformWindow, config: RhiConfig) -> Result<Self, RhiError> {
         pollster::block_on(Self::new_async(window, config))
+    }
+
+    /// Recreates the RHI device and surface from this instance's original
+    /// configuration.
+    ///
+    /// The replacement receives a fresh [`RhiRenderIdentity`]. Device-owned
+    /// buffers, textures, pipelines, targets, and frame plans from the
+    /// consumed instance remain stale and callers must rebuild them from their
+    /// authoritative CPU-side descriptions.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiError`] if the platform can no longer create a compatible
+    /// surface, adapter, device, or initial render graph.
+    pub fn rebuild_device(self) -> Result<Self, RhiError> {
+        let window = self.window.clone();
+        let config = self.config;
+        drop(self);
+        Self::new(window, config)
+    }
+
+    /// Destroys the actual backend device for controlled recovery
+    /// qualification. This is deliberately unavailable unless the
+    /// `fault-injection` feature is enabled.
+    ///
+    /// This is not a synthetic loss state. Callers must poll for the backend
+    /// device-loss callback and use [`Self::rebuild_device`] before submitting
+    /// replacement resources.
+    #[cfg(feature = "fault-injection")]
+    #[doc(hidden)]
+    pub fn destroy_device_for_fault_injection(&mut self) {
+        self.device.destroy();
     }
 
     async fn new_async(window: PlatformWindow, config: RhiConfig) -> Result<Self, RhiError> {
@@ -1520,6 +1556,7 @@ impl Rhi {
         Ok(Self {
             instance,
             window,
+            config,
             surface,
             adapter,
             device,
@@ -1993,6 +2030,37 @@ impl Rhi {
         label: &str,
         size: WindowSize,
     ) -> Result<GpuRenderTarget, RhiError> {
+        self.create_render_target(label, size, false)
+    }
+
+    /// Allocates an offscreen render target that can be copied into Meridian's
+    /// bounded asynchronous capture ring.
+    ///
+    /// This target is reserved for qualification and diagnostics. Normal
+    /// sampled targets intentionally omit `COPY_SRC`; use
+    /// [`Self::create_surface_render_target`] for ordinary composition.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::InvalidTextureSize`] for a zero-sized or
+    /// adapter-oversized target, [`RhiErrorKind::SurfaceUnsupported`] when the
+    /// surface format cannot provide every needed render, sample, and copy
+    /// usage, or [`RhiErrorKind::DeviceLost`] after device loss.
+    #[doc(hidden)]
+    pub fn create_capture_render_target(
+        &self,
+        label: &str,
+        size: WindowSize,
+    ) -> Result<GpuRenderTarget, RhiError> {
+        self.create_render_target(label, size, true)
+    }
+
+    fn create_render_target(
+        &self,
+        label: &str,
+        size: WindowSize,
+        capture_capable: bool,
+    ) -> Result<GpuRenderTarget, RhiError> {
         if let Some(loss) = self.device_loss() {
             return Err(RhiError::new(
                 RhiErrorKind::DeviceLost,
@@ -2002,8 +2070,7 @@ impl Rhi {
         validate_render_target_size(size, self.adapter.limits().max_texture_dimension_2d)?;
         let format = self.surface_config.format;
         let format_features = self.adapter.get_texture_format_features(format);
-        let required_usages =
-            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+        let required_usages = render_target_usages(capture_capable);
         if !format_features.allowed_usages.contains(required_usages)
             || !format_features
                 .flags
@@ -2012,7 +2079,7 @@ impl Rhi {
             return Err(RhiError::new(
                 RhiErrorKind::SurfaceUnsupported,
                 format!(
-                    "surface format {format:?} cannot provide a linearly sampled render target"
+                    "surface format {format:?} cannot provide requested render target usages {required_usages:?}"
                 ),
             ));
         }
@@ -2043,12 +2110,13 @@ impl Rhi {
             ..Default::default()
         });
         Ok(GpuRenderTarget {
-            _texture: texture,
+            texture,
             view,
             sampler,
             size,
             format,
             device_generation: self.device_generation,
+            capture_capable,
         })
     }
 
@@ -3838,6 +3906,56 @@ impl Rhi {
         Ok(())
     }
 
+    /// Copies a capture-capable offscreen target into the next bounded capture
+    /// request, if one is queued.
+    ///
+    /// No command buffer, readback allocation, or submission is created when
+    /// no capture request is pending. The asynchronous result is returned from
+    /// [`Self::take_capture`] and retains [`CaptureSource::Offscreen`]. This
+    /// copy-only submission reports CPU encode time but deliberately reports
+    /// GPU timing as [`GpuTimingOutcome::UnsupportedCapability`]; Meridian does
+    /// not request the extra encoder-timestamp feature solely for capture.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::CaptureTargetUnsupported`] when `target` was
+    /// not created by [`Self::create_capture_render_target`], typed target
+    /// identity errors for stale resources, or [`RhiErrorKind::DeviceLost`]
+    /// when the device is already lost.
+    #[doc(hidden)]
+    pub fn capture_render_target(&mut self, target: &GpuRenderTarget) -> Result<(), RhiError> {
+        validate_render_target_identity(
+            target,
+            self.device_generation,
+            self.surface_config.format,
+        )?;
+        validate_capture_target_support(target.capture_capable)?;
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        let Some(capture) = self.begin_capture_for_texture(
+            target.size,
+            target.format,
+            CaptureSource::Offscreen,
+            None,
+        ) else {
+            return Ok(());
+        };
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Meridian offscreen capture copy encoder"),
+            });
+        let timing = self.begin_cpu_only_timing(OFFSCREEN_CAPTURE_COPY_PASS_LABEL);
+        let cpu_start = Instant::now();
+        record_capture_copy(&mut encoder, &target.texture, &self.capture, capture);
+        self.submit_timed_encoder_with_capture(encoder, timing, cpu_start.elapsed(), Some(capture));
+        Ok(())
+    }
+
     /// Submits renderer-owned indexed batches to a small offscreen target for
     /// structural GPU validation. It performs no readback and makes no visual
     /// quality or presentation claim.
@@ -4455,6 +4573,21 @@ impl Rhi {
             submission_id,
             pass,
             gpu,
+        }
+    }
+
+    fn begin_cpu_only_timing(&mut self, pass: PassTimingLabel) -> PendingPassTiming {
+        self.poll_pass_timings();
+        let frame_id = self
+            .active_timing_frame
+            .unwrap_or_else(|| self.allocate_timing_frame_id());
+        let submission_id = self.allocate_submission_id();
+        PendingPassTiming {
+            frame_id,
+            runtime_frame_id: self.active_runtime_frame,
+            submission_id,
+            pass,
+            gpu: PendingGpuTiming::Final(cpu_only_gpu_timing_outcome()),
         }
     }
 
@@ -5215,6 +5348,10 @@ const fn timing_unavailable_outcome(availability: TimingAvailability) -> GpuTimi
     }
 }
 
+const fn cpu_only_gpu_timing_outcome() -> GpuTimingOutcome {
+    GpuTimingOutcome::UnsupportedCapability
+}
+
 const fn timing_sample_from_correlation(
     correlation: TimestampCorrelation,
     gpu: GpuTimingOutcome,
@@ -5460,6 +5597,7 @@ pub enum RhiErrorKind {
     InvalidTextureSize,
     InvalidTextureMipLevels,
     InvalidTextureWrite,
+    CaptureTargetUnsupported,
     InvalidShadowMapSize,
     InvalidShadowCascade,
     InvalidBatchRange,
@@ -5527,6 +5665,26 @@ fn validate_render_target_size(
         ));
     }
     Ok(())
+}
+
+fn render_target_usages(capture_capable: bool) -> wgpu::TextureUsages {
+    let base = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+    if capture_capable {
+        base | wgpu::TextureUsages::COPY_SRC
+    } else {
+        base
+    }
+}
+
+fn validate_capture_target_support(capture_capable: bool) -> Result<(), RhiError> {
+    if capture_capable {
+        Ok(())
+    } else {
+        Err(RhiError::new(
+            RhiErrorKind::CaptureTargetUnsupported,
+            "render target was not created with copy-source capture support",
+        ))
+    }
 }
 
 fn validate_render_target_identity(
@@ -6388,6 +6546,24 @@ mod tests {
     }
 
     #[test]
+    fn capture_target_usage_is_opt_in_and_rejection_is_typed() {
+        let normal = render_target_usages(false);
+        assert!(normal.contains(wgpu::TextureUsages::RENDER_ATTACHMENT));
+        assert!(normal.contains(wgpu::TextureUsages::TEXTURE_BINDING));
+        assert!(!normal.contains(wgpu::TextureUsages::COPY_SRC));
+
+        let capture = render_target_usages(true);
+        assert!(capture.contains(wgpu::TextureUsages::COPY_SRC));
+        assert!(validate_capture_target_support(true).is_ok());
+        assert_eq!(
+            validate_capture_target_support(false)
+                .expect_err("normal render targets must reject capture")
+                .kind(),
+            RhiErrorKind::CaptureTargetUnsupported
+        );
+    }
+
+    #[test]
     fn pipeline_config_validates_stencil_and_depth_combinations() {
         assert!(validate_pipeline_config(RenderPipelineConfig::alpha_surface_no_depth()).is_ok());
         assert!(
@@ -6773,6 +6949,13 @@ mod tests {
             assert_eq!(sample.cpu_encode_time, Duration::from_micros(125));
             assert_eq!(sample.gpu, expected);
         }
+    }
+
+    #[test]
+    fn capture_copy_timing_is_cpu_only_and_never_claims_gpu_measurement() {
+        let gpu = cpu_only_gpu_timing_outcome();
+        assert_eq!(gpu, GpuTimingOutcome::UnsupportedCapability);
+        assert_eq!(gpu.measured(), None);
     }
 
     #[test]

@@ -14,6 +14,8 @@ mod resources;
 mod snapshot;
 #[cfg(feature = "ui-direct")]
 mod ui_direct;
+#[cfg(feature = "ui-direct")]
+mod ui_direct_qualification;
 #[cfg(feature = "ui-raster-bridge")]
 mod ui_overlay;
 mod upload;
@@ -43,10 +45,19 @@ pub use snapshot::{
 };
 #[cfg(feature = "ui-direct")]
 pub use ui_direct::{
-    UiDirectAtlas, UiDirectBatch, UiDirectBatchKind, UiDirectFrameDiagnostics, UiDirectFramePlan,
-    UiDirectGpuFrame, UiDirectGpuRenderer, UiDirectImage, UiDirectMesh, UiDirectMeshVertex,
-    UiDirectPrepareRequest, UiDirectPrimitiveKind, UiDirectRendererError, UiDirectRendererRecovery,
-    UiDirectRendererRecoveryAction, UiDirectResourceSet,
+    UiDirectAtlas, UiDirectBatch, UiDirectBatchKind, UiDirectFrameDiagnostics,
+    UiDirectFrameFootprint, UiDirectFramePlan, UiDirectGpuFrame, UiDirectGpuRenderer,
+    UiDirectImage, UiDirectMesh, UiDirectMeshVertex, UiDirectPrepareRequest, UiDirectPrimitiveKind,
+    UiDirectRendererError, UiDirectRendererRecovery, UiDirectRendererRecoveryAction,
+    UiDirectResourceSet,
+};
+#[cfg(feature = "ui-direct")]
+pub use ui_direct_qualification::{
+    compare_ui_direct_rgba8, compare_ui_direct_rgba8_exact, ui_direct_qualification_cases,
+    ui_direct_qualification_required_kinds, UiDirectGoldenComparison,
+    UiDirectGoldenComparisonError, UiDirectGoldenDifference, UiDirectQualificationCase,
+    UiDirectRgba8Image, UI_DIRECT_QUALIFICATION_REQUIRED_KINDS, UI_DIRECT_QUALIFICATION_SCHEMA,
+    UI_DIRECT_QUALIFICATION_VIEWPORT,
 };
 #[cfg(feature = "ui-raster-bridge")]
 pub use ui_overlay::{

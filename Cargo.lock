@@ -1955,6 +1955,8 @@ version = "0.1.0"
 dependencies = [
  "meridian-assets",
  "meridian-core",
+ "meridian-platform",
+ "meridian-renderer",
  "meridian-rhi",
  "png",
  "serde",

@@ -2,26 +2,28 @@
 
 mod motion;
 
+pub use meridian_ui_core::UiSpatialMotionKind;
 pub use motion::*;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use meridian_ui_core::{
     sanitized_scale_factor, MotionPreference, ThemeId, UiAlignment, UiAxis, UiCollectionCursor,
     UiCollectionNavigation, UiColor, UiConstraints, UiContrast, UiDensity, UiDocument,
     UiDocumentDelta, UiDocumentError, UiDragKind, UiDragPayload, UiDropOperation, UiInputDeviceId,
-    UiInputDeviceKind, UiLayout, UiLayoutHints, UiNode, UiNodeId, UiPoint, UiPointerButton,
-    UiPointerEvent, UiPointerPhase, UiRect, UiScrollEvent, UiScrollPhase, UiScrollUnit, UiSize,
-    UiStyle, UiStyleSelector, UiTextValidation, UiTheme, UiVisualState, UiWidgetKind,
-    MAX_FRAME_EVENTS, MAX_TEXT_BYTES,
+    UiInputDeviceKind, UiLayout, UiNode, UiNodeId, UiPoint, UiPointerButton, UiPointerEvent,
+    UiPointerPhase, UiRect, UiScrollEvent, UiScrollPhase, UiScrollUnit, UiSemanticRelationships,
+    UiSharedElementId, UiSize, UiStyle, UiStyleSelector, UiTextValidation, UiTheme, UiVisualState,
+    UiWidgetKind, MAX_FRAME_EVENTS, MAX_TEXT_BYTES,
 };
 use meridian_ui_render::{
     icon_geometry, DisplayList, DisplayListError, DisplayPrimitive, UiClipId, UiCornerRadii,
     UiStroke,
 };
 use meridian_ui_semantics::{
-    SemanticAction, SemanticDelta, SemanticLive, SemanticNode, SemanticTree, SemanticTreeError,
+    SemanticAction, SemanticCollectionItem, SemanticDelta, SemanticLive, SemanticNode,
+    SemanticRelationships, SemanticTree, SemanticTreeError,
 };
 use meridian_ui_text::{
     UiClipboardOperation, UiClipboardRequest, UiCompletionRequest, UiPreeditError,
@@ -255,6 +257,17 @@ pub enum UiDiagnostic {
     },
     InvalidPointerEvent,
     InvalidScrollEvent,
+    /// A defensive layout traversal guard found a repeated retained node.
+    /// Validated documents cannot ordinarily reach this state, but rejecting it
+    /// keeps a corrupted in-memory document from recursing indefinitely.
+    LayoutConstraintCycle {
+        chain: Vec<UiNodeId>,
+    },
+    /// The document passed individual geometry checks but its minimum, maximum,
+    /// and aspect requirements could not be satisfied as one rectangle.
+    LayoutConstraintsUnsatisfiable {
+        node: UiNodeId,
+    },
     ScrollTargetUnavailable,
     DragSourceDenied {
         node: UiNodeId,
@@ -370,6 +383,49 @@ pub struct UiFrameTimingDiagnostics {
     pub semantic_delta: UiMeasurementAvailability,
 }
 
+/// Renderer-independent overdraw reporting for one frame.
+///
+/// The retained runtime knows primitive declarations but not clipped backend
+/// fragments, blend behavior, or target coverage. It therefore leaves the
+/// estimate unavailable until a renderer adapter supplies a measured value.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiOverdrawDiagnostics {
+    pub estimate: UiMeasurementAvailability,
+}
+
+/// Input-to-presentation latency reporting for one frame.
+///
+/// Platform events currently do not carry source timestamps through the public
+/// Meridian event contract, so the runtime must not reinterpret the frame
+/// presentation interval as event latency.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiEventLatencyDiagnostics {
+    pub measurement: UiMeasurementAvailability,
+    pub source_timestamped_events: u32,
+}
+
+/// Capture activity observed by the retained runtime.
+///
+/// Frame capture is owned by renderer and platform adapters. The runtime emits
+/// this explicit state rather than implying that a display-list snapshot was a
+/// captured image.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum UiCaptureState {
+    #[default]
+    NotRequested,
+}
+
+/// Virtualization evidence the runtime can truthfully derive from a retained
+/// document. Collection sources own requested/realized ranges and cache
+/// residency, so this runtime only counts declared regions and marks those
+/// adapter-owned fields unavailable.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiVirtualizationDiagnostics {
+    pub declared_regions: u32,
+    pub realized_ranges: UiMeasurementAvailability,
+    pub cache_state: UiMeasurementAvailability,
+}
+
 /// Stable identity reconciliation and layout coverage for one frame.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct UiReconciliationDiagnostics {
@@ -476,9 +532,13 @@ pub struct UiRendererCacheDiagnostics {
 pub struct UiFrameDiagnostics {
     pub reconciliation: UiReconciliationDiagnostics,
     pub timing: UiFrameTimingDiagnostics,
+    pub overdraw: UiOverdrawDiagnostics,
+    pub event_latency: UiEventLatencyDiagnostics,
+    pub capture: UiCaptureState,
     pub primitives: UiPrimitiveDiagnostics,
     pub text: UiTextWorkDiagnostics,
     pub interaction: UiInteractionDiagnostics,
+    pub virtualization: UiVirtualizationDiagnostics,
     pub renderer_cache: UiRendererCacheDiagnostics,
     pub layout_nodes: u32,
     pub display_primitives: u32,
@@ -503,12 +563,16 @@ impl Default for UiFrameDiagnostics {
         Self {
             reconciliation: UiReconciliationDiagnostics::default(),
             timing: UiFrameTimingDiagnostics::default(),
+            overdraw: UiOverdrawDiagnostics::default(),
+            event_latency: UiEventLatencyDiagnostics::default(),
+            capture: UiCaptureState::default(),
             primitives: UiPrimitiveDiagnostics::default(),
             text: UiTextWorkDiagnostics::default(),
             interaction: UiInteractionDiagnostics {
                 active_animation_tracks: None,
                 ..UiInteractionDiagnostics::default()
             },
+            virtualization: UiVirtualizationDiagnostics::default(),
             renderer_cache: UiRendererCacheDiagnostics::default(),
             layout_nodes: 0,
             display_primitives: 0,
@@ -535,12 +599,9 @@ impl UiFrameDiagnostics {
         u32::try_from(value).unwrap_or(u32::MAX)
     }
 
-    fn from_runtime(
-        runtime: &UiRuntime,
+    fn primitives_and_text(
         snapshot: &UiFrameSnapshot,
-        recovered_previous_snapshot: bool,
-        input_events: usize,
-    ) -> Self {
+    ) -> (UiPrimitiveDiagnostics, UiTextWorkDiagnostics) {
         let mut primitives = UiPrimitiveDiagnostics::default();
         let mut text = UiTextWorkDiagnostics::default();
         for primitive in &snapshot.display_list.primitives {
@@ -579,41 +640,97 @@ impl UiFrameDiagnostics {
                 | DisplayPrimitive::Backdrop { .. } => {}
             }
         }
-        let recovery_events = u32::from(recovered_previous_snapshot);
+        (primitives, text)
+    }
+
+    fn reconciliation(
+        runtime: &UiRuntime,
+        snapshot: &UiFrameSnapshot,
+    ) -> UiReconciliationDiagnostics {
+        UiReconciliationDiagnostics {
+            accepted_nodes: Self::count(runtime.document.nodes().count()),
+            retained_nodes: Self::count(runtime.last_document_delta.retained.len()),
+            inserted_nodes: Self::count(runtime.last_document_delta.inserted.len()),
+            removed_nodes: Self::count(runtime.last_document_delta.removed.len()),
+            updated_nodes: Self::count(runtime.last_document_delta.updated.len()),
+            // A rejected frame may expose a prior immutable snapshot while a
+            // newer retained document is awaiting remediation. The root count
+            // therefore belongs to the snapshot being reported, not the
+            // currently retained document.
+            layout_roots: u32::from(
+                snapshot
+                    .semantic_tree
+                    .root
+                    .is_some_and(|root| snapshot.layout.iter().any(|entry| entry.node == root)),
+            ),
+            reconciled_layout_nodes: Self::count(snapshot.layout.len()),
+        }
+    }
+
+    fn declared_virtualized_regions(runtime: &UiRuntime) -> u32 {
+        Self::count(
+            runtime
+                .document
+                .nodes()
+                .filter(|node| node.kind == UiWidgetKind::VirtualList)
+                .count(),
+        )
+    }
+
+    fn interaction(
+        runtime: &UiRuntime,
+        snapshot: &UiFrameSnapshot,
+        input_events: usize,
+        virtualized_regions: u32,
+        recovered_previous_snapshot: bool,
+    ) -> UiInteractionDiagnostics {
+        UiInteractionDiagnostics {
+            input_events: Self::count(input_events),
+            event_routes: Self::count(snapshot.event_routes.len()),
+            focus_entries: u32::from(snapshot.focused.is_some()),
+            pointer_captures: u32::from(runtime.pointer_capture.is_some()),
+            scroll_captures: u32::from(runtime.scroll_capture.is_some()),
+            active_drags: u32::from(snapshot.drag.is_some()),
+            virtualized_regions,
+            active_animation_tracks: Some(Self::count(runtime.motion_system.active_count())),
+            recovery_events: u32::from(recovered_previous_snapshot),
+        }
+    }
+
+    fn from_runtime(
+        runtime: &UiRuntime,
+        snapshot: &UiFrameSnapshot,
+        recovered_previous_snapshot: bool,
+        input_events: usize,
+    ) -> Self {
+        let (primitives, text) = Self::primitives_and_text(snapshot);
+        let virtualized_regions = Self::declared_virtualized_regions(runtime);
         Self {
-            reconciliation: UiReconciliationDiagnostics {
-                accepted_nodes: Self::count(runtime.document.nodes().count()),
-                retained_nodes: Self::count(runtime.last_document_delta.retained.len()),
-                inserted_nodes: Self::count(runtime.last_document_delta.inserted.len()),
-                removed_nodes: Self::count(runtime.last_document_delta.removed.len()),
-                updated_nodes: Self::count(runtime.last_document_delta.updated.len()),
-                layout_roots: u32::from(
-                    snapshot
-                        .layout
-                        .iter()
-                        .any(|entry| entry.node == runtime.document.root()),
-                ),
-                reconciled_layout_nodes: Self::count(snapshot.layout.len()),
-            },
+            reconciliation: Self::reconciliation(runtime, snapshot),
             timing: UiFrameTimingDiagnostics::default(),
+            overdraw: UiOverdrawDiagnostics::default(),
+            event_latency: UiEventLatencyDiagnostics {
+                measurement: UiMeasurementAvailability::Unavailable,
+                // UiEvent intentionally carries no platform timestamp. Do not
+                // turn `presentation_delta_ms` into an invented latency.
+                source_timestamped_events: 0,
+            },
+            capture: UiCaptureState::NotRequested,
             primitives,
             text,
-            interaction: UiInteractionDiagnostics {
-                input_events: Self::count(input_events),
-                event_routes: Self::count(snapshot.event_routes.len()),
-                focus_entries: u32::from(snapshot.focused.is_some()),
-                pointer_captures: u32::from(runtime.pointer_capture.is_some()),
-                scroll_captures: u32::from(runtime.scroll_capture.is_some()),
-                active_drags: u32::from(snapshot.drag.is_some()),
-                virtualized_regions: Self::count(
-                    runtime
-                        .document
-                        .nodes()
-                        .filter(|node| node.kind == UiWidgetKind::VirtualList)
-                        .count(),
-                ),
-                active_animation_tracks: Some(Self::count(runtime.motion_system.active_count())),
-                recovery_events,
+            interaction: Self::interaction(
+                runtime,
+                snapshot,
+                input_events,
+                virtualized_regions,
+                recovered_previous_snapshot,
+            ),
+            virtualization: UiVirtualizationDiagnostics {
+                declared_regions: virtualized_regions,
+                // The document has only currently retained children. A source
+                // collection owns its requested/realized range and cache.
+                realized_ranges: UiMeasurementAvailability::Unavailable,
+                cache_state: UiMeasurementAvailability::Unavailable,
             },
             renderer_cache: UiRendererCacheDiagnostics::default(),
             layout_nodes: Self::count(snapshot.layout.len()),
@@ -640,7 +757,12 @@ impl UiFrameDiagnostics {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiFrameSnapshot {
     pub revision: u64,
+    /// Target geometry used immediately for layout, interaction, and semantics.
     pub layout: Vec<UiLayoutSnapshot>,
+    /// Renderer-facing geometry after bounded presentation-only motion.
+    pub presentation_layout: Vec<UiLayoutSnapshot>,
+    /// Ordered current/target presentation tracks consumed by this frame.
+    pub presentation_motion: Vec<UiMotionSnapshot>,
     pub visual_states: Vec<UiVisualStateSnapshot>,
     pub theme: ThemeId,
     pub density: UiDensity,
@@ -670,14 +792,26 @@ pub struct UiFrameSnapshot {
 pub type UiFrameOutput = Arc<UiFrameSnapshot>;
 
 /// Typed frame rejection before any mutated interaction state is committed.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UiFrameError {
     TooManyEvents { count: usize, maximum: usize },
     TooManyInputBytes { bytes: usize, maximum: usize },
     TooManyEffects { count: usize, maximum: usize },
     TooManyEffectBytes { bytes: usize, maximum: usize },
+    LayoutRejected(UiLayoutError),
     InvalidDisplayList(DisplayListError),
     SemanticTreeRejected(SemanticTreeError),
+}
+
+/// Layout failure detected before an immutable frame can be accepted.
+///
+/// A [`UiDocument`] validates its retained tree before construction, so a
+/// normal public document cannot contain a cycle. The runtime retains this
+/// guard as recovery protection for corrupted or future incremental sources.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum UiLayoutError {
+    ConstraintCycle { chain: Vec<UiNodeId> },
+    UnsatisfiableConstraints { node: UiNodeId },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -723,6 +857,39 @@ fn finite_nonnegative(value: f32) -> f32 {
         value.max(0.0)
     } else {
         0.0
+    }
+}
+
+fn finite_sum(left: f32, right: f32) -> f32 {
+    let result = left + right;
+    if result.is_finite() {
+        result
+    } else if result.is_sign_negative() {
+        -f32::MAX
+    } else {
+        f32::MAX
+    }
+}
+
+fn finite_product(left: f32, right: f32) -> f32 {
+    let result = left * right;
+    if result.is_finite() {
+        result
+    } else if result.is_sign_negative() {
+        -f32::MAX
+    } else {
+        f32::MAX
+    }
+}
+
+fn finite_quotient(numerator: f32, denominator: f32) -> f32 {
+    let result = numerator / denominator;
+    if result.is_finite() {
+        result
+    } else if result.is_sign_negative() {
+        -f32::MAX
+    } else {
+        f32::MAX
     }
 }
 
@@ -772,6 +939,99 @@ fn apply_animated_color(style: &mut UiStyle, slot: UiAnimatedColorSlot, color: U
     }
 }
 
+fn apply_presentation_opacity(style: &mut UiStyle, opacity: f32) {
+    let opacity = if opacity.is_finite() {
+        opacity.clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    let apply = |color: UiColor| {
+        UiColor::rgba(
+            color.red,
+            color.green,
+            color.blue,
+            finite_product(color.alpha, opacity).clamp(0.0, 1.0),
+        )
+    };
+    style.background = style.background.map(apply);
+    if let Some(border) = style.border.as_mut() {
+        border.color = apply(border.color);
+    }
+    style.foreground = apply(style.foreground);
+}
+
+#[derive(Clone, Copy)]
+struct UiPresentationTransform {
+    scale_x: f32,
+    scale_y: f32,
+    translate_x: f32,
+    translate_y: f32,
+}
+
+impl UiPresentationTransform {
+    const fn identity() -> Self {
+        Self {
+            scale_x: 1.0,
+            scale_y: 1.0,
+            translate_x: 0.0,
+            translate_y: 0.0,
+        }
+    }
+
+    fn from_rects(target: UiRect, current: UiRect) -> Self {
+        let scale_x = if target.size.width > f32::EPSILON {
+            finite_quotient(current.size.width, target.size.width)
+        } else {
+            1.0
+        };
+        let scale_y = if target.size.height > f32::EPSILON {
+            finite_quotient(current.size.height, target.size.height)
+        } else {
+            1.0
+        };
+        Self {
+            scale_x,
+            scale_y,
+            translate_x: finite_sum(current.origin.x, -finite_product(target.origin.x, scale_x)),
+            translate_y: finite_sum(current.origin.y, -finite_product(target.origin.y, scale_y)),
+        }
+    }
+
+    fn then(self, next: Self) -> Self {
+        Self {
+            scale_x: finite_product(self.scale_x, next.scale_x),
+            scale_y: finite_product(self.scale_y, next.scale_y),
+            translate_x: finite_sum(
+                finite_product(self.translate_x, next.scale_x),
+                next.translate_x,
+            ),
+            translate_y: finite_sum(
+                finite_product(self.translate_y, next.scale_y),
+                next.translate_y,
+            ),
+        }
+    }
+
+    fn apply(self, bounds: UiRect) -> UiRect {
+        UiRect::new(
+            UiPoint {
+                x: finite_sum(
+                    finite_product(bounds.origin.x, self.scale_x),
+                    self.translate_x,
+                ),
+                y: finite_sum(
+                    finite_product(bounds.origin.y, self.scale_y),
+                    self.translate_y,
+                ),
+            },
+            UiSize::new(
+                finite_nonnegative(finite_product(bounds.size.width, self.scale_x)),
+                finite_nonnegative(finite_product(bounds.size.height, self.scale_y)),
+            ),
+        )
+    }
+}
+
 fn semantic_actions(
     role: meridian_ui_core::SemanticRole,
     has_command: bool,
@@ -796,6 +1056,22 @@ fn semantic_actions(
         _ => {}
     }
     actions
+}
+
+fn semantic_relationships(
+    relationships: &UiSemanticRelationships,
+    invalid: bool,
+) -> SemanticRelationships {
+    SemanticRelationships {
+        labelled_by: relationships.labelled_by.clone(),
+        described_by: relationships.described_by.clone(),
+        controls: relationships.controls.clone(),
+        details: relationships.details.clone(),
+        flow_to: relationships.flow_to.clone(),
+        // A retained document can declare the durable error target before
+        // validation runs. Only an invalid immutable frame exposes it.
+        error_message: invalid.then_some(relationships.error_message).flatten(),
+    }
 }
 
 fn inset_bounds(bounds: UiRect, inset: f32) -> UiRect {
@@ -926,45 +1202,100 @@ fn emit_state_treatments(
     Ok(())
 }
 
-fn resolve_constraints(bounds: UiRect, constraints: UiConstraints) -> UiRect {
+fn resolve_constraints(
+    node: UiNodeId,
+    bounds: UiRect,
+    constraints: UiConstraints,
+) -> Result<UiRect, UiLayoutError> {
     let maximum = constraints
         .maximum
         .unwrap_or(UiSize::new(f32::MAX, f32::MAX));
-    let mut width = bounds
-        .size
-        .width
-        .clamp(constraints.minimum.width, maximum.width);
-    let mut height = bounds
-        .size
-        .height
-        .clamp(constraints.minimum.height, maximum.height);
+    let mut width =
+        finite_nonnegative(bounds.size.width).clamp(constraints.minimum.width, maximum.width);
+    let mut height =
+        finite_nonnegative(bounds.size.height).clamp(constraints.minimum.height, maximum.height);
     if let Some(aspect) = constraints.aspect_ratio {
-        let width_from_height = height * aspect;
-        if width_from_height <= width {
-            width = width_from_height;
-        } else {
-            height = width / aspect;
+        // Resolve the pair as one constraint set. The older independent clamp
+        // could satisfy a maximum and then violate a minimum after applying
+        // aspect ratio (or vice versa).
+        let minimum_width = constraints
+            .minimum
+            .width
+            .max(finite_product(constraints.minimum.height, aspect));
+        let maximum_width = maximum.width.min(finite_product(maximum.height, aspect));
+        if minimum_width > maximum_width {
+            return Err(UiLayoutError::UnsatisfiableConstraints { node });
         }
+        let fitted_width = width.min(finite_product(height, aspect));
+        width = fitted_width.clamp(minimum_width, maximum_width);
+        height = finite_quotient(width, aspect);
     }
     let horizontal_space = (bounds.size.width - width).max(0.0);
     let vertical_space = (bounds.size.height - height).max(0.0);
-    let x = bounds.origin.x
-        + match constraints.horizontal_alignment {
+    let x = finite_sum(
+        bounds.origin.x,
+        match constraints.horizontal_alignment {
             UiAlignment::Start | UiAlignment::Stretch => 0.0,
             UiAlignment::Center => horizontal_space / 2.0,
             UiAlignment::End => horizontal_space,
-        };
-    let y = bounds.origin.y
-        + match constraints.vertical_alignment {
+        },
+    );
+    let y = finite_sum(
+        bounds.origin.y,
+        match constraints.vertical_alignment {
             UiAlignment::Start | UiAlignment::Stretch => 0.0,
             UiAlignment::Center => vertical_space / 2.0,
             UiAlignment::End => vertical_space,
-        };
-    UiRect::new(UiPoint { x, y }, UiSize::new(width, height))
+        },
+    );
+    Ok(UiRect::new(UiPoint { x, y }, UiSize::new(width, height)))
+}
+
+/// Resolves a preferred child size before placing it within its parent's slot.
+///
+/// [`resolve_constraints`] owns constraint validation and the final size.  A
+/// preferred child, however, must be aligned against the *parent slot*, not
+/// against its own preferred rectangle.  Resolving first also means a maximum
+/// or aspect adjustment cannot leave an end- or center-aligned child stranded
+/// at the position calculated for its larger preferred size.
+fn aligned_preferred_bounds(
+    node: UiNodeId,
+    slot: UiRect,
+    preferred: UiSize,
+    constraints: UiConstraints,
+) -> Result<UiRect, UiLayoutError> {
+    let preferred = UiRect::new(
+        UiPoint::default(),
+        UiSize::new(
+            finite_nonnegative(preferred.width),
+            finite_nonnegative(preferred.height),
+        ),
+    );
+    let resolved = resolve_constraints(node, preferred, constraints)?;
+    let horizontal_space = (finite_nonnegative(slot.size.width) - resolved.size.width).max(0.0);
+    let vertical_space = (finite_nonnegative(slot.size.height) - resolved.size.height).max(0.0);
+    let horizontal_offset = match constraints.horizontal_alignment {
+        UiAlignment::Start | UiAlignment::Stretch => 0.0,
+        UiAlignment::Center => horizontal_space / 2.0,
+        UiAlignment::End => horizontal_space,
+    };
+    let vertical_offset = match constraints.vertical_alignment {
+        UiAlignment::Start | UiAlignment::Stretch => 0.0,
+        UiAlignment::Center => vertical_space / 2.0,
+        UiAlignment::End => vertical_space,
+    };
+    Ok(UiRect::new(
+        UiPoint {
+            x: finite_sum(slot.origin.x, horizontal_offset),
+            y: finite_sum(slot.origin.y, vertical_offset),
+        },
+        resolved.size,
+    ))
 }
 
 struct UiEmission<'a> {
     layout: &'a BTreeMap<UiNodeId, UiRect>,
+    presentation_layout: &'a BTreeMap<UiNodeId, UiRect>,
     scale_factor: f32,
     icon_tokens: meridian_ui_core::UiIconTokens,
     icon_tokens_fallback: bool,
@@ -972,6 +1303,20 @@ struct UiEmission<'a> {
     semantic_nodes: &'a mut Vec<SemanticNode>,
     diagnostics: &'a mut Vec<UiDiagnostic>,
     next_scope: u64,
+}
+
+struct UiPreparedFrame {
+    input_event_count: usize,
+    contrast: UiContrast,
+    motion: MotionPreference,
+    layout: BTreeMap<UiNodeId, UiRect>,
+    presentation_layout: BTreeMap<UiNodeId, UiRect>,
+    visual_states: Vec<UiVisualStateSnapshot>,
+    display_list: DisplayList,
+    tree: SemanticTree,
+    semantic_delta: SemanticDelta,
+    effects: UiFrameEffects,
+    text_validation: Vec<UiTextValidationSnapshot>,
 }
 
 #[derive(Default)]
@@ -1026,6 +1371,9 @@ struct UiInteractionCheckpoint {
     scroll_capture: Option<ScrollCapture>,
     drag: Option<ActiveDrag>,
     previous_semantics: Option<SemanticTree>,
+    authoritative_layout: BTreeMap<UiNodeId, UiRect>,
+    shared_element_layouts: BTreeMap<UiSharedElementId, UiRect>,
+    presentation_opacity_targets: BTreeMap<UiNodeId, f32>,
     motion_system: UiMotionSystem,
     resolved_styles: BTreeMap<UiNodeId, UiStyle>,
     animated_color_targets: BTreeMap<UiNodeId, UiAnimatedColorTarget>,
@@ -1045,6 +1393,9 @@ pub struct UiRuntime {
     scroll_capture: Option<ScrollCapture>,
     drag: Option<ActiveDrag>,
     previous_semantics: Option<SemanticTree>,
+    authoritative_layout: BTreeMap<UiNodeId, UiRect>,
+    shared_element_layouts: BTreeMap<UiSharedElementId, UiRect>,
+    presentation_opacity_targets: BTreeMap<UiNodeId, f32>,
     revision: u64,
     last_document_delta: UiDocumentDelta,
     last_snapshot: Option<Arc<UiFrameSnapshot>>,
@@ -1083,6 +1434,9 @@ impl UiRuntime {
             scroll_capture: None,
             drag: None,
             previous_semantics: None,
+            authoritative_layout: BTreeMap::new(),
+            shared_element_layouts: BTreeMap::new(),
+            presentation_opacity_targets: BTreeMap::new(),
             revision: 0,
             last_document_delta: UiDocumentDelta::default(),
             last_snapshot: None,
@@ -1101,7 +1455,8 @@ impl UiRuntime {
     /// compatible private text-input state by stable node ID.
     ///
     /// A caller may rebuild presentation from authoritative source without
-    /// copying text values into that source or emitting them through semantics.
+    /// copying private text values into that source; non-password semantic
+    /// values remain derived from the current accepted runtime text state.
     pub fn replace_document(&mut self, document: UiDocument) -> UiDocumentDelta {
         let delta = self.document.delta_to(&document);
         let previous_inputs = std::mem::take(&mut self.text_inputs);
@@ -1164,6 +1519,8 @@ impl UiRuntime {
             self.motion_system.remove_node(*removed);
             self.resolved_styles.remove(removed);
             self.animated_color_targets.remove(removed);
+            self.authoritative_layout.remove(removed);
+            self.presentation_opacity_targets.remove(removed);
         }
         self.pointer_capture = None;
         self.scroll_capture = None;
@@ -1278,6 +1635,15 @@ impl UiRuntime {
                 fallback,
                 UiDiagnostic::FrameEffectByteLimitExceeded { bytes, maximum },
             ),
+            Err(UiFrameError::LayoutRejected(UiLayoutError::ConstraintCycle { chain })) => {
+                self.rejected_snapshot(fallback, UiDiagnostic::LayoutConstraintCycle { chain })
+            }
+            Err(UiFrameError::LayoutRejected(UiLayoutError::UnsatisfiableConstraints { node })) => {
+                self.rejected_snapshot(
+                    fallback,
+                    UiDiagnostic::LayoutConstraintsUnsatisfiable { node },
+                )
+            }
             Err(UiFrameError::InvalidDisplayList(error)) => {
                 self.rejected_snapshot(fallback, UiDiagnostic::FrameRejected(error))
             }
@@ -1296,6 +1662,8 @@ impl UiRuntime {
             Arc::new(UiFrameSnapshot {
                 revision: self.revision,
                 layout: Vec::new(),
+                presentation_layout: Vec::new(),
+                presentation_motion: Vec::new(),
                 visual_states: Vec::new(),
                 theme: context.theme,
                 density: context.density,
@@ -1347,7 +1715,10 @@ impl UiRuntime {
     ///
     /// Invalid display output restores interaction state and preserves the last
     /// accepted snapshot.
-    pub fn try_reconcile(&mut self, input: UiFrameInput) -> Result<UiFrameOutput, UiFrameError> {
+    pub fn try_reconcile(
+        &mut self,
+        mut input: UiFrameInput,
+    ) -> Result<UiFrameOutput, UiFrameError> {
         Self::validate_input_bound(&input)?;
         let input_event_count = input.events.len();
         let checkpoint = self.interaction_checkpoint();
@@ -1355,9 +1726,9 @@ impl UiRuntime {
         self.motion_system.advance(input.presentation_delta_ms);
         self.motion_system.apply_preference(motion);
         self.resolve_base_styles(&input.theme, contrast);
-        let mut layout = self.resolved_layout(input.viewport);
+        let mut layout = self.resolve_layout_or_restore(input.viewport, &checkpoint)?;
         let mut effects = UiFrameEffects::default();
-        let (_, motion_tokens_fallback) = input.theme.resolved_motion_tokens();
+        let (motion_tokens, motion_tokens_fallback) = input.theme.resolved_motion_tokens();
         if motion_tokens_fallback {
             effects
                 .diagnostics
@@ -1365,13 +1736,21 @@ impl UiRuntime {
         }
         let (geometry_tokens, _) = input.theme.resolved_geometry_tokens();
         let line_step = geometry_tokens.spacing_base * 4.0;
-        for event in input.events {
-            let layout_changed = self.process_event(event, &layout, &mut effects, line_step);
-            self.ensure_effect_bound(&effects, &checkpoint)?;
-            if layout_changed {
-                layout = self.resolved_layout(input.viewport);
-            }
-        }
+        self.process_frame_events(
+            std::mem::take(&mut input.events),
+            input.viewport,
+            &mut layout,
+            &mut effects,
+            &checkpoint,
+            line_step,
+        )?;
+        self.synchronize_presentation_motion(
+            &layout,
+            motion,
+            motion_tokens,
+            &mut effects.diagnostics,
+        );
+        let presentation_layout = self.presentation_layout(&layout);
         let text_validation = self.text_validation_snapshots(&mut effects.diagnostics);
         let mut display_list = DisplayList::default();
         let mut semantic_nodes = Vec::new();
@@ -1380,6 +1759,7 @@ impl UiRuntime {
         let (icon_tokens, icon_tokens_fallback) = input.theme.resolved_icon_tokens();
         let mut emission = UiEmission {
             layout: &layout,
+            presentation_layout: &presentation_layout,
             scale_factor: sanitized_scale_factor(input.scale_factor),
             icon_tokens,
             icon_tokens_fallback,
@@ -1388,7 +1768,7 @@ impl UiRuntime {
             diagnostics: &mut effects.diagnostics,
             next_scope: 1,
         };
-        let emission_result = self.emit_node(self.document.root(), None, &mut emission);
+        let emission_result = self.emit_node(self.document.root(), None, 1.0, &mut emission);
         if let Err(error) = emission_result.and_then(|()| display_list.validate()) {
             self.restore_interaction(checkpoint);
             return Err(UiFrameError::InvalidDisplayList(error));
@@ -1400,7 +1780,42 @@ impl UiRuntime {
             nodes: semantic_nodes,
         };
         let semantic_delta = self.semantic_delta_or_restore(&tree, checkpoint)?;
+        Ok(self.commit_frame(
+            &input,
+            UiPreparedFrame {
+                input_event_count,
+                contrast,
+                motion,
+                layout,
+                presentation_layout,
+                visual_states,
+                display_list,
+                tree,
+                semantic_delta,
+                effects,
+                text_validation,
+            },
+        ))
+    }
+
+    fn commit_frame(&mut self, input: &UiFrameInput, prepared: UiPreparedFrame) -> UiFrameOutput {
+        let UiPreparedFrame {
+            input_event_count,
+            contrast,
+            motion,
+            layout,
+            presentation_layout,
+            visual_states,
+            display_list,
+            tree,
+            semantic_delta,
+            effects,
+            text_validation,
+        } = prepared;
         self.previous_semantics = Some(tree.clone());
+        self.authoritative_layout.clone_from(&layout);
+        self.shared_element_layouts = self.shared_element_targets(&layout);
+        self.presentation_opacity_targets = self.retained_presentation_opacity_targets();
         self.revision = self.revision.saturating_add(1);
         let mut snapshot = UiFrameSnapshot {
             revision: self.revision,
@@ -1411,6 +1826,14 @@ impl UiRuntime {
                     bounds: *bounds,
                 })
                 .collect(),
+            presentation_layout: presentation_layout
+                .iter()
+                .map(|(node, bounds)| UiLayoutSnapshot {
+                    node: *node,
+                    bounds: *bounds,
+                })
+                .collect(),
+            presentation_motion: self.motion_system.snapshots(),
             visual_states,
             theme: input.theme.id,
             density: input.density,
@@ -1443,7 +1866,37 @@ impl UiRuntime {
             UiFrameDiagnostics::from_runtime(self, &snapshot, false, input_event_count);
         let snapshot = Arc::new(snapshot);
         self.last_snapshot = Some(Arc::clone(&snapshot));
-        Ok(snapshot)
+        snapshot
+    }
+
+    fn resolve_layout_or_restore(
+        &mut self,
+        viewport: UiSize,
+        checkpoint: &UiInteractionCheckpoint,
+    ) -> Result<BTreeMap<UiNodeId, UiRect>, UiFrameError> {
+        self.resolved_layout(viewport).map_err(|error| {
+            self.restore_interaction(checkpoint.clone());
+            UiFrameError::LayoutRejected(error)
+        })
+    }
+
+    fn process_frame_events(
+        &mut self,
+        events: Vec<UiEvent>,
+        viewport: UiSize,
+        layout: &mut BTreeMap<UiNodeId, UiRect>,
+        effects: &mut UiFrameEffects,
+        checkpoint: &UiInteractionCheckpoint,
+        line_step: f32,
+    ) -> Result<(), UiFrameError> {
+        for event in events {
+            let layout_changed = self.process_event(event, layout, effects, line_step);
+            self.ensure_effect_bound(effects, checkpoint)?;
+            if layout_changed {
+                *layout = self.resolve_layout_or_restore(viewport, checkpoint)?;
+            }
+        }
+        Ok(())
     }
 
     fn validate_input_bound(input: &UiFrameInput) -> Result<(), UiFrameError> {
@@ -1521,6 +1974,9 @@ impl UiRuntime {
             scroll_capture: self.scroll_capture,
             drag: self.drag,
             previous_semantics: self.previous_semantics.clone(),
+            authoritative_layout: self.authoritative_layout.clone(),
+            shared_element_layouts: self.shared_element_layouts.clone(),
+            presentation_opacity_targets: self.presentation_opacity_targets.clone(),
             motion_system: self.motion_system.clone(),
             resolved_styles: self.resolved_styles.clone(),
             animated_color_targets: self.animated_color_targets.clone(),
@@ -1537,6 +1993,9 @@ impl UiRuntime {
         self.scroll_capture = checkpoint.scroll_capture;
         self.drag = checkpoint.drag;
         self.previous_semantics = checkpoint.previous_semantics;
+        self.authoritative_layout = checkpoint.authoritative_layout;
+        self.shared_element_layouts = checkpoint.shared_element_layouts;
+        self.presentation_opacity_targets = checkpoint.presentation_opacity_targets;
         self.motion_system = checkpoint.motion_system;
         self.resolved_styles = checkpoint.resolved_styles;
         self.animated_color_targets = checkpoint.animated_color_targets;
@@ -1647,6 +2106,170 @@ impl UiRuntime {
         visual_states
     }
 
+    fn synchronize_presentation_motion(
+        &mut self,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+        preference: MotionPreference,
+        tokens: meridian_ui_core::UiMotionTokens,
+        diagnostics: &mut Vec<UiDiagnostic>,
+    ) {
+        let nodes: Vec<_> = self
+            .document
+            .nodes()
+            .map(|node| (node.id, node.presentation))
+            .collect();
+        let previous_layout = self.authoritative_layout.clone();
+        let previous_shared = self.shared_element_layouts.clone();
+        let previous_opacity = self.presentation_opacity_targets.clone();
+        for (node, presentation) in nodes {
+            let Some(target) = layout.get(&node).copied() else {
+                self.motion_system.remove_node(node);
+                continue;
+            };
+            let initial = match presentation.spatial_motion {
+                Some(UiSpatialMotionKind::PhysicalPanel) => previous_layout.get(&node).copied(),
+                Some(UiSpatialMotionKind::SharedElement) => presentation
+                    .shared_element
+                    .and_then(|shared_element| previous_shared.get(&shared_element).copied())
+                    .or_else(|| previous_layout.get(&node).copied()),
+                None => None,
+            };
+            if let (Some(kind), Some(initial)) = (presentation.spatial_motion, initial) {
+                let current_target = self
+                    .motion_system
+                    .snapshot(node, UiMotionChannel::Spatial)
+                    .and_then(|snapshot| match snapshot.target {
+                        UiPresentationValue::Rect(bounds) => Some((bounds, snapshot.spatial_kind)),
+                        UiPresentationValue::Opacity(_) | UiPresentationValue::Color(_) => None,
+                    });
+                if current_target.is_none_or(|(current, tracked_kind)| {
+                    current != target || tracked_kind != Some(kind)
+                }) && self
+                    .motion_system
+                    .retarget_spatial(node, initial, target, kind, preference, tokens)
+                    .is_err()
+                {
+                    self.motion_system
+                        .remove_channel(node, UiMotionChannel::Spatial);
+                    diagnostics.push(UiDiagnostic::MotionTrackRejected { node });
+                }
+            } else {
+                self.motion_system
+                    .remove_channel(node, UiMotionChannel::Spatial);
+            }
+
+            if let Some(initial) = previous_opacity.get(&node).copied() {
+                let current_target = self
+                    .motion_system
+                    .snapshot(node, UiMotionChannel::Opacity)
+                    .and_then(|snapshot| match snapshot.target {
+                        UiPresentationValue::Opacity(opacity) => Some(opacity),
+                        UiPresentationValue::Rect(_) | UiPresentationValue::Color(_) => None,
+                    });
+                if current_target
+                    .is_none_or(|current| current.to_bits() != presentation.opacity.to_bits())
+                    && self
+                        .motion_system
+                        .retarget_opacity(
+                            node,
+                            initial,
+                            presentation.opacity,
+                            tokens.state_transition_min_ms,
+                            preference,
+                            tokens,
+                        )
+                        .is_err()
+                {
+                    self.motion_system
+                        .remove_channel(node, UiMotionChannel::Opacity);
+                    diagnostics.push(UiDiagnostic::MotionTrackRejected { node });
+                }
+            } else {
+                self.motion_system
+                    .remove_channel(node, UiMotionChannel::Opacity);
+            }
+        }
+    }
+
+    fn shared_element_targets(
+        &self,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+    ) -> BTreeMap<UiSharedElementId, UiRect> {
+        self.document
+            .nodes()
+            .filter_map(|node| {
+                (node.presentation.spatial_motion == Some(UiSpatialMotionKind::SharedElement))
+                    .then_some(())
+                    .and(node.presentation.shared_element)
+                    .zip(layout.get(&node.id).copied())
+            })
+            .collect()
+    }
+
+    fn retained_presentation_opacity_targets(&self) -> BTreeMap<UiNodeId, f32> {
+        self.document
+            .nodes()
+            .map(|node| (node.id, node.presentation.opacity))
+            .collect()
+    }
+
+    fn presentation_layout(
+        &self,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+    ) -> BTreeMap<UiNodeId, UiRect> {
+        let mut presentation = BTreeMap::new();
+        self.collect_presentation_layout(
+            self.document.root(),
+            layout,
+            UiPresentationTransform::identity(),
+            &mut presentation,
+        );
+        presentation
+    }
+
+    fn collect_presentation_layout(
+        &self,
+        node: UiNodeId,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+        inherited: UiPresentationTransform,
+        presentation: &mut BTreeMap<UiNodeId, UiRect>,
+    ) {
+        let Some(bounds) = layout.get(&node).copied() else {
+            return;
+        };
+        let transform = self
+            .motion_system
+            .snapshot(node, UiMotionChannel::Spatial)
+            .and_then(|snapshot| match (snapshot.target, snapshot.current) {
+                (UiPresentationValue::Rect(target), UiPresentationValue::Rect(current)) => {
+                    Some(inherited.then(UiPresentationTransform::from_rects(target, current)))
+                }
+                _ => None,
+            })
+            .unwrap_or(inherited);
+        presentation.insert(node, transform.apply(bounds));
+        if let Some(document_node) = self.document.node(node) {
+            for child in &document_node.children {
+                self.collect_presentation_layout(*child, layout, transform, presentation);
+            }
+        }
+    }
+
+    fn presentation_opacity(&self, node: UiNodeId) -> f32 {
+        self.motion_system
+            .snapshot(node, UiMotionChannel::Opacity)
+            .and_then(|snapshot| match snapshot.current {
+                UiPresentationValue::Opacity(opacity) => Some(opacity),
+                UiPresentationValue::Rect(_) | UiPresentationValue::Color(_) => None,
+            })
+            .or_else(|| {
+                self.document
+                    .node(node)
+                    .map(|document_node| document_node.presentation.opacity)
+            })
+            .unwrap_or(1.0)
+    }
+
     fn visual_state(&self, node: &UiNode) -> UiVisualState {
         let invalid = node.semantics.state.invalid
             || node.text_validation.is_some_and(|rule| {
@@ -1675,256 +2298,16 @@ impl UiRuntime {
             .unwrap_or_else(UiStyle::transparent)
     }
 
-    fn resolved_layout(&mut self, viewport: UiSize) -> BTreeMap<UiNodeId, UiRect> {
-        let mut layout = BTreeMap::new();
-        self.layout_node(
-            self.document.root(),
-            UiRect::new(UiPoint::default(), viewport.sanitized()),
-            &mut layout,
-        );
+    fn resolved_layout(
+        &mut self,
+        viewport: UiSize,
+    ) -> Result<BTreeMap<UiNodeId, UiRect>, UiLayoutError> {
+        let root_bounds = UiRect::new(UiPoint::default(), viewport.sanitized());
+        let mut layout = UiLayoutResolver::resolve(self, root_bounds)?;
         if self.clamp_scroll_offsets(&layout) {
-            layout.clear();
-            self.layout_node(
-                self.document.root(),
-                UiRect::new(UiPoint::default(), viewport.sanitized()),
-                &mut layout,
-            );
+            layout = UiLayoutResolver::resolve(self, root_bounds)?;
         }
-        layout
-    }
-
-    fn layout_node(&self, id: UiNodeId, bounds: UiRect, layout: &mut BTreeMap<UiNodeId, UiRect>) {
-        let Some(node) = self.document.node(id) else {
-            return;
-        };
-        let bounds = resolve_constraints(bounds, node.constraints);
-        layout.insert(id, bounds);
-        let count = node.children.len();
-        if count == 0 {
-            return;
-        }
-        let content_bounds = inset_bounds(bounds, self.resolved_style(id).padding);
-        match node.layout {
-            UiLayout::Overlay => {
-                for child in &node.children {
-                    self.layout_node(*child, content_bounds, layout);
-                }
-            }
-            UiLayout::Grid { columns, gap } => {
-                self.layout_grid(&node.children, content_bounds, columns, gap, layout);
-            }
-            UiLayout::VerticalStack { gap } => {
-                self.layout_stack(&node.children, content_bounds, gap, true, layout);
-            }
-            UiLayout::HorizontalStack { gap } => {
-                self.layout_stack(&node.children, content_bounds, gap, false, layout);
-            }
-            UiLayout::Flex { axis, gap } => {
-                self.layout_stack(
-                    &node.children,
-                    content_bounds,
-                    gap,
-                    axis == UiAxis::Vertical,
-                    layout,
-                );
-            }
-            UiLayout::Absolute => {
-                for child in &node.children {
-                    let child_bounds = self
-                        .document
-                        .node(*child)
-                        .and_then(|child| child.absolute_position)
-                        .map_or(content_bounds, |position| {
-                            UiRect::new(
-                                UiPoint {
-                                    x: content_bounds.origin.x + position.left,
-                                    y: content_bounds.origin.y + position.top,
-                                },
-                                UiSize::new(
-                                    position.width.unwrap_or(content_bounds.size.width),
-                                    position.height.unwrap_or(content_bounds.size.height),
-                                ),
-                            )
-                        });
-                    self.layout_node(*child, child_bounds, layout);
-                }
-            }
-            UiLayout::Scroll { axis, offset } => {
-                let offset = self.scroll_offsets.get(&id).copied().unwrap_or(offset);
-                self.layout_scroll(&node.children, content_bounds, axis, offset, layout);
-            }
-        }
-    }
-
-    fn layout_scroll(
-        &self,
-        children: &[UiNodeId],
-        bounds: UiRect,
-        axis: UiAxis,
-        offset: f32,
-        layout: &mut BTreeMap<UiNodeId, UiRect>,
-    ) {
-        let mut cursor = if axis == UiAxis::Vertical {
-            bounds.origin.y - finite_nonnegative(offset)
-        } else {
-            bounds.origin.x - finite_nonnegative(offset)
-        };
-        for child in children {
-            let hints = self
-                .document
-                .node(*child)
-                .map_or_else(UiLayoutHints::default, |node| node.layout_hints);
-            let child_bounds = if axis == UiAxis::Vertical {
-                let height = hints.preferred_height.unwrap_or(bounds.size.height);
-                let result = UiRect::new(
-                    UiPoint {
-                        x: bounds.origin.x,
-                        y: cursor,
-                    },
-                    UiSize::new(bounds.size.width, height),
-                );
-                cursor += height;
-                result
-            } else {
-                let width = hints.preferred_width.unwrap_or(bounds.size.width);
-                let result = UiRect::new(
-                    UiPoint {
-                        x: cursor,
-                        y: bounds.origin.y,
-                    },
-                    UiSize::new(width, bounds.size.height),
-                );
-                cursor += width;
-                result
-            };
-            self.layout_node(*child, child_bounds, layout);
-        }
-    }
-
-    fn layout_stack(
-        &self,
-        children: &[UiNodeId],
-        bounds: UiRect,
-        gap: f32,
-        vertical: bool,
-        layout: &mut BTreeMap<UiNodeId, UiRect>,
-    ) {
-        let gap = finite_nonnegative(gap);
-        let item_count = bounded_count_as_f32(children.len());
-        let total_gap = gap * bounded_count_as_f32(children.len().saturating_sub(1));
-        let axis_extent = if vertical {
-            bounds.size.height
-        } else {
-            bounds.size.width
-        };
-        let available = (axis_extent - total_gap).max(0.0);
-        let preferred_total = children.iter().fold(0.0, |total, child| {
-            let preference = self
-                .document
-                .node(*child)
-                .and_then(|node| {
-                    if vertical {
-                        node.layout_hints.preferred_height
-                    } else {
-                        node.layout_hints.preferred_width
-                    }
-                })
-                .map_or(0.0, finite_nonnegative);
-            total + preference
-        });
-        let preferred_scale = if preferred_total > available && preferred_total > 0.0 {
-            available / preferred_total
-        } else {
-            1.0
-        };
-        let remaining = (available - preferred_total * preferred_scale).max(0.0);
-        let grow_total = children.iter().fold(0.0, |total, child| {
-            total
-                + self
-                    .document
-                    .node(*child)
-                    .map_or(0.0, |node| finite_nonnegative(node.layout_hints.grow))
-        });
-        let mut cursor = if vertical {
-            bounds.origin.y
-        } else {
-            bounds.origin.x
-        };
-        for child in children {
-            let node = self.document.node(*child);
-            let preferred = node
-                .and_then(|node| {
-                    if vertical {
-                        node.layout_hints.preferred_height
-                    } else {
-                        node.layout_hints.preferred_width
-                    }
-                })
-                .map_or(0.0, finite_nonnegative)
-                * preferred_scale;
-            let grow = node.map_or(0.0, |node| finite_nonnegative(node.layout_hints.grow));
-            let grown = if grow_total > 0.0 {
-                remaining * grow / grow_total
-            } else if preferred_total == 0.0 {
-                available / item_count
-            } else {
-                0.0
-            };
-            let extent = (preferred + grown).max(0.0);
-            let child_bounds = if vertical {
-                UiRect::new(
-                    UiPoint {
-                        x: bounds.origin.x,
-                        y: cursor,
-                    },
-                    UiSize::new(bounds.size.width, extent),
-                )
-            } else {
-                UiRect::new(
-                    UiPoint {
-                        x: cursor,
-                        y: bounds.origin.y,
-                    },
-                    UiSize::new(extent, bounds.size.height),
-                )
-            };
-            self.layout_node(*child, child_bounds, layout);
-            cursor += extent + gap;
-        }
-    }
-
-    fn layout_grid(
-        &self,
-        children: &[UiNodeId],
-        bounds: UiRect,
-        columns: u8,
-        gap: f32,
-        layout: &mut BTreeMap<UiNodeId, UiRect>,
-    ) {
-        let requested_columns = usize::from(columns.max(1));
-        let columns = requested_columns.min(children.len()).max(1);
-        let rows = children.len().div_ceil(columns);
-        let gap = finite_nonnegative(gap);
-        let width = ((bounds.size.width - gap * bounded_count_as_f32(columns.saturating_sub(1)))
-            .max(0.0)
-            / bounded_count_as_f32(columns))
-        .max(0.0);
-        let height = ((bounds.size.height - gap * bounded_count_as_f32(rows.saturating_sub(1)))
-            .max(0.0)
-            / bounded_count_as_f32(rows))
-        .max(0.0);
-        for (index, child) in children.iter().enumerate() {
-            let column = index % columns;
-            let row = index / columns;
-            let child_bounds = UiRect::new(
-                UiPoint {
-                    x: bounds.origin.x + bounded_count_as_f32(column) * (width + gap),
-                    y: bounds.origin.y + bounded_count_as_f32(row) * (height + gap),
-                },
-                UiSize::new(width, height),
-            );
-            self.layout_node(*child, child_bounds, layout);
-        }
+        Ok(layout)
     }
 
     fn process_event(
@@ -3084,16 +3467,18 @@ impl UiRuntime {
         } else {
             viewport.size.width
         };
-        let content_extent = node.children.iter().fold(0.0, |extent, child| {
-            let preferred = self.document.node(*child).and_then(|child| {
-                if axis == UiAxis::Vertical {
-                    child.layout_hints.preferred_height
-                } else {
-                    child.layout_hints.preferred_width
-                }
-            });
-            extent + preferred.map_or(viewport_extent, finite_nonnegative)
+        let vertical = axis == UiAxis::Vertical;
+        let offset = self.scroll_offsets.get(&id).copied().unwrap_or(0.0);
+        let content_origin = finite_sum(
+            axis_origin(viewport.origin, vertical),
+            -finite_nonnegative(offset),
+        );
+        let content_end = node.children.iter().fold(content_origin, |end, child| {
+            layout
+                .get(child)
+                .map_or(end, |bounds| end.max(axis_end(*bounds, vertical)))
         });
+        let content_extent = (content_end - content_origin).max(0.0);
         (content_extent - viewport_extent).max(0.0)
     }
 
@@ -3140,17 +3525,39 @@ impl UiRuntime {
         &mut self,
         id: UiNodeId,
         parent: Option<UiNodeId>,
+        inherited_opacity: f32,
         emission: &mut UiEmission<'_>,
     ) -> Result<(), DisplayListError> {
         let Some(node) = self.document.node(id) else {
             return Ok(());
         };
-        let Some(bounds) = emission.layout.get(&id).copied() else {
+        let Some(authoritative_bounds) = emission.layout.get(&id).copied() else {
             return Ok(());
         };
-        let style = self.resolved_style(id);
+        let bounds = emission
+            .presentation_layout
+            .get(&id)
+            .copied()
+            .unwrap_or(authoritative_bounds);
+        let opacity =
+            finite_product(inherited_opacity, self.presentation_opacity(id)).clamp(0.0, 1.0);
+        let mut style = self.resolved_style(id);
+        apply_presentation_opacity(&mut style, opacity);
         let clip = node.constraints.clip;
         let mut semantics = node.semantics.clone();
+        if let Some(options) = node.text_input {
+            // Text state is runtime-owned. Non-password fields publish their
+            // current accepted value; password fields never publish any value,
+            // even if a malformed source tried to declare one.
+            semantics.value = if options.password {
+                None
+            } else {
+                self.text_inputs
+                    .get(&id)
+                    .and_then(UiTextInputState::value)
+                    .map(str::to_owned)
+            };
+        }
         if let Some(rule) = node.text_validation {
             semantics.state.invalid = self
                 .text_inputs
@@ -3177,7 +3584,7 @@ impl UiRuntime {
             parent,
             role: semantics.role,
             name: semantics.name,
-            description: None,
+            description: semantics.description,
             actions: semantic_actions(
                 semantics.role,
                 semantics.action.is_some(),
@@ -3187,17 +3594,26 @@ impl UiRuntime {
             command: semantics.action,
             value: semantics.value,
             state: semantics.state,
+            relationships: semantic_relationships(
+                &semantics.relationships,
+                semantics.state.invalid,
+            ),
             live: match semantics.role {
                 meridian_ui_core::SemanticRole::LiveRegion
                 | meridian_ui_core::SemanticRole::Status => SemanticLive::Polite,
                 _ => SemanticLive::Off,
             },
-            collection_item: None,
-            bounds,
+            collection_item: semantics
+                .collection_item
+                .map(|item| SemanticCollectionItem {
+                    position: item.position,
+                    set_size: item.set_size,
+                }),
+            bounds: authoritative_bounds,
             focused: self.focused == Some(id),
         });
         for child in children {
-            self.emit_node(child, Some(id), emission)?;
+            self.emit_node(child, Some(id), opacity, emission)?;
         }
         if let Some(id) = clip_id {
             emission
@@ -3258,6 +3674,441 @@ impl UiRuntime {
         }
         emit_state_treatments(id, bounds, style, visual_state, emission.display)?;
         Ok(())
+    }
+}
+
+/// Per-frame layout resolver. It is deliberately separate from retained
+/// interaction state so a rejected geometry pass cannot partially commit a
+/// frame. The document validator prevents ordinary cycles; `visiting` remains
+/// a defensive guard for corrupted or future incremental document sources.
+struct UiLayoutResolver<'a> {
+    runtime: &'a UiRuntime,
+    layout: BTreeMap<UiNodeId, UiRect>,
+    visiting: BTreeSet<UiNodeId>,
+    chain: Vec<UiNodeId>,
+}
+
+impl<'a> UiLayoutResolver<'a> {
+    fn resolve(
+        runtime: &'a UiRuntime,
+        root_bounds: UiRect,
+    ) -> Result<BTreeMap<UiNodeId, UiRect>, UiLayoutError> {
+        let mut resolver = Self {
+            runtime,
+            layout: BTreeMap::new(),
+            visiting: BTreeSet::new(),
+            chain: Vec::new(),
+        };
+        resolver.layout_node(runtime.document.root(), root_bounds)?;
+        Ok(resolver.layout)
+    }
+
+    fn layout_node(&mut self, id: UiNodeId, bounds: UiRect) -> Result<UiRect, UiLayoutError> {
+        if !self.visiting.insert(id) {
+            let first = self.chain.iter().position(|node| *node == id).unwrap_or(0);
+            let mut chain = self.chain[first..].to_vec();
+            chain.push(id);
+            return Err(UiLayoutError::ConstraintCycle { chain });
+        }
+        self.chain.push(id);
+        let result = self.layout_node_inner(id, bounds);
+        self.chain.pop();
+        self.visiting.remove(&id);
+        result
+    }
+
+    fn layout_node_inner(&mut self, id: UiNodeId, bounds: UiRect) -> Result<UiRect, UiLayoutError> {
+        let Some(node) = self.runtime.document.node(id).cloned() else {
+            // A validated document never reaches this branch. Keeping this
+            // bounded fallback avoids an impossible child reference causing a
+            // partially emitted geometry map.
+            return Ok(bounds);
+        };
+        let bounds = resolve_constraints(id, bounds, node.constraints)?;
+        self.layout.insert(id, bounds);
+        if node.children.is_empty() {
+            return Ok(bounds);
+        }
+
+        let content_bounds = inset_bounds(bounds, self.runtime.resolved_style(id).padding);
+        match node.layout {
+            UiLayout::Overlay => {
+                for child in &node.children {
+                    let child_bounds = self.preferred_bounds(*child, content_bounds)?;
+                    self.layout_node(*child, child_bounds)?;
+                }
+            }
+            UiLayout::Grid { columns, gap } => {
+                self.layout_grid(&node.children, content_bounds, columns, gap)?;
+            }
+            UiLayout::VerticalStack { gap } => {
+                self.layout_stack(&node.children, content_bounds, gap, true)?;
+            }
+            UiLayout::HorizontalStack { gap } => {
+                self.layout_stack(&node.children, content_bounds, gap, false)?;
+            }
+            UiLayout::Flex { axis, gap } => {
+                self.layout_stack(
+                    &node.children,
+                    content_bounds,
+                    gap,
+                    axis == UiAxis::Vertical,
+                )?;
+            }
+            UiLayout::Absolute => {
+                for child in &node.children {
+                    self.layout_node(*child, self.absolute_bounds(*child, content_bounds)?)?;
+                }
+            }
+            UiLayout::Scroll { axis, offset } => {
+                let offset = self
+                    .runtime
+                    .scroll_offsets
+                    .get(&id)
+                    .copied()
+                    .unwrap_or(offset);
+                self.layout_scroll(&node.children, content_bounds, axis, offset)?;
+            }
+        }
+        Ok(bounds)
+    }
+
+    fn preferred_bounds(&self, child: UiNodeId, slot: UiRect) -> Result<UiRect, UiLayoutError> {
+        let Some(node) = self.runtime.document.node(child) else {
+            return Ok(slot);
+        };
+        let size = UiSize::new(
+            node.layout_hints
+                .preferred_width
+                .map_or(slot.size.width, finite_nonnegative),
+            node.layout_hints
+                .preferred_height
+                .map_or(slot.size.height, finite_nonnegative),
+        );
+        aligned_preferred_bounds(child, slot, size, node.constraints)
+    }
+
+    fn preferred_cross_axis_bounds(
+        &self,
+        child: UiNodeId,
+        slot: UiRect,
+        vertical: bool,
+    ) -> Result<UiRect, UiLayoutError> {
+        let Some(node) = self.runtime.document.node(child) else {
+            return Ok(slot);
+        };
+        let mut size = slot.size;
+        if vertical {
+            size.width = node
+                .layout_hints
+                .preferred_width
+                .map_or(size.width, finite_nonnegative);
+        } else {
+            size.height = node
+                .layout_hints
+                .preferred_height
+                .map_or(size.height, finite_nonnegative);
+        }
+        aligned_preferred_bounds(child, slot, size, node.constraints)
+    }
+
+    fn absolute_bounds(
+        &self,
+        child: UiNodeId,
+        content_bounds: UiRect,
+    ) -> Result<UiRect, UiLayoutError> {
+        let preferred = self.preferred_bounds(child, content_bounds)?;
+        let Some(position) = self
+            .runtime
+            .document
+            .node(child)
+            .and_then(|node| node.absolute_position)
+        else {
+            return Ok(preferred);
+        };
+        Ok(UiRect::new(
+            UiPoint {
+                x: finite_sum(content_bounds.origin.x, position.left),
+                y: finite_sum(content_bounds.origin.y, position.top),
+            },
+            UiSize::new(
+                position.width.unwrap_or(preferred.size.width),
+                position.height.unwrap_or(preferred.size.height),
+            ),
+        ))
+    }
+
+    fn constrained_axis_extent(
+        &self,
+        child: UiNodeId,
+        main_extent: f32,
+        cross_extent: f32,
+        vertical: bool,
+    ) -> Result<f32, UiLayoutError> {
+        let Some(node) = self.runtime.document.node(child) else {
+            return Ok(0.0);
+        };
+        let proposal = if vertical {
+            UiSize::new(cross_extent, main_extent)
+        } else {
+            UiSize::new(main_extent, cross_extent)
+        };
+        let resolved = resolve_constraints(
+            child,
+            UiRect::new(UiPoint::default(), proposal),
+            node.constraints,
+        )?;
+        Ok(if vertical {
+            resolved.size.height
+        } else {
+            resolved.size.width
+        })
+    }
+
+    fn layout_stack(
+        &mut self,
+        children: &[UiNodeId],
+        bounds: UiRect,
+        gap: f32,
+        vertical: bool,
+    ) -> Result<(), UiLayoutError> {
+        let gap = finite_nonnegative(gap);
+        let total_gap = finite_product(gap, bounded_count_as_f32(children.len().saturating_sub(1)));
+        let main_available = (axis_extent(bounds.size, vertical) - total_gap).max(0.0);
+        let cross_extent = axis_extent(bounds.size, !vertical);
+        let mut extents = Vec::with_capacity(children.len());
+        let mut minimums = Vec::with_capacity(children.len());
+        let mut grow = Vec::with_capacity(children.len());
+        let mut has_preferred_extent = false;
+
+        for child in children {
+            let Some(node) = self.runtime.document.node(*child) else {
+                continue;
+            };
+            let minimum = self.constrained_axis_extent(*child, 0.0, cross_extent, vertical)?;
+            let preference = if vertical {
+                node.layout_hints.preferred_height
+            } else {
+                node.layout_hints.preferred_width
+            };
+            has_preferred_extent |= preference.is_some();
+            let preferred = preference
+                .map(finite_nonnegative)
+                .map(|extent| self.constrained_axis_extent(*child, extent, cross_extent, vertical))
+                .transpose()?
+                .unwrap_or(minimum);
+            minimums.push(minimum);
+            extents.push(preferred.max(minimum));
+            grow.push(finite_nonnegative(node.layout_hints.grow));
+        }
+
+        fit_extents_to_available(&mut extents, &minimums, main_available);
+        if grow.iter().all(|weight| *weight <= 0.0) && !has_preferred_extent {
+            grow.fill(1.0);
+        }
+        distribute_available_extent(&mut extents, &grow, main_available);
+
+        let mut cursor = axis_origin(bounds.origin, vertical);
+        for (index, child) in children.iter().enumerate() {
+            let extent = extents.get(index).copied().unwrap_or_default();
+            let slot = rect_from_axes(bounds, cursor, extent, vertical);
+            let slot = self.preferred_cross_axis_bounds(*child, slot, vertical)?;
+            let actual = self.layout_node(*child, slot)?;
+            let requested_end = finite_sum(cursor, extent);
+            let actual_end = axis_end(actual, vertical);
+            cursor = finite_sum(requested_end.max(actual_end), gap);
+        }
+        Ok(())
+    }
+
+    fn layout_grid(
+        &mut self,
+        children: &[UiNodeId],
+        bounds: UiRect,
+        columns: u8,
+        gap: f32,
+    ) -> Result<(), UiLayoutError> {
+        let columns = usize::from(columns.max(1)).min(children.len()).max(1);
+        let rows = children.len().div_ceil(columns);
+        let gap = finite_nonnegative(gap);
+        let available_width = (bounds.size.width
+            - finite_product(gap, bounded_count_as_f32(columns.saturating_sub(1))))
+        .max(0.0);
+        let available_height = (bounds.size.height
+            - finite_product(gap, bounded_count_as_f32(rows.saturating_sub(1))))
+        .max(0.0);
+        let mut column_minimums = vec![0.0_f32; columns];
+        let mut column_extents = vec![0.0_f32; columns];
+        let mut row_minimums = vec![0.0_f32; rows];
+        let mut row_extents = vec![0.0_f32; rows];
+
+        for (index, child) in children.iter().enumerate() {
+            let column = index % columns;
+            let row = index / columns;
+            let Some(node) = self.runtime.document.node(*child) else {
+                continue;
+            };
+            let minimum_width =
+                self.constrained_axis_extent(*child, 0.0, bounds.size.height, false)?;
+            let preferred_width = node
+                .layout_hints
+                .preferred_width
+                .map(finite_nonnegative)
+                .map(|extent| {
+                    self.constrained_axis_extent(*child, extent, bounds.size.height, false)
+                })
+                .transpose()?
+                .unwrap_or(minimum_width);
+            let minimum_height =
+                self.constrained_axis_extent(*child, 0.0, bounds.size.width, true)?;
+            let preferred_height = node
+                .layout_hints
+                .preferred_height
+                .map(finite_nonnegative)
+                .map(|extent| self.constrained_axis_extent(*child, extent, bounds.size.width, true))
+                .transpose()?
+                .unwrap_or(minimum_height);
+            column_minimums[column] = column_minimums[column].max(minimum_width);
+            column_extents[column] = column_extents[column].max(preferred_width);
+            row_minimums[row] = row_minimums[row].max(minimum_height);
+            row_extents[row] = row_extents[row].max(preferred_height);
+        }
+
+        fit_extents_to_available(&mut column_extents, &column_minimums, available_width);
+        fit_extents_to_available(&mut row_extents, &row_minimums, available_height);
+        distribute_available_extent(&mut column_extents, &vec![1.0; columns], available_width);
+        distribute_available_extent(&mut row_extents, &vec![1.0; rows], available_height);
+
+        let mut column_origins = Vec::with_capacity(columns);
+        let mut cursor_x = bounds.origin.x;
+        for width in &column_extents {
+            column_origins.push(cursor_x);
+            cursor_x = finite_sum(finite_sum(cursor_x, *width), gap);
+        }
+        let mut row_origins = Vec::with_capacity(rows);
+        let mut cursor_y = bounds.origin.y;
+        for height in &row_extents {
+            row_origins.push(cursor_y);
+            cursor_y = finite_sum(finite_sum(cursor_y, *height), gap);
+        }
+        for (index, child) in children.iter().enumerate() {
+            let column = index % columns;
+            let row = index / columns;
+            self.layout_node(
+                *child,
+                UiRect::new(
+                    UiPoint {
+                        x: column_origins[column],
+                        y: row_origins[row],
+                    },
+                    UiSize::new(column_extents[column], row_extents[row]),
+                ),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn layout_scroll(
+        &mut self,
+        children: &[UiNodeId],
+        bounds: UiRect,
+        axis: UiAxis,
+        offset: f32,
+    ) -> Result<(), UiLayoutError> {
+        let vertical = axis == UiAxis::Vertical;
+        let mut cursor = finite_sum(
+            axis_origin(bounds.origin, vertical),
+            -finite_nonnegative(offset),
+        );
+        for child in children {
+            let slot = rect_from_axes(bounds, cursor, axis_extent(bounds.size, vertical), vertical);
+            let actual = self.layout_node(*child, self.preferred_bounds(*child, slot)?)?;
+            cursor = axis_end(actual, vertical);
+        }
+        Ok(())
+    }
+}
+
+fn axis_origin(origin: UiPoint, vertical: bool) -> f32 {
+    if vertical {
+        origin.y
+    } else {
+        origin.x
+    }
+}
+
+fn axis_extent(size: UiSize, vertical: bool) -> f32 {
+    if vertical {
+        size.height
+    } else {
+        size.width
+    }
+}
+
+fn axis_end(bounds: UiRect, vertical: bool) -> f32 {
+    finite_sum(
+        axis_origin(bounds.origin, vertical),
+        axis_extent(bounds.size, vertical),
+    )
+}
+
+fn rect_from_axes(bounds: UiRect, main_origin: f32, main_extent: f32, vertical: bool) -> UiRect {
+    if vertical {
+        UiRect::new(
+            UiPoint {
+                x: bounds.origin.x,
+                y: main_origin,
+            },
+            UiSize::new(bounds.size.width, main_extent),
+        )
+    } else {
+        UiRect::new(
+            UiPoint {
+                x: main_origin,
+                y: bounds.origin.y,
+            },
+            UiSize::new(main_extent, bounds.size.height),
+        )
+    }
+}
+
+fn fit_extents_to_available(extents: &mut [f32], minimums: &[f32], available: f32) {
+    let total = extents.iter().copied().fold(0.0, finite_sum);
+    if total <= available {
+        return;
+    }
+    let shrinkable = extents
+        .iter()
+        .zip(minimums)
+        .map(|(extent, minimum)| (*extent - *minimum).max(0.0))
+        .fold(0.0, finite_sum);
+    if shrinkable <= 0.0 {
+        return;
+    }
+    let required = (total - available).min(shrinkable);
+    for (extent, minimum) in extents.iter_mut().zip(minimums) {
+        let available_shrink = (*extent - *minimum).max(0.0);
+        let reduction = required * (available_shrink / shrinkable);
+        *extent = (*extent - reduction).max(*minimum);
+    }
+}
+
+fn distribute_available_extent(extents: &mut [f32], weights: &[f32], available: f32) {
+    let allocated = extents.iter().copied().fold(0.0, finite_sum);
+    let remaining = (available - allocated).max(0.0);
+    let weight_total = weights
+        .iter()
+        .copied()
+        .map(finite_nonnegative)
+        .fold(0.0, finite_sum);
+    if remaining <= 0.0 || weight_total <= 0.0 {
+        return;
+    }
+    for (extent, weight) in extents.iter_mut().zip(weights) {
+        *extent = finite_sum(
+            *extent,
+            remaining * finite_nonnegative(*weight) / weight_total,
+        );
     }
 }
 
@@ -3435,7 +4286,8 @@ pub fn runtime_overlay_document() -> Result<UiDocument, UiDocumentError> {
 mod tests {
     use super::*;
     use meridian_ui_core::{
-        UiAbsolutePosition, UiControlState, UiDragItemId, UiScrollDelta, UiStyle,
+        UiAbsolutePosition, UiControlState, UiDragItemId, UiLayoutHints, UiScrollDelta,
+        UiSemanticCollectionItem, UiSemanticRelationships, UiSharedElementId, UiStyle,
         UiTextInputOptions,
     };
     use meridian_ui_text::UiTextSelection;
@@ -3445,6 +4297,38 @@ mod tests {
             events,
             ..UiFrameInput::new(UiSize::new(800.0, 600.0))
         }
+    }
+
+    fn presentation_motion_document(
+        root: UiNodeId,
+        panel: UiNodeId,
+        button: UiNodeId,
+        left: f32,
+        opacity: f32,
+        shared: Option<UiSharedElementId>,
+    ) -> UiDocument {
+        let panel = UiNode::container(panel, "Inspector", UiLayout::Overlay, vec![button])
+            .with_absolute_position(UiAbsolutePosition {
+                left,
+                top: 20.0,
+                width: Some(160.0),
+                height: Some(100.0),
+            })
+            .with_presentation_opacity(opacity);
+        let panel = match shared {
+            Some(shared) => panel.with_shared_element_motion(shared),
+            None => panel.with_spatial_motion(UiSpatialMotionKind::PhysicalPanel),
+        };
+        UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Motion fixture", UiLayout::Absolute, vec![panel.id])
+                    .with_style(UiStyle::transparent()),
+                panel,
+                UiNode::button(button, "Apply inspector", "inspector.apply", "Apply"),
+            ],
+        )
+        .expect("motion fixture is valid")
     }
 
     #[test]
@@ -3464,6 +4348,130 @@ mod tests {
         );
         assert!((output.frame_diagnostics.scale_factor - 1.0).abs() < f32::EPSILON);
         assert!(!output.frame_diagnostics.recovered_previous_snapshot);
+    }
+
+    #[test]
+    fn runtime_emits_declared_descriptions_relations_and_virtual_collection_positions() {
+        let root = UiNodeId::new(0x2b0);
+        let label = UiNodeId::new(0x2b1);
+        let help = UiNodeId::new(0x2b2);
+        let error = UiNodeId::new(0x2b3);
+        let field = UiNodeId::new(0x2b4);
+        let row = UiNodeId::new(0x2b5);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Semantic output",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![label, help, error, field, row],
+                ),
+                UiNode::label(label, "Project label", "Project name"),
+                UiNode::tooltip(help, "Project help", "Shown in the title bar"),
+                UiNode::label(error, "Project error", "A project with this name exists"),
+                UiNode::text_input(
+                    field,
+                    "Project name",
+                    "Creator Alpha",
+                    UiTextInputOptions::default(),
+                )
+                .with_control_state(UiControlState {
+                    invalid: true,
+                    ..UiControlState::default()
+                })
+                .with_semantic_description("Saved display name for this project")
+                .with_semantic_relationships(UiSemanticRelationships {
+                    labelled_by: vec![label],
+                    described_by: vec![help],
+                    controls: vec![row],
+                    details: vec![help],
+                    flow_to: vec![row],
+                    error_message: Some(error),
+                }),
+                UiNode::list_item(row, "World", "world.open", false).with_semantic_collection_item(
+                    UiSemanticCollectionItem {
+                        position: 4,
+                        set_size: 12,
+                    },
+                ),
+            ],
+        )
+        .expect("semantic metadata document is accepted");
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(frame(Vec::new()));
+        let field_semantics = output
+            .semantic_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == field)
+            .expect("field semantic node is emitted");
+        assert_eq!(
+            field_semantics.description.as_deref(),
+            Some("Saved display name for this project")
+        );
+        assert_eq!(field_semantics.relationships.labelled_by, vec![label]);
+        assert_eq!(field_semantics.relationships.described_by, vec![help]);
+        assert_eq!(field_semantics.relationships.controls, vec![row]);
+        assert_eq!(field_semantics.relationships.details, vec![help]);
+        assert_eq!(field_semantics.relationships.flow_to, vec![row]);
+        assert_eq!(field_semantics.relationships.error_message, Some(error));
+        assert_eq!(
+            output
+                .semantic_tree
+                .nodes
+                .iter()
+                .find(|node| node.id == row)
+                .expect("row semantic node is emitted")
+                .collection_item,
+            Some(SemanticCollectionItem {
+                position: 4,
+                set_size: 12,
+            })
+        );
+    }
+
+    #[test]
+    fn runtime_hides_declared_error_relationship_until_the_frame_is_invalid() {
+        let root = UiNodeId::new(0x2c0);
+        let error = UiNodeId::new(0x2c1);
+        let field = UiNodeId::new(0x2c2);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Semantic error",
+                    UiLayout::Overlay,
+                    vec![error, field],
+                ),
+                UiNode::label(error, "Project error", "A project with this name exists"),
+                UiNode::text_input(
+                    field,
+                    "Project name",
+                    "Creator Alpha",
+                    UiTextInputOptions::default(),
+                )
+                .with_semantic_relationships(UiSemanticRelationships {
+                    error_message: Some(error),
+                    ..UiSemanticRelationships::default()
+                }),
+            ],
+        )
+        .expect("potential error relationship is retained");
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(
+            output
+                .semantic_tree
+                .nodes
+                .iter()
+                .find(|node| node.id == field)
+                .expect("field semantic node is emitted")
+                .relationships
+                .error_message,
+            None
+        );
     }
 
     #[test]
@@ -3535,6 +4543,28 @@ mod tests {
         assert_eq!(
             diagnostics.renderer_cache,
             UiRendererCacheDiagnostics::default()
+        );
+        assert_eq!(
+            diagnostics.overdraw,
+            UiOverdrawDiagnostics {
+                estimate: UiMeasurementAvailability::Unavailable,
+            }
+        );
+        assert_eq!(
+            diagnostics.event_latency,
+            UiEventLatencyDiagnostics {
+                measurement: UiMeasurementAvailability::Unavailable,
+                source_timestamped_events: 0,
+            }
+        );
+        assert_eq!(diagnostics.capture, UiCaptureState::NotRequested);
+        assert_eq!(
+            diagnostics.virtualization,
+            UiVirtualizationDiagnostics {
+                declared_regions: 1,
+                realized_ranges: UiMeasurementAvailability::Unavailable,
+                cache_state: UiMeasurementAvailability::Unavailable,
+            }
         );
     }
 
@@ -4128,6 +5158,224 @@ mod tests {
     }
 
     #[test]
+    fn runtime_consumes_retargeted_physical_and_opacity_presentation_without_moving_hits() {
+        let root = UiNodeId::new(0x77f);
+        let panel = UiNodeId::new(0x780);
+        let button = UiNodeId::new(0x781);
+        let mut runtime = UiRuntime::new(presentation_motion_document(
+            root, panel, button, 16.0, 1.0, None,
+        ));
+        let initial = runtime.reconcile(frame(Vec::new()));
+        let initial_panel = initial
+            .layout
+            .iter()
+            .find(|entry| entry.node == panel)
+            .expect("initial panel layout")
+            .bounds;
+
+        runtime.replace_document(presentation_motion_document(
+            root, panel, button, 400.0, 0.25, None,
+        ));
+        let moved = runtime.reconcile(frame(vec![
+            UiEvent::PointerDown(UiPoint { x: 440.0, y: 60.0 }),
+            UiEvent::PointerUp(UiPoint { x: 440.0, y: 60.0 }),
+        ]));
+        let target_panel = moved
+            .layout
+            .iter()
+            .find(|entry| entry.node == panel)
+            .expect("target panel layout")
+            .bounds;
+        let presentation_panel = moved
+            .presentation_layout
+            .iter()
+            .find(|entry| entry.node == panel)
+            .expect("panel presentation layout")
+            .bounds;
+        assert_eq!(presentation_panel, initial_panel);
+        assert_ne!(presentation_panel, target_panel);
+        assert_eq!(
+            moved.commands,
+            vec![UiCommandRequest {
+                source: button,
+                action: "inspector.apply".to_owned(),
+            }]
+        );
+        let spatial = moved
+            .presentation_motion
+            .iter()
+            .find(|snapshot| snapshot.node == panel && snapshot.channel == UiMotionChannel::Spatial)
+            .copied()
+            .expect("physical panel track is snapshotted");
+        assert_eq!(
+            spatial.spatial_kind,
+            Some(UiSpatialMotionKind::PhysicalPanel)
+        );
+        assert_eq!(spatial.current, UiPresentationValue::Rect(initial_panel));
+        assert_eq!(spatial.target, UiPresentationValue::Rect(target_panel));
+        assert!(spatial.active);
+        let opacity = moved
+            .presentation_motion
+            .iter()
+            .find(|snapshot| snapshot.node == panel && snapshot.channel == UiMotionChannel::Opacity)
+            .copied()
+            .expect("opacity track is snapshotted");
+        assert_eq!(opacity.current, UiPresentationValue::Opacity(1.0));
+        assert_eq!(opacity.target, UiPresentationValue::Opacity(0.25));
+        assert!(opacity.active);
+
+        let mut advanced_input = frame(Vec::new());
+        advanced_input.presentation_delta_ms = 50;
+        let advanced = runtime.reconcile(advanced_input);
+        let advanced_spatial = advanced
+            .presentation_motion
+            .iter()
+            .find(|snapshot| snapshot.node == panel && snapshot.channel == UiMotionChannel::Spatial)
+            .copied()
+            .expect("advanced spatial track");
+        assert_ne!(
+            advanced_spatial.current,
+            UiPresentationValue::Rect(initial_panel)
+        );
+        assert_ne!(
+            advanced_spatial.current,
+            UiPresentationValue::Rect(target_panel)
+        );
+        assert!(advanced.display_list.primitives.iter().any(|primitive| {
+            matches!(primitive, DisplayPrimitive::RoundedRect { node, color, .. }
+                if *node == panel && color.alpha < 1.0 && color.alpha > 0.25)
+        }));
+        assert!(!advanced
+            .display_list
+            .primitives
+            .iter()
+            .any(|primitive| matches!(primitive, DisplayPrimitive::BeginLayer { .. })));
+    }
+
+    #[test]
+    fn physical_motion_retargeting_preserves_the_current_presentation() {
+        let root = UiNodeId::new(0x77f);
+        let panel = UiNodeId::new(0x780);
+        let button = UiNodeId::new(0x781);
+        let mut runtime = UiRuntime::new(presentation_motion_document(
+            root, panel, button, 16.0, 1.0, None,
+        ));
+        runtime.reconcile(frame(Vec::new()));
+        runtime.replace_document(presentation_motion_document(
+            root, panel, button, 400.0, 0.25, None,
+        ));
+        runtime.reconcile(frame(Vec::new()));
+        let mut advanced_input = frame(Vec::new());
+        advanced_input.presentation_delta_ms = 50;
+        let advanced = runtime.reconcile(advanced_input);
+        let advanced_spatial = advanced
+            .presentation_motion
+            .iter()
+            .find(|snapshot| snapshot.node == panel && snapshot.channel == UiMotionChannel::Spatial)
+            .copied()
+            .expect("advanced spatial track");
+
+        runtime.replace_document(presentation_motion_document(
+            root, panel, button, 220.0, 0.8, None,
+        ));
+        let mut retarget_input = frame(Vec::new());
+        retarget_input.presentation_delta_ms = 0;
+        let retargeted = runtime.reconcile(retarget_input);
+        let retargeted_spatial = retargeted
+            .presentation_motion
+            .iter()
+            .find(|snapshot| snapshot.node == panel && snapshot.channel == UiMotionChannel::Spatial)
+            .copied()
+            .expect("retargeted spatial track");
+        assert_eq!(retargeted_spatial.current, advanced_spatial.current);
+    }
+
+    #[test]
+    fn reduced_motion_snaps_physical_presentation_to_authoritative_geometry() {
+        let root = UiNodeId::new(0x77f);
+        let panel = UiNodeId::new(0x780);
+        let button = UiNodeId::new(0x781);
+        let mut runtime = UiRuntime::new(presentation_motion_document(
+            root, panel, button, 16.0, 1.0, None,
+        ));
+        runtime.reconcile(frame(Vec::new()));
+        runtime.replace_document(presentation_motion_document(
+            root, panel, button, 320.0, 0.4, None,
+        ));
+        let mut input = frame(Vec::new());
+        input.reduced_motion = true;
+        let reduced = runtime.reconcile(input);
+        let reduced_panel = reduced
+            .layout
+            .iter()
+            .find(|entry| entry.node == panel)
+            .expect("reduced target layout")
+            .bounds;
+        assert_eq!(
+            reduced
+                .presentation_layout
+                .iter()
+                .find(|entry| entry.node == panel)
+                .expect("reduced presentation layout")
+                .bounds,
+            reduced_panel
+        );
+        assert!(reduced
+            .presentation_motion
+            .iter()
+            .all(|snapshot| { snapshot.node != panel || !snapshot.active }));
+    }
+
+    #[test]
+    fn shared_element_motion_handoffs_between_distinct_cross_frame_nodes() {
+        let root = UiNodeId::new(0x77f);
+        let shared_source = UiNodeId::new(0x782);
+        let shared_target = UiNodeId::new(0x783);
+        let shared_button = UiNodeId::new(0x784);
+        let shared = UiSharedElementId::new(0x55aa);
+        let mut shared_runtime = UiRuntime::new(presentation_motion_document(
+            root,
+            shared_source,
+            shared_button,
+            24.0,
+            1.0,
+            Some(shared),
+        ));
+        let source = shared_runtime.reconcile(frame(Vec::new()));
+        let source_bounds = source
+            .layout
+            .iter()
+            .find(|entry| entry.node == shared_source)
+            .expect("shared source layout")
+            .bounds;
+        shared_runtime.replace_document(presentation_motion_document(
+            root,
+            shared_target,
+            shared_button,
+            480.0,
+            1.0,
+            Some(shared),
+        ));
+        let shared_output = shared_runtime.reconcile(frame(Vec::new()));
+        let shared_spatial = shared_output
+            .presentation_motion
+            .iter()
+            .find(|snapshot| {
+                snapshot.node == shared_target && snapshot.channel == UiMotionChannel::Spatial
+            })
+            .copied()
+            .expect("shared-element track is snapshotted on its new node");
+        assert_eq!(
+            shared_spatial.spatial_kind,
+            Some(UiSpatialMotionKind::SharedElement)
+        );
+        assert_eq!(
+            shared_spatial.current,
+            UiPresentationValue::Rect(source_bounds)
+        );
+    }
+
+    #[test]
     fn high_dpi_and_contrast_preserve_semantics_and_scale_text_raster() {
         let mut normal_runtime =
             UiRuntime::new(recovery_panel_document().expect("recovery fixture is valid"));
@@ -4277,6 +5525,15 @@ mod tests {
             }]
         );
         assert_eq!(runtime.text_input_value(input), Some("axe\u{301}"));
+        assert_eq!(
+            output
+                .semantic_tree
+                .nodes
+                .iter()
+                .find(|node| node.id == input)
+                .and_then(|node| node.value.as_deref()),
+            Some("axe\u{301}")
+        );
 
         let cancelled = runtime.reconcile(frame(vec![UiEvent::ImeCancel]));
         assert_eq!(cancelled.preedit, None);
@@ -4326,6 +5583,15 @@ mod tests {
                 DisplayPrimitive::Text { text, .. } => text != "s3cr3t",
                 _ => true,
             }));
+        assert_eq!(
+            output
+                .semantic_tree
+                .nodes
+                .iter()
+                .find(|node| node.id == input)
+                .and_then(|node| node.value.as_deref()),
+            None
+        );
         assert_eq!(
             output.text_inputs,
             vec![UiTextInputSnapshot {
@@ -4417,6 +5683,15 @@ mod tests {
 
         assert_eq!(output.focused, Some(input));
         assert_eq!(runtime.text_input_value(input), Some("250"));
+        assert_eq!(
+            output
+                .semantic_tree
+                .nodes
+                .iter()
+                .find(|node| node.id == input)
+                .and_then(|node| node.value.as_deref()),
+            Some("250")
+        );
         assert!(output
             .diagnostics
             .contains(&UiDiagnostic::AssistiveFocusDenied { node: label }));
@@ -4534,6 +5809,368 @@ mod tests {
                     | DisplayPrimitive::Text { .. }
             )
         ));
+    }
+
+    #[test]
+    fn flex_and_grid_honor_constraints_padding_gap_and_alignment() {
+        let flex_root = UiNodeId::new(0x530);
+        let flex_first = UiNodeId::new(0x531);
+        let flex_second = UiNodeId::new(0x532);
+        let flex_document = UiDocument::new(
+            flex_root,
+            vec![
+                UiNode::container(
+                    flex_root,
+                    "Constrained flex",
+                    UiLayout::Flex {
+                        axis: UiAxis::Horizontal,
+                        gap: 10.0,
+                    },
+                    vec![flex_first, flex_second],
+                )
+                .with_style(UiStyle {
+                    padding: 8.0,
+                    ..UiStyle::transparent()
+                }),
+                UiNode::label(flex_first, "First", "First")
+                    .with_layout_hints(UiLayoutHints::fixed_size(70.0, 32.0))
+                    .with_constraints(UiConstraints {
+                        minimum: UiSize::new(20.0, 20.0),
+                        maximum: Some(UiSize::new(64.0, 80.0)),
+                        vertical_alignment: UiAlignment::End,
+                        ..UiConstraints::default()
+                    }),
+                UiNode::label(flex_second, "Second", "Second")
+                    .with_layout_hints(UiLayoutHints::fixed_width(70.0)),
+            ],
+        )
+        .expect("flex constraints are valid");
+        let mut flex_runtime = UiRuntime::new(flex_document);
+        let flex = flex_runtime.reconcile(UiFrameInput::new(UiSize::new(240.0, 100.0)));
+        let flex_bounds = |id| {
+            flex.layout
+                .iter()
+                .find(|entry| entry.node == id)
+                .map(|entry| entry.bounds)
+                .expect("flex node has bounds")
+        };
+        assert_eq!(flex_bounds(flex_first).size, UiSize::new(64.0, 32.0));
+        assert_eq!(flex_bounds(flex_first).origin, UiPoint { x: 8.0, y: 60.0 });
+        assert!((flex_bounds(flex_second).origin.x - 82.0).abs() < f32::EPSILON);
+
+        let grid_root = UiNodeId::new(0x540);
+        let grid_first = UiNodeId::new(0x541);
+        let grid_second = UiNodeId::new(0x542);
+        let grid_constraints = UiConstraints {
+            minimum: UiSize::new(20.0, 20.0),
+            maximum: Some(UiSize::new(80.0, 60.0)),
+            aspect_ratio: Some(2.0),
+            horizontal_alignment: UiAlignment::Center,
+            vertical_alignment: UiAlignment::End,
+            ..UiConstraints::default()
+        };
+        let grid_document = UiDocument::new(
+            grid_root,
+            vec![
+                UiNode::container(
+                    grid_root,
+                    "Constrained grid",
+                    UiLayout::Grid {
+                        columns: 2,
+                        gap: 10.0,
+                    },
+                    vec![grid_first, grid_second],
+                )
+                .with_style(UiStyle {
+                    padding: 5.0,
+                    ..UiStyle::transparent()
+                }),
+                UiNode::label(grid_first, "Grid first", "First")
+                    .with_layout_hints(UiLayoutHints::fixed_width(60.0))
+                    .with_constraints(grid_constraints),
+                UiNode::label(grid_second, "Grid second", "Second")
+                    .with_layout_hints(UiLayoutHints::fixed_width(60.0))
+                    .with_constraints(grid_constraints),
+            ],
+        )
+        .expect("grid constraints are valid");
+        let mut grid_runtime = UiRuntime::new(grid_document);
+        let grid = grid_runtime.reconcile(UiFrameInput::new(UiSize::new(230.0, 120.0)));
+        let grid_bounds = |id| {
+            grid.layout
+                .iter()
+                .find(|entry| entry.node == id)
+                .map(|entry| entry.bounds)
+                .expect("grid node has bounds")
+        };
+        assert_eq!(grid_bounds(grid_first).size, UiSize::new(80.0, 40.0));
+        // The 10px grid gap belongs inside the padded 220px content width:
+        // each 105px cell centers its 80px constrained child without pushing
+        // the second column beyond the parent slot.
+        assert_eq!(grid_bounds(grid_first).origin, UiPoint { x: 17.5, y: 75.0 });
+        assert_eq!(
+            grid_bounds(grid_second).origin,
+            UiPoint { x: 132.5, y: 75.0 }
+        );
+    }
+
+    #[test]
+    fn overlay_and_absolute_honor_preferred_sizes_padding_and_alignment() {
+        let overlay_root = UiNodeId::new(0x550);
+        let overlay_child = UiNodeId::new(0x551);
+        let overlay_document = UiDocument::new(
+            overlay_root,
+            vec![
+                UiNode::container(
+                    overlay_root,
+                    "Overlay",
+                    UiLayout::Overlay,
+                    vec![overlay_child],
+                )
+                .with_style(UiStyle {
+                    padding: 10.0,
+                    ..UiStyle::transparent()
+                }),
+                UiNode::label(overlay_child, "Overlay child", "Overlay")
+                    .with_layout_hints(UiLayoutHints::fixed_size(60.0, 30.0))
+                    .with_constraints(UiConstraints {
+                        horizontal_alignment: UiAlignment::End,
+                        vertical_alignment: UiAlignment::Center,
+                        ..UiConstraints::default()
+                    }),
+            ],
+        )
+        .expect("overlay document");
+        let mut overlay_runtime = UiRuntime::new(overlay_document);
+        let overlay = overlay_runtime.reconcile(UiFrameInput::new(UiSize::new(200.0, 100.0)));
+        assert_eq!(
+            overlay
+                .layout
+                .iter()
+                .find(|entry| entry.node == overlay_child)
+                .expect("overlay child bounds")
+                .bounds,
+            UiRect::new(UiPoint { x: 130.0, y: 35.0 }, UiSize::new(60.0, 30.0))
+        );
+
+        let absolute_root = UiNodeId::new(0x560);
+        let absolute_child = UiNodeId::new(0x561);
+        let absolute_document = UiDocument::new(
+            absolute_root,
+            vec![
+                UiNode::container(
+                    absolute_root,
+                    "Absolute",
+                    UiLayout::Absolute,
+                    vec![absolute_child],
+                )
+                .with_style(UiStyle {
+                    padding: 10.0,
+                    ..UiStyle::transparent()
+                }),
+                UiNode::label(absolute_child, "Absolute child", "Absolute")
+                    .with_layout_hints(UiLayoutHints::fixed_size(60.0, 30.0))
+                    .with_absolute_position(UiAbsolutePosition {
+                        left: 20.0,
+                        top: 5.0,
+                        width: None,
+                        height: None,
+                    }),
+            ],
+        )
+        .expect("absolute document");
+        let mut absolute_runtime = UiRuntime::new(absolute_document);
+        let absolute = absolute_runtime.reconcile(UiFrameInput::new(UiSize::new(200.0, 100.0)));
+        assert_eq!(
+            absolute
+                .layout
+                .iter()
+                .find(|entry| entry.node == absolute_child)
+                .expect("absolute child bounds")
+                .bounds,
+            UiRect::new(UiPoint { x: 30.0, y: 15.0 }, UiSize::new(60.0, 30.0))
+        );
+    }
+
+    #[test]
+    fn preferred_bounds_apply_constraints_before_parent_slot_alignment() {
+        let root = UiNodeId::new(0x565);
+        let child = UiNodeId::new(0x566);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Overlay", UiLayout::Overlay, vec![child])
+                    .with_style(UiStyle::transparent()),
+                UiNode::label(child, "Constrained preferred child", "Preferred")
+                    .with_layout_hints(UiLayoutHints::fixed_size(120.0, 80.0))
+                    .with_constraints(UiConstraints {
+                        maximum: Some(UiSize::new(90.0, 50.0)),
+                        aspect_ratio: Some(2.0),
+                        horizontal_alignment: UiAlignment::End,
+                        vertical_alignment: UiAlignment::Center,
+                        ..UiConstraints::default()
+                    }),
+            ],
+        )
+        .expect("preferred child document");
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(UiFrameInput::new(UiSize::new(200.0, 100.0)));
+        let bounds = output
+            .layout
+            .iter()
+            .find(|entry| entry.node == child)
+            .expect("preferred child bounds")
+            .bounds;
+
+        // The preferred 120x80 size resolves to 90x45 under the maximum and
+        // aspect constraints, then aligns inside the 200x100 parent slot.
+        assert_eq!(bounds.size, UiSize::new(90.0, 45.0));
+        assert_eq!(bounds.origin, UiPoint { x: 110.0, y: 27.5 });
+    }
+
+    #[test]
+    fn scroll_uses_resolved_child_extents_for_clamping() {
+        let root = UiNodeId::new(0x570);
+        let first = UiNodeId::new(0x571);
+        let second = UiNodeId::new(0x572);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Scroll",
+                    UiLayout::Scroll {
+                        axis: UiAxis::Vertical,
+                        offset: 100.0,
+                    },
+                    vec![first, second],
+                )
+                .with_style(UiStyle {
+                    padding: 5.0,
+                    ..UiStyle::transparent()
+                }),
+                UiNode::label(first, "First row", "First")
+                    .with_layout_hints(UiLayoutHints::fixed_size(40.0, 80.0))
+                    .with_constraints(UiConstraints {
+                        minimum: UiSize::new(20.0, 20.0),
+                        maximum: Some(UiSize::new(100.0, 50.0)),
+                        horizontal_alignment: UiAlignment::Center,
+                        ..UiConstraints::default()
+                    }),
+                UiNode::label(second, "Second row", "Second")
+                    .with_layout_hints(UiLayoutHints::fixed_height(60.0)),
+            ],
+        )
+        .expect("scroll document");
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(UiFrameInput::new(UiSize::new(200.0, 100.0)));
+        let bounds = |id| {
+            output
+                .layout
+                .iter()
+                .find(|entry| entry.node == id)
+                .map(|entry| entry.bounds)
+                .expect("scroll node has bounds")
+        };
+        assert_eq!(bounds(first).origin, UiPoint { x: 80.0, y: -15.0 });
+        assert_eq!(bounds(first).size, UiSize::new(40.0, 50.0));
+        assert!((bounds(second).origin.y - 35.0).abs() < f32::EPSILON);
+        assert_eq!(
+            output.scroll,
+            vec![UiScrollSnapshot {
+                node: root,
+                offset: 20.0,
+                maximum: 20.0,
+            }]
+        );
+    }
+
+    #[test]
+    fn unsatisfiable_constraints_recover_last_accepted_geometry_and_cycle_guard_rejects() {
+        let root = UiNodeId::new(0x580);
+        let child = UiNodeId::new(0x581);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Accepted", UiLayout::Overlay, vec![child]),
+                UiNode::label(child, "Accepted child", "Accepted"),
+            ],
+        )
+        .expect("accepted document");
+        let mut runtime = UiRuntime::new(document);
+        let accepted = runtime.reconcile(frame(Vec::new()));
+        let impossible = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Impossible", UiLayout::Overlay, vec![child]),
+                UiNode::label(child, "Impossible child", "Impossible")
+                    .with_layout_hints(UiLayoutHints::fixed_size(100.0, 100.0))
+                    .with_constraints(UiConstraints {
+                        minimum: UiSize::new(100.0, 100.0),
+                        maximum: Some(UiSize::new(100.0, 100.0)),
+                        aspect_ratio: Some(2.0),
+                        ..UiConstraints::default()
+                    }),
+            ],
+        )
+        .expect("per-axis constraints remain structurally valid");
+        runtime.replace_document(impossible);
+        let recovered = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(recovered.revision, accepted.revision);
+        assert_eq!(recovered.layout, accepted.layout);
+        assert!(recovered.frame_diagnostics.recovered_previous_snapshot);
+        assert_eq!(
+            recovered.diagnostics,
+            vec![UiDiagnostic::LayoutConstraintsUnsatisfiable { node: child }]
+        );
+
+        let mut resolver = UiLayoutResolver {
+            runtime: &runtime,
+            layout: BTreeMap::new(),
+            visiting: BTreeSet::from([root]),
+            chain: vec![root],
+        };
+        assert_eq!(
+            resolver.layout_node(root, UiRect::new(UiPoint::default(), UiSize::new(1.0, 1.0))),
+            Err(UiLayoutError::ConstraintCycle {
+                chain: vec![root, root],
+            })
+        );
+    }
+
+    #[test]
+    fn recovered_frame_diagnostics_keep_the_snapshot_layout_root() {
+        let accepted_root = UiNodeId::new(0x590);
+        let accepted_document = UiDocument::new(
+            accepted_root,
+            vec![UiNode::label(accepted_root, "Accepted", "Accepted")],
+        )
+        .expect("accepted root document");
+        let mut runtime = UiRuntime::new(accepted_document);
+        let accepted = runtime.reconcile(frame(Vec::new()));
+
+        let rejected_root = UiNodeId::new(0x591);
+        let rejected_document = UiDocument::new(
+            rejected_root,
+            vec![
+                UiNode::label(rejected_root, "Impossible", "Impossible").with_constraints(
+                    UiConstraints {
+                        minimum: UiSize::new(100.0, 100.0),
+                        maximum: Some(UiSize::new(100.0, 100.0)),
+                        aspect_ratio: Some(2.0),
+                        ..UiConstraints::default()
+                    },
+                ),
+            ],
+        )
+        .expect("per-axis constraints remain structurally valid");
+        runtime.replace_document(rejected_document);
+
+        let recovered = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(recovered.revision, accepted.revision);
+        assert_eq!(recovered.semantic_tree.root, Some(accepted_root));
+        assert!(recovered.frame_diagnostics.recovered_previous_snapshot);
+        assert_eq!(recovered.frame_diagnostics.reconciliation.layout_roots, 1);
     }
 
     #[test]

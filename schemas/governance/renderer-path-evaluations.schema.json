@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Penumbra renderer path evaluations",
+  "title": "Meridian renderer path evaluations",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "records"],
@@ -23,12 +23,15 @@
         ],
         "properties": {
           "id": { "type": "string" },
-          "research_gate": { "const": "RG-PEN-001" },
+          "research_gate": { "enum": ["RG-PEN-001", "RG-UI-001"] },
           "candidate": { "type": "string" },
-          "status": { "enum": ["Planned", "Running", "Rejected", "Promoted", "Inconclusive"] },
+          "status": { "enum": ["Planned", "Running", "Rejected", "Promoted", "Decided", "Inconclusive"] },
           "preregistered_thresholds": { "type": "object" },
           "workload_results": { "type": "array" },
-          "maintenance_review": { "type": "string" }
+          "maintenance_review": { "type": "string" },
+          "work_package": { "type": "string", "pattern": "^WP-[A-Z]+-[0-9]{3}$" },
+          "adr": { "type": "string", "pattern": "^ADR-[0-9]{4}$" },
+          "decision_limits": { "type": "array", "items": { "type": "string" } }
         }
       }
     }

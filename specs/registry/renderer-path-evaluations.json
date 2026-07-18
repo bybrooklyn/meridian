@@ -1,1 +1,65 @@
-{"$schema":"../../schemas/governance/renderer-path-evaluations.schema.json","version":"0.5","records":[]}
+{
+  "$schema": "../../schemas/governance/renderer-path-evaluations.schema.json",
+  "version": "0.5",
+  "records": [
+    {
+      "id": "RPE-UI-001",
+      "research_gate": "RG-UI-001",
+      "candidate": "Penumbra-owned direct display-list renderer",
+      "status": "Decided",
+      "work_package": "WP-UI-005",
+      "adr": "ADR-0029",
+      "preregistered_thresholds": {
+        "contract": "Consume Meridian DisplayList and SemanticTree without exposing adapter types.",
+        "correctness": "Validate the complete registered primitive corpus, explicit fallbacks, cache identity, and recovery.",
+        "nonpromotion": "Do not treat structural/offscreen output as visual, accessibility, calibrated-performance, or package-completion evidence."
+      },
+      "workload_results": [
+        {
+          "workload": "meridian.ui-direct-qualification/v1",
+          "status": "Inconclusive",
+          "reason": "Local exact RGBA fixture comparison is profile-bound and caller-declared source provenance is not a trusted attestation."
+        },
+        {
+          "workload": "meridian.ui-direct-device-loss-replay/v1",
+          "status": "Inconclusive",
+          "reason": "Controlled test-only device destruction proves replay behavior only, not spontaneous hardware or driver loss."
+        },
+        {
+          "workload": "meridian.ui-direct-performance/v1",
+          "status": "Inconclusive",
+          "reason": "Raw local samples have no calibrated threshold, cross-platform repetition, allocation telemetry, or visual review."
+        }
+      ],
+      "maintenance_review": "The direct path preserves Meridian-owned display, semantic, RHI, cache, and recovery authority without a second scene model or wgpu major. No new runtime dependency is introduced.",
+      "decision_limits": [
+        "ADR-0029 selects an architecture direction, not renderer completion or package promotion.",
+        "Linux, Windows, macOS, presented native visual, real screen-reader, and calibrated performance/memory evidence remain required."
+      ]
+    },
+    {
+      "id": "RPE-UI-002",
+      "research_gate": "RG-UI-001",
+      "candidate": "Full-frame CPU raster bridge",
+      "status": "Rejected",
+      "work_package": "WP-UI-005",
+      "adr": "ADR-0029",
+      "preregistered_thresholds": {
+        "production_direction": "Avoid a full-frame CPU raster and upload as the production direct renderer path.",
+        "retained_scope": "Keep the bounded bridge only for structural diagnostics and recovery."
+      },
+      "workload_results": [
+        {
+          "workload": "meridian.ui-raster-bridge/v1",
+          "status": "Inconclusive",
+          "reason": "The bridge covers a bounded subset of the display contract and is deliberately not visual or performance qualification."
+        }
+      ],
+      "maintenance_review": "The bridge is dependency-free and useful for recovery, but its full-frame storage/upload model does not share the direct path's resource and cache architecture.",
+      "decision_limits": [
+        "Rejected only as the production renderer direction; retained as a bounded structural/recovery fallback.",
+        "Its safety cap is not a production frame budget or quality claim."
+      ]
+    }
+  ]
+}

@@ -2,9 +2,10 @@
 
 Date: 2026-07-17
 Package: `WP-UI-005`
-Evidence class: local structural corpus and dependency/maintenance review
-Qualification limit: no visual-quality, calibrated latency, screen-reader, or
-cross-platform performance claim
+Evidence class: local structural corpus, non-promoting offscreen runner output,
+and dependency/maintenance review
+Qualification limit: dirty/local output is `Inconclusive`; no visual-quality,
+calibrated latency, screen-reader, cross-platform, or package-promotion claim
 
 ## Stable boundary and corpus
 
@@ -64,6 +65,27 @@ the production renderer.
   plumbing on that machine; it is not a golden-image comparison,
   visual-quality review, device-loss replay evidence, cross-platform
   qualification, or a calibrated performance result.
+- The feature-gated hidden qualification runner now captures the final direct
+  target through an opt-in RHI copy-source target and writes raw RGBA8,
+  PNG/metadata, and a portable JSON report. Each checked fixture is versioned
+  and binds generator/input schema, corpus hashes, unique case IDs, dimensions,
+  raw hashes, and backend/adapter/driver/vendor/device/surface/OS/architecture
+  identity. Aggregate runner success requires every exact comparison to pass; a
+  missing or different profile is `NotRun`, while a matched-fixture pixel
+  difference is `Fail` with a durable failure artifact. Local or dirty source
+  output remains `Inconclusive` as qualification evidence even when all case
+  comparisons pass. This is profile-bound offscreen renderer correctness
+  evidence, not presented visual review.
+- The non-default controlled device-loss runner calls the actual backend device
+  destruction seam, observes `Destroyed`, proves `DeviceLost` old submission
+  and `StaleRhiIdentity` rejection after RHI rebuild, then compares baseline
+  and replayed pixels exactly. It records both RHI profiles/identities. It does
+  not simulate or qualify hardware, driver, power, or spontaneous loss.
+- The local performance runner writes raw JSONL for resource-setup and
+  steady-reuse samples. It reports stage wall time, typed timing availability,
+  capture diagnostics, and payload accounting; backend allocation, VRAM, and
+  driver residency remain explicitly unavailable. Its data are uncalibrated and
+  do not set a latency, FPS, memory, or visual-quality claim.
 - High contrast and unsupported effect profiles resolve bounded backdrops to
   their required opaque color. Focus geometry is rectangular; no decorative
   ring is part of the contract.
@@ -84,4 +106,15 @@ cargo test -p meridian-renderer --features ui-raster-bridge
 cargo test -p meridian-renderer --all-features
 cargo clippy -p meridian-ui-render -p meridian-renderer --all-targets --all-features -- -D warnings
 cargo run -p meridian-renderer --features ui-direct --example ui_direct_smoke
+MERIDIAN_SOURCE_STATE=working-tree MERIDIAN_SOURCE_CHECKPOINT=<path-free-source-id> cargo run -p meridian-benchmark --example ui_direct_qualification --features ui-direct-qualification -- --evidence target/meridian-evidence/ui-direct-qualification/<unique>
+MERIDIAN_SOURCE_STATE=working-tree MERIDIAN_SOURCE_CHECKPOINT=<path-free-source-id> cargo run -p meridian-benchmark --example ui_direct_device_loss_replay --features ui-direct-device-loss -- --evidence target/meridian-evidence/ui-direct-device-loss-replay/<unique>
+MERIDIAN_SOURCE_STATE=working-tree MERIDIAN_SOURCE_CHECKPOINT=<path-free-source-id> cargo run -p meridian-benchmark --example ui_direct_performance --features ui-direct-qualification -- --evidence target/meridian-evidence/ui-direct-performance/<unique>
 ~~~
+
+The source variables are caller-declared local provenance labels, not trusted
+source or build attestation. A local or dirty run must use
+`MERIDIAN_SOURCE_STATE=working-tree`, reports `Inconclusive`, and cannot promote
+a package. `clean-commit` is reserved for a separately verified build wrapper
+with its exact 40-character commit identity; it still does not turn offscreen
+output into cross-platform, screen-reader, visible-review, or accessibility
+qualification evidence.

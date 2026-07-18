@@ -31,6 +31,17 @@ pub struct CaptureArtifact {
     pub metadata: CaptureMetadata,
 }
 
+/// Raw tightly-packed RGBA capture artifact used for exact pixel comparison.
+///
+/// PNG files remain the portable review artifact. This binary form deliberately
+/// avoids encoder and metadata variability when a calibrated renderer profile
+/// has an approved pixel fixture.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RawCaptureArtifact {
+    pub rgba_path: PathBuf,
+    pub pixel_hash: String,
+}
+
 /// Encodes one tightly packed RGBA8 sRGB frame and writes adjacent JSON metadata.
 ///
 /// # Errors
@@ -40,20 +51,7 @@ pub fn write_capture_png(
     path: impl AsRef<Path>,
     frame: &CapturedFrame,
 ) -> Result<CaptureArtifact, CaptureWriteError> {
-    if frame.format != CapturedPixelFormat::Rgba8Srgb {
-        return Err(CaptureWriteError::UnsupportedFormat);
-    }
-    let expected = u64::from(frame.width)
-        .checked_mul(u64::from(frame.height))
-        .and_then(|pixels| pixels.checked_mul(4))
-        .and_then(|bytes| usize::try_from(bytes).ok())
-        .ok_or(CaptureWriteError::SizeOverflow)?;
-    if frame.pixels.len() != expected {
-        return Err(CaptureWriteError::InvalidPixelLength {
-            actual: frame.pixels.len(),
-            expected,
-        });
-    }
+    validate_capture_pixels(frame)?;
     let path = path.as_ref().to_path_buf();
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -109,6 +107,94 @@ pub fn write_capture_png(
     })
 }
 
+/// Writes one tightly packed RGBA8 sRGB capture without image-container
+/// encoding.
+///
+/// The path is intended for profile-specific golden fixtures and is therefore
+/// not a replacement for [`write_capture_png`]'s reviewable PNG plus metadata.
+///
+/// # Errors
+///
+/// Rejects invalid pixel lengths, unsupported formats, or IO failures.
+pub fn write_capture_rgba(
+    path: impl AsRef<Path>,
+    frame: &CapturedFrame,
+) -> Result<RawCaptureArtifact, CaptureWriteError> {
+    validate_capture_pixels(frame)?;
+    let path = path.as_ref().to_path_buf();
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .map_err(|error| CaptureWriteError::io("create parent", &error))?;
+        }
+    }
+    write_synced(&path, &frame.pixels)?;
+    Ok(RawCaptureArtifact {
+        rgba_path: path,
+        pixel_hash: ArtifactHash::digest(&frame.pixels).to_string(),
+    })
+}
+
+/// Writes a pretty, durable JSON evidence artifact.
+///
+/// Evidence reports intentionally live outside runtime crates. Callers must
+/// describe unavailable measurements explicitly instead of fabricating values.
+///
+/// # Errors
+///
+/// Returns serialization or IO failures.
+pub fn write_evidence_json(
+    path: impl AsRef<Path>,
+    value: &impl Serialize,
+) -> Result<PathBuf, CaptureWriteError> {
+    let path = path.as_ref().to_path_buf();
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .map_err(|error| CaptureWriteError::io("create parent", &error))?;
+        }
+    }
+    let bytes = serde_json::to_vec_pretty(value)
+        .map_err(|error| CaptureWriteError::Json(error.to_string()))?;
+    write_synced(&path, &bytes)?;
+    Ok(path)
+}
+
+/// Appends one canonical JSON object followed by a newline and synchronizes it.
+///
+/// The qualification runner uses JSONL so a terminated native process still
+/// leaves every completed iteration inspectable. Callers retain responsibility
+/// for a unique evidence path per invocation.
+///
+/// # Errors
+///
+/// Returns serialization or IO failures.
+pub fn append_evidence_json_line(
+    path: impl AsRef<Path>,
+    value: &impl Serialize,
+) -> Result<PathBuf, CaptureWriteError> {
+    let path = path.as_ref().to_path_buf();
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .map_err(|error| CaptureWriteError::io("create parent", &error))?;
+        }
+    }
+    let mut bytes =
+        serde_json::to_vec(value).map_err(|error| CaptureWriteError::Json(error.to_string()))?;
+    bytes.push(b'\n');
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|error| CaptureWriteError::io("open append", &error))?;
+    file.write_all(&bytes)
+        .map_err(|error| CaptureWriteError::io("append", &error))?;
+    file.sync_all()
+        .map_err(|error| CaptureWriteError::io("sync append", &error))?;
+    Ok(path)
+}
+
 #[must_use]
 pub fn has_multiple_pixel_values(frame: &CapturedFrame) -> bool {
     let mut pixels = frame.pixels.chunks_exact(4);
@@ -130,6 +216,24 @@ fn frame_outcome_name(outcome: FrameOutcome) -> &'static str {
         FrameOutcome::DeviceLost => "device-lost",
         FrameOutcome::UnsupportedSurface => "unsupported-surface",
     }
+}
+
+fn validate_capture_pixels(frame: &CapturedFrame) -> Result<(), CaptureWriteError> {
+    if frame.format != CapturedPixelFormat::Rgba8Srgb {
+        return Err(CaptureWriteError::UnsupportedFormat);
+    }
+    let expected = u64::from(frame.width)
+        .checked_mul(u64::from(frame.height))
+        .and_then(|pixels| pixels.checked_mul(4))
+        .and_then(|bytes| usize::try_from(bytes).ok())
+        .ok_or(CaptureWriteError::SizeOverflow)?;
+    if frame.pixels.len() != expected {
+        return Err(CaptureWriteError::InvalidPixelLength {
+            actual: frame.pixels.len(),
+            expected,
+        });
+    }
+    Ok(())
 }
 
 fn write_synced(path: &Path, bytes: &[u8]) -> Result<(), CaptureWriteError> {
@@ -184,9 +288,9 @@ impl Display for CaptureWriteError {
                 write!(formatter, "capture {operation} failed: {message}")
             }
             Self::Png(message) => write!(formatter, "PNG encoding failed: {message}"),
-            Self::Json(message) => write!(formatter, "capture metadata failed: {message}"),
+            Self::Json(message) => write!(formatter, "JSON serialization failed: {message}"),
             Self::UnsupportedFormat => {
-                formatter.write_str("capture format is unsupported by PNG writer")
+                formatter.write_str("capture format is unsupported; expected rgba8-srgb")
             }
             Self::SizeOverflow => formatter.write_str("capture dimensions overflow host size"),
             Self::InvalidPixelLength { actual, expected } => write!(
@@ -233,5 +337,33 @@ mod tests {
         assert!(artifact.png_path.metadata().expect("png metadata").len() > 8);
         fs::remove_file(artifact.png_path).expect("remove png");
         fs::remove_file(artifact.metadata_path).expect("remove metadata");
+    }
+
+    #[test]
+    fn raw_rgba_preserves_exact_capture_bytes() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("meridian-capture-{nonce}.rgba"));
+        let frame = CapturedFrame {
+            capture_id: CaptureId::new(7),
+            frame_id: FrameId::new(8),
+            width: 2,
+            height: 1,
+            format: CapturedPixelFormat::Rgba8Srgb,
+            source: CaptureSource::Offscreen,
+            surface_outcome: None,
+            pixels: vec![1, 2, 3, 255, 4, 5, 6, 255],
+        };
+
+        let artifact = write_capture_rgba(&path, &frame).expect("raw capture writes");
+
+        assert_eq!(
+            fs::read(&artifact.rgba_path).expect("raw bytes"),
+            frame.pixels
+        );
+        assert_eq!(artifact.pixel_hash.len(), 64);
+        fs::remove_file(artifact.rgba_path).expect("remove raw capture");
     }
 }

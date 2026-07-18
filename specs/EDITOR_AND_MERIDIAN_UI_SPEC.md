@@ -444,6 +444,39 @@ scale separation, device loss, font substitution, corrupt-state recovery, and
 display-list replay. Visual evidence must be presented; headless or occluded
 submission cannot claim visual quality.
 
+`WP-UI-005` has three separate, non-promoting native evidence runners for the
+direct display-list path. The hidden qualification runner captures only an
+opt-in copy-source offscreen target, emits raw RGBA8 plus PNG/metadata, and
+compares all current corpus cases exactly against a versioned fixture. A fixture
+binds its schema, generator identity, input schema, corpus hashes, unique case
+IDs, dimensions, raw hash, and complete RHI profile (backend, adapter, driver,
+vendor/device IDs, surface format, OS, and architecture). Report-level `Pass`
+is a runner outcome only and requires every required case to pass. Missing or
+different profiles are `NotRun`; an exact-profile pixel mismatch is `Fail` and
+leaves a durable machine-readable failure report. Evidence source checkpoints
+are required, path-free identifiers; portable reports contain only relative
+artifact names. The source state and checkpoint are caller-declared labels, not
+trusted source attestation. Local or dirty reports remain `Inconclusive`
+qualification evidence and cannot promote `WP-UI-005`.
+
+The hidden device-loss runner invokes the non-default, test-only controlled
+`wgpu::Device::destroy` seam, waits for the real `Destroyed` callback, verifies
+typed rejection of old submission and stale identity after RHI rebuild, then
+replays the immutable corpus and compares baseline/recovered pixels exactly.
+It records baseline/recovered hardware/configuration profiles and render
+identities. This is controlled destruction only: it does not establish
+hardware, driver, power, or spontaneous-loss behavior.
+
+The hidden performance runner records sequential raw JSONL samples for distinct
+resource-setup and steady-reuse modes, plus wall-clock preparation/upload/
+submission/readback-wait observations, typed RHI timing outcomes, capture
+diagnostics, and exact payload accounting. It records unavailable backend
+allocation, VRAM, driver-residency, and unsupported/inconclusive timing as
+such. It sets no numeric threshold, does not convert readback wait into GPU or
+interactive latency, and is not calibrated performance evidence. None of these
+offscreen runners is a presented native visual review, real screen-reader
+evidence, accessibility qualification, or cross-platform qualification.
+
 ## 20. Delivery packages and completion
 
 The rewrite is sequential and has one active package at a time:

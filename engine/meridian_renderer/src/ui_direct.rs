@@ -433,6 +433,37 @@ pub struct UiDirectFrameDiagnostics {
     pub full_frame_cpu_rasterized: bool,
 }
 
+/// Exact payload accounting for one prepared direct-UI frame.
+///
+/// These values describe immutable CPU bytes, upload payload bytes, and
+/// planned color-target bytes.  They do not claim backend allocation size,
+/// cache residency, driver memory, or peak process memory.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiDirectFrameFootprint {
+    /// CPU-owned packed vertex bytes before GPU upload.
+    pub cpu_vertex_bytes: u64,
+    /// CPU-owned packed index bytes before GPU upload.
+    pub cpu_index_bytes: u64,
+    /// CPU-owned RGBA atlas bytes before GPU upload.
+    pub cpu_atlas_bytes: u64,
+    /// Sum of vertex, index, and atlas payload bytes requested for upload.
+    pub gpu_upload_payload_bytes: u64,
+    /// Planned full-size isolated layer and backdrop color-target bytes.
+    pub planned_color_target_bytes: u64,
+    /// Display primitive count before direct preparation.
+    pub primitive_count: usize,
+    /// Prepared indexed batch count.
+    pub batch_count: usize,
+    /// Isolated compositing layer count, excluding the root pass.
+    pub layer_count: usize,
+    /// Prepared shadow primitive count.
+    pub shadow_count: usize,
+    /// Backdrop effects realized through the bounded filter path.
+    pub backdrop_effect_count: usize,
+    /// Backdrops resolved to their required opaque fallback.
+    pub backdrop_fallback_count: usize,
+}
+
 /// Bounded RGBA atlas produced by direct UI preparation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiDirectAtlas {
@@ -491,6 +522,7 @@ impl UiDirectLayerPass {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiDirectFramePlan {
     cache_key: UiDirectCacheKey,
+    rhi_identity: RhiRenderIdentity,
     recovery: UiDirectRendererRecovery,
     diagnostics: UiDirectFrameDiagnostics,
     batches: Vec<UiDirectBatch>,
@@ -504,6 +536,7 @@ pub struct UiDirectFramePlan {
 /// Device-owned direct UI submission resources for one prepared frame.
 pub struct UiDirectGpuFrame {
     cache_key: UiDirectCacheKey,
+    rhi_identity: RhiRenderIdentity,
     layer_plan_fingerprint: u64,
     vertex_bytes_len: usize,
     index_bytes_len: usize,
@@ -548,16 +581,41 @@ pub struct UiDirectPrepareRequest<'a> {
 /// Pixel-affecting renderer cache key for direct UI resources.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct UiDirectCacheKey {
+    /// Caller-provided immutable UI snapshot revision.
     pub display_revision: u64,
+    /// RHI device generation used to prepare this frame.
     pub device_generation: u64,
+    /// RHI surface generation used to prepare this frame.
     pub surface_generation: u64,
+    /// Physical width of the prepared direct-UI target.
     pub surface_width: u32,
+    /// Physical height of the prepared direct-UI target.
     pub surface_height: u32,
+    /// Exact active RHI surface width, independent of the UI target viewport.
+    pub rhi_surface_width: u32,
+    /// Exact active RHI surface height, independent of the UI target viewport.
+    pub rhi_surface_height: u32,
+    /// Stable cache-only fingerprint of the active RHI surface format.
+    pub surface_format_fingerprint: u64,
+    /// Whether the active RHI surface format exposes an sRGB view.
+    pub surface_format_srgb: bool,
+    /// Whether the active RHI surface was configured when the frame prepared.
+    pub surface_configured: bool,
+    /// Rounded direct-UI display scale in thousandths.
     pub scale_milli: u16,
+    /// Resolved high-contrast mode.
     pub contrast_high: bool,
+    /// Host-provided image cache revision.
     pub image_revision: u64,
+    /// Host-provided mesh cache revision.
     pub mesh_revision: u64,
+    /// Resolved optional effect capability profile.
     pub effect_profile: u64,
+    /// Deterministic prepared payload and draw-plan cache fingerprint.
+    ///
+    /// This guards process-local GPU upload reuse only; it is not a source or
+    /// evidence integrity hash.
+    pub content_fingerprint: u64,
 }
 
 /// Direct UI renderer state. GPU handles stay outside public Meridian API.
@@ -605,7 +663,7 @@ impl UiDirectGpuRenderer {
             .validate()
             .map_err(UiDirectRendererError::InvalidDisplayList)?;
         validate_viewport(request.viewport, request.scale_factor)?;
-        let cache_key = UiDirectCacheKey::new(
+        let mut cache_key = UiDirectCacheKey::new(
             request.display_revision,
             &self.identity,
             request.viewport,
@@ -644,9 +702,19 @@ impl UiDirectGpuRenderer {
         }
         let (batches, vertex_bytes, index_bytes, atlas, layer_passes, backdrop_passes) =
             builder.finish()?;
+        cache_key.content_fingerprint = prepared_frame_content_fingerprint(
+            &vertex_bytes,
+            &index_bytes,
+            &atlas,
+            &batches,
+            &layer_passes,
+            &backdrop_passes,
+            diagnostics.layer_target_bytes,
+        );
         let recovery = self.prepare_recovery(request.display_revision);
         Ok(UiDirectFramePlan {
             cache_key,
+            rhi_identity: self.identity.clone(),
             recovery,
             diagnostics,
             batches,
@@ -730,11 +798,17 @@ impl UiDirectCacheKey {
             surface_generation: identity.surface_generation,
             surface_width: logical_to_pixels(viewport.width, scale_factor)?,
             surface_height: logical_to_pixels(viewport.height, scale_factor)?,
+            rhi_surface_width: identity.surface_size.width,
+            rhi_surface_height: identity.surface_size.height,
+            surface_format_fingerprint: surface_format_fingerprint(&identity.surface_format.name),
+            surface_format_srgb: identity.surface_format.srgb,
+            surface_configured: identity.surface_configured,
             scale_milli: scale_milli(scale_factor)?,
             contrast_high: contrast == UiContrast::High,
             image_revision: resources.image_revision,
             mesh_revision: resources.mesh_revision,
             effect_profile: u64::from(effects.backdrop_filtering),
+            content_fingerprint: 0,
         })
     }
 }
@@ -746,6 +820,16 @@ pub enum UiDirectRendererError {
     InvalidBackdropEffect(UiBackdropValidationError),
     InvalidViewport,
     UnsupportedSurfaceColorSpace,
+    /// The final qualification target cannot support its required copy-source
+    /// capability on this active RHI profile.
+    ///
+    /// This is distinct from presentation-surface availability: normal direct
+    /// rendering may remain usable when the optional offscreen comparison path
+    /// cannot be captured.
+    OffscreenCaptureUnsupported {
+        /// RHI reason that made the copy-source target unavailable.
+        rhi_kind: RhiErrorKind,
+    },
     InvalidImage(UiImageHandle),
     InvalidMesh(UiMeshHandle),
     MissingImage(UiImageHandle),
@@ -771,6 +855,9 @@ pub enum UiDirectRendererError {
         maximum: u32,
     },
     FullyClippedRequiredPrimitive(UiDirectPrimitiveKind),
+    /// A text or glyph-run primitive has an incomplete raster payload for its
+    /// immutable layout.
+    IncompleteTextRaster(UiDirectPrimitiveKind),
     UnsupportedPathGeometry,
     InvalidShadowSpread,
     PathTessellationBudgetExceeded {
@@ -786,6 +873,16 @@ pub enum UiDirectRendererError {
         actual_device_generation: u64,
         expected_surface_generation: u64,
         actual_surface_generation: u64,
+        expected_surface_format: String,
+        actual_surface_format: String,
+        expected_surface_format_srgb: bool,
+        actual_surface_format_srgb: bool,
+        expected_surface_width: u32,
+        actual_surface_width: u32,
+        expected_surface_height: u32,
+        actual_surface_height: u32,
+        expected_surface_configured: bool,
+        actual_surface_configured: bool,
     },
     InvalidVertexLayout(VertexLayoutError),
     InvalidLayerPlan,
@@ -808,6 +905,10 @@ impl Display for UiDirectRendererError {
             Self::InvalidViewport => formatter.write_str("UI viewport must be finite and non-zero"),
             Self::UnsupportedSurfaceColorSpace => formatter.write_str(
                 "direct UI rendering requires an sRGB surface format for deterministic color",
+            ),
+            Self::OffscreenCaptureUnsupported { rhi_kind } => write!(
+                formatter,
+                "direct UI offscreen qualification capture requires an unavailable copy-source target capability ({rhi_kind:?})"
             ),
             Self::InvalidImage(handle) => write!(formatter, "invalid UI image resource {handle:?}"),
             Self::InvalidMesh(handle) => write!(formatter, "invalid UI mesh resource {handle:?}"),
@@ -849,6 +950,10 @@ impl Display for UiDirectRendererError {
                     "direct UI required primitive is fully clipped: {kind:?}"
                 )
             }
+            Self::IncompleteTextRaster(kind) => write!(
+                formatter,
+                "direct UI {kind:?} has an incomplete glyph raster and cannot be submitted as a complete frame"
+            ),
             Self::UnsupportedPathGeometry => formatter.write_str(
                 "direct UI path is degenerate, self-intersecting, or uses an unsupported fill topology",
             ),
@@ -866,15 +971,7 @@ impl Display for UiDirectRendererError {
                 formatter,
                 "direct UI GPU frame fingerprint {uploaded_fingerprint:#018x} does not match requested plan {requested_fingerprint:#018x}"
             ),
-            Self::StaleRhiIdentity {
-                expected_device_generation,
-                actual_device_generation,
-                expected_surface_generation,
-                actual_surface_generation,
-            } => write!(
-                formatter,
-                "direct UI plan expected RHI device/surface generations {expected_device_generation}/{expected_surface_generation}, got {actual_device_generation}/{actual_surface_generation}"
-            ),
+            Self::StaleRhiIdentity { .. } => self.fmt_stale_rhi_identity(formatter),
             Self::InvalidVertexLayout(error) => {
                 write!(formatter, "invalid direct UI vertex layout: {error}")
             }
@@ -902,9 +999,36 @@ impl From<UiBackdropValidationError> for UiDirectRendererError {
 }
 
 impl UiDirectRendererError {
+    fn fmt_stale_rhi_identity(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        let Self::StaleRhiIdentity {
+            expected_device_generation,
+            actual_device_generation,
+            expected_surface_generation,
+            actual_surface_generation,
+            expected_surface_format,
+            actual_surface_format,
+            expected_surface_format_srgb,
+            actual_surface_format_srgb,
+            expected_surface_width,
+            actual_surface_width,
+            expected_surface_height,
+            actual_surface_height,
+            expected_surface_configured,
+            actual_surface_configured,
+        } = self
+        else {
+            return Err(fmt::Error);
+        };
+        write!(
+            formatter,
+            "direct UI plan expected RHI device/surface generations {expected_device_generation}/{expected_surface_generation}, format {expected_surface_format} (sRGB {expected_surface_format_srgb}), size {expected_surface_width}x{expected_surface_height}, configured {expected_surface_configured}; got {actual_device_generation}/{actual_surface_generation}, format {actual_surface_format} (sRGB {actual_surface_format_srgb}), size {actual_surface_width}x{actual_surface_height}, configured {actual_surface_configured}"
+        )
+    }
+
     #[must_use]
     pub const fn rhi_kind(&self) -> Option<RhiErrorKind> {
         match self {
+            Self::OffscreenCaptureUnsupported { rhi_kind } => Some(*rhi_kind),
             Self::Rhi(error) => Some(error.kind()),
             _ => None,
         }
@@ -915,6 +1039,20 @@ impl From<RhiError> for UiDirectRendererError {
     fn from(error: RhiError) -> Self {
         Self::Rhi(error)
     }
+}
+
+fn map_offscreen_capture_target_error(error: RhiError) -> UiDirectRendererError {
+    if is_offscreen_capture_target_capability_error(error.kind()) {
+        UiDirectRendererError::OffscreenCaptureUnsupported {
+            rhi_kind: error.kind(),
+        }
+    } else {
+        UiDirectRendererError::Rhi(error)
+    }
+}
+
+const fn is_offscreen_capture_target_capability_error(kind: RhiErrorKind) -> bool {
+    matches!(kind, RhiErrorKind::SurfaceUnsupported)
 }
 
 #[derive(Clone, Copy)]
@@ -1306,23 +1444,28 @@ impl DirectBatchBuilder {
             ),
             DisplayPrimitive::Text {
                 bounds,
+                layout,
                 raster,
                 color,
                 ..
             }
             | DisplayPrimitive::GlyphRun {
                 bounds,
+                layout,
                 raster,
                 color,
                 ..
-            } => self.push_glyphs(
-                kind,
-                *bounds,
-                raster,
-                *color,
-                context.viewport,
-                context.scale_factor,
-            ),
+            } => {
+                validate_complete_text_raster(kind, layout.glyph_count, raster)?;
+                self.push_glyphs(
+                    kind,
+                    *bounds,
+                    raster,
+                    *color,
+                    context.viewport,
+                    context.scale_factor,
+                )
+            }
             DisplayPrimitive::FocusIndicator { bounds, color, .. } => self.push_rect_stroke_batch(
                 kind,
                 *bounds,
@@ -2256,6 +2399,18 @@ impl DirectBatchBuilder {
             self.layer_passes,
             self.backdrop_passes,
         ))
+    }
+}
+
+fn validate_complete_text_raster(
+    primitive: UiDirectPrimitiveKind,
+    expected_glyph_count: usize,
+    raster: &UiTextRaster,
+) -> Result<(), UiDirectRendererError> {
+    if raster.has_unrasterized_glyphs || raster.glyphs.len() != expected_glyph_count {
+        Err(UiDirectRendererError::IncompleteTextRaster(primitive))
+    } else {
+        Ok(())
     }
 }
 
@@ -3840,6 +3995,29 @@ impl UiDirectFramePlan {
         &self.batches
     }
 
+    /// Returns payload accounting without exposing GPU allocation internals.
+    #[must_use]
+    pub fn footprint(&self) -> UiDirectFrameFootprint {
+        let cpu_vertex_bytes = usize_to_u64(self.vertex_bytes.len());
+        let cpu_index_bytes = usize_to_u64(self.index_bytes.len());
+        let cpu_atlas_bytes = usize_to_u64(self.atlas.rgba.len());
+        UiDirectFrameFootprint {
+            cpu_vertex_bytes,
+            cpu_index_bytes,
+            cpu_atlas_bytes,
+            gpu_upload_payload_bytes: cpu_vertex_bytes
+                .saturating_add(cpu_index_bytes)
+                .saturating_add(cpu_atlas_bytes),
+            planned_color_target_bytes: self.diagnostics.layer_target_bytes,
+            primitive_count: self.diagnostics.primitive_count,
+            batch_count: self.diagnostics.batch_count,
+            layer_count: self.diagnostics.layer_count,
+            shadow_count: self.diagnostics.shadow_count,
+            backdrop_effect_count: self.diagnostics.backdrop_effect_count,
+            backdrop_fallback_count: self.diagnostics.backdrop_fallback_count,
+        }
+    }
+
     #[must_use]
     pub const fn atlas(&self) -> &UiDirectAtlas {
         &self.atlas
@@ -3855,7 +4033,7 @@ impl UiDirectFramePlan {
         &self,
         rhi: &mut Rhi,
     ) -> Result<UiDirectGpuFrame, UiDirectRendererError> {
-        validate_rhi_identity(self.cache_key, &rhi.render_identity())?;
+        validate_rhi_identity(&self.rhi_identity, &rhi.render_identity())?;
         let layout = ui_vertex_layout()?;
         let UiDirectPipelines {
             content: content_pipeline,
@@ -3912,6 +4090,7 @@ impl UiDirectFramePlan {
             self.upload_backdrop_targets(rhi, &backdrop_pipeline)?;
         Ok(UiDirectGpuFrame {
             cache_key: self.cache_key,
+            rhi_identity: self.rhi_identity.clone(),
             layer_plan_fingerprint: layer_plan_fingerprint(
                 &self.layer_passes,
                 &self.backdrop_passes,
@@ -4000,10 +4179,15 @@ impl UiDirectFramePlan {
     }
 }
 
+fn usize_to_u64(value: usize) -> u64 {
+    u64::try_from(value).unwrap_or(u64::MAX)
+}
+
 impl UiDirectGpuFrame {
     fn validate_plan(&self, plan: &UiDirectFramePlan) -> Result<(), UiDirectRendererError> {
         validate_gpu_frame_identity(
             self.cache_key,
+            &self.rhi_identity,
             self.layer_plan_fingerprint,
             self.vertex_bytes_len,
             self.index_bytes_len,
@@ -4013,7 +4197,7 @@ impl UiDirectGpuFrame {
     }
 
     fn validate_rhi(&self, rhi: &Rhi) -> Result<(), UiDirectRendererError> {
-        validate_rhi_identity(self.cache_key, &rhi.render_identity())
+        validate_rhi_identity(&self.rhi_identity, &rhi.render_identity())
     }
 
     /// Builds bounded RHI batches while preserving each batch's local index base.
@@ -4334,6 +4518,45 @@ impl UiDirectGpuFrame {
         Ok(())
     }
 
+    /// Renders this immutable frame into a capture-capable offscreen target.
+    ///
+    /// A caller queues one bounded RHI capture request before this call, then
+    /// retrieves its asynchronous result through the RHI capture API.  The
+    /// normal sampled layer/backdrop targets remain non-capture targets; only
+    /// this final qualification target carries copy-source capability.
+    ///
+    /// # Errors
+    ///
+    /// Returns typed identity, preparation, target, or submission errors.  It
+    /// does not claim presented visual quality.
+    pub fn submit_offscreen_capture(
+        &self,
+        rhi: &mut Rhi,
+        plan: &UiDirectFramePlan,
+        color: ClearColor,
+    ) -> Result<(), UiDirectRendererError> {
+        self.validate_rhi(rhi)?;
+        self.render_layer_targets(rhi, plan, color)?;
+        let target = rhi
+            .create_capture_render_target(
+                "Meridian direct UI qualification capture",
+                WindowSize::new(plan.cache_key.surface_width, plan.cache_key.surface_height),
+            )
+            .map_err(map_offscreen_capture_target_error)?;
+        let batches = self.rhi_batches(plan)?;
+        if batches.is_empty() {
+            rhi.clear_render_target(&target, color)?;
+        } else {
+            rhi.render_indexed_batches_to_target(
+                &target,
+                &batches,
+                RenderTargetLoadPolicy::Clear(color),
+            )?;
+        }
+        rhi.capture_render_target(&target)?;
+        Ok(())
+    }
+
     /// Presents the frame through the configured RHI surface when available.
     ///
     /// # Errors
@@ -4357,12 +4580,10 @@ impl UiDirectGpuFrame {
 }
 
 fn validate_rhi_identity(
-    expected: UiDirectCacheKey,
+    expected: &RhiRenderIdentity,
     actual: &RhiRenderIdentity,
 ) -> Result<(), UiDirectRendererError> {
-    if expected.device_generation == actual.device_generation
-        && expected.surface_generation == actual.surface_generation
-    {
+    if expected == actual {
         Ok(())
     } else {
         Err(UiDirectRendererError::StaleRhiIdentity {
@@ -4370,12 +4591,23 @@ fn validate_rhi_identity(
             actual_device_generation: actual.device_generation,
             expected_surface_generation: expected.surface_generation,
             actual_surface_generation: actual.surface_generation,
+            expected_surface_format: expected.surface_format.name.clone(),
+            actual_surface_format: actual.surface_format.name.clone(),
+            expected_surface_format_srgb: expected.surface_format.srgb,
+            actual_surface_format_srgb: actual.surface_format.srgb,
+            expected_surface_width: expected.surface_size.width,
+            actual_surface_width: actual.surface_size.width,
+            expected_surface_height: expected.surface_size.height,
+            actual_surface_height: actual.surface_size.height,
+            expected_surface_configured: expected.surface_configured,
+            actual_surface_configured: actual.surface_configured,
         })
     }
 }
 
 fn validate_gpu_frame_identity(
     uploaded: UiDirectCacheKey,
+    uploaded_rhi_identity: &RhiRenderIdentity,
     uploaded_layer_fingerprint: u64,
     vertex_bytes_len: usize,
     index_bytes_len: usize,
@@ -4388,6 +4620,7 @@ fn validate_gpu_frame_identity(
         plan.diagnostics.layer_target_bytes,
     );
     if uploaded != plan.cache_key
+        || uploaded_rhi_identity != &plan.rhi_identity
         || uploaded_layer_fingerprint != requested_layer_fingerprint
         || vertex_bytes_len != plan.vertex_bytes.len()
         || index_bytes_len != plan.index_bytes.len()
@@ -4474,6 +4707,104 @@ const fn fingerprint_mix(state: u64, value: u64) -> u64 {
     state.wrapping_mul(0x0000_0100_0000_01b3) ^ value
 }
 
+const FRAME_FINGERPRINT_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+
+fn surface_format_fingerprint(format_name: &str) -> u64 {
+    fingerprint_bytes(FRAME_FINGERPRINT_OFFSET, format_name.as_bytes())
+}
+
+fn prepared_frame_content_fingerprint(
+    vertex_bytes: &[u8],
+    index_bytes: &[u8],
+    atlas: &UiDirectAtlas,
+    batches: &[UiDirectBatch],
+    layer_passes: &[UiDirectLayerPass],
+    backdrop_passes: &[UiDirectBackdropPass],
+    layer_target_bytes: u64,
+) -> u64 {
+    let mut state = fingerprint_bytes(FRAME_FINGERPRINT_OFFSET, vertex_bytes);
+    state = fingerprint_bytes(state, index_bytes);
+    state = fingerprint_mix(state, u64::from(atlas.width));
+    state = fingerprint_mix(state, u64::from(atlas.height));
+    state = fingerprint_bytes(state, &atlas.rgba);
+    state = fingerprint_mix(state, usize_to_u64(batches.len()));
+    for batch in batches {
+        state = fingerprint_mix(state, ui_direct_batch_kind_fingerprint(batch.kind));
+        state = fingerprint_mix(state, ui_direct_primitive_kind_fingerprint(batch.primitive));
+        state = fingerprint_mix(state, u64::from(batch.vertex_range.start));
+        state = fingerprint_mix(state, u64::from(batch.vertex_range.end));
+        state = fingerprint_mix(state, u64::from(batch.index_range.start));
+        state = fingerprint_mix(state, u64::from(batch.index_range.end));
+        state = match batch.scissor {
+            Some(scissor) => {
+                let state = fingerprint_mix(state, 1);
+                let state = fingerprint_mix(state, u64::from(scissor.x));
+                let state = fingerprint_mix(state, u64::from(scissor.y));
+                let state = fingerprint_mix(state, u64::from(scissor.width));
+                fingerprint_mix(state, u64::from(scissor.height))
+            }
+            None => fingerprint_mix(state, 0),
+        };
+        state = fingerprint_mix(state, u64::from(batch.stencil_reference));
+    }
+    fingerprint_mix(
+        state,
+        layer_plan_fingerprint(layer_passes, backdrop_passes, layer_target_bytes),
+    )
+}
+
+fn fingerprint_bytes(mut state: u64, bytes: &[u8]) -> u64 {
+    state = fingerprint_mix(state, usize_to_u64(bytes.len()));
+    let mut chunks = bytes.chunks_exact(8);
+    for chunk in &mut chunks {
+        let mut word = [0_u8; 8];
+        word.copy_from_slice(chunk);
+        state = fingerprint_mix(state, u64::from_le_bytes(word));
+    }
+    let remainder = chunks.remainder();
+    if !remainder.is_empty() {
+        let mut word = [0_u8; 8];
+        word[..remainder.len()].copy_from_slice(remainder);
+        state = fingerprint_mix(state, u64::from_le_bytes(word));
+    }
+    state
+}
+
+const fn ui_direct_batch_kind_fingerprint(kind: UiDirectBatchKind) -> u64 {
+    match kind {
+        UiDirectBatchKind::Content => 1,
+        UiDirectBatchKind::GlyphMask => 2,
+        UiDirectBatchKind::Image => 3,
+        UiDirectBatchKind::Mesh => 4,
+        UiDirectBatchKind::ClipPush => 5,
+        UiDirectBatchKind::ClipPop => 6,
+        UiDirectBatchKind::Layer => 7,
+        UiDirectBatchKind::Shadow => 8,
+        UiDirectBatchKind::BackdropFallback => 9,
+        UiDirectBatchKind::BackdropEffect => 10,
+    }
+}
+
+const fn ui_direct_primitive_kind_fingerprint(kind: UiDirectPrimitiveKind) -> u64 {
+    match kind {
+        UiDirectPrimitiveKind::Rect => 1,
+        UiDirectPrimitiveKind::Border => 2,
+        UiDirectPrimitiveKind::Text => 3,
+        UiDirectPrimitiveKind::GlyphRun => 4,
+        UiDirectPrimitiveKind::FocusIndicator => 5,
+        UiDirectPrimitiveKind::RoundedRect => 6,
+        UiDirectPrimitiveKind::Path => 7,
+        UiDirectPrimitiveKind::Image => 8,
+        UiDirectPrimitiveKind::Mesh => 9,
+        UiDirectPrimitiveKind::PushClip => 10,
+        UiDirectPrimitiveKind::PopClip => 11,
+        UiDirectPrimitiveKind::BeginLayer => 12,
+        UiDirectPrimitiveKind::EndLayer => 13,
+        UiDirectPrimitiveKind::Shadow => 14,
+        UiDirectPrimitiveKind::Backdrop => 15,
+    }
+}
+
 fn frame_fingerprint(
     cache_key: UiDirectCacheKey,
     layer_fingerprint: u64,
@@ -4487,19 +4818,25 @@ fn frame_fingerprint(
         cache_key.surface_generation,
         u64::from(cache_key.surface_width),
         u64::from(cache_key.surface_height),
+        u64::from(cache_key.rhi_surface_width),
+        u64::from(cache_key.rhi_surface_height),
+        cache_key.surface_format_fingerprint,
+        u64::from(cache_key.surface_format_srgb),
+        u64::from(cache_key.surface_configured),
         u64::from(cache_key.scale_milli),
         u64::from(cache_key.contrast_high),
         cache_key.image_revision,
         cache_key.mesh_revision,
         cache_key.effect_profile,
+        cache_key.content_fingerprint,
         layer_fingerprint,
-        vertex_bytes_len as u64,
-        index_bytes_len as u64,
+        usize_to_u64(vertex_bytes_len),
+        usize_to_u64(index_bytes_len),
         u64::from(atlas_size.0),
         u64::from(atlas_size.1),
     ]
     .into_iter()
-    .fold(0xcbf2_9ce4_8422_2325, fingerprint_mix)
+    .fold(FRAME_FINGERPRINT_OFFSET, fingerprint_mix)
 }
 
 fn ui_vertex_layout() -> Result<VertexLayout, UiDirectRendererError> {
@@ -4997,7 +5334,7 @@ mod tests {
         let second = renderer
             .prepare_frame(request(&second_list))
             .expect("second layer plan prepares");
-        assert_eq!(first.cache_key, second.cache_key);
+        assert_ne!(first.cache_key, second.cache_key);
         let first_fingerprint = layer_plan_fingerprint(
             &first.layer_passes,
             &first.backdrop_passes,
@@ -5012,11 +5349,144 @@ mod tests {
         assert!(matches!(
             validate_gpu_frame_identity(
                 first.cache_key,
+                &first.rhi_identity,
                 first_fingerprint,
                 first.vertex_bytes.len(),
                 first.index_bytes.len(),
                 (first.atlas.width, first.atlas.height),
                 &second,
+            ),
+            Err(UiDirectRendererError::StaleGpuFrame { .. })
+        ));
+    }
+
+    #[test]
+    fn gpu_identity_rejects_same_revision_rect_payload_changes() {
+        let list = |color| DisplayList {
+            primitives: vec![DisplayPrimitive::Rect {
+                node: UiNodeId::new(1),
+                bounds: bounds(),
+                color,
+            }],
+        };
+        let first_list = list(UiColor::surface());
+        let second_list = list(UiColor::text());
+        let resources = UiDirectResourceSet::default();
+        let request = |display_list| UiDirectPrepareRequest {
+            display_revision: 17,
+            display_list,
+            viewport: UiSize::new(100.0, 100.0),
+            scale_factor: 1.0,
+            contrast: UiContrast::Standard,
+            effects: UiEffectCapabilities::default(),
+            resources: &resources,
+        };
+        let mut renderer = UiDirectGpuRenderer::new(identity(1, 1));
+        let uploaded = renderer
+            .prepare_frame(request(&first_list))
+            .expect("first rectangle prepares");
+        let requested = renderer
+            .prepare_frame(request(&second_list))
+            .expect("second rectangle prepares");
+
+        let mut uploaded_without_content = uploaded.cache_key;
+        uploaded_without_content.content_fingerprint = 0;
+        let mut requested_without_content = requested.cache_key;
+        requested_without_content.content_fingerprint = 0;
+        assert_eq!(uploaded_without_content, requested_without_content);
+        assert_eq!(uploaded.vertex_bytes.len(), requested.vertex_bytes.len());
+        assert_eq!(uploaded.index_bytes.len(), requested.index_bytes.len());
+        assert_eq!(
+            (uploaded.atlas.width, uploaded.atlas.height),
+            (requested.atlas.width, requested.atlas.height)
+        );
+        assert_ne!(
+            uploaded.cache_key.content_fingerprint,
+            requested.cache_key.content_fingerprint
+        );
+        assert!(matches!(
+            validate_gpu_frame_identity(
+                uploaded.cache_key,
+                &uploaded.rhi_identity,
+                layer_plan_fingerprint(
+                    &uploaded.layer_passes,
+                    &uploaded.backdrop_passes,
+                    uploaded.diagnostics.layer_target_bytes,
+                ),
+                uploaded.vertex_bytes.len(),
+                uploaded.index_bytes.len(),
+                (uploaded.atlas.width, uploaded.atlas.height),
+                &requested,
+            ),
+            Err(UiDirectRendererError::StaleGpuFrame { .. })
+        ));
+    }
+
+    #[test]
+    fn gpu_identity_rejects_same_revision_image_payload_changes() {
+        let image = UiImageHandle(9);
+        let list = DisplayList {
+            primitives: vec![DisplayPrimitive::Image {
+                node: UiNodeId::new(1),
+                bounds: bounds(),
+                image,
+                opacity: 1.0,
+            }],
+        };
+        let uploaded_resources = UiDirectResourceSet::new(22, 0).with_image_descriptor(
+            UiDirectImage::try_solid(image, 1, 1, [16, 32, 48, 255])
+                .expect("bounded first image descriptor"),
+        );
+        let requested_resources = UiDirectResourceSet::new(22, 0).with_image_descriptor(
+            UiDirectImage::try_solid(image, 1, 1, [48, 32, 16, 255])
+                .expect("bounded second image descriptor"),
+        );
+        let request = |resources| UiDirectPrepareRequest {
+            display_revision: 23,
+            display_list: &list,
+            viewport: UiSize::new(100.0, 100.0),
+            scale_factor: 1.0,
+            contrast: UiContrast::Standard,
+            effects: UiEffectCapabilities::default(),
+            resources,
+        };
+        let mut renderer = UiDirectGpuRenderer::new(identity(1, 1));
+        let uploaded = renderer
+            .prepare_frame(request(&uploaded_resources))
+            .expect("first image prepares");
+        let requested = renderer
+            .prepare_frame(request(&requested_resources))
+            .expect("second image prepares");
+
+        let mut uploaded_without_content = uploaded.cache_key;
+        uploaded_without_content.content_fingerprint = 0;
+        let mut requested_without_content = requested.cache_key;
+        requested_without_content.content_fingerprint = 0;
+        assert_eq!(uploaded_without_content, requested_without_content);
+        assert_eq!(uploaded.vertex_bytes.len(), requested.vertex_bytes.len());
+        assert_eq!(uploaded.index_bytes.len(), requested.index_bytes.len());
+        assert_eq!(
+            (uploaded.atlas.width, uploaded.atlas.height),
+            (requested.atlas.width, requested.atlas.height)
+        );
+        assert_ne!(uploaded.atlas.rgba, requested.atlas.rgba);
+        assert_ne!(
+            uploaded.cache_key.content_fingerprint,
+            requested.cache_key.content_fingerprint
+        );
+        assert!(matches!(
+            validate_gpu_frame_identity(
+                uploaded.cache_key,
+                &uploaded.rhi_identity,
+                layer_plan_fingerprint(
+                    &uploaded.layer_passes,
+                    &uploaded.backdrop_passes,
+                    uploaded.diagnostics.layer_target_bytes,
+                ),
+                uploaded.vertex_bytes.len(),
+                uploaded.index_bytes.len(),
+                (uploaded.atlas.width, uploaded.atlas.height),
+                &requested,
             ),
             Err(UiDirectRendererError::StaleGpuFrame { .. })
         ));
@@ -5557,6 +6027,7 @@ mod tests {
         assert_eq!(
             validate_gpu_frame_identity(
                 uploaded.cache_key,
+                &uploaded.rhi_identity,
                 layer_plan_fingerprint(
                     &uploaded.layer_passes,
                     &uploaded.backdrop_passes,
@@ -5572,6 +6043,7 @@ mod tests {
         assert_eq!(
             validate_gpu_frame_identity(
                 uploaded.cache_key,
+                &uploaded.rhi_identity,
                 layer_plan_fingerprint(
                     &uploaded.layer_passes,
                     &uploaded.backdrop_passes,
@@ -6054,7 +6526,111 @@ mod tests {
     }
 
     #[test]
-    fn rhi_generation_change_is_rejected_before_direct_submission() {
+    fn incomplete_text_rasters_are_rejected_before_frame_recovery() {
+        let resources = UiDirectResourceSet::default();
+        let accepted = DisplayList {
+            primitives: vec![DisplayPrimitive::Rect {
+                node: UiNodeId::new(1),
+                bounds: bounds(),
+                color: UiColor::surface(),
+            }],
+        };
+        let incomplete_text = DisplayList {
+            primitives: vec![DisplayPrimitive::Text {
+                node: UiNodeId::new(2),
+                bounds: bounds(),
+                text: "incomplete text".to_owned(),
+                color: UiColor::text(),
+                layout: text_layout(),
+                raster: UiTextRaster {
+                    glyphs: Vec::new(),
+                    has_unrasterized_glyphs: true,
+                },
+            }],
+        };
+        let incomplete_glyph_run = DisplayList {
+            primitives: vec![DisplayPrimitive::GlyphRun {
+                node: UiNodeId::new(3),
+                bounds: bounds(),
+                text: "incomplete glyph run".to_owned(),
+                color: UiColor::text(),
+                layout: text_layout(),
+                raster: UiTextRaster {
+                    glyphs: Vec::new(),
+                    has_unrasterized_glyphs: true,
+                },
+            }],
+        };
+        let missing_text_payload = DisplayList {
+            primitives: vec![DisplayPrimitive::Text {
+                node: UiNodeId::new(4),
+                bounds: bounds(),
+                text: "missing text glyph payload".to_owned(),
+                color: UiColor::text(),
+                layout: text_layout(),
+                raster: UiTextRaster {
+                    glyphs: Vec::new(),
+                    has_unrasterized_glyphs: false,
+                },
+            }],
+        };
+        let missing_glyph_run_payload = DisplayList {
+            primitives: vec![DisplayPrimitive::GlyphRun {
+                node: UiNodeId::new(5),
+                bounds: bounds(),
+                text: "missing glyph run payload".to_owned(),
+                color: UiColor::text(),
+                layout: text_layout(),
+                raster: UiTextRaster {
+                    glyphs: Vec::new(),
+                    has_unrasterized_glyphs: false,
+                },
+            }],
+        };
+        let request = |display_revision, display_list| UiDirectPrepareRequest {
+            display_revision,
+            display_list,
+            viewport: UiSize::new(100.0, 100.0),
+            scale_factor: 1.0,
+            contrast: UiContrast::Standard,
+            effects: UiEffectCapabilities::default(),
+            resources: &resources,
+        };
+        let mut renderer = UiDirectGpuRenderer::new(identity(1, 1));
+        renderer
+            .prepare_frame(request(1, &accepted))
+            .expect("accepted frame establishes the last successful revision");
+        assert_eq!(renderer.last_revision(), Some(1));
+        assert_eq!(
+            renderer
+                .prepare_frame(request(2, &incomplete_text))
+                .expect_err("incomplete text must not submit a partial glyph frame"),
+            UiDirectRendererError::IncompleteTextRaster(UiDirectPrimitiveKind::Text)
+        );
+        assert_eq!(
+            renderer
+                .prepare_frame(request(3, &incomplete_glyph_run))
+                .expect_err("incomplete glyph runs must not submit a partial glyph frame"),
+            UiDirectRendererError::IncompleteTextRaster(UiDirectPrimitiveKind::GlyphRun)
+        );
+        assert_eq!(
+            renderer
+                .prepare_frame(request(4, &missing_text_payload))
+                .expect_err("a nonempty text layout cannot omit its glyph payload"),
+            UiDirectRendererError::IncompleteTextRaster(UiDirectPrimitiveKind::Text)
+        );
+        assert_eq!(renderer.last_revision(), Some(1));
+        assert_eq!(
+            renderer
+                .prepare_frame(request(5, &missing_glyph_run_payload))
+                .expect_err("a nonempty glyph run layout cannot omit its glyph payload"),
+            UiDirectRendererError::IncompleteTextRaster(UiDirectPrimitiveKind::GlyphRun)
+        );
+        assert_eq!(renderer.last_revision(), Some(1));
+    }
+
+    #[test]
+    fn rhi_identity_changes_are_rejected_before_direct_submission() {
         let list = DisplayList {
             primitives: vec![DisplayPrimitive::Rect {
                 node: UiNodeId::new(1),
@@ -6074,18 +6650,62 @@ mod tests {
             })
             .expect("plan prepares");
         assert_eq!(
-            validate_rhi_identity(plan.cache_key, &identity(3, 5)),
+            validate_rhi_identity(&plan.rhi_identity, &identity(3, 5)),
             Ok(())
         );
-        assert_eq!(
-            validate_rhi_identity(plan.cache_key, &identity(3, 6)),
-            Err(UiDirectRendererError::StaleRhiIdentity {
-                expected_device_generation: 3,
-                actual_device_generation: 3,
+        let generation_changed = validate_rhi_identity(&plan.rhi_identity, &identity(3, 6))
+            .expect_err("a changed surface generation invalidates a prepared frame");
+        assert!(matches!(
+            generation_changed,
+            UiDirectRendererError::StaleRhiIdentity {
                 expected_surface_generation: 5,
                 actual_surface_generation: 6,
-            })
-        );
+                ..
+            }
+        ));
+
+        let mut format_changed = identity(3, 5);
+        format_changed.surface_format.name = "Rgba8UnormSrgb".to_owned();
+        let format_changed = validate_rhi_identity(&plan.rhi_identity, &format_changed)
+            .expect_err("a changed surface format invalidates a prepared frame");
+        assert!(matches!(
+            format_changed,
+            UiDirectRendererError::StaleRhiIdentity {
+                expected_surface_format,
+                actual_surface_format,
+                ..
+            } if expected_surface_format == "Bgra8UnormSrgb"
+                && actual_surface_format == "Rgba8UnormSrgb"
+        ));
+
+        let mut size_changed = identity(3, 5);
+        size_changed.surface_size = WindowSize::new(640, 360);
+        let size_changed = validate_rhi_identity(&plan.rhi_identity, &size_changed)
+            .expect_err("a changed surface size invalidates a prepared frame");
+        assert!(matches!(
+            size_changed,
+            UiDirectRendererError::StaleRhiIdentity {
+                expected_surface_width: 320,
+                expected_surface_height: 180,
+                actual_surface_width: 640,
+                actual_surface_height: 360,
+                ..
+            }
+        ));
+
+        let mut configuration_changed = identity(3, 5);
+        configuration_changed.surface_configured = false;
+        let configuration_changed =
+            validate_rhi_identity(&plan.rhi_identity, &configuration_changed)
+                .expect_err("a changed surface configuration invalidates a prepared frame");
+        assert!(matches!(
+            configuration_changed,
+            UiDirectRendererError::StaleRhiIdentity {
+                expected_surface_configured: true,
+                actual_surface_configured: false,
+                ..
+            }
+        ));
     }
 
     fn decode_f32(bytes: &[u8], offset: usize) -> f32 {
@@ -6140,6 +6760,26 @@ mod tests {
                 resources: &UiDirectResourceSet::default(),
             }),
             Err(UiDirectRendererError::UnsupportedSurfaceColorSpace)
+        );
+    }
+
+    #[test]
+    fn offscreen_capture_copy_source_unavailability_is_typed_separately() {
+        assert!(is_offscreen_capture_target_capability_error(
+            RhiErrorKind::SurfaceUnsupported
+        ));
+        assert!(!is_offscreen_capture_target_capability_error(
+            RhiErrorKind::DeviceLost
+        ));
+        assert!(!is_offscreen_capture_target_capability_error(
+            RhiErrorKind::InvalidTextureSize
+        ));
+        assert_eq!(
+            UiDirectRendererError::OffscreenCaptureUnsupported {
+                rhi_kind: RhiErrorKind::SurfaceUnsupported,
+            }
+            .rhi_kind(),
+            Some(RhiErrorKind::SurfaceUnsupported)
         );
     }
 

@@ -6,6 +6,7 @@ use std::fmt::{self, Display, Formatter};
 
 use meridian_ui_core::{
     SemanticRole, UiControlState, UiNodeId, UiRect, MAX_RETAINED_NODES, MAX_TEXT_BYTES,
+    MAX_VIRTUAL_ITEMS,
 };
 
 /// Platform-neutral assistive action vocabulary.
@@ -32,6 +33,32 @@ pub enum SemanticLive {
     Assertive,
 }
 
+/// Platform-neutral non-structural relationship kinds owned by Meridian.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum SemanticRelationshipKind {
+    LabelledBy,
+    DescribedBy,
+    Controls,
+    Details,
+    FlowTo,
+    ErrorMessage,
+}
+
+/// Stable non-structural relationships for one semantic node.
+///
+/// Parent and child links remain the semantic tree itself. These identifiers
+/// preserve additional assistive context through incremental updates without
+/// exposing platform adapter types.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SemanticRelationships {
+    pub labelled_by: Vec<UiNodeId>,
+    pub described_by: Vec<UiNodeId>,
+    pub controls: Vec<UiNodeId>,
+    pub details: Vec<UiNodeId>,
+    pub flow_to: Vec<UiNodeId>,
+    pub error_message: Option<UiNodeId>,
+}
+
 /// Position metadata for a virtualized item without realizing its collection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SemanticCollectionItem {
@@ -52,6 +79,7 @@ pub struct SemanticNode {
     pub actions: Vec<SemanticAction>,
     pub value: Option<String>,
     pub state: UiControlState,
+    pub relationships: SemanticRelationships,
     pub live: SemanticLive,
     pub collection_item: Option<SemanticCollectionItem>,
     pub bounds: UiRect,
@@ -152,7 +180,12 @@ impl SemanticTree {
                 }
             }
             if let Some(item) = node.collection_item {
-                if item.position == 0 || item.set_size == 0 || item.position > item.set_size {
+                let maximum = u32::try_from(MAX_VIRTUAL_ITEMS).unwrap_or(u32::MAX);
+                if item.position == 0
+                    || item.set_size == 0
+                    || item.position > item.set_size
+                    || item.set_size > maximum
+                {
                     return Err(SemanticTreeError::InvalidCollectionItem(node.id));
                 }
             }
@@ -160,13 +193,10 @@ impl SemanticTree {
                 return Err(SemanticTreeError::MultipleFocusedNodes);
             }
         }
-        if self.focus != focused {
-            return Err(SemanticTreeError::FocusMismatch {
-                declared: self.focus,
-                node: focused,
-            });
+        for node in &self.nodes {
+            validate_relationships(node, &seen)?;
         }
-        Ok(())
+        validate_declared_focus(self.focus, focused)
     }
 
     /// Computes a bounded incremental change from a previously accepted tree.
@@ -283,6 +313,27 @@ pub enum SemanticTreeError {
         maximum: usize,
     },
     InvalidCollectionItem(UiNodeId),
+    RelationshipTargetMissing {
+        node: UiNodeId,
+        relationship: SemanticRelationshipKind,
+        target: UiNodeId,
+    },
+    RelationshipSelfReference {
+        node: UiNodeId,
+        relationship: SemanticRelationshipKind,
+    },
+    DuplicateRelationshipTarget {
+        node: UiNodeId,
+        relationship: SemanticRelationshipKind,
+        target: UiNodeId,
+    },
+    TooManyRelationshipTargets {
+        node: UiNodeId,
+        relationship: SemanticRelationshipKind,
+        count: usize,
+        maximum: usize,
+    },
+    ErrorMessageOnValidNode(UiNodeId),
     MultipleFocusedNodes,
     FocusMismatch {
         declared: Option<UiNodeId>,
@@ -312,6 +363,100 @@ fn action_is_valid(node: &SemanticNode, action: SemanticAction) -> bool {
             matches!(node.role, SemanticRole::TextInput | SemanticRole::SearchBox)
         }
     }
+}
+
+fn validate_declared_focus(
+    declared: Option<UiNodeId>,
+    node: Option<UiNodeId>,
+) -> Result<(), SemanticTreeError> {
+    if declared == node {
+        Ok(())
+    } else {
+        Err(SemanticTreeError::FocusMismatch { declared, node })
+    }
+}
+
+fn validate_relationships(
+    node: &SemanticNode,
+    known_nodes: &BTreeSet<UiNodeId>,
+) -> Result<(), SemanticTreeError> {
+    let relationships = &node.relationships;
+    for (relationship, targets) in [
+        (
+            SemanticRelationshipKind::LabelledBy,
+            relationships.labelled_by.as_slice(),
+        ),
+        (
+            SemanticRelationshipKind::DescribedBy,
+            relationships.described_by.as_slice(),
+        ),
+        (
+            SemanticRelationshipKind::Controls,
+            relationships.controls.as_slice(),
+        ),
+        (
+            SemanticRelationshipKind::Details,
+            relationships.details.as_slice(),
+        ),
+        (
+            SemanticRelationshipKind::FlowTo,
+            relationships.flow_to.as_slice(),
+        ),
+    ] {
+        if targets.len() > MAX_RETAINED_NODES {
+            return Err(SemanticTreeError::TooManyRelationshipTargets {
+                node: node.id,
+                relationship,
+                count: targets.len(),
+                maximum: MAX_RETAINED_NODES,
+            });
+        }
+        let mut seen = BTreeSet::new();
+        for target in targets {
+            validate_relationship_target(node.id, relationship, *target, known_nodes, &mut seen)?;
+        }
+    }
+    if let Some(target) = relationships.error_message {
+        if !node.state.invalid {
+            return Err(SemanticTreeError::ErrorMessageOnValidNode(node.id));
+        }
+        let mut seen = BTreeSet::new();
+        validate_relationship_target(
+            node.id,
+            SemanticRelationshipKind::ErrorMessage,
+            target,
+            known_nodes,
+            &mut seen,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_relationship_target(
+    node: UiNodeId,
+    relationship: SemanticRelationshipKind,
+    target: UiNodeId,
+    known_nodes: &BTreeSet<UiNodeId>,
+    seen: &mut BTreeSet<UiNodeId>,
+) -> Result<(), SemanticTreeError> {
+    if node == target {
+        return Err(SemanticTreeError::RelationshipSelfReference { node, relationship });
+    }
+    if !known_nodes.contains(&target) {
+        return Err(SemanticTreeError::RelationshipTargetMissing {
+            node,
+            relationship,
+            target,
+        });
+    }
+    if !seen.insert(target) {
+        return Err(SemanticTreeError::DuplicateRelationshipTarget {
+            node,
+            relationship,
+            target,
+        });
+    }
+    Ok(())
 }
 
 fn validate_bounds(node: UiNodeId, bounds: UiRect) -> Result<(), SemanticTreeError> {
@@ -355,6 +500,7 @@ mod tests {
                 .unwrap_or_default(),
             value: None,
             state: UiControlState::default(),
+            relationships: SemanticRelationships::default(),
             live: SemanticLive::Off,
             collection_item: None,
             bounds: UiRect::new(UiPoint::default(), UiSize::new(100.0, 44.0)),
@@ -428,6 +574,138 @@ mod tests {
                 .delta_from(Some(&previous))
                 .expect("valid reordered tree produces a complete replacement"),
             SemanticDelta::Replace(current)
+        );
+    }
+
+    #[test]
+    fn semantic_tree_preserves_relationships_and_virtual_collection_metadata() {
+        let mut field = node(2, Some(1), false);
+        field.role = SemanticRole::TextInput;
+        field.actions = vec![SemanticAction::Focus, SemanticAction::SetValue];
+        field.command = None;
+        field.description = Some("Saved project name".to_owned());
+        field.state.invalid = true;
+        field.relationships = SemanticRelationships {
+            labelled_by: vec![UiNodeId::new(3)],
+            described_by: vec![UiNodeId::new(4)],
+            controls: vec![UiNodeId::new(5)],
+            details: vec![UiNodeId::new(4)],
+            flow_to: vec![UiNodeId::new(5)],
+            error_message: Some(UiNodeId::new(4)),
+        };
+        let mut row = node(5, Some(1), false);
+        row.role = SemanticRole::ListItem;
+        row.collection_item = Some(SemanticCollectionItem {
+            position: 7,
+            set_size: 64,
+        });
+        let tree = SemanticTree {
+            root: Some(UiNodeId::new(1)),
+            focus: None,
+            nodes: vec![
+                node(1, None, false),
+                field.clone(),
+                node(3, Some(1), false),
+                node(4, Some(1), false),
+                row,
+            ],
+        };
+        tree.validate()
+            .expect("relationships can reference later reading-order nodes");
+
+        let mut next = tree.clone();
+        next.nodes[1].relationships.flow_to = vec![UiNodeId::new(3)];
+        next.nodes[4].collection_item = Some(SemanticCollectionItem {
+            position: 8,
+            set_size: 64,
+        });
+        let SemanticDelta::Update(delta) = next
+            .delta_from(Some(&tree))
+            .expect("semantic metadata changes produce an incremental update")
+        else {
+            panic!("metadata updates retain reading order");
+        };
+        assert_eq!(
+            delta.updated.iter().map(|node| node.id).collect::<Vec<_>>(),
+            vec![UiNodeId::new(2), UiNodeId::new(5)]
+        );
+    }
+
+    #[test]
+    fn semantic_tree_rejects_malformed_relationships() {
+        let mut field = node(2, Some(1), false);
+        field.relationships.described_by = vec![UiNodeId::new(99)];
+        let tree = SemanticTree {
+            root: Some(UiNodeId::new(1)),
+            focus: None,
+            nodes: vec![node(1, None, false), field.clone()],
+        };
+        assert_eq!(
+            tree.validate(),
+            Err(SemanticTreeError::RelationshipTargetMissing {
+                node: UiNodeId::new(2),
+                relationship: SemanticRelationshipKind::DescribedBy,
+                target: UiNodeId::new(99),
+            })
+        );
+
+        field.relationships.described_by = vec![UiNodeId::new(1), UiNodeId::new(1)];
+        let duplicate = SemanticTree {
+            root: Some(UiNodeId::new(1)),
+            focus: None,
+            nodes: vec![node(1, None, false), field.clone()],
+        };
+        assert_eq!(
+            duplicate.validate(),
+            Err(SemanticTreeError::DuplicateRelationshipTarget {
+                node: UiNodeId::new(2),
+                relationship: SemanticRelationshipKind::DescribedBy,
+                target: UiNodeId::new(1),
+            })
+        );
+
+        field.relationships.described_by.clear();
+        field.relationships.controls = vec![UiNodeId::new(1); MAX_RETAINED_NODES + 1];
+        let too_many = SemanticTree {
+            root: Some(UiNodeId::new(1)),
+            focus: None,
+            nodes: vec![node(1, None, false), field.clone()],
+        };
+        assert_eq!(
+            too_many.validate(),
+            Err(SemanticTreeError::TooManyRelationshipTargets {
+                node: UiNodeId::new(2),
+                relationship: SemanticRelationshipKind::Controls,
+                count: MAX_RETAINED_NODES + 1,
+                maximum: MAX_RETAINED_NODES,
+            })
+        );
+
+        field.relationships.controls.clear();
+        field.relationships.described_by = vec![UiNodeId::new(2)];
+        let self_reference = SemanticTree {
+            root: Some(UiNodeId::new(1)),
+            focus: None,
+            nodes: vec![node(1, None, false), field.clone()],
+        };
+        assert_eq!(
+            self_reference.validate(),
+            Err(SemanticTreeError::RelationshipSelfReference {
+                node: UiNodeId::new(2),
+                relationship: SemanticRelationshipKind::DescribedBy,
+            })
+        );
+
+        field.relationships.described_by.clear();
+        field.relationships.error_message = Some(UiNodeId::new(1));
+        let error_on_valid = SemanticTree {
+            root: Some(UiNodeId::new(1)),
+            focus: None,
+            nodes: vec![node(1, None, false), field],
+        };
+        assert_eq!(
+            error_on_valid.validate(),
+            Err(SemanticTreeError::ErrorMessageOnValidNode(UiNodeId::new(2)))
         );
     }
 

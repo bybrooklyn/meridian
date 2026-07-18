@@ -4,13 +4,40 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Native, hidden-window evidence runner for the experimental Penumbra direct
+# display-list path. Keep all renderer/UI dependencies optional so ordinary
+# benchmark artifact writing stays independent of UI runtime code.
+ui-direct-qualification = [
+    "dep:meridian-platform",
+    "dep:meridian-renderer",
+]
+ui-direct-device-loss = [
+    "ui-direct-qualification",
+    "meridian-rhi/fault-injection",
+]
+
 [dependencies]
 meridian-assets = { path = "../../engine/meridian_assets" }
 meridian-core = { path = "../../engine/meridian_core" }
+meridian-platform = { path = "../../engine/meridian_platform", optional = true }
+meridian-renderer = { path = "../../engine/meridian_renderer", optional = true, features = ["ui-direct"] }
 meridian-rhi = { path = "../../engine/meridian_rhi" }
 png.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[[example]]
+name = "ui_direct_qualification"
+required-features = ["ui-direct-qualification"]
+
+[[example]]
+name = "ui_direct_device_loss_replay"
+required-features = ["ui-direct-device-loss"]
+
+[[example]]
+name = "ui_direct_performance"
+required-features = ["ui-direct-qualification"]
 
 [lints]
 workspace = true
