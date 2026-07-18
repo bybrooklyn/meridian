@@ -8,6 +8,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use meridian_core::StableId;
 
+const MIN_SUPPORTED_SCALE_FACTOR: f32 = 0.5;
+const MAX_SUPPORTED_SCALE_FACTOR: f32 = 4.0;
+
 /// Maximum UTF-8 payload accepted by one retained text node.
 pub const MAX_TEXT_BYTES: usize = 64 * 1024;
 /// Maximum renderer-neutral primitives accepted in one immutable UI frame.
@@ -29,7 +32,7 @@ pub const MAX_DROP_OPERATIONS: usize = 3;
 #[must_use]
 pub fn sanitized_scale_factor(value: f32) -> f32 {
     if value.is_finite() {
-        value.clamp(0.5, 4.0)
+        value.clamp(MIN_SUPPORTED_SCALE_FACTOR, MAX_SUPPORTED_SCALE_FACTOR)
     } else {
         1.0
     }
@@ -366,8 +369,9 @@ pub enum LayoutMode {
 }
 
 /// Typeface purpose. Font-library handles remain private to text adapters.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum UiFontRole {
+    #[default]
     Interface,
     Display,
     Monospace,
@@ -409,6 +413,24 @@ pub enum IconId {
     Success,
 }
 
+impl IconId {
+    /// Complete stable icon vocabulary used by asset verification and renderer tests.
+    pub const ALL: [Self; 12] = [
+        Self::Play,
+        Self::Stop,
+        Self::Build,
+        Self::Search,
+        Self::Settings,
+        Self::More,
+        Self::Close,
+        Self::ChevronDown,
+        Self::ChevronRight,
+        Self::Warning,
+        Self::Error,
+        Self::Success,
+    ];
+}
+
 /// Locked geometry values shared by application and editor composition.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UiGeometryTokens {
@@ -437,6 +459,14 @@ pub struct UiMotionTokens {
     pub state_transition_max_ms: u16,
 }
 
+/// Locked icon geometry selected from the active theme rather than text metrics.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UiIconTokens {
+    pub size: f32,
+    pub stroke_width: f32,
+    pub text_gap: f32,
+}
+
 /// Locked semantic colours. Render adapters own colour-space conversion.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UiColorTokens {
@@ -457,8 +487,10 @@ pub struct UiColorTokens {
 pub struct UiTheme {
     pub id: ThemeId,
     pub colors: UiColorTokens,
+    pub high_contrast_colors: UiColorTokens,
     pub geometry: UiGeometryTokens,
     pub motion: UiMotionTokens,
+    pub icons: UiIconTokens,
     pub interface_font: UiFontDescriptor,
     pub display_font: UiFontDescriptor,
     pub monospace_font: UiFontDescriptor,
@@ -636,6 +668,18 @@ impl UiTheme {
                 positive: UiColor::grass(),
                 warning: UiColor::amber(),
             },
+            high_contrast_colors: UiColorTokens {
+                background: UiColor::rgba(0.0, 0.0, 0.0, 1.0),
+                surface: UiColor::rgba(0.035_294_12, 0.035_294_12, 0.035_294_12, 1.0),
+                border: UiColor::rgba(1.0, 1.0, 1.0, 1.0),
+                primary_text: UiColor::rgba(1.0, 1.0, 1.0, 1.0),
+                secondary_text: UiColor::rgba(0.92, 0.92, 0.92, 1.0),
+                muted: UiColor::rgba(0.75, 0.75, 0.75, 1.0),
+                destructive: UiColor::rgba(1.0, 0.42, 0.38, 1.0),
+                destructive_hover: UiColor::rgba(1.0, 0.58, 0.54, 1.0),
+                positive: UiColor::rgba(0.95, 0.91, 0.62, 1.0),
+                warning: UiColor::rgba(1.0, 0.82, 0.35, 1.0),
+            },
             geometry: UiGeometryTokens {
                 spacing_base: 4.0,
                 dock_gutter: 8.0,
@@ -657,6 +701,11 @@ impl UiTheme {
             motion: UiMotionTokens {
                 state_transition_min_ms: 100,
                 state_transition_max_ms: 160,
+            },
+            icons: UiIconTokens {
+                size: 16.0,
+                stroke_width: 2.0,
+                text_gap: 8.0,
             },
             interface_font: UiFontDescriptor::locked(UiFontRole::Interface),
             display_font: UiFontDescriptor::locked(UiFontRole::Display),
@@ -989,11 +1038,110 @@ impl UiSemantics {
     }
 }
 
-/// Rendering style, expressed only in Meridian-owned values.
+/// Semantic color roles resolved through the active theme at a frame boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiColorRole {
+    Background,
+    Surface,
+    Border,
+    PrimaryText,
+    SecondaryText,
+    Muted,
+    Destructive,
+    DestructiveHover,
+    Positive,
+    Emphasis,
+}
+
+/// Locked component-level visual treatments available to retained nodes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiStyleVariant {
+    Panel,
+    Text,
+    Transparent,
+    Canvas,
+    Surface,
+    ElevatedSurface,
+    Heading,
+    SectionHeading,
+    MutedText,
+    PrimaryAction,
+    DestructiveAction,
+    SecondaryAction,
+    CompactAction,
+    TextField,
+    CompactTextField,
+}
+
+/// Styling authority retained by a node.
+///
+/// `LegacyTokenResolved` preserves source compatibility for callers that still
+/// build [`UiStyle`] values. The runtime maps every legacy color and metric to
+/// an active-theme token before layout or display-list emission; raw values are
+/// never renderer authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiStyleReference {
+    Variant(UiStyleVariant),
+    LegacyTokenResolved,
+}
+
+/// Retained interaction flags used by deterministic state-selector resolution.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiVisualState {
+    pub hovered: bool,
+    pub pressed: bool,
+    pub focused: bool,
+    pub disabled: bool,
+    pub selected: bool,
+    pub invalid: bool,
+}
+
+/// Highest-priority state selector applied to one retained node.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum UiStyleSelector {
+    #[default]
+    Idle,
+    Hovered,
+    Focused,
+    Selected,
+    Pressed,
+    Invalid,
+    Disabled,
+}
+
+impl UiVisualState {
+    /// Resolves mutually competing selectors in a stable accessibility-first order.
+    #[must_use]
+    pub const fn selector(self) -> UiStyleSelector {
+        if self.disabled {
+            UiStyleSelector::Disabled
+        } else if self.invalid {
+            UiStyleSelector::Invalid
+        } else if self.pressed {
+            UiStyleSelector::Pressed
+        } else if self.selected {
+            UiStyleSelector::Selected
+        } else if self.focused {
+            UiStyleSelector::Focused
+        } else if self.hovered {
+            UiStyleSelector::Hovered
+        } else {
+            UiStyleSelector::Idle
+        }
+    }
+}
+
+/// Rendering style compatibility request and resolved frame value.
+///
+/// Nodes also carry a [`UiStyleReference`]. Consumers must resolve this value
+/// through [`UiTheme::resolve_style`] rather than treating its raw fields as
+/// design-system authority.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UiStyle {
     pub background: Option<UiColor>,
     pub border: Option<UiBorder>,
+    pub corner_radius: f32,
     pub foreground: UiColor,
     pub padding: f32,
     pub font_size: f32,
@@ -1006,6 +1154,66 @@ pub struct UiBorder {
     pub width: u8,
 }
 
+/// Result of resolving a retained style reference and interaction selector.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UiStyleResolution {
+    pub style: UiStyle,
+    pub selector: UiStyleSelector,
+    pub used_token_fallback: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UiSpacingToken {
+    None,
+    ThreeQuarter,
+    Base,
+    FiveQuarter,
+    ThreeHalf,
+    Double,
+    FiveHalf,
+    Triple,
+    SevenHalf,
+    Quadruple,
+    Sextuple,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UiRadiusToken {
+    None,
+    Compact,
+    Control,
+    Panel,
+    Floating,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UiTextSizeToken {
+    Caption,
+    Small,
+    Metadata,
+    CompactBody,
+    Brand,
+    Body,
+    Title,
+    Display,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct UiTokenColor {
+    role: UiColorRole,
+    alpha: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct UiStyleTokens {
+    background: Option<UiTokenColor>,
+    border: Option<UiColorRole>,
+    radius: UiRadiusToken,
+    foreground: UiColorRole,
+    padding: UiSpacingToken,
+    font_size: UiTextSizeToken,
+}
+
 /// Policy applied to one retained text-input node.
 ///
 /// Password values stay in the private runtime state: they are masked in the
@@ -1016,11 +1224,19 @@ pub struct UiTextInputOptions {
 }
 
 impl UiStyle {
+    /// Returns this style with a bounded uniform corner radius.
+    #[must_use]
+    pub const fn with_corner_radius(mut self, radius: f32) -> Self {
+        self.corner_radius = radius;
+        self
+    }
+
     #[must_use]
     pub const fn panel() -> Self {
         Self {
             background: Some(UiColor::panel()),
             border: None,
+            corner_radius: 10.0,
             foreground: UiColor::foreground(),
             padding: 12.0,
             font_size: 16.0,
@@ -1032,6 +1248,7 @@ impl UiStyle {
         Self {
             background: None,
             border: None,
+            corner_radius: 0.0,
             foreground: UiColor::foreground(),
             padding: 6.0,
             font_size: 16.0,
@@ -1044,6 +1261,7 @@ impl UiStyle {
         Self {
             background: None,
             border: None,
+            corner_radius: 0.0,
             foreground: UiColor::foreground(),
             padding: 0.0,
             font_size: 16.0,
@@ -1056,6 +1274,7 @@ impl UiStyle {
         Self {
             background: Some(UiColor::background()),
             border: None,
+            corner_radius: 0.0,
             foreground: UiColor::foreground(),
             padding: 24.0,
             font_size: 16.0,
@@ -1071,6 +1290,7 @@ impl UiStyle {
                 color: UiColor::border(),
                 width: 1,
             }),
+            corner_radius: 10.0,
             foreground: UiColor::foreground(),
             padding: 14.0,
             font_size: 16.0,
@@ -1086,6 +1306,7 @@ impl UiStyle {
                 color: UiColor::grass(),
                 width: 1,
             }),
+            corner_radius: 10.0,
             foreground: UiColor::foreground(),
             padding: 16.0,
             font_size: 16.0,
@@ -1098,6 +1319,7 @@ impl UiStyle {
         Self {
             background: None,
             border: None,
+            corner_radius: 0.0,
             foreground: UiColor::text(),
             padding: 0.0,
             font_size: 28.0,
@@ -1110,6 +1332,7 @@ impl UiStyle {
         Self {
             background: None,
             border: None,
+            corner_radius: 0.0,
             foreground: UiColor::text(),
             padding: 0.0,
             font_size: 16.0,
@@ -1122,6 +1345,7 @@ impl UiStyle {
         Self {
             background: None,
             border: None,
+            corner_radius: 0.0,
             foreground: UiColor::muted_text(),
             padding: 0.0,
             font_size: 13.0,
@@ -1132,11 +1356,28 @@ impl UiStyle {
     #[must_use]
     pub const fn primary_action() -> Self {
         Self {
+            background: Some(UiColor::surface()),
+            border: Some(UiBorder {
+                color: UiColor::amber(),
+                width: 1,
+            }),
+            corner_radius: 6.0,
+            foreground: UiColor::text(),
+            padding: 12.0,
+            font_size: 16.0,
+        }
+    }
+
+    /// A destructive action that remains distinct from ordinary emphasis.
+    #[must_use]
+    pub const fn destructive_action() -> Self {
+        Self {
             background: Some(UiColor::red()),
             border: Some(UiBorder {
                 color: UiColor::red_hover(),
                 width: 1,
             }),
+            corner_radius: 6.0,
             foreground: UiColor::text(),
             padding: 12.0,
             font_size: 16.0,
@@ -1152,6 +1393,7 @@ impl UiStyle {
                 color: UiColor::border(),
                 width: 1,
             }),
+            corner_radius: 6.0,
             foreground: UiColor::foreground(),
             padding: 10.0,
             font_size: 14.0,
@@ -1167,6 +1409,7 @@ impl UiStyle {
                 color: UiColor::border(),
                 width: 1,
             }),
+            corner_radius: 4.0,
             foreground: UiColor::foreground(),
             padding: 3.0,
             font_size: 11.0,
@@ -1182,6 +1425,7 @@ impl UiStyle {
                 color: UiColor::border(),
                 width: 1,
             }),
+            corner_radius: 6.0,
             foreground: UiColor::foreground(),
             padding: 12.0,
             font_size: 16.0,
@@ -1197,10 +1441,564 @@ impl UiStyle {
                 color: UiColor::border(),
                 width: 1,
             }),
+            corner_radius: 4.0,
             foreground: UiColor::foreground(),
             padding: 4.0,
             font_size: 14.0,
         }
+    }
+}
+
+impl UiStyleVariant {
+    fn tokens(self) -> UiStyleTokens {
+        match self {
+            Self::Panel | Self::Canvas | Self::Surface | Self::ElevatedSurface => {
+                self.surface_tokens()
+            }
+            Self::Text
+            | Self::Transparent
+            | Self::Heading
+            | Self::SectionHeading
+            | Self::MutedText => self.text_tokens(),
+            Self::PrimaryAction
+            | Self::DestructiveAction
+            | Self::SecondaryAction
+            | Self::CompactAction
+            | Self::TextField
+            | Self::CompactTextField => self.control_tokens(),
+        }
+    }
+
+    fn surface_tokens(self) -> UiStyleTokens {
+        let color = |role| UiTokenColor { role, alpha: 1.0 };
+        match self {
+            Self::Panel => UiStyleTokens {
+                background: Some(color(UiColorRole::Surface)),
+                border: None,
+                radius: UiRadiusToken::Panel,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::Triple,
+                font_size: UiTextSizeToken::Body,
+            },
+            Self::Canvas => UiStyleTokens {
+                background: Some(color(UiColorRole::Background)),
+                border: None,
+                radius: UiRadiusToken::None,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::Sextuple,
+                font_size: UiTextSizeToken::Body,
+            },
+            Self::Surface => UiStyleTokens {
+                background: Some(color(UiColorRole::Surface)),
+                border: Some(UiColorRole::Border),
+                radius: UiRadiusToken::Panel,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::SevenHalf,
+                font_size: UiTextSizeToken::Body,
+            },
+            Self::ElevatedSurface => UiStyleTokens {
+                background: Some(color(UiColorRole::Surface)),
+                border: Some(UiColorRole::Positive),
+                radius: UiRadiusToken::Panel,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::Quadruple,
+                font_size: UiTextSizeToken::Body,
+            },
+            _ => unreachable!("surface variant dispatch is exhaustive"),
+        }
+    }
+
+    fn text_tokens(self) -> UiStyleTokens {
+        match self {
+            Self::Text => UiStyleTokens {
+                background: None,
+                border: None,
+                radius: UiRadiusToken::None,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::ThreeHalf,
+                font_size: UiTextSizeToken::Body,
+            },
+            Self::Transparent | Self::SectionHeading => UiStyleTokens {
+                background: None,
+                border: None,
+                radius: UiRadiusToken::None,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::None,
+                font_size: UiTextSizeToken::Body,
+            },
+            Self::Heading => UiStyleTokens {
+                background: None,
+                border: None,
+                radius: UiRadiusToken::None,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::None,
+                font_size: UiTextSizeToken::Display,
+            },
+            Self::MutedText => UiStyleTokens {
+                background: None,
+                border: None,
+                radius: UiRadiusToken::None,
+                foreground: UiColorRole::Muted,
+                padding: UiSpacingToken::None,
+                font_size: UiTextSizeToken::Metadata,
+            },
+            _ => unreachable!("text variant dispatch is exhaustive"),
+        }
+    }
+
+    fn control_tokens(self) -> UiStyleTokens {
+        let color = |role| UiTokenColor { role, alpha: 1.0 };
+        match self {
+            Self::PrimaryAction => UiStyleTokens {
+                background: Some(color(UiColorRole::Surface)),
+                border: Some(UiColorRole::Emphasis),
+                radius: UiRadiusToken::Control,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::Triple,
+                font_size: UiTextSizeToken::Body,
+            },
+            Self::DestructiveAction => UiStyleTokens {
+                background: Some(color(UiColorRole::Destructive)),
+                border: Some(UiColorRole::DestructiveHover),
+                radius: UiRadiusToken::Control,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::Triple,
+                font_size: UiTextSizeToken::Body,
+            },
+            Self::SecondaryAction => UiStyleTokens {
+                background: Some(color(UiColorRole::Surface)),
+                border: Some(UiColorRole::Border),
+                radius: UiRadiusToken::Control,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::FiveHalf,
+                font_size: UiTextSizeToken::CompactBody,
+            },
+            Self::CompactAction => UiStyleTokens {
+                background: Some(color(UiColorRole::Surface)),
+                border: Some(UiColorRole::Border),
+                radius: UiRadiusToken::Compact,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::ThreeQuarter,
+                font_size: UiTextSizeToken::Caption,
+            },
+            Self::TextField => UiStyleTokens {
+                background: Some(color(UiColorRole::Background)),
+                border: Some(UiColorRole::Border),
+                radius: UiRadiusToken::Control,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::Triple,
+                font_size: UiTextSizeToken::Body,
+            },
+            Self::CompactTextField => UiStyleTokens {
+                background: Some(color(UiColorRole::Background)),
+                border: Some(UiColorRole::Border),
+                radius: UiRadiusToken::Compact,
+                foreground: UiColorRole::PrimaryText,
+                padding: UiSpacingToken::Base,
+                font_size: UiTextSizeToken::CompactBody,
+            },
+            _ => unreachable!("control variant dispatch is exhaustive"),
+        }
+    }
+
+    /// Compatibility value for source builders migrating to variant references.
+    #[must_use]
+    pub const fn compatibility_style(self) -> UiStyle {
+        match self {
+            Self::Panel => UiStyle::panel(),
+            Self::Text => UiStyle::text(),
+            Self::Transparent => UiStyle::transparent(),
+            Self::Canvas => UiStyle::canvas(),
+            Self::Surface => UiStyle::surface(),
+            Self::ElevatedSurface => UiStyle::elevated_surface(),
+            Self::Heading => UiStyle::heading(),
+            Self::SectionHeading => UiStyle::section_heading(),
+            Self::MutedText => UiStyle::muted_text(),
+            Self::PrimaryAction => UiStyle::primary_action(),
+            Self::DestructiveAction => UiStyle::destructive_action(),
+            Self::SecondaryAction => UiStyle::secondary_action(),
+            Self::CompactAction => UiStyle::compact_action(),
+            Self::TextField => UiStyle::text_field(),
+            Self::CompactTextField => UiStyle::compact_text_field(),
+        }
+    }
+}
+
+impl UiTheme {
+    /// Resolves variants or compatibility styles entirely through active-theme tokens.
+    #[must_use]
+    pub fn resolve_style(
+        self,
+        reference: UiStyleReference,
+        compatibility: UiStyle,
+        state: UiVisualState,
+        contrast: UiContrast,
+    ) -> UiStyleResolution {
+        let (mut tokens, mut used_token_fallback) = match reference {
+            UiStyleReference::Variant(variant) => (variant.tokens(), false),
+            UiStyleReference::LegacyTokenResolved => self.legacy_style_tokens(compatibility),
+        };
+        let (_, geometry_token_fallback) = self.resolved_geometry_tokens();
+        used_token_fallback |= geometry_token_fallback;
+        let selector = state.selector();
+        match selector {
+            UiStyleSelector::Idle => {}
+            UiStyleSelector::Hovered | UiStyleSelector::Focused => {
+                tokens.border = Some(UiColorRole::Emphasis);
+            }
+            UiStyleSelector::Selected => {
+                tokens.background = Some(UiTokenColor {
+                    role: UiColorRole::Surface,
+                    alpha: 1.0,
+                });
+                tokens.border = Some(UiColorRole::Positive);
+            }
+            UiStyleSelector::Pressed => {
+                tokens.background = Some(UiTokenColor {
+                    role: UiColorRole::Background,
+                    alpha: 1.0,
+                });
+                tokens.border = Some(UiColorRole::Emphasis);
+            }
+            UiStyleSelector::Invalid => {
+                tokens.border = Some(UiColorRole::Destructive);
+            }
+            UiStyleSelector::Disabled => {
+                tokens.foreground = UiColorRole::Muted;
+                tokens.border = tokens.border.map(|_| UiColorRole::Muted);
+            }
+        }
+        let (background, background_fallback) = tokens.background.map_or((None, false), |token| {
+            let (mut color, fallback) = self.resolve_color(token.role, contrast);
+            color.alpha = if contrast == UiContrast::High {
+                1.0
+            } else {
+                token.alpha
+            };
+            (Some(color), fallback)
+        });
+        let (border, border_fallback) = tokens.border.map_or((None, false), |role| {
+            let (color, fallback) = self.resolve_color(role, contrast);
+            (Some(UiBorder { color, width: 1 }), fallback)
+        });
+        let (foreground, foreground_fallback) = self.resolve_color(tokens.foreground, contrast);
+        used_token_fallback |= background_fallback || border_fallback || foreground_fallback;
+        UiStyleResolution {
+            style: UiStyle {
+                background,
+                border,
+                corner_radius: self.radius_value(tokens.radius),
+                foreground,
+                padding: self.spacing_value(tokens.padding),
+                font_size: text_size_value(tokens.font_size),
+            },
+            selector,
+            used_token_fallback,
+        }
+    }
+
+    /// Returns bounded icon tokens, falling back to the registered default as a unit.
+    #[must_use]
+    pub fn resolved_icon_tokens(self) -> (UiIconTokens, bool) {
+        let locked = Self::meridian_dark().icons;
+        if metric_within_locked_bound(self.icons.size, locked.size, false)
+            && metric_within_locked_bound(self.icons.stroke_width, locked.stroke_width, false)
+            && metric_within_locked_bound(self.icons.text_gap, locked.text_gap, true)
+        {
+            (self.icons, false)
+        } else {
+            (locked, true)
+        }
+    }
+
+    /// Bounds theme geometry against registered Meridian tokens and the
+    /// framework's existing 400% scale ceiling. Invalid fields fall back
+    /// independently so one malformed metric cannot amplify layout geometry.
+    #[must_use]
+    pub fn resolved_geometry_tokens(self) -> (UiGeometryTokens, bool) {
+        let locked = Self::meridian_dark().geometry;
+        let mut used_fallback = false;
+        let mut resolve = |value: f32, fallback: f32, allow_zero: bool| {
+            if metric_within_locked_bound(value, fallback, allow_zero) {
+                value
+            } else {
+                used_fallback = true;
+                fallback
+            }
+        };
+        let resolved = UiGeometryTokens {
+            spacing_base: resolve(self.geometry.spacing_base, locked.spacing_base, false),
+            dock_gutter: resolve(self.geometry.dock_gutter, locked.dock_gutter, true),
+            border: resolve(self.geometry.border, locked.border, false),
+            radius_compact: resolve(self.geometry.radius_compact, locked.radius_compact, true),
+            radius_control: resolve(self.geometry.radius_control, locked.radius_control, true),
+            radius_panel: resolve(self.geometry.radius_panel, locked.radius_panel, true),
+            radius_floating: resolve(self.geometry.radius_floating, locked.radius_floating, true),
+            application_row: resolve(self.geometry.application_row, locked.application_row, false),
+            workspace_row: resolve(self.geometry.workspace_row, locked.workspace_row, false),
+            status_row: resolve(self.geometry.status_row, locked.status_row, false),
+            activity_rail_collapsed: resolve(
+                self.geometry.activity_rail_collapsed,
+                locked.activity_rail_collapsed,
+                false,
+            ),
+            activity_rail_expanded: resolve(
+                self.geometry.activity_rail_expanded,
+                locked.activity_rail_expanded,
+                false,
+            ),
+            browser_width: resolve(self.geometry.browser_width, locked.browser_width, false),
+            world_inspector_width: resolve(
+                self.geometry.world_inspector_width,
+                locked.world_inspector_width,
+                false,
+            ),
+            bottom_shelf_peek: resolve(
+                self.geometry.bottom_shelf_peek,
+                locked.bottom_shelf_peek,
+                false,
+            ),
+            bottom_shelf_expanded: resolve(
+                self.geometry.bottom_shelf_expanded,
+                locked.bottom_shelf_expanded,
+                false,
+            ),
+        };
+        (resolved, used_fallback)
+    }
+
+    /// Returns locked motion timing if an untrusted theme supplies invalid timing.
+    #[must_use]
+    pub const fn resolved_motion_tokens(self) -> (UiMotionTokens, bool) {
+        if self.motion.state_transition_min_ms == 100 && self.motion.state_transition_max_ms == 160
+        {
+            (self.motion, false)
+        } else {
+            (Self::meridian_dark().motion, true)
+        }
+    }
+
+    fn legacy_style_tokens(self, style: UiStyle) -> (UiStyleTokens, bool) {
+        let (background, background_fallback) = style.background.map_or((None, false), |color| {
+            let (token, fallback) = self.legacy_color_token(color, UiColorRole::Surface);
+            (Some(token), fallback)
+        });
+        let (border, border_fallback) = style.border.map_or((None, false), |border| {
+            let (token, color_fallback) =
+                self.legacy_color_token(border.color, UiColorRole::Border);
+            (Some(token.role), color_fallback || border.width != 1)
+        });
+        let (foreground, foreground_fallback) =
+            self.legacy_color_token(style.foreground, UiColorRole::PrimaryText);
+        let (radius, radius_fallback) = self.legacy_radius_token(style.corner_radius);
+        let (padding, padding_fallback) = self.legacy_spacing_token(style.padding);
+        let (font_size, font_fallback) = legacy_text_size_token(style.font_size);
+        (
+            UiStyleTokens {
+                background,
+                border,
+                radius,
+                foreground: foreground.role,
+                padding,
+                font_size,
+            },
+            background_fallback
+                || border_fallback
+                || foreground_fallback
+                || radius_fallback
+                || padding_fallback
+                || font_fallback,
+        )
+    }
+
+    fn legacy_color_token(self, color: UiColor, fallback: UiColorRole) -> (UiTokenColor, bool) {
+        let alpha_valid = color.alpha.is_finite() && (0.0..=1.0).contains(&color.alpha);
+        let role = self
+            .role_for_color(color)
+            .or_else(|| Self::meridian_dark().role_for_color(color));
+        (
+            UiTokenColor {
+                role: role.unwrap_or(fallback),
+                alpha: if alpha_valid { color.alpha } else { 1.0 },
+            },
+            role.is_none() || !alpha_valid,
+        )
+    }
+
+    fn role_for_color(self, color: UiColor) -> Option<UiColorRole> {
+        const ROLES: [UiColorRole; 10] = [
+            UiColorRole::Background,
+            UiColorRole::Surface,
+            UiColorRole::Border,
+            UiColorRole::PrimaryText,
+            UiColorRole::SecondaryText,
+            UiColorRole::Muted,
+            UiColorRole::Destructive,
+            UiColorRole::DestructiveHover,
+            UiColorRole::Positive,
+            UiColorRole::Emphasis,
+        ];
+        ROLES.into_iter().find(|role| {
+            let (candidate, _) = self.resolve_color(*role, UiContrast::Standard);
+            color_rgb_near(color, candidate)
+        })
+    }
+
+    fn resolve_color(self, role: UiColorRole, contrast: UiContrast) -> (UiColor, bool) {
+        let palette = if contrast == UiContrast::High {
+            self.high_contrast_colors
+        } else {
+            self.colors
+        };
+        let color = color_for_role(palette, role);
+        if color_is_valid(color) {
+            (color, false)
+        } else {
+            let fallback = if contrast == UiContrast::High {
+                Self::meridian_dark().high_contrast_colors
+            } else {
+                Self::meridian_dark().colors
+            };
+            (color_for_role(fallback, role), true)
+        }
+    }
+
+    fn legacy_radius_token(self, value: f32) -> (UiRadiusToken, bool) {
+        let (geometry, _) = self.resolved_geometry_tokens();
+        nearest_token(
+            value,
+            &[
+                (UiRadiusToken::None, 0.0),
+                (UiRadiusToken::Compact, geometry.radius_compact),
+                (UiRadiusToken::Control, geometry.radius_control),
+                (UiRadiusToken::Panel, geometry.radius_panel),
+                (UiRadiusToken::Floating, geometry.radius_floating),
+            ],
+        )
+    }
+
+    fn legacy_spacing_token(self, value: f32) -> (UiSpacingToken, bool) {
+        let (geometry, _) = self.resolved_geometry_tokens();
+        let base = geometry.spacing_base;
+        nearest_token(
+            value,
+            &[
+                (UiSpacingToken::None, 0.0),
+                (UiSpacingToken::ThreeQuarter, base * 0.75),
+                (UiSpacingToken::Base, base),
+                (UiSpacingToken::FiveQuarter, base * 1.25),
+                (UiSpacingToken::ThreeHalf, base * 1.5),
+                (UiSpacingToken::Double, base * 2.0),
+                (UiSpacingToken::FiveHalf, base * 2.5),
+                (UiSpacingToken::Triple, base * 3.0),
+                (UiSpacingToken::SevenHalf, base * 3.5),
+                (UiSpacingToken::Quadruple, base * 4.0),
+                (UiSpacingToken::Sextuple, base * 6.0),
+            ],
+        )
+    }
+
+    fn radius_value(self, token: UiRadiusToken) -> f32 {
+        let (geometry, _) = self.resolved_geometry_tokens();
+        match token {
+            UiRadiusToken::None => 0.0,
+            UiRadiusToken::Compact => geometry.radius_compact,
+            UiRadiusToken::Control => geometry.radius_control,
+            UiRadiusToken::Panel => geometry.radius_panel,
+            UiRadiusToken::Floating => geometry.radius_floating,
+        }
+    }
+
+    fn spacing_value(self, token: UiSpacingToken) -> f32 {
+        let (geometry, _) = self.resolved_geometry_tokens();
+        let base = geometry.spacing_base;
+        match token {
+            UiSpacingToken::None => 0.0,
+            UiSpacingToken::ThreeQuarter => base * 0.75,
+            UiSpacingToken::Base => base,
+            UiSpacingToken::FiveQuarter => base * 1.25,
+            UiSpacingToken::ThreeHalf => base * 1.5,
+            UiSpacingToken::Double => base * 2.0,
+            UiSpacingToken::FiveHalf => base * 2.5,
+            UiSpacingToken::Triple => base * 3.0,
+            UiSpacingToken::SevenHalf => base * 3.5,
+            UiSpacingToken::Quadruple => base * 4.0,
+            UiSpacingToken::Sextuple => base * 6.0,
+        }
+    }
+}
+
+fn color_for_role(tokens: UiColorTokens, role: UiColorRole) -> UiColor {
+    match role {
+        UiColorRole::Background => tokens.background,
+        UiColorRole::Surface => tokens.surface,
+        UiColorRole::Border => tokens.border,
+        UiColorRole::PrimaryText => tokens.primary_text,
+        UiColorRole::SecondaryText => tokens.secondary_text,
+        UiColorRole::Muted => tokens.muted,
+        UiColorRole::Destructive => tokens.destructive,
+        UiColorRole::DestructiveHover => tokens.destructive_hover,
+        UiColorRole::Positive => tokens.positive,
+        UiColorRole::Emphasis => tokens.warning,
+    }
+}
+
+fn color_is_valid(color: UiColor) -> bool {
+    [color.red, color.green, color.blue, color.alpha]
+        .into_iter()
+        .all(|channel| channel.is_finite() && (0.0..=1.0).contains(&channel))
+}
+
+fn color_rgb_near(left: UiColor, right: UiColor) -> bool {
+    (left.red - right.red).abs() <= 0.002
+        && (left.green - right.green).abs() <= 0.002
+        && (left.blue - right.blue).abs() <= 0.002
+}
+
+fn metric_within_locked_bound(value: f32, locked: f32, allow_zero: bool) -> bool {
+    let minimum = if allow_zero { 0.0 } else { f32::EPSILON };
+    value.is_finite() && value >= minimum && value <= locked * MAX_SUPPORTED_SCALE_FACTOR
+}
+
+fn nearest_token<T: Copy>(value: f32, candidates: &[(T, f32)]) -> (T, bool) {
+    let mut nearest = candidates[0];
+    let mut distance = (value - nearest.1).abs();
+    for candidate in &candidates[1..] {
+        let candidate_distance = (value - candidate.1).abs();
+        if candidate_distance < distance {
+            nearest = *candidate;
+            distance = candidate_distance;
+        }
+    }
+    (nearest.0, !value.is_finite() || distance > 0.01)
+}
+
+fn legacy_text_size_token(value: f32) -> (UiTextSizeToken, bool) {
+    nearest_token(
+        value,
+        &[
+            (UiTextSizeToken::Caption, 11.0),
+            (UiTextSizeToken::Small, 12.0),
+            (UiTextSizeToken::Metadata, 13.0),
+            (UiTextSizeToken::CompactBody, 14.0),
+            (UiTextSizeToken::Brand, 15.0),
+            (UiTextSizeToken::Body, 16.0),
+            (UiTextSizeToken::Title, 20.0),
+            (UiTextSizeToken::Display, 28.0),
+        ],
+    )
+}
+
+const fn text_size_value(token: UiTextSizeToken) -> f32 {
+    match token {
+        UiTextSizeToken::Caption => 11.0,
+        UiTextSizeToken::Small => 12.0,
+        UiTextSizeToken::Metadata => 13.0,
+        UiTextSizeToken::CompactBody => 14.0,
+        UiTextSizeToken::Brand => 15.0,
+        UiTextSizeToken::Body => 16.0,
+        UiTextSizeToken::Title => 20.0,
+        UiTextSizeToken::Display => 28.0,
     }
 }
 
@@ -1210,11 +2008,15 @@ pub struct UiNode {
     pub id: UiNodeId,
     pub kind: UiWidgetKind,
     pub layout: UiLayout,
+    /// Authoritative token/variant styling contract.
+    pub style_reference: UiStyleReference,
+    /// Compatibility request retained for `LegacyTokenResolved` callers.
     pub style: UiStyle,
     pub layout_hints: UiLayoutHints,
     pub constraints: UiConstraints,
     pub absolute_position: Option<UiAbsolutePosition>,
     pub icon: Option<IconId>,
+    pub font_role: UiFontRole,
     pub semantics: UiSemantics,
     pub text: Option<String>,
     pub text_input: Option<UiTextInputOptions>,
@@ -1238,11 +2040,13 @@ impl UiNode {
             id,
             kind: UiWidgetKind::Panel,
             layout,
+            style_reference: UiStyleReference::Variant(UiStyleVariant::Panel),
             style: UiStyle::panel(),
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
             icon: None,
+            font_role: UiFontRole::Interface,
             semantics: UiSemantics::group(name),
             text: None,
             text_input: None,
@@ -1261,11 +2065,13 @@ impl UiNode {
             id,
             kind: UiWidgetKind::Label,
             layout: UiLayout::Overlay,
+            style_reference: UiStyleReference::Variant(UiStyleVariant::Text),
             style: UiStyle::text(),
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
             icon: None,
+            font_role: UiFontRole::Interface,
             semantics: UiSemantics::status(name),
             text: Some(text.into()),
             text_input: None,
@@ -1289,11 +2095,13 @@ impl UiNode {
             id,
             kind: UiWidgetKind::Button,
             layout: UiLayout::Overlay,
+            style_reference: UiStyleReference::Variant(UiStyleVariant::SecondaryAction),
             style: UiStyle::secondary_action(),
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
             icon: None,
+            font_role: UiFontRole::Interface,
             semantics: UiSemantics::button(name, action),
             text: Some(text.into()),
             text_input: None,
@@ -1322,11 +2130,13 @@ impl UiNode {
             id,
             kind: UiWidgetKind::TextInput,
             layout: UiLayout::Overlay,
+            style_reference: UiStyleReference::Variant(UiStyleVariant::TextField),
             style: UiStyle::text_field(),
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
             icon: None,
+            font_role: UiFontRole::Interface,
             semantics: UiSemantics::text_input(name),
             text: Some(if options.password {
                 String::new()
@@ -1359,7 +2169,23 @@ impl UiNode {
     /// Replaces this node's Meridian-owned visual treatment.
     #[must_use]
     pub const fn with_style(mut self, style: UiStyle) -> Self {
+        self.style_reference = UiStyleReference::LegacyTokenResolved;
         self.style = style;
+        self
+    }
+
+    /// Selects an active-theme style variant without exposing raw renderer values.
+    #[must_use]
+    pub const fn with_style_variant(mut self, variant: UiStyleVariant) -> Self {
+        self.style_reference = UiStyleReference::Variant(variant);
+        self.style = variant.compatibility_style();
+        self
+    }
+
+    /// Selects one locked bundled typography role without exposing font handles.
+    #[must_use]
+    pub const fn with_font_role(mut self, font_role: UiFontRole) -> Self {
+        self.font_role = font_role;
         self
     }
 
@@ -1459,11 +2285,13 @@ impl UiNode {
             id,
             kind: UiWidgetKind::Toggle,
             layout: UiLayout::Overlay,
+            style_reference: UiStyleReference::Variant(UiStyleVariant::SecondaryAction),
             style: UiStyle::secondary_action(),
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
             icon: None,
+            font_role: UiFontRole::Interface,
             semantics: UiSemantics::toggle(name, action, value),
             text: Some(if value { "On" } else { "Off" }.to_owned()),
             text_input: None,
@@ -1484,11 +2312,13 @@ impl UiNode {
             id,
             kind: UiWidgetKind::Progress,
             layout: UiLayout::Overlay,
+            style_reference: UiStyleReference::Variant(UiStyleVariant::Surface),
             style: UiStyle::surface(),
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
             icon: None,
+            font_role: UiFontRole::Interface,
             semantics: UiSemantics::progress(name, value),
             text: Some(format!("{value}%")),
             text_input: None,
@@ -1526,10 +2356,10 @@ impl UiNode {
         children: Vec<UiNodeId>,
     ) -> Self {
         let name = name.into();
-        let mut node = Self::button(id, name.clone(), action, value);
+        let mut node = Self::button(id, name.clone(), action, value)
+            .with_style_variant(UiStyleVariant::TextField);
         node.kind = UiWidgetKind::ComboBox;
         node.layout = UiLayout::VerticalStack { gap: 0.0 };
-        node.style = UiStyle::text_field();
         node.semantics.role = SemanticRole::ComboBox;
         node.children = children;
         node
@@ -1981,6 +2811,7 @@ impl UiDocument {
             node.layout_hints.grow,
             node.style.padding,
             node.style.font_size,
+            node.style.corner_radius,
         ];
         if !layout_is_valid
             || values
@@ -2318,9 +3149,140 @@ mod tests {
         assert_token(theme.geometry.bottom_shelf_expanded, 240.0);
         assert_eq!(theme.motion.state_transition_min_ms, 100);
         assert_eq!(theme.motion.state_transition_max_ms, 160);
+        assert_token(theme.icons.size, 16.0);
+        assert_token(theme.icons.stroke_width, 2.0);
+        assert_token(theme.icons.text_gap, 8.0);
         assert_eq!(theme.interface_font.family, "Mona Sans");
         assert_eq!(theme.display_font.family, "Hubot Sans");
         assert_eq!(theme.monospace_font.family, "JetBrains Mono");
+    }
+
+    #[test]
+    fn huge_finite_icon_and_geometry_metrics_fall_back_to_registered_tokens() {
+        let locked = UiTheme::meridian_dark();
+        let assert_token = |actual: f32, expected: f32| {
+            assert!((actual - expected).abs() < f32::EPSILON);
+        };
+        let mut theme = locked;
+        theme.icons = UiIconTokens {
+            size: f32::MAX,
+            stroke_width: f32::MAX,
+            text_gap: f32::MAX,
+        };
+        theme.geometry.spacing_base = f32::MAX;
+        theme.geometry.radius_compact = f32::MAX;
+        theme.geometry.radius_control = f32::MAX;
+        theme.geometry.radius_panel = f32::MAX;
+        theme.geometry.radius_floating = f32::MAX;
+
+        let (icons, icon_fallback) = theme.resolved_icon_tokens();
+        assert!(icon_fallback);
+        assert_eq!(icons, locked.icons);
+
+        let (geometry, geometry_fallback) = theme.resolved_geometry_tokens();
+        assert!(geometry_fallback);
+        assert_token(geometry.spacing_base, locked.geometry.spacing_base);
+        assert_token(geometry.radius_compact, locked.geometry.radius_compact);
+        assert_token(geometry.radius_control, locked.geometry.radius_control);
+        assert_token(geometry.radius_panel, locked.geometry.radius_panel);
+        assert_token(geometry.radius_floating, locked.geometry.radius_floating);
+
+        let resolution = theme.resolve_style(
+            UiStyleReference::Variant(UiStyleVariant::SecondaryAction),
+            UiStyle::secondary_action(),
+            UiVisualState::default(),
+            UiContrast::Standard,
+        );
+        assert!(resolution.used_token_fallback);
+        assert_token(
+            resolution.style.corner_radius,
+            locked.geometry.radius_control,
+        );
+        assert_token(resolution.style.padding, locked.geometry.spacing_base * 2.5);
+    }
+
+    #[test]
+    fn style_variants_and_legacy_requests_resolve_through_theme_tokens() {
+        let theme = UiTheme::meridian_dark();
+        let primary = theme.resolve_style(
+            UiStyleReference::Variant(UiStyleVariant::PrimaryAction),
+            UiStyle::destructive_action(),
+            UiVisualState::default(),
+            UiContrast::Standard,
+        );
+        assert_eq!(primary.style.background, Some(theme.colors.surface));
+        assert_eq!(
+            primary.style.border.map(|border| border.color),
+            Some(theme.colors.warning)
+        );
+        assert_ne!(primary.style.background, Some(theme.colors.destructive));
+        assert!(!primary.used_token_fallback);
+
+        let legacy = theme.resolve_style(
+            UiStyleReference::LegacyTokenResolved,
+            UiStyle {
+                background: Some(UiColor::rgba(0.2, 0.4, 0.6, 1.0)),
+                padding: 9.0,
+                ..UiStyle::secondary_action()
+            },
+            UiVisualState::default(),
+            UiContrast::Standard,
+        );
+        assert!(legacy.used_token_fallback);
+        assert_eq!(legacy.style.background, Some(theme.colors.surface));
+        assert!((legacy.style.padding - 8.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn visual_selector_resolution_is_stable_and_high_contrast_is_role_mapped() {
+        let theme = UiTheme::meridian_dark();
+        let selected = theme.resolve_style(
+            UiStyleReference::Variant(UiStyleVariant::SecondaryAction),
+            UiStyle::secondary_action(),
+            UiVisualState {
+                hovered: true,
+                focused: true,
+                selected: true,
+                ..UiVisualState::default()
+            },
+            UiContrast::High,
+        );
+        assert_eq!(selected.selector, UiStyleSelector::Selected);
+        assert_eq!(
+            selected.style.background,
+            Some(theme.high_contrast_colors.surface)
+        );
+        assert_eq!(
+            selected.style.border.map(|border| border.color),
+            Some(theme.high_contrast_colors.positive)
+        );
+
+        let disabled_invalid = theme.resolve_style(
+            UiStyleReference::Variant(UiStyleVariant::TextField),
+            UiStyle::text_field(),
+            UiVisualState {
+                invalid: true,
+                disabled: true,
+                ..UiVisualState::default()
+            },
+            UiContrast::High,
+        );
+        assert_eq!(disabled_invalid.selector, UiStyleSelector::Disabled);
+        assert_eq!(
+            disabled_invalid.style.foreground,
+            theme.high_contrast_colors.muted
+        );
+    }
+
+    #[test]
+    fn retained_nodes_select_locked_typography_by_meridian_role() {
+        let node = UiNode::label(UiNodeId::new(7), "Build log", "compiled")
+            .with_font_role(UiFontRole::Monospace);
+        assert_eq!(node.font_role, UiFontRole::Monospace);
+        assert_eq!(
+            UiFontDescriptor::locked(node.font_role).family,
+            "JetBrains Mono"
+        );
     }
 
     #[test]

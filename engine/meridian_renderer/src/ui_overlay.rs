@@ -11,17 +11,21 @@ use std::fmt::{self, Display, Formatter};
 use meridian_platform::WindowSize;
 use meridian_rhi::{
     BufferUsage, ClearColor, FrameOutcome, GpuBuffer, GpuRenderPipeline, GpuTexture,
-    GpuTextureBindGroup, Rhi, RhiError, TextureFormat, VertexAttribute, VertexFormat, VertexLayout,
-    VertexLayoutError,
+    GpuTextureBindGroup, Rhi, RhiError, RhiRenderIdentity, TextureFormat, VertexAttribute,
+    VertexFormat, VertexLayout, VertexLayoutError,
 };
 use meridian_ui::{
-    DisplayList, DisplayListError, DisplayPrimitive, UiColor, UiGlyphBitmap, UiRect, UiSize,
+    DisplayList, DisplayListError, DisplayPrimitive, UiClipId, UiColor, UiCornerRadii,
+    UiFrameSnapshot, UiGlyphBitmap, UiPathCommand, UiPoint, UiRect, UiSize, UiStroke,
     MAX_DISPLAY_PRIMITIVES,
 };
 
 const MAX_RASTER_PIXELS: u64 = 16 * 1024 * 1024;
 const UI_VERTEX_BYTES: u64 = 20;
 const UI_INDEX_COUNT: u32 = 6;
+const PATH_CURVE_SEGMENTS: u8 = 16;
+const ROUNDED_RECT_SAMPLE_OFFSETS: [(f32, f32); 4] =
+    [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)];
 
 /// Observable contents and limits of one temporary UI overlay submission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -58,6 +62,98 @@ pub struct UiRendererQualificationReport {
     pub primitive_count: usize,
     pub observed_kinds: BTreeSet<UiPrimitiveKind>,
     pub raster_bridge_unsupported: BTreeSet<UiPrimitiveKind>,
+}
+
+/// Raster-bridge cache invalidation required before GPU resource reuse.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiRasterBridgeRecoveryAction {
+    None,
+    RebuildSurfaceCaches,
+    RebuildDeviceCaches,
+}
+
+/// Typed report proving recovery preserves the last immutable UI snapshot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiRasterBridgeRecovery {
+    pub action: UiRasterBridgeRecoveryAction,
+    pub preserved_revision: u64,
+    pub dropped_cache_count: u32,
+}
+
+/// Renderer-owned identity tracker for the bounded raster bridge.
+///
+/// This keeps the uploaded recovery texture and surface pipeline from being
+/// reused after their owning RHI identity changes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiRasterBridgeRecoveryState {
+    identity: RhiRenderIdentity,
+    cached_surface_resources: u32,
+    cached_device_resources: u32,
+    last_revision: Option<u64>,
+}
+
+impl UiRasterBridgeRecoveryState {
+    #[must_use]
+    pub fn new(identity: RhiRenderIdentity) -> Self {
+        Self {
+            identity,
+            cached_surface_resources: 0,
+            cached_device_resources: 0,
+            last_revision: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn last_revision(&self) -> Option<u64> {
+        self.last_revision
+    }
+
+    /// Records a rebuilt bridge cache set after a successful submission.
+    pub fn record_cache_rebuild(&mut self, surface_resources: u32, device_resources: u32) {
+        self.cached_surface_resources = surface_resources;
+        self.cached_device_resources = device_resources;
+    }
+
+    /// Drops stale caches and returns the recovery action for this frame.
+    pub fn prepare_frame(
+        &mut self,
+        identity: RhiRenderIdentity,
+        snapshot: &UiFrameSnapshot,
+    ) -> UiRasterBridgeRecovery {
+        let action = if identity.device_generation != self.identity.device_generation {
+            UiRasterBridgeRecoveryAction::RebuildDeviceCaches
+        } else if identity.surface_generation != self.identity.surface_generation
+            || identity.surface_format != self.identity.surface_format
+            || identity.surface_configured != self.identity.surface_configured
+        {
+            UiRasterBridgeRecoveryAction::RebuildSurfaceCaches
+        } else {
+            UiRasterBridgeRecoveryAction::None
+        };
+        let dropped_cache_count = match action {
+            UiRasterBridgeRecoveryAction::None => 0,
+            UiRasterBridgeRecoveryAction::RebuildSurfaceCaches => {
+                let dropped = self.cached_surface_resources;
+                self.cached_surface_resources = 0;
+                dropped
+            }
+            UiRasterBridgeRecoveryAction::RebuildDeviceCaches => {
+                let dropped = self
+                    .cached_surface_resources
+                    .saturating_add(self.cached_device_resources);
+                self.cached_surface_resources = 0;
+                self.cached_device_resources = 0;
+                dropped
+            }
+        };
+        self.identity = identity;
+        self.last_revision = Some(snapshot.revision);
+        UiRasterBridgeRecovery {
+            action,
+            preserved_revision: snapshot.revision,
+            dropped_cache_count,
+        }
+    }
 }
 
 /// Validates and classifies a real Meridian display-list corpus without
@@ -115,6 +211,10 @@ const fn raster_bridge_supports(kind: UiPrimitiveKind) -> bool {
             | UiPrimitiveKind::Text
             | UiPrimitiveKind::GlyphRun
             | UiPrimitiveKind::FocusIndicator
+            | UiPrimitiveKind::RoundedRect
+            | UiPrimitiveKind::Path
+            | UiPrimitiveKind::PushClip
+            | UiPrimitiveKind::PopClip
     )
 }
 
@@ -326,6 +426,7 @@ struct UiOverlayRaster {
     height: u32,
     scale_factor: f32,
     pixels: Vec<u8>,
+    clips: Vec<(UiClipId, UiRect, UiCornerRadii)>,
     report: UiOverlayRenderReport,
 }
 
@@ -369,6 +470,7 @@ impl UiOverlayRaster {
             height,
             scale_factor,
             pixels: vec![0; byte_count],
+            clips: Vec::new(),
             report: UiOverlayRenderReport {
                 solid_primitives: 0,
                 text_primitives: 0,
@@ -417,12 +519,36 @@ impl UiOverlayRaster {
                 raster: text,
                 ..
             } => self.draw_text(*bounds, *color, text),
-            DisplayPrimitive::RoundedRect { .. } => return unsupported("rounded rectangles"),
-            DisplayPrimitive::Path { .. } => return unsupported("paths"),
+            DisplayPrimitive::RoundedRect {
+                bounds,
+                radii,
+                color,
+                ..
+            } => {
+                self.fill_rounded_rect(*bounds, *radii, *color);
+                self.report.solid_primitives += 1;
+            }
+            DisplayPrimitive::Path {
+                commands,
+                fill,
+                stroke,
+                ..
+            } => {
+                self.draw_path(commands, *fill, *stroke);
+                self.report.solid_primitives += 1;
+            }
             DisplayPrimitive::Image { .. } => return unsupported("images"),
             DisplayPrimitive::Mesh { .. } => return unsupported("meshes"),
-            DisplayPrimitive::PushClip { .. } | DisplayPrimitive::PopClip { .. } => {
-                return unsupported("clips");
+            DisplayPrimitive::PushClip { id, bounds, radii } => {
+                self.clips.push((*id, *bounds, *radii));
+            }
+            DisplayPrimitive::PopClip { id } => {
+                let Some((active, _, _)) = self.clips.pop() else {
+                    return unsupported("unbalanced clip pop");
+                };
+                if active != *id {
+                    return unsupported("mismatched clip pop");
+                }
             }
             DisplayPrimitive::BeginLayer { .. } | DisplayPrimitive::EndLayer { .. } => {
                 return unsupported("layers");
@@ -468,6 +594,30 @@ impl UiOverlayRaster {
         }
     }
 
+    #[allow(clippy::cast_precision_loss)] // Raster coordinates are bounded to 65,535 pixels.
+    fn fill_rounded_rect(&mut self, bounds: UiRect, radii: UiCornerRadii, color: UiColor) {
+        let (left, top, right, bottom) = self.pixel_bounds(bounds);
+        for y in top..bottom {
+            for x in left..right {
+                let coverage = ROUNDED_RECT_SAMPLE_OFFSETS
+                    .iter()
+                    .filter(|(sample_x, sample_y)| {
+                        rounded_rect_contains(
+                            bounds,
+                            radii,
+                            (x as f32 + sample_x) / self.scale_factor,
+                            (y as f32 + sample_y) / self.scale_factor,
+                        )
+                    })
+                    .count() as f32
+                    / ROUNDED_RECT_SAMPLE_OFFSETS.len() as f32;
+                if coverage > 0.0 {
+                    self.blend(x, y, color, coverage);
+                }
+            }
+        }
+    }
+
     fn stroke_rect(&mut self, bounds: UiRect, color: UiColor, thickness: u32) {
         let (left, top, right, bottom) = self.pixel_bounds(bounds);
         let thickness = thickness
@@ -480,6 +630,169 @@ impl UiOverlayRaster {
                     || y.saturating_sub(top) < thickness
                     || bottom.saturating_sub(y + 1) < thickness;
                 if on_border {
+                    self.blend(x, y, color, 1.0);
+                }
+            }
+        }
+    }
+
+    fn draw_path(
+        &mut self,
+        commands: &[UiPathCommand],
+        fill: Option<UiColor>,
+        stroke: Option<UiStroke>,
+    ) {
+        let mut points = Vec::new();
+        for command in commands {
+            match *command {
+                UiPathCommand::MoveTo(point) => {
+                    if let Some(fill) = fill {
+                        self.fill_polygon(&points, fill);
+                    }
+                    if let Some(stroke) = stroke {
+                        self.stroke_polyline(&points, stroke, false);
+                    }
+                    points.clear();
+                    points.push(point);
+                }
+                UiPathCommand::LineTo(point) => points.push(point),
+                UiPathCommand::QuadraticTo { control, end } => {
+                    if let Some(start) = points.last().copied() {
+                        for segment in 1..=PATH_CURVE_SEGMENTS {
+                            let t = f32::from(segment) / f32::from(PATH_CURVE_SEGMENTS);
+                            let inverse = 1.0 - t;
+                            points.push(UiPoint {
+                                x: inverse * inverse * start.x
+                                    + 2.0 * inverse * t * control.x
+                                    + t * t * end.x,
+                                y: inverse * inverse * start.y
+                                    + 2.0 * inverse * t * control.y
+                                    + t * t * end.y,
+                            });
+                        }
+                    }
+                }
+                UiPathCommand::CubicTo {
+                    control_a,
+                    control_b,
+                    end,
+                } => {
+                    if let Some(start) = points.last().copied() {
+                        for segment in 1..=PATH_CURVE_SEGMENTS {
+                            let t = f32::from(segment) / f32::from(PATH_CURVE_SEGMENTS);
+                            let inverse = 1.0 - t;
+                            points.push(UiPoint {
+                                x: inverse * inverse * inverse * start.x
+                                    + 3.0 * inverse * inverse * t * control_a.x
+                                    + 3.0 * inverse * t * t * control_b.x
+                                    + t * t * t * end.x,
+                                y: inverse * inverse * inverse * start.y
+                                    + 3.0 * inverse * inverse * t * control_a.y
+                                    + 3.0 * inverse * t * t * control_b.y
+                                    + t * t * t * end.y,
+                            });
+                        }
+                    }
+                }
+                UiPathCommand::Close => {
+                    if let Some(fill) = fill {
+                        self.fill_polygon(&points, fill);
+                    }
+                    if let Some(stroke) = stroke {
+                        self.stroke_polyline(&points, stroke, true);
+                    }
+                    points.clear();
+                }
+            }
+        }
+        if let Some(fill) = fill {
+            self.fill_polygon(&points, fill);
+        }
+        if let Some(stroke) = stroke {
+            self.stroke_polyline(&points, stroke, false);
+        }
+    }
+
+    fn stroke_polyline(&mut self, points: &[UiPoint], stroke: UiStroke, closed: bool) {
+        if points.len() < 2 {
+            return;
+        }
+        for segment in points.windows(2) {
+            self.stroke_line(segment[0], segment[1], stroke);
+        }
+        if closed {
+            self.stroke_line(points[points.len() - 1], points[0], stroke);
+        }
+    }
+
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss
+    )]
+    fn stroke_line(&mut self, start: UiPoint, end: UiPoint, stroke: UiStroke) {
+        let start_x = start.x * self.scale_factor;
+        let start_y = start.y * self.scale_factor;
+        let end_x = end.x * self.scale_factor;
+        let end_y = end.y * self.scale_factor;
+        let delta_x = end_x - start_x;
+        let delta_y = end_y - start_y;
+        let steps = delta_x.abs().max(delta_y.abs()).ceil().max(1.0) as u32;
+        let thickness = (stroke.width * self.scale_factor).ceil().clamp(1.0, 16.0) as i32;
+        for step in 0..=steps {
+            let progress = step as f32 / steps as f32;
+            let x = delta_x.mul_add(progress, start_x).round() as i32;
+            let y = delta_y.mul_add(progress, start_y).round() as i32;
+            for offset_y in 0..thickness {
+                for offset_x in 0..thickness {
+                    let (Ok(x), Ok(y)) = (u32::try_from(x + offset_x), u32::try_from(y + offset_y))
+                    else {
+                        continue;
+                    };
+                    if x < self.width && y < self.height {
+                        self.blend(x, y, stroke.color, 1.0);
+                    }
+                }
+            }
+        }
+    }
+
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss
+    )]
+    fn fill_polygon(&mut self, points: &[UiPoint], color: UiColor) {
+        if points.len() < 3 {
+            return;
+        }
+        let minimum_x = points
+            .iter()
+            .map(|point| point.x)
+            .fold(f32::INFINITY, f32::min);
+        let maximum_x = points
+            .iter()
+            .map(|point| point.x)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let minimum_y = points
+            .iter()
+            .map(|point| point.y)
+            .fold(f32::INFINITY, f32::min);
+        let maximum_y = points
+            .iter()
+            .map(|point| point.y)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let left = floor_to_u32(minimum_x * self.scale_factor, self.width);
+        let right = ceil_to_u32(maximum_x * self.scale_factor, self.width);
+        let top = floor_to_u32(minimum_y * self.scale_factor, self.height);
+        let bottom = ceil_to_u32(maximum_y * self.scale_factor, self.height);
+        for y in top..bottom {
+            for x in left..right {
+                let logical = UiPoint {
+                    x: (x as f32 + 0.5) / self.scale_factor,
+                    y: (y as f32 + 0.5) / self.scale_factor,
+                };
+                if point_in_polygon(logical, points) {
                     self.blend(x, y, color, 1.0);
                 }
             }
@@ -551,6 +864,18 @@ impl UiOverlayRaster {
     }
 
     fn blend(&mut self, x: u32, y: u32, color: UiColor, coverage: f32) {
+        #[allow(clippy::cast_precision_loss)]
+        let logical = UiPoint {
+            x: (x as f32 + 0.5) / self.scale_factor,
+            y: (y as f32 + 0.5) / self.scale_factor,
+        };
+        if self
+            .clips
+            .iter()
+            .any(|(_, bounds, radii)| !rounded_rect_contains(*bounds, *radii, logical.x, logical.y))
+        {
+            return;
+        }
         let offset = usize::try_from(y)
             .ok()
             .and_then(|row| {
@@ -580,6 +905,70 @@ impl UiOverlayRaster {
             unit_f32_to_u8(color.blue * alpha + destination[2] * (1.0 - alpha));
         self.pixels[offset + 3] = 255;
     }
+}
+
+fn point_in_polygon(point: UiPoint, polygon: &[UiPoint]) -> bool {
+    let mut inside = false;
+    let mut previous = polygon.len() - 1;
+    for current in 0..polygon.len() {
+        let a = polygon[current];
+        let b = polygon[previous];
+        if (a.y > point.y) != (b.y > point.y)
+            && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x
+        {
+            inside = !inside;
+        }
+        previous = current;
+    }
+    inside
+}
+
+fn rounded_rect_contains(bounds: UiRect, radii: UiCornerRadii, x: f32, y: f32) -> bool {
+    let left = bounds.origin.x;
+    let top = bounds.origin.y;
+    let right = left + bounds.size.width;
+    let bottom = top + bounds.size.height;
+    if x < left || x > right || y < top || y > bottom {
+        return false;
+    }
+    let maximum = bounds.size.width.min(bounds.size.height) / 2.0;
+    let corners = [
+        (radii.top_left.min(maximum), left, top, true, true),
+        (radii.top_right.min(maximum), right, top, false, true),
+        (radii.bottom_right.min(maximum), right, bottom, false, false),
+        (radii.bottom_left.min(maximum), left, bottom, true, false),
+    ];
+    for (radius, edge_x, edge_y, left_corner, top_corner) in corners {
+        if radius <= 0.0 {
+            continue;
+        }
+        let in_x = if left_corner {
+            x < edge_x + radius
+        } else {
+            x > edge_x - radius
+        };
+        let in_y = if top_corner {
+            y < edge_y + radius
+        } else {
+            y > edge_y - radius
+        };
+        if in_x && in_y {
+            let center_x = if left_corner {
+                edge_x + radius
+            } else {
+                edge_x - radius
+            };
+            let center_y = if top_corner {
+                edge_y + radius
+            } else {
+                edge_y - radius
+            };
+            let normalized_x = (x - center_x) / radius;
+            let normalized_y = (y - center_y) / radius;
+            return normalized_x.mul_add(normalized_x, normalized_y * normalized_y) <= 1.0;
+        }
+    }
+    true
 }
 
 fn fullscreen_vertex_bytes() -> Vec<u8> {
@@ -657,10 +1046,14 @@ fn unit_f32_to_u8(value: f32) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use meridian_rhi::SurfaceFormat;
     use meridian_ui::{
         recovery_panel_document, DisplayList, DisplayPrimitive, UiBackdropDescriptor, UiClipId,
-        UiCornerRadii, UiFrameInput, UiGlyphBitmap, UiImageHandle, UiLayerId, UiMeshHandle,
-        UiNodeId, UiPathCommand, UiPoint, UiRect, UiRuntime, UiTextLayout, UiTextRaster,
+        UiCornerRadii, UiFontRole, UiFrameInput, UiGlyphBitmap, UiImageHandle, UiLayerId,
+        UiMeshHandle, UiNodeId, UiPathCommand, UiPoint, UiRect, UiRuntime, UiTextLayout,
+        UiTextRaster,
     };
 
     use super::*;
@@ -674,6 +1067,8 @@ mod tests {
             width: 8.0,
             height: 12.0,
             used_fallback_metrics: false,
+            used_fallback_font: false,
+            font_role: UiFontRole::Interface,
         };
         let raster = UiTextRaster::default();
         if glyph_run {
@@ -743,7 +1138,8 @@ mod tests {
                         UiPathCommand::MoveTo(bounds.origin),
                         UiPathCommand::LineTo(UiPoint { x: 8.0, y: 8.0 }),
                     ],
-                    color: UiColor::text(),
+                    fill: None,
+                    stroke: Some(UiStroke::new(UiColor::text(), 1.0)),
                 },
                 DisplayPrimitive::Image {
                     node,
@@ -807,12 +1203,8 @@ mod tests {
         assert_eq!(
             report.raster_bridge_unsupported,
             BTreeSet::from([
-                UiPrimitiveKind::RoundedRect,
-                UiPrimitiveKind::Path,
                 UiPrimitiveKind::Image,
                 UiPrimitiveKind::Mesh,
-                UiPrimitiveKind::PushClip,
-                UiPrimitiveKind::PopClip,
                 UiPrimitiveKind::BeginLayer,
                 UiPrimitiveKind::EndLayer,
                 UiPrimitiveKind::Shadow,
@@ -836,6 +1228,8 @@ mod tests {
                     width: 6.0,
                     height: 6.0,
                     used_fallback_metrics: false,
+                    used_fallback_font: false,
+                    font_role: UiFontRole::Interface,
                 },
                 raster: UiTextRaster {
                     glyphs: vec![UiGlyphBitmap {
@@ -863,5 +1257,208 @@ mod tests {
         assert_eq!(pixel(2, 3), clear);
         assert_eq!(pixel(5, 4), clear);
         assert_eq!(pixel(3, 5), clear);
+    }
+
+    fn red_channel(raster: &UiOverlayRaster, x: u32, y: u32) -> u8 {
+        let pixel = y
+            .checked_mul(raster.width)
+            .and_then(|row| row.checked_add(x))
+            .and_then(|pixel| usize::try_from(pixel).ok())
+            .and_then(|pixel| pixel.checked_mul(4))
+            .expect("bounded raster pixel offset");
+        raster.pixels[pixel]
+    }
+
+    fn identity(device_generation: u64, surface_generation: u64) -> RhiRenderIdentity {
+        RhiRenderIdentity {
+            device_generation,
+            surface_generation,
+            surface_format: SurfaceFormat {
+                name: "Bgra8UnormSrgb".to_owned(),
+                srgb: true,
+            },
+            surface_size: WindowSize::new(64, 64),
+            surface_configured: true,
+        }
+    }
+
+    fn recovery_snapshot() -> Arc<UiFrameSnapshot> {
+        let document = recovery_panel_document().expect("recovery document");
+        let mut runtime = UiRuntime::new(document);
+        runtime.reconcile(UiFrameInput::new(UiSize::new(64.0, 64.0)))
+    }
+
+    #[test]
+    fn direct_renderer_state_drops_surface_caches_without_losing_snapshot_revision() {
+        let snapshot = recovery_snapshot();
+        let mut state = UiRasterBridgeRecoveryState::new(identity(1, 1));
+        state.record_cache_rebuild(3, 7);
+
+        let report = state.prepare_frame(identity(1, 2), &snapshot);
+
+        assert_eq!(
+            report.action,
+            UiRasterBridgeRecoveryAction::RebuildSurfaceCaches
+        );
+        assert_eq!(report.preserved_revision, snapshot.revision);
+        assert_eq!(report.dropped_cache_count, 3);
+        assert_eq!(state.last_revision(), Some(snapshot.revision));
+
+        let follow_up = state.prepare_frame(identity(1, 2), &snapshot);
+        assert_eq!(follow_up.action, UiRasterBridgeRecoveryAction::None);
+    }
+
+    #[test]
+    fn direct_renderer_state_drops_all_caches_after_device_generation_change() {
+        let snapshot = recovery_snapshot();
+        let mut state = UiRasterBridgeRecoveryState::new(identity(10, 4));
+        state.record_cache_rebuild(3, 7);
+
+        let report = state.prepare_frame(identity(11, 1), &snapshot);
+
+        assert_eq!(
+            report.action,
+            UiRasterBridgeRecoveryAction::RebuildDeviceCaches
+        );
+        assert_eq!(report.preserved_revision, snapshot.revision);
+        assert_eq!(report.dropped_cache_count, 10);
+        assert_eq!(state.last_revision(), Some(snapshot.revision));
+    }
+
+    #[test]
+    fn rounded_rect_raster_preserves_transparent_corners_and_filled_center() {
+        let display_list = DisplayList {
+            primitives: vec![DisplayPrimitive::RoundedRect {
+                node: UiNodeId::new(1),
+                bounds: UiRect::new(UiPoint { x: 2.0, y: 2.0 }, UiSize::new(8.0, 8.0)),
+                radii: UiCornerRadii::uniform(4.0),
+                color: UiColor::rgba(1.0, 0.0, 0.0, 1.0),
+            }],
+        };
+        let raster =
+            UiOverlayRaster::from_display_list(&display_list, UiSize::new(12.0, 12.0), 1.0)
+                .expect("rounded rectangle is bridgeable");
+
+        let clear = red_channel(&raster, 0, 0);
+        assert_eq!(red_channel(&raster, 2, 2), clear);
+        assert!(red_channel(&raster, 6, 6) > clear);
+    }
+
+    #[test]
+    fn nested_clip_raster_rejects_pixels_outside_every_active_clip() {
+        let outer = UiClipId(1);
+        let inner = UiClipId(2);
+        let display_list = DisplayList {
+            primitives: vec![
+                DisplayPrimitive::PushClip {
+                    id: outer,
+                    bounds: UiRect::new(UiPoint { x: 1.0, y: 1.0 }, UiSize::new(8.0, 8.0)),
+                    radii: UiCornerRadii::uniform(0.0),
+                },
+                DisplayPrimitive::PushClip {
+                    id: inner,
+                    bounds: UiRect::new(UiPoint { x: 3.0, y: 3.0 }, UiSize::new(4.0, 4.0)),
+                    radii: UiCornerRadii::uniform(0.0),
+                },
+                DisplayPrimitive::Rect {
+                    node: UiNodeId::new(1),
+                    bounds: UiRect::new(UiPoint { x: 0.0, y: 0.0 }, UiSize::new(10.0, 10.0)),
+                    color: UiColor::rgba(1.0, 0.0, 0.0, 1.0),
+                },
+                DisplayPrimitive::PopClip { id: inner },
+                DisplayPrimitive::PopClip { id: outer },
+            ],
+        };
+        let raster =
+            UiOverlayRaster::from_display_list(&display_list, UiSize::new(10.0, 10.0), 1.0)
+                .expect("nested clips are bridgeable");
+
+        let clear = red_channel(&raster, 0, 0);
+        assert_eq!(red_channel(&raster, 2, 4), clear);
+        assert!(red_channel(&raster, 4, 4) > clear);
+        assert_eq!(red_channel(&raster, 8, 4), clear);
+    }
+
+    #[test]
+    fn linear_paths_fill_closed_geometry_and_stroke_open_segments() {
+        let display_list = DisplayList {
+            primitives: vec![
+                DisplayPrimitive::Path {
+                    node: UiNodeId::new(1),
+                    commands: vec![
+                        UiPathCommand::MoveTo(UiPoint { x: 2.0, y: 2.0 }),
+                        UiPathCommand::LineTo(UiPoint { x: 8.0, y: 2.0 }),
+                        UiPathCommand::LineTo(UiPoint { x: 5.0, y: 8.0 }),
+                        UiPathCommand::Close,
+                    ],
+                    fill: Some(UiColor::rgba(1.0, 0.0, 0.0, 1.0)),
+                    stroke: None,
+                },
+                DisplayPrimitive::Path {
+                    node: UiNodeId::new(2),
+                    commands: vec![
+                        UiPathCommand::MoveTo(UiPoint { x: 1.0, y: 10.0 }),
+                        UiPathCommand::LineTo(UiPoint { x: 10.0, y: 10.0 }),
+                    ],
+                    fill: None,
+                    stroke: Some(UiStroke::new(UiColor::rgba(1.0, 0.0, 0.0, 1.0), 1.0)),
+                },
+            ],
+        };
+        let raster =
+            UiOverlayRaster::from_display_list(&display_list, UiSize::new(12.0, 12.0), 1.0)
+                .expect("linear paths are bridgeable");
+
+        let clear = red_channel(&raster, 0, 0);
+        assert!(red_channel(&raster, 5, 4) > clear);
+        assert!(red_channel(&raster, 6, 10) > clear);
+        assert_eq!(red_channel(&raster, 1, 6), clear);
+    }
+
+    #[test]
+    fn filled_open_subpath_is_rejected_instead_of_disappearing() {
+        let display_list = DisplayList {
+            primitives: vec![DisplayPrimitive::Path {
+                node: UiNodeId::new(1),
+                commands: vec![
+                    UiPathCommand::MoveTo(UiPoint { x: 2.0, y: 2.0 }),
+                    UiPathCommand::LineTo(UiPoint { x: 8.0, y: 2.0 }),
+                    UiPathCommand::LineTo(UiPoint { x: 5.0, y: 8.0 }),
+                ],
+                fill: Some(UiColor::rgba(1.0, 0.0, 0.0, 1.0)),
+                stroke: None,
+            }],
+        };
+        let result =
+            UiOverlayRaster::from_display_list(&display_list, UiSize::new(10.0, 10.0), 1.0);
+        assert!(matches!(
+            result,
+            Err(UiOverlayRendererError::InvalidDisplayList(
+                DisplayListError::InvalidGeometry { index: 0 }
+            ))
+        ));
+    }
+
+    #[test]
+    fn curved_path_is_flattened_with_bounded_structural_coverage() {
+        let display_list = DisplayList {
+            primitives: vec![DisplayPrimitive::Path {
+                node: UiNodeId::new(1),
+                commands: vec![
+                    UiPathCommand::MoveTo(UiPoint { x: 1.0, y: 1.0 }),
+                    UiPathCommand::QuadraticTo {
+                        control: UiPoint { x: 4.0, y: 8.0 },
+                        end: UiPoint { x: 8.0, y: 1.0 },
+                    },
+                ],
+                fill: None,
+                stroke: Some(UiStroke::new(UiColor::text(), 1.0)),
+            }],
+        };
+
+        let raster =
+            UiOverlayRaster::from_display_list(&display_list, UiSize::new(10.0, 10.0), 1.0)
+                .expect("bounded curved path is bridgeable");
+        assert_eq!(raster.report.solid_primitives, 1);
     }
 }

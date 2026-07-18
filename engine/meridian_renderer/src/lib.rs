@@ -12,6 +12,8 @@ mod lighting;
 mod mesh;
 mod resources;
 mod snapshot;
+#[cfg(feature = "ui-direct")]
+mod ui_direct;
 #[cfg(feature = "ui-raster-bridge")]
 mod ui_overlay;
 mod upload;
@@ -39,10 +41,18 @@ pub use snapshot::{
     MaterialHandle, MeshHandle, RenderFlags, RenderInstance, RenderInstanceId, RenderSnapshot,
     RenderSnapshotBuilder, SnapshotError, TextureHandle, Transform,
 };
+#[cfg(feature = "ui-direct")]
+pub use ui_direct::{
+    UiDirectAtlas, UiDirectBatch, UiDirectBatchKind, UiDirectFrameDiagnostics, UiDirectFramePlan,
+    UiDirectGpuFrame, UiDirectGpuRenderer, UiDirectImage, UiDirectMesh, UiDirectMeshVertex,
+    UiDirectPrepareRequest, UiDirectPrimitiveKind, UiDirectRendererError, UiDirectRendererRecovery,
+    UiDirectRendererRecoveryAction, UiDirectResourceSet,
+};
 #[cfg(feature = "ui-raster-bridge")]
 pub use ui_overlay::{
     qualify_ui_display_list, UiOverlayRenderReport, UiOverlayRenderer, UiOverlayRendererError,
-    UiPrimitiveKind, UiRendererQualificationReport,
+    UiPrimitiveKind, UiRasterBridgeRecovery, UiRasterBridgeRecoveryAction,
+    UiRasterBridgeRecoveryState, UiRendererQualificationReport,
 };
 pub use upload::{
     RenderUploadBatch, RenderUploadError, RenderUploadOperation, RenderUploadTracker,

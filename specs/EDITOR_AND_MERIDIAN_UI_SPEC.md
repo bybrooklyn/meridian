@@ -91,6 +91,11 @@ ambient tint over product chrome, or color-only state. Selection, focus,
 warnings, source authority, and destructive actions combine contrast with
 shape, text, or edge indicators.
 
+High Contrast resolves these same semantic roles through the registered
+`token.color.high-contrast.*` mapping. Focus keeps a rectangular outline,
+selection adds a leading edge, and invalid state adds a heavier outline plus a
+bottom edge, so none of those states depends on color discrimination.
+
 ### 3.2 Typography and icons
 
 Mona Sans is the interface face. Hubot Sans is limited to restrained display
@@ -103,6 +108,8 @@ Icons use a pinned audited Lucide SVG subset behind Meridian-owned `IconId`
 values, plus necessary custom domain icons. No third-party SVG parser or icon
 type enters a public API. Every shipped asset has an exact source, revision,
 hash, SPDX identity, notice, modification record, tests, and update strategy.
+Icon size, stroke width, and icon-to-text gap resolve from the active theme's
+registered tokens rather than inheriting text size or the default theme.
 
 ### 3.3 Geometry, density, and effects
 
@@ -221,7 +228,32 @@ The renderer-neutral display list supports rounded rectangles, paths, glyph
 runs, images, meshes, nested clips, layers, shadows, and bounded backdrop
 effects. It contains no backend resource or command encoder. Cache keys include
 content, token/font state, scale, contrast, and renderer capability. Device loss
-rebuilds caches from logical state.
+rebuilds caches from logical state. Accepted frame snapshots include bounded
+diagnostics for layout nodes, display primitives, semantic nodes, routed
+effects, text/control requests, scale, contrast, motion, and whether a rejected
+frame recovered the previous immutable snapshot. The RHI exposes a
+Meridian-owned render identity so UI renderer caches can detect device,
+surface, format, size, and configured-state changes without observing backend
+types.
+
+UI token and image color is authored as sRGB with linear alpha. Production
+render adapters decode authored RGB to linear light exactly once, composite
+premultiplied-alpha content and isolated layers, and encode through an sRGB
+target. A direct adapter that cannot obtain a compatible sRGB target rejects
+that path explicitly instead of presenting misencoded color. Direct image
+resources are bounded straight-alpha RGBA8 sRGB inputs; premultiplication occurs
+exactly once at the shader/blend boundary.
+
+Axis-aligned control, image, glyph, clip, and focus geometry snaps to physical
+pixel edges before NDC conversion. Rounded content uses adaptive physical-radius
+tessellation and a one-physical-pixel coverage fringe; freeform curves flatten
+against physical-pixel error, and declared joins and caps retain their actual
+geometry. Shadow spread uses bounded alpha falloff rather than a solid expanded
+block. The bounded backdrop path uses a fixed 3x3 tent kernel over a reconstructed
+parent-prefix target, requires at least one physical texel of declared sample
+padding on every edge (`1 / scale_factor` logical pixels), shares the registered
+aggregate offscreen-target guard, and preserves an opaque High Contrast or
+unsupported-capability fallback. Negative shadow spread is invalid geometry.
 
 `RG-UI-001` evaluated the real editor/runtime display-list contract and is
 decided by `ADR-0029`: a Penumbra-owned direct GPU consumer is the production

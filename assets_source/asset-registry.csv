@@ -1,1 +1,16 @@
 asset_id,source_path,asset_class,license,author,modifications,build_status,review_status
+ui-font-mona-sans,engine/meridian_ui_text/assets/fonts/MonaSansVF.ttf,font,OFL-1.1,GitHub and Degarism,renamed only,Bundled,Adopted
+ui-font-hubot-sans,engine/meridian_ui_text/assets/fonts/HubotSansVF.ttf,font,OFL-1.1,GitHub and Degarism,renamed only,Bundled,Adopted
+ui-font-jetbrains-mono,engine/meridian_ui_text/assets/fonts/JetBrainsMonoVF.ttf,font,OFL-1.1,JetBrains,renamed only,Bundled,Adopted
+ui-icon-play,engine/meridian_ui_render/assets/icons/play.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed
+ui-icon-stop,engine/meridian_ui_render/assets/icons/square.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed
+ui-icon-build,engine/meridian_ui_render/assets/icons/hammer.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed
+ui-icon-search,engine/meridian_ui_render/assets/icons/search.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed
+ui-icon-settings,engine/meridian_ui_render/assets/icons/settings.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed
+ui-icon-more,engine/meridian_ui_render/assets/icons/ellipsis.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed
+ui-icon-close,engine/meridian_ui_render/assets/icons/x.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed
+ui-icon-chevron-down,engine/meridian_ui_render/assets/icons/chevron-down.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed
+ui-icon-chevron-right,engine/meridian_ui_render/assets/icons/chevron-right.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed
+ui-icon-warning,engine/meridian_ui_render/assets/icons/triangle-alert.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed
+ui-icon-error,engine/meridian_ui_render/assets/icons/circle-x.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed
+ui-icon-success,engine/meridian_ui_render/assets/icons/circle-check.svg,icon,ISC with retained Feather MIT notice,Lucide contributors,none,Pinned,Reviewed

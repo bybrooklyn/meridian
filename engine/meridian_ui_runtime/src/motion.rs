@@ -210,6 +210,19 @@ impl UiMotionSystem {
         }
         self.reserve_track(node, channel)?;
         let key = (node, channel);
+        if let Some(existing) = self.tracks.get(&key) {
+            let existing_target = match (channel, existing) {
+                (UiMotionChannel::Opacity, UiMotionTrack::Opacity(track))
+                | (UiMotionChannel::Color, UiMotionTrack::Color(track)) => Some(track.target),
+                _ => None,
+            };
+            if existing_target
+                .is_some_and(|existing_target| !components_differ(existing_target, target))
+                && preference == MotionPreference::Full
+            {
+                return Ok(());
+            }
+        }
         let current = self
             .tracks
             .get(&key)
@@ -266,6 +279,31 @@ impl UiMotionSystem {
         }
     }
 
+    /// Applies a frame preference to already-retained tracks.
+    ///
+    /// Reduced Motion immediately settles every presentation channel; returning
+    /// to full motion does not replay movement that the user asked to skip.
+    pub fn apply_preference(&mut self, preference: MotionPreference) {
+        if preference != MotionPreference::Reduced {
+            return;
+        }
+        for track in self.tracks.values_mut() {
+            match track {
+                UiMotionTrack::Spatial(track) => {
+                    track.current = track.target;
+                    track.velocity = [0.0; 4];
+                    track.active = false;
+                }
+                UiMotionTrack::Opacity(track) | UiMotionTrack::Color(track) => {
+                    track.start = track.target;
+                    track.current = track.target;
+                    track.elapsed_ms = u32::from(track.duration_ms);
+                    track.active = false;
+                }
+            }
+        }
+    }
+
     /// Returns one presentation snapshot when the channel exists.
     #[must_use]
     pub fn snapshot(&self, node: UiNodeId, channel: UiMotionChannel) -> Option<UiMotionSnapshot> {
@@ -311,6 +349,23 @@ impl UiMotionSystem {
     /// Removes every presentation channel for one no-longer-retained node.
     pub fn remove_node(&mut self, node: UiNodeId) {
         self.tracks.retain(|(track_node, _), _| *track_node != node);
+    }
+
+    /// Removes one presentation channel without disturbing other node motion.
+    pub fn remove_channel(&mut self, node: UiNodeId, channel: UiMotionChannel) {
+        self.tracks.remove(&(node, channel));
+    }
+
+    /// Reports tracks that are actively changing this frame, excluding settled history.
+    #[must_use]
+    pub fn active_count(&self) -> usize {
+        self.tracks
+            .values()
+            .filter(|track| match track {
+                UiMotionTrack::Spatial(track) => track.active,
+                UiMotionTrack::Opacity(track) | UiMotionTrack::Color(track) => track.active,
+            })
+            .count()
     }
 
     #[must_use]

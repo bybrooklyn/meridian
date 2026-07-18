@@ -13,11 +13,14 @@ packages are closed with fresh evidence. `WP-UI-001` is an
 foundation across Linux, Windows, and macOS. `WP-UI-002` through `WP-UI-005`
 are `Partial` after locally validated source packages; GitHub Actions runs
 `29611418454`, `29621896632`, and `29622972884` could not allocate runners
-because of the account billing state and are recorded as `NotRun`, not failed
+because of the account billing state. Each workflow concluded `failure` before
+implementation steps ran; the skipped platform rows are `NotRun`, not failed
 implementation evidence. `ADR-0029` decided `RG-UI-001` for the Penumbra-owned
 direct display-list path without claiming renderer completion. `WVR-UI-001`
-permits non-promoting local continuation; `WP-EDT-002` is the sole active
-package.
+permits non-promoting local continuation. `WP-UI-005` is reactivated as the
+sole corrective package to close framework renderer, diagnostics, recovery,
+and platform-evidence gaps. In-progress `WP-EDT-002` source is preserved but
+paused; no editor completion or maturity claim follows.
 `WP-MDL-001` remains `Partial`; MS-03 remains open.
 
 ## 1. Authority and stop rule
@@ -40,7 +43,7 @@ media, cost-prediction, or competitive-validation system.
 | Penumbra | `Partial` / `Transitional` | direct PBR, cascaded shadows, diffuse irradiance IBL, extraction/upload, typed pass timing, asynchronous visible capture, and structural/native GPU smokes exist |
 | Assets/world/streaming/save | `ImplementedFoundation` / `Partial` | one bounded public source family imports transactionally, packages, worker-streams, activates, saves, recovers, and reconstructs; production schemas/compression/signing remain incomplete |
 | Cairn | `Transitional` | current Rapier wrapper and grounded controller are evidence; Meridian-owned Cairn internals are not implemented |
-| Meridian UI | `ImplementedFoundation` / `Partial` | the MS-02 core proof is qualified; `WP-UI-002` through `WP-UI-005` are locally implemented but lack cross-platform qualification, with the full direct display-list renderer and real screen-reader/visual evidence still open |
+| Meridian UI | `ImplementedFoundation` / `Partial` | the MS-02 core proof is qualified; `WP-UI-002` through `WP-UI-005` are locally implemented but lack cross-platform qualification, with golden visual qualification and real screen-reader/visible-review evidence still open |
 | Creator Editor | `ImplementedFoundation` | persistent hub, source-authoritative project documents, typed actions, Creator journey, and universal app structure passed run `29605881704`; this is a behavioral foundation, not Meridian UI 1.0 visual completion |
 | Audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | implementation remains outside the current Creator Editor package |
 | Alluvium | `ImplementedFoundation` | canonical text recipes, strict scalar evaluation, derived-cache recovery, CLI, and a basic inspector are qualified; production/domain work remains open |
@@ -307,7 +310,8 @@ remain outside MS-01.
 `WP-EDT-001` are qualified MS-03 foundations. `RG-UI-001` is `Decided` by
 `ADR-0029`; `WP-UI-002` through `WP-UI-005` and `WP-MDL-001` are retained as
 `Partial` under `WVR-UI-001` and cannot be promoted by local UI work.
-`WP-EDT-002` is the sole active package.
+`WP-UI-005` is reactivated as the sole corrective framework package;
+`WP-EDT-002` is `Partial` and paused.
 Penumbra Stage 1 then proceeds through `WP-PEN-003` and
 `WP-PEN-010`, with `WP-PEN-009` as bounded parallel image-quality work and
 `WP-PEN-011` as the later executable/calibrated forest corpus. `RG-PEN-001`
@@ -971,11 +975,13 @@ warning-denied Clippy, `meridian-spec check`, locked metadata, format, native
 and headless UI smokes, Creator journey, RHI/renderer structural smokes,
 dependency-boundary checks, and `git diff --check`. GitHub Actions run
 `29611418454` and its manual rerun executed zero steps because GitHub refused
-to allocate a hosted runner for the account billing state. Linux, Windows, and
-macOS rows are therefore `NotRun`. No package or milestone promotion follows.
+to allocate a hosted runner for the account billing state. The workflows
+concluded `failure`; their skipped Linux, Windows, and macOS implementation rows
+are `NotRun`. No package or milestone promotion follows.
 
-Current sequence: `WP-UI-002` through `WP-UI-005` are locally delivered as
-`Partial`; `WP-EDT-002` is active only under non-promoting `WVR-UI-001`.
+Current sequence: `WP-UI-002` through `WP-UI-004` remain locally delivered as
+`Partial`; `WP-UI-005` is active only under non-promoting `WVR-UI-001`, and
+`WP-EDT-002` is paused.
 
 ## 15.1 Partial package — WP-UI-003 / professional interaction and controls
 
@@ -1114,9 +1120,10 @@ smokes, the UI-free runtime dependency check, and `git diff --check`.
 `actionlint` is `NotRun` because it is not installed. Linux and Windows remain
 unobserved under `WVR-UI-001`; no package or milestone promotion follows.
 
-Next package: `WP-EDT-002` is active only under non-promoting `WVR-UI-001`.
+Next package: `WP-UI-005` is reactivated only under non-promoting
+`WVR-UI-001`; `WP-EDT-002` remains paused.
 
-## 15.3 Partial package — WP-UI-005 / motion, accessibility, and renderer qualification
+## 15.3 Active corrective package — WP-UI-005 / motion, accessibility, and renderer qualification
 
 Work package: `WP-UI-005`
 
@@ -1125,14 +1132,17 @@ reduced-motion substitutions, bounded overlay effects, complete Meridian-owned
 semantics with private platform adapters, and an evidence-backed display-list
 renderer decision without allowing adapter types into public APIs.
 
-Status: `Partial`; implementation maturity: `Partial`. Interruptible bounded
+Status: `Active`; implementation maturity: `Partial`. Interruptible bounded
 motion, Reduced Motion, effect fallback, complete Meridian semantic snapshots,
 private AccessKit projection/action routing/recovery, pane-focus cycling,
 100–400% scale fixtures, and the complete 15-category display-list corpus have
 real local evidence. `RG-UI-001` is `Decided` by `ADR-0029`. The selected direct
-GPU path is not complete, real screen-reader/visual review is absent, and hosted
-cross-platform qualification remains unavailable; none can be waived into a
-completion claim.
+GPU path now has bounded isolated/nested layer targets and a local native
+`Presented` structural smoke with bounded surface readback. It also has the
+bounded direct backdrop and geometry/color-quality treatments described below,
+but no golden-image qualification. Real screen-reader and visible-review
+evidence is absent, and hosted cross-platform qualification remains
+unavailable; none can be waived into a completion claim.
 
 Requirements: `REQ-UI-001`, `REQ-UI-002`; gate: `RG-UI-001`
 
@@ -1179,10 +1189,33 @@ Local validation passed motion interruption, Reduced Motion, semantic-tree and
 untrusted-action tests, AccessKit projection/reactivation, companion focus
 restoration, high contrast and 100–400% scale, effect fallback, all 15 display
 primitive categories, explicit fallback gaps, targeted Clippy, and
-`meridian-spec check`. The complete proportional gates are rerun before source
-delivery. Cross-platform CI remains required before promotion.
+`meridian-spec check`. The corrective source adds locked fonts/icons with
+machine provenance, bounded frame diagnostics, RHI render identity and typed
+indexed batches, plus a real direct GPU preparation/upload slice across the
+15-category contract. Bounded full-viewport offscreen targets isolate and
+compose nested layers, and the local native direct smoke reached `Presented`.
+The direct path converts authored sRGB values to linear, rejects non-sRGB
+surfaces with a typed error, uses premultiplied alpha for content and layers,
+physically snaps axis-aligned geometry, adaptively tessellates curves/corners,
+adds a one-physical-pixel rounded-rectangle fringe, emits real join/cap
+wedges/sectors, and applies bounded four-step soft-shadow falloff. Its fixed 3x3
+tent backdrop filter reconstructs parent-prefix GPU targets within the shared
+64 MiB aggregate target guard and scales declared padding to one physical texel.
+Clear-only layer/backdrop targets submit without fake draws, and fully clipped
+layers allocate no GPU target. The native smoke reached `Presented` with two
+layers and one filter after clear-only target regressions. Atlas dimensions,
+geometry treatment, fully clipped draws, resource and effect-target bounds,
+stencil depth, binding requirements, nested composition, and rejected-frame
+state are regression-tested. Native presented-surface readback also validates
+bounded RGBA8 sRGB metadata and non-uniform output; this is local structural
+evidence, not a visual-quality claim. Golden visual qualification, device-loss
+replay evidence, calibrated renderer measurements, real screen-reader and
+visible-review evidence, and cross-platform CI remain open. This is not
+renderer or package completion. The complete proportional
+gates are rerun before source delivery. Cross-platform CI remains required
+before promotion.
 
-## 15.4 Active package — WP-EDT-002 / permanent shell and World workspace
+## 15.4 Paused partial package — WP-EDT-002 / permanent shell and World workspace
 
 Work package: `WP-EDT-002`
 
@@ -1191,10 +1224,10 @@ application shell, a production-quality hub, and the World workspace with the
 locked palette, hierarchy/browser, real viewport, wider inspector, shelf,
 status, persistent context, and native accessibility.
 
-Status: `Active` only under non-promoting `WVR-UI-001`; implementation maturity:
-`Planned`. The qualified `WP-EDT-001` Creator behavior and locally proven
-`WP-UI-005` framework boundary satisfy the bounded entry dependency without
-promoting either unqualified UI package.
+Status: `Partial` and paused; implementation maturity: `Partial`. Uncommitted
+shell and World integration source is preserved while `WP-UI-005` owns the sole
+active context. The qualified `WP-EDT-001` Creator behavior remains available,
+but no editor completion or visual-quality claim is made.
 
 Deliverables: exact separate 44px application and 36px workspace rows;
 macOS-correct title chrome; persistent hub; World composition over real

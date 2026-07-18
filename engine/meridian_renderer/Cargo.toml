@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [features]
+ui-direct = ["dep:meridian-ui-core", "dep:meridian-ui-render", "dep:meridian-ui-text"]
 ui-raster-bridge = ["dep:meridian-ui"]
 
 [dependencies]
@@ -14,6 +15,13 @@ meridian-diagnostics = { path = "../meridian_diagnostics" }
 meridian-platform = { path = "../meridian_platform" }
 meridian-rhi = { path = "../meridian_rhi" }
 meridian-ui = { path = "../meridian_ui", optional = true }
+meridian-ui-core = { path = "../meridian_ui_core", optional = true }
+meridian-ui-render = { path = "../meridian_ui_render", optional = true }
+meridian-ui-text = { path = "../meridian_ui_text", optional = true }
+
+[[example]]
+name = "ui_direct_smoke"
+required-features = ["ui-direct"]
 
 [lints]
 workspace = true

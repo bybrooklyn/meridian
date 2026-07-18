@@ -40,10 +40,16 @@ jobs:
           call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=amd64 -host_arch=amd64
           if errorlevel 1 exit /b %errorlevel%
           cargo test --workspace
+          if errorlevel 1 exit /b %errorlevel%
+          cargo test -p meridian-renderer --all-features
       - name: Run workspace tests outside Windows
         if: runner.os != 'Windows'
         run: cargo test --workspace
+      - name: Validate direct and recovery UI renderer paths
+        if: runner.os != 'Windows'
+        run: cargo test -p meridian-renderer --all-features
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p meridian-renderer --all-features --all-targets -- -D warnings
       - run: cargo run -p meridian-editor --bin meridian -- --headless-smoke --frames 4
       - run: cargo run -p meridian-editor --bin meridian -- --ui-headless-smoke
       - run: cargo run -p meridian-editor --bin meridian -- --creator-alpha-smoke --project examples/creator-alpha --evidence target/meridian-ci-creator-alpha
@@ -75,6 +81,12 @@ jobs:
             echo "meridian-rt must not select meridian-ui"
             exit 1
           fi
+      - name: Present the direct Meridian UI renderer corpus on macOS
+        if: runner.os == 'macOS'
+        run: cargo run -p meridian-renderer --features ui-direct --example ui_direct_smoke
+      - name: Project native accessibility semantics on macOS
+        if: runner.os == 'macOS'
+        run: cargo run -p meridian-platform --features accessibility --example accessibility_native_smoke
       - name: Package unsigned universal macOS developer preview
         if: runner.os == 'macOS'
         run: |

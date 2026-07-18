@@ -4,6 +4,8 @@ use std::borrow::Cow;
 use std::collections::{BTreeSet, VecDeque};
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
+use std::ops::Range;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -12,6 +14,12 @@ use meridian_platform::{PlatformWindow, WindowSize};
 use meridian_render_graph::{
     CompiledRenderGraph, RenderGraphBuilder, ResourceDescriptor, ResourceKind,
 };
+
+/// Calibrated upper bound for one indexed render submission.
+///
+/// This keeps untrusted renderer-owned display-list expansion from turning
+/// into an unbounded backend command stream at the public RHI boundary.
+pub const MAX_INDEXED_RENDER_BATCHES: usize = 4096;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Backend {
@@ -145,6 +153,15 @@ impl GpuCapabilities {
 pub struct SurfaceFormat {
     pub name: String,
     pub srgb: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RhiRenderIdentity {
+    pub device_generation: u64,
+    pub surface_generation: u64,
+    pub surface_format: SurfaceFormat,
+    pub surface_size: WindowSize,
+    pub surface_configured: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -617,6 +634,333 @@ pub struct GpuBuffer {
 /// Device-owned render pipeline whose backend handle remains private to the RHI.
 pub struct GpuRenderPipeline {
     pipeline: wgpu::RenderPipeline,
+    config: RenderPipelineConfig,
+    color_format: Option<wgpu::TextureFormat>,
+    device_generation: u64,
+}
+
+impl GpuRenderPipeline {
+    #[must_use]
+    pub const fn config(&self) -> RenderPipelineConfig {
+        self.config
+    }
+}
+
+/// Meridian-owned pipeline blend policy for renderer-independent UI passes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PipelineBlendMode {
+    /// Replaces the destination with fragment output.
+    Opaque,
+    /// Composites straight-alpha fragment output over the destination.
+    Alpha,
+    /// Composites fragment output whose RGB channels are already multiplied by alpha.
+    PremultipliedAlpha,
+}
+
+/// Backend-neutral depth comparison policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PipelineDepthCompare {
+    Always,
+    LessEqual,
+    Equal,
+}
+
+/// Backend-neutral stencil comparison policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PipelineStencilCompare {
+    Always,
+    Equal,
+}
+
+/// Backend-neutral stencil operation policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PipelineStencilOperation {
+    Keep,
+    Replace,
+    IncrementClamp,
+    DecrementClamp,
+}
+
+/// Backend-neutral stencil state for one face.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PipelineStencilFaceState {
+    pub compare: PipelineStencilCompare,
+    pub fail: PipelineStencilOperation,
+    pub depth_fail: PipelineStencilOperation,
+    pub pass: PipelineStencilOperation,
+}
+
+impl PipelineStencilFaceState {
+    #[must_use]
+    pub const fn keep(compare: PipelineStencilCompare) -> Self {
+        Self {
+            compare,
+            fail: PipelineStencilOperation::Keep,
+            depth_fail: PipelineStencilOperation::Keep,
+            pass: PipelineStencilOperation::Keep,
+        }
+    }
+}
+
+/// Backend-neutral stencil configuration.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PipelineStencilConfig {
+    pub front: PipelineStencilFaceState,
+    pub back: PipelineStencilFaceState,
+    pub read_mask: u32,
+    pub write_mask: u32,
+}
+
+impl PipelineStencilConfig {
+    #[must_use]
+    pub const fn disabled() -> Option<Self> {
+        None
+    }
+
+    #[must_use]
+    pub const fn read_equal_keep() -> Self {
+        Self {
+            front: PipelineStencilFaceState::keep(PipelineStencilCompare::Equal),
+            back: PipelineStencilFaceState::keep(PipelineStencilCompare::Equal),
+            read_mask: 0xff,
+            write_mask: 0x00,
+        }
+    }
+
+    #[must_use]
+    pub const fn increment_equal() -> Self {
+        Self {
+            front: PipelineStencilFaceState {
+                compare: PipelineStencilCompare::Equal,
+                fail: PipelineStencilOperation::Keep,
+                depth_fail: PipelineStencilOperation::Keep,
+                pass: PipelineStencilOperation::IncrementClamp,
+            },
+            back: PipelineStencilFaceState {
+                compare: PipelineStencilCompare::Equal,
+                fail: PipelineStencilOperation::Keep,
+                depth_fail: PipelineStencilOperation::Keep,
+                pass: PipelineStencilOperation::IncrementClamp,
+            },
+            read_mask: 0xff,
+            write_mask: 0xff,
+        }
+    }
+
+    #[must_use]
+    pub const fn decrement_equal() -> Self {
+        Self {
+            front: PipelineStencilFaceState {
+                compare: PipelineStencilCompare::Equal,
+                fail: PipelineStencilOperation::Keep,
+                depth_fail: PipelineStencilOperation::Keep,
+                pass: PipelineStencilOperation::DecrementClamp,
+            },
+            back: PipelineStencilFaceState {
+                compare: PipelineStencilCompare::Equal,
+                fail: PipelineStencilOperation::Keep,
+                depth_fail: PipelineStencilOperation::Keep,
+                pass: PipelineStencilOperation::DecrementClamp,
+            },
+            read_mask: 0xff,
+            write_mask: 0xff,
+        }
+    }
+}
+
+/// Meridian-owned render pipeline policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RenderPipelineConfig {
+    pub blend: PipelineBlendMode,
+    pub depth_format: Option<DepthFormat>,
+    pub depth_write_enabled: bool,
+    pub depth_compare: PipelineDepthCompare,
+    pub stencil: Option<PipelineStencilConfig>,
+    pub bindings: RenderPipelineBindings,
+}
+
+impl RenderPipelineConfig {
+    #[must_use]
+    pub const fn opaque_surface_depth() -> Self {
+        Self {
+            blend: PipelineBlendMode::Opaque,
+            depth_format: Some(DepthFormat::Depth32Float),
+            depth_write_enabled: true,
+            depth_compare: PipelineDepthCompare::LessEqual,
+            stencil: None,
+            bindings: RenderPipelineBindings::unbound(),
+        }
+    }
+
+    #[must_use]
+    pub const fn alpha_surface_depth() -> Self {
+        Self {
+            blend: PipelineBlendMode::Alpha,
+            depth_format: Some(DepthFormat::Depth32Float),
+            depth_write_enabled: true,
+            depth_compare: PipelineDepthCompare::LessEqual,
+            stencil: None,
+            bindings: RenderPipelineBindings::unbound(),
+        }
+    }
+
+    #[must_use]
+    pub const fn alpha_surface_no_depth() -> Self {
+        Self {
+            blend: PipelineBlendMode::Alpha,
+            depth_format: None,
+            depth_write_enabled: false,
+            depth_compare: PipelineDepthCompare::Always,
+            stencil: None,
+            bindings: RenderPipelineBindings::unbound(),
+        }
+    }
+
+    #[must_use]
+    pub const fn alpha_surface_stencil(stencil: PipelineStencilConfig) -> Self {
+        Self {
+            blend: PipelineBlendMode::Alpha,
+            depth_format: Some(DepthFormat::Depth24PlusStencil8),
+            depth_write_enabled: false,
+            depth_compare: PipelineDepthCompare::Always,
+            stencil: Some(stencil),
+            bindings: RenderPipelineBindings::unbound(),
+        }
+    }
+
+    #[must_use]
+    pub const fn premultiplied_alpha_surface_depth() -> Self {
+        Self {
+            blend: PipelineBlendMode::PremultipliedAlpha,
+            depth_format: Some(DepthFormat::Depth32Float),
+            depth_write_enabled: true,
+            depth_compare: PipelineDepthCompare::LessEqual,
+            stencil: None,
+            bindings: RenderPipelineBindings::unbound(),
+        }
+    }
+
+    #[must_use]
+    pub const fn premultiplied_alpha_surface_no_depth() -> Self {
+        Self {
+            blend: PipelineBlendMode::PremultipliedAlpha,
+            depth_format: None,
+            depth_write_enabled: false,
+            depth_compare: PipelineDepthCompare::Always,
+            stencil: None,
+            bindings: RenderPipelineBindings::unbound(),
+        }
+    }
+
+    #[must_use]
+    pub const fn premultiplied_alpha_surface_stencil(stencil: PipelineStencilConfig) -> Self {
+        Self {
+            blend: PipelineBlendMode::PremultipliedAlpha,
+            depth_format: Some(DepthFormat::Depth24PlusStencil8),
+            depth_write_enabled: false,
+            depth_compare: PipelineDepthCompare::Always,
+            stencil: Some(stencil),
+            bindings: RenderPipelineBindings::unbound(),
+        }
+    }
+
+    #[must_use]
+    pub const fn with_bindings(mut self, bindings: RenderPipelineBindings) -> Self {
+        self.bindings = bindings;
+        self
+    }
+}
+
+impl Default for RenderPipelineConfig {
+    fn default() -> Self {
+        Self {
+            blend: PipelineBlendMode::Opaque,
+            depth_format: Some(DepthFormat::Depth32Float),
+            depth_write_enabled: true,
+            depth_compare: PipelineDepthCompare::LessEqual,
+            stencil: None,
+            bindings: RenderPipelineBindings::unbound(),
+        }
+    }
+}
+
+/// Backend-neutral group-0 binding role for a render pipeline.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RenderPipelineGroup0Binding {
+    None,
+    Texture,
+    MaterialTextures,
+}
+
+/// Meridian-owned binding requirements for indexed render batches.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RenderPipelineBindings {
+    pub group0: RenderPipelineGroup0Binding,
+    pub uniform: bool,
+    pub material_parameters: bool,
+    pub lighting: bool,
+}
+
+impl RenderPipelineBindings {
+    #[must_use]
+    pub const fn unbound() -> Self {
+        Self {
+            group0: RenderPipelineGroup0Binding::None,
+            uniform: false,
+            material_parameters: false,
+            lighting: false,
+        }
+    }
+
+    #[must_use]
+    pub const fn single_texture() -> Self {
+        Self {
+            group0: RenderPipelineGroup0Binding::Texture,
+            uniform: false,
+            material_parameters: false,
+            lighting: false,
+        }
+    }
+
+    #[must_use]
+    pub const fn pbr_material() -> Self {
+        Self {
+            group0: RenderPipelineGroup0Binding::MaterialTextures,
+            uniform: true,
+            material_parameters: true,
+            lighting: true,
+        }
+    }
+}
+
+/// Meridian-owned scissor rectangle for one direct UI batch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RenderScissor {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Color attachment load policy for an offscreen indexed-batch submission.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RenderTargetLoadPolicy {
+    /// Replaces the complete target contents before drawing.
+    Clear(ClearColor),
+    /// Preserves the target's existing color contents before drawing.
+    Load,
+}
+
+impl RenderScissor {
+    #[must_use]
+    pub const fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
 }
 
 /// Device-owned sampled 2D texture whose backend resources remain private.
@@ -627,6 +971,23 @@ pub struct GpuTexture {
     size: WindowSize,
     mip_level_count: u32,
     format: TextureFormat,
+}
+
+/// Device-owned sampled color target whose backend resources remain private.
+pub struct GpuRenderTarget {
+    _texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    sampler: wgpu::Sampler,
+    size: WindowSize,
+    format: wgpu::TextureFormat,
+    device_generation: u64,
+}
+
+impl GpuRenderTarget {
+    #[must_use]
+    pub const fn size(&self) -> WindowSize {
+        self.size
+    }
 }
 
 /// Device-owned cube texture and sampler containing pre-convolved diffuse
@@ -751,17 +1112,98 @@ impl GpuMaterialBindings {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct IndexedDraw<'a> {
     pipeline: &'a GpuRenderPipeline,
     vertex_buffer: &'a GpuBuffer,
     index_buffer: &'a GpuBuffer,
-    index_count: u32,
+    index_range: Range<u32>,
+    base_vertex: i32,
+    instance_count: u32,
+    scissor: Option<RenderScissor>,
+    stencil_reference: Option<u32>,
     texture_bind_group: Option<&'a GpuTextureBindGroup>,
     material_texture_bind_group: Option<&'a GpuMaterialTextureBindGroup>,
     uniform_bind_group: Option<&'a GpuUniformBindGroup>,
     material_parameter_bind_group: Option<&'a GpuMaterialParameterBindGroup>,
     lighting_bind_group: Option<&'a GpuLightingBindGroup>,
+}
+
+/// One direct UI batch submitted through the indexed-mesh path.
+pub struct RhiRenderBatch<'a> {
+    pub pipeline: &'a GpuRenderPipeline,
+    pub vertex_buffer: &'a GpuBuffer,
+    pub index_buffer: &'a GpuBuffer,
+    pub index_range: Range<u32>,
+    base_vertex: i32,
+    pub instance_count: u32,
+    pub scissor: Option<RenderScissor>,
+    pub stencil_reference: Option<u32>,
+    pub texture_bind_group: Option<&'a GpuTextureBindGroup>,
+    pub material_texture_bind_group: Option<&'a GpuMaterialTextureBindGroup>,
+    pub uniform_bind_group: Option<&'a GpuUniformBindGroup>,
+    pub material_parameter_bind_group: Option<&'a GpuMaterialParameterBindGroup>,
+    pub lighting_bind_group: Option<&'a GpuLightingBindGroup>,
+}
+
+impl<'a> RhiRenderBatch<'a> {
+    #[must_use]
+    pub fn unbound(
+        pipeline: &'a GpuRenderPipeline,
+        vertex_buffer: &'a GpuBuffer,
+        index_buffer: &'a GpuBuffer,
+        index_range: Range<u32>,
+    ) -> Self {
+        Self {
+            pipeline,
+            vertex_buffer,
+            index_buffer,
+            index_range,
+            base_vertex: 0,
+            instance_count: 1,
+            scissor: None,
+            stencil_reference: None,
+            texture_bind_group: None,
+            material_texture_bind_group: None,
+            uniform_bind_group: None,
+            material_parameter_bind_group: None,
+            lighting_bind_group: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_scissor(mut self, scissor: RenderScissor) -> Self {
+        self.scissor = Some(scissor);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_stencil_reference(mut self, reference: u32) -> Self {
+        self.stencil_reference = Some(reference);
+        self
+    }
+
+    /// Selects the first vertex for local indices in this batch.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::InvalidDraw`] when the offset cannot be
+    /// represented by the backend indexed-draw contract.
+    pub fn with_base_vertex(mut self, base_vertex: u32) -> Result<Self, RhiError> {
+        self.base_vertex = i32::try_from(base_vertex).map_err(|_| {
+            RhiError::new(
+                RhiErrorKind::InvalidDraw,
+                "indexed batch base vertex exceeds the signed backend range",
+            )
+        })?;
+        Ok(self)
+    }
+
+    #[must_use]
+    pub const fn with_texture_bind_group(mut self, bind_group: &'a GpuTextureBindGroup) -> Self {
+        self.texture_bind_group = Some(bind_group);
+        self
+    }
 }
 
 /// Inputs for one indexed cascade shadow-depth submission.
@@ -940,6 +1382,14 @@ struct PendingCapture {
     correlation: CaptureCorrelation,
 }
 
+#[derive(Clone, Copy)]
+struct IndexedBatchTarget<'a> {
+    view: &'a wgpu::TextureView,
+    depth_view: Option<&'a wgpu::TextureView>,
+    depth_has_stencil: bool,
+    source_texture: Option<&'a wgpu::Texture>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct CaptureLayout {
     padded_bytes_per_row: u32,
@@ -955,6 +1405,7 @@ const CLEAR_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("clear");
 const BOOTSTRAP_PIPELINE_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("bootstrap_pipeline");
 const SHADOW_DEPTH_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("shadow_depth");
 const INDEXED_MESH_PASS_LABEL: PassTimingLabel = PassTimingLabel::new("indexed_mesh");
+static NEXT_RHI_DEVICE_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 pub struct Rhi {
     instance: wgpu::Instance,
@@ -966,6 +1417,8 @@ pub struct Rhi {
     surface_config: wgpu::SurfaceConfiguration,
     size: WindowSize,
     configured: bool,
+    device_generation: u64,
+    surface_generation: u64,
     capabilities: GpuCapabilities,
     clear_graph: CompiledRenderGraph,
     depth_buffer: Option<DepthBuffer>,
@@ -1074,6 +1527,8 @@ impl Rhi {
             surface_config,
             size,
             configured,
+            device_generation: NEXT_RHI_DEVICE_GENERATION.fetch_add(1, Ordering::Relaxed),
+            surface_generation: 1,
             capabilities,
             clear_graph: build_clear_graph()?,
             depth_buffer,
@@ -1290,6 +1745,17 @@ impl Rhi {
     }
 
     #[must_use]
+    pub fn render_identity(&self) -> RhiRenderIdentity {
+        RhiRenderIdentity {
+            device_generation: self.device_generation,
+            surface_generation: self.surface_generation,
+            surface_format: self.surface_format(),
+            surface_size: self.size,
+            surface_configured: self.configured,
+        }
+    }
+
+    #[must_use]
     pub const fn size(&self) -> WindowSize {
         self.size
     }
@@ -1308,10 +1774,15 @@ impl Rhi {
     }
 
     pub fn resize(&mut self, size: WindowSize) {
+        let previous_size = self.size;
+        let previous_configured = self.configured;
         self.size = size;
         if size.is_zero() {
             self.configured = false;
             self.depth_buffer = None;
+            if previous_configured || previous_size != size {
+                self.surface_generation = self.surface_generation.saturating_add(1);
+            }
             return;
         }
 
@@ -1327,6 +1798,9 @@ impl Rhi {
             "Meridian depth",
         ));
         self.configured = true;
+        if !previous_configured || previous_size != size {
+            self.surface_generation = self.surface_generation.saturating_add(1);
+        }
     }
 
     /// Allocates a depth attachment for a renderer-owned pass.
@@ -1502,6 +1976,82 @@ impl Rhi {
         })
     }
 
+    /// Allocates a sampled color target in the current surface format.
+    ///
+    /// The target has one full-size color view and a clamp-to-edge linear
+    /// sampler so it can be composited through the single-texture pipeline
+    /// contract without exposing backend texture types.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::InvalidTextureSize`] for a zero-sized or
+    /// adapter-oversized target, [`RhiErrorKind::SurfaceUnsupported`] when the
+    /// surface format cannot be both rendered and linearly sampled, or
+    /// [`RhiErrorKind::DeviceLost`] after device loss.
+    pub fn create_surface_render_target(
+        &self,
+        label: &str,
+        size: WindowSize,
+    ) -> Result<GpuRenderTarget, RhiError> {
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        validate_render_target_size(size, self.adapter.limits().max_texture_dimension_2d)?;
+        let format = self.surface_config.format;
+        let format_features = self.adapter.get_texture_format_features(format);
+        let required_usages =
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+        if !format_features.allowed_usages.contains(required_usages)
+            || !format_features
+                .flags
+                .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE)
+        {
+            return Err(RhiError::new(
+                RhiErrorKind::SurfaceUnsupported,
+                format!(
+                    "surface format {format:?} cannot provide a linearly sampled render target"
+                ),
+            ));
+        }
+
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: required_usages,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some(label),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
+        Ok(GpuRenderTarget {
+            _texture: texture,
+            view,
+            sampler,
+            size,
+            format,
+            device_generation: self.device_generation,
+        })
+    }
+
     /// Allocates a sampled cube texture for diffuse environment irradiance.
     ///
     /// The six cube faces share one square size, format, and mip chain. Face
@@ -1616,6 +2166,66 @@ impl Rhi {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&texture.sampler),
+                },
+            ],
+        });
+        if let Some(error) = pollster::block_on(error_scope.pop()) {
+            return Err(RhiError::new(
+                RhiErrorKind::BindGroupCreation,
+                error.to_string(),
+            ));
+        }
+        Ok(GpuTextureBindGroup { bind_group })
+    }
+
+    /// Creates a group-0 single-texture binding from an offscreen render target.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::BindGroupCreation`] when the pipeline does not
+    /// declare the single-texture contract, the target belongs to another
+    /// device, or the backend rejects the binding. Returns
+    /// [`RhiErrorKind::DeviceLost`] after device loss.
+    pub fn create_render_target_bind_group(
+        &self,
+        label: &str,
+        pipeline: &GpuRenderPipeline,
+        target: &GpuRenderTarget,
+    ) -> Result<GpuTextureBindGroup, RhiError> {
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        validate_render_target_identity(target, self.device_generation, self.surface_config.format)
+            .map_err(|error| RhiError::new(RhiErrorKind::BindGroupCreation, error.message))?;
+        if pipeline.device_generation != self.device_generation {
+            return Err(RhiError::new(
+                RhiErrorKind::BindGroupCreation,
+                "single-texture pipeline belongs to another RHI device",
+            ));
+        }
+        if pipeline.config.bindings.group0 != RenderPipelineGroup0Binding::Texture {
+            return Err(RhiError::new(
+                RhiErrorKind::BindGroupCreation,
+                "render-target binding requires a single-texture pipeline",
+            ));
+        }
+
+        let layout = pipeline.pipeline.get_bind_group_layout(0);
+        let error_scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout: &layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&target.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&target.sampler),
                 },
             ],
         });
@@ -2204,12 +2814,13 @@ impl Rhi {
         vertex_entry_point: &str,
         fragment_entry_point: &str,
     ) -> Result<GpuRenderPipeline, RhiError> {
-        self.create_render_pipeline_with_layout(
+        self.create_render_pipeline_with_layout_config(
             label,
             shader_source,
             vertex_entry_point,
-            fragment_entry_point,
+            Some(fragment_entry_point),
             None,
+            RenderPipelineConfig::default(),
         )
     }
 
@@ -2232,13 +2843,40 @@ impl Rhi {
         fragment_entry_point: &str,
         layout: Option<&VertexLayout>,
     ) -> Result<GpuRenderPipeline, RhiError> {
-        self.create_pipeline_with_layout(
+        self.create_render_pipeline_with_layout_config(
             label,
             shader_source,
             vertex_entry_point,
             Some(fragment_entry_point),
             layout,
-            false,
+            RenderPipelineConfig::default(),
+        )
+    }
+
+    /// Validates and constructs a render pipeline with an explicit renderer
+    /// policy, including alpha blending and optional depth attachment use.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RhiErrorKind::DeviceLost`] after device loss or
+    /// [`RhiErrorKind::PipelineCreation`] when `wgpu` rejects the shader or
+    /// pipeline descriptor.
+    pub fn create_render_pipeline_with_layout_config(
+        &self,
+        label: &str,
+        shader_source: &str,
+        vertex_entry_point: &str,
+        fragment_entry_point: Option<&str>,
+        layout: Option<&VertexLayout>,
+        config: RenderPipelineConfig,
+    ) -> Result<GpuRenderPipeline, RhiError> {
+        self.create_pipeline_with_layout(
+            label,
+            shader_source,
+            vertex_entry_point,
+            fragment_entry_point,
+            layout,
+            config,
         )
     }
 
@@ -2266,7 +2904,14 @@ impl Rhi {
             vertex_entry_point,
             None,
             layout,
-            true,
+            RenderPipelineConfig {
+                blend: PipelineBlendMode::Opaque,
+                depth_format: Some(DepthFormat::Depth32Float),
+                depth_write_enabled: true,
+                depth_compare: PipelineDepthCompare::LessEqual,
+                stencil: None,
+                bindings: RenderPipelineBindings::unbound(),
+            },
         )
     }
 
@@ -2277,7 +2922,7 @@ impl Rhi {
         vertex_entry_point: &str,
         fragment_entry_point: Option<&str>,
         layout: Option<&VertexLayout>,
-        depth_only: bool,
+        config: RenderPipelineConfig,
     ) -> Result<GpuRenderPipeline, RhiError> {
         if let Some(loss) = self.device_loss() {
             return Err(RhiError::new(
@@ -2285,6 +2930,7 @@ impl Rhi {
                 format!("{:?}: {}", loss.reason, loss.message),
             ));
         }
+        validate_pipeline_config(config)?;
         let error_scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let module = self
             .device
@@ -2292,11 +2938,13 @@ impl Rhi {
                 label: Some(label),
                 source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_source)),
             });
-        let color_targets = [Some(wgpu::ColorTargetState {
-            format: self.surface_config.format,
-            blend: None,
-            write_mask: wgpu::ColorWrites::ALL,
-        })];
+        let color_targets = fragment_entry_point.map(|_| {
+            [Some(wgpu::ColorTargetState {
+                format: self.surface_config.format,
+                blend: wgpu_blend_state(config.blend),
+                write_mask: wgpu::ColorWrites::ALL,
+            })]
+        });
         let attributes = layout
             .map(|layout| {
                 layout
@@ -2319,17 +2967,26 @@ impl Rhi {
                 })]
             })
             .unwrap_or_default();
-        let fragment = fragment_entry_point.map(|entry_point| wgpu::FragmentState {
-            module: &module,
-            entry_point: Some(entry_point),
-            targets: &color_targets,
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let fragment = fragment_entry_point.and_then(|entry_point| {
+            let targets = color_targets.as_ref()?;
+            Some(wgpu::FragmentState {
+                module: &module,
+                entry_point: Some(entry_point),
+                targets,
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            })
         });
-        let depth_stencil = Some(wgpu::DepthStencilState {
-            format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: Some(depth_only || layout.is_some()),
-            depth_compare: Some(wgpu::CompareFunction::LessEqual),
-            stencil: wgpu::StencilState::default(),
+        let depth_stencil = config.depth_format.map(|format| wgpu::DepthStencilState {
+            format: format.wgpu_format(),
+            depth_write_enabled: Some(config.depth_write_enabled),
+            depth_compare: Some(match config.depth_compare {
+                PipelineDepthCompare::Always => wgpu::CompareFunction::Always,
+                PipelineDepthCompare::LessEqual => wgpu::CompareFunction::LessEqual,
+                PipelineDepthCompare::Equal => wgpu::CompareFunction::Equal,
+            }),
+            stencil: config
+                .stencil
+                .map_or_else(wgpu::StencilState::default, wgpu_stencil_state),
             bias: wgpu::DepthBiasState::default(),
         });
         let pipeline = self
@@ -2356,7 +3013,12 @@ impl Rhi {
                 error.to_string(),
             ));
         }
-        Ok(GpuRenderPipeline { pipeline })
+        Ok(GpuRenderPipeline {
+            pipeline,
+            config,
+            color_format: fragment_entry_point.map(|_| self.surface_config.format),
+            device_generation: self.device_generation,
+        })
     }
 
     /// Queues a bounded, four-byte-aligned write into an RHI-owned buffer.
@@ -2587,11 +3249,15 @@ impl Rhi {
         color: ClearColor,
     ) -> Result<FrameOutcome, RhiError> {
         self.render_indexed_mesh_internal(
-            IndexedDraw {
+            &IndexedDraw {
                 pipeline,
                 vertex_buffer,
                 index_buffer,
-                index_count,
+                index_range: 0..index_count,
+                base_vertex: 0,
+                instance_count: 1,
+                scissor: None,
+                stencil_reference: None,
                 texture_bind_group: None,
                 material_texture_bind_group: None,
                 uniform_bind_group: None,
@@ -2619,11 +3285,15 @@ impl Rhi {
         color: ClearColor,
     ) -> Result<FrameOutcome, RhiError> {
         self.render_indexed_mesh_internal(
-            IndexedDraw {
+            &IndexedDraw {
                 pipeline,
                 vertex_buffer,
                 index_buffer,
-                index_count,
+                index_range: 0..index_count,
+                base_vertex: 0,
+                instance_count: 1,
+                scissor: None,
+                stencil_reference: None,
                 texture_bind_group: Some(texture_bind_group),
                 material_texture_bind_group: None,
                 uniform_bind_group: None,
@@ -2651,11 +3321,15 @@ impl Rhi {
         color: ClearColor,
     ) -> Result<FrameOutcome, RhiError> {
         self.render_indexed_mesh_internal(
-            IndexedDraw {
+            &IndexedDraw {
                 pipeline,
                 vertex_buffer,
                 index_buffer,
-                index_count,
+                index_range: 0..index_count,
+                base_vertex: 0,
+                instance_count: 1,
+                scissor: None,
+                stencil_reference: None,
                 texture_bind_group: None,
                 material_texture_bind_group: Some(&material_bindings.textures),
                 uniform_bind_group: Some(&material_bindings.uniforms),
@@ -2688,25 +3362,29 @@ impl Rhi {
         material_bindings: &GpuMaterialBindings,
         color: ClearColor,
     ) -> Result<(), RhiError> {
+        let size = WindowSize::new(64, 64);
         let draw = IndexedDraw {
             pipeline,
             vertex_buffer,
             index_buffer,
-            index_count,
+            index_range: 0..index_count,
+            base_vertex: 0,
+            instance_count: 1,
+            scissor: None,
+            stencil_reference: None,
             texture_bind_group: None,
             material_texture_bind_group: Some(&material_bindings.textures),
             uniform_bind_group: Some(&material_bindings.uniforms),
             material_parameter_bind_group: Some(&material_bindings.parameters),
             lighting_bind_group: Some(&material_bindings.lighting),
         };
-        validate_indexed_draw(draw.vertex_buffer, draw.index_buffer, draw.index_count)?;
+        validate_indexed_batch(&draw, size)?;
         if let Some(loss) = self.device_loss() {
             return Err(RhiError::new(
                 RhiErrorKind::DeviceLost,
                 format!("{:?}: {}", loss.reason, loss.message),
             ));
         }
-        let size = WindowSize::new(64, 64);
         let color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Meridian indexed structural validation color"),
             size: wgpu::Extent3d {
@@ -2728,7 +3406,7 @@ impl Rhi {
             DepthFormat::Depth32Float,
             "Meridian indexed structural validation depth",
         );
-        self.encode_indexed_mesh(&color_view, Some(&depth.view), draw, color, None, None);
+        self.encode_indexed_mesh(&color_view, Some(&depth.view), &draw, color, None, None);
         Ok(())
     }
 
@@ -2752,25 +3430,29 @@ impl Rhi {
         index_count: u32,
         color: ClearColor,
     ) -> Result<(), RhiError> {
+        let size = WindowSize::new(64, 64);
         let draw = IndexedDraw {
             pipeline,
             vertex_buffer,
             index_buffer,
-            index_count,
+            index_range: 0..index_count,
+            base_vertex: 0,
+            instance_count: 1,
+            scissor: None,
+            stencil_reference: None,
             texture_bind_group: None,
             material_texture_bind_group: None,
             uniform_bind_group: None,
             material_parameter_bind_group: None,
             lighting_bind_group: None,
         };
-        validate_indexed_draw(draw.vertex_buffer, draw.index_buffer, draw.index_count)?;
+        validate_indexed_batch(&draw, size)?;
         if let Some(loss) = self.device_loss() {
             return Err(RhiError::new(
                 RhiErrorKind::DeviceLost,
                 format!("{:?}: {}", loss.reason, loss.message),
             ));
         }
-        let size = WindowSize::new(64, 64);
         let color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Meridian unbound indexed structural validation color"),
             size: wgpu::Extent3d {
@@ -2792,7 +3474,7 @@ impl Rhi {
             DepthFormat::Depth32Float,
             "Meridian unbound indexed structural validation depth",
         );
-        self.encode_indexed_mesh(&color_view, Some(&depth.view), draw, color, None, None);
+        self.encode_indexed_mesh(&color_view, Some(&depth.view), &draw, color, None, None);
         Ok(())
     }
 
@@ -2816,25 +3498,29 @@ impl Rhi {
         texture_bind_group: &GpuTextureBindGroup,
         color: ClearColor,
     ) -> Result<(), RhiError> {
+        let size = WindowSize::new(64, 64);
         let draw = IndexedDraw {
             pipeline,
             vertex_buffer,
             index_buffer,
-            index_count,
+            index_range: 0..index_count,
+            base_vertex: 0,
+            instance_count: 1,
+            scissor: None,
+            stencil_reference: None,
             texture_bind_group: Some(texture_bind_group),
             material_texture_bind_group: None,
             uniform_bind_group: None,
             material_parameter_bind_group: None,
             lighting_bind_group: None,
         };
-        validate_indexed_draw(draw.vertex_buffer, draw.index_buffer, draw.index_count)?;
+        validate_indexed_batch(&draw, size)?;
         if let Some(loss) = self.device_loss() {
             return Err(RhiError::new(
                 RhiErrorKind::DeviceLost,
                 format!("{:?}: {}", loss.reason, loss.message),
             ));
         }
-        let size = WindowSize::new(64, 64);
         let color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Meridian textured indexed structural validation color"),
             size: wgpu::Extent3d {
@@ -2856,7 +3542,7 @@ impl Rhi {
             DepthFormat::Depth32Float,
             "Meridian textured indexed structural validation depth",
         );
-        self.encode_indexed_mesh(&color_view, Some(&depth.view), draw, color, None, None);
+        self.encode_indexed_mesh(&color_view, Some(&depth.view), &draw, color, None, None);
         Ok(())
     }
 
@@ -2874,24 +3560,24 @@ impl Rhi {
             pipeline: capture_draw.pipeline,
             vertex_buffer: capture_draw.vertex_buffer,
             index_buffer: capture_draw.index_buffer,
-            index_count: capture_draw.index_count,
+            index_range: 0..capture_draw.index_count,
+            base_vertex: 0,
+            instance_count: 1,
+            scissor: None,
+            stencil_reference: None,
             texture_bind_group: None,
             material_texture_bind_group: Some(&capture_draw.material_bindings.textures),
             uniform_bind_group: Some(&capture_draw.material_bindings.uniforms),
             material_parameter_bind_group: Some(&capture_draw.material_bindings.parameters),
             lighting_bind_group: Some(&capture_draw.material_bindings.lighting),
         };
-        validate_indexed_draw(
-            capture_draw.vertex_buffer,
-            capture_draw.index_buffer,
-            capture_draw.index_count,
-        )?;
         if capture_draw.size.is_zero() {
             return Err(RhiError::new(
                 RhiErrorKind::InvalidTextureSize,
                 "offscreen capture must have non-zero dimensions",
             ));
         }
+        validate_indexed_batch(&draw, capture_draw.size)?;
         if let Some(loss) = self.device_loss() {
             return Err(RhiError::new(
                 RhiErrorKind::DeviceLost,
@@ -2916,7 +3602,7 @@ impl Rhi {
         self.encode_indexed_mesh(
             &view,
             Some(&depth.view),
-            draw,
+            &draw,
             capture_draw.color,
             Some(&texture),
             capture,
@@ -2945,7 +3631,12 @@ impl Rhi {
                 ),
             ));
         }
-        validate_indexed_draw(draw.vertex_buffer, draw.index_buffer, draw.index_count)?;
+        validate_indexed_draw(
+            draw.vertex_buffer,
+            draw.index_buffer,
+            0..draw.index_count,
+            None,
+        )?;
         if let Some(loss) = self.device_loss() {
             return Err(RhiError::new(
                 RhiErrorKind::DeviceLost,
@@ -2999,12 +3690,242 @@ impl Rhi {
         Ok(())
     }
 
-    fn render_indexed_mesh_internal(
+    /// Executes renderer-owned indexed batches and presents one surface frame.
+    ///
+    /// Batches are fully validated before surface acquisition: buffer usages,
+    /// index ranges, instance counts, scissor bounds, and stencil references
+    /// all fail as typed RHI errors.
+    ///
+    /// # Errors
+    ///
+    /// Returns typed draw, surface, or device-loss errors.
+    pub fn render_indexed_batches_and_present(
         &mut self,
-        draw: IndexedDraw<'_>,
+        batches: &[RhiRenderBatch<'_>],
         color: ClearColor,
     ) -> Result<FrameOutcome, RhiError> {
-        validate_indexed_draw(draw.vertex_buffer, draw.index_buffer, draw.index_count)?;
+        let depth_format = validate_rhi_render_batches_without_target(batches)?;
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        if !self.configured || self.size.is_zero() {
+            return Ok(FrameOutcome::SkippedZeroSize);
+        }
+        validate_rhi_render_batch_scissors(batches, self.size)?;
+
+        match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(texture) => {
+                self.encode_indexed_batches_and_present(
+                    texture,
+                    batches,
+                    depth_format,
+                    color,
+                    FrameOutcome::Presented,
+                );
+                Ok(FrameOutcome::Presented)
+            }
+            wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
+                self.encode_indexed_batches_and_present(
+                    texture,
+                    batches,
+                    depth_format,
+                    color,
+                    FrameOutcome::PresentedSuboptimal,
+                );
+                self.resize(self.size);
+                Ok(FrameOutcome::PresentedSuboptimal)
+            }
+            wgpu::CurrentSurfaceTexture::Timeout => Ok(FrameOutcome::SkippedTimeout),
+            wgpu::CurrentSurfaceTexture::Occluded => Ok(FrameOutcome::SkippedOccluded),
+            wgpu::CurrentSurfaceTexture::Outdated => {
+                self.resize(self.size);
+                Ok(FrameOutcome::ReconfiguredOutdated)
+            }
+            wgpu::CurrentSurfaceTexture::Lost => {
+                self.recreate_surface()?;
+                Ok(FrameOutcome::RecreatedLostSurface)
+            }
+            wgpu::CurrentSurfaceTexture::Validation => Err(RhiError::new(
+                RhiErrorKind::SurfaceValidation,
+                "surface acquisition raised a validation error",
+            )),
+        }
+    }
+
+    /// Renders indexed batches into a sampled offscreen color target.
+    ///
+    /// The target must originate from this RHI and retain the current surface
+    /// format used by every color pipeline in the submission. Depth or
+    /// depth-stencil storage is allocated only when the common pipeline policy
+    /// requests it. The attachment starts clear for each submission; `Load`
+    /// preserves only the target's existing color contents.
+    ///
+    /// # Errors
+    ///
+    /// Returns typed target, draw, batch, scissor, pipeline, or device-loss
+    /// errors before backend submission.
+    pub fn render_indexed_batches_to_target(
+        &mut self,
+        target: &GpuRenderTarget,
+        batches: &[RhiRenderBatch<'_>],
+        load_policy: RenderTargetLoadPolicy,
+    ) -> Result<(), RhiError> {
+        validate_render_target_identity(
+            target,
+            self.device_generation,
+            self.surface_config.format,
+        )?;
+        let depth_format = validate_rhi_render_batches(batches, target.size)?;
+        validate_render_target_pipelines(batches, self.device_generation, target.format)?;
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        let depth = depth_format.map(|format| {
+            create_depth_buffer_for_device(
+                &self.device,
+                target.size,
+                format,
+                "Meridian indexed batch offscreen depth",
+            )
+        });
+        self.encode_indexed_batches(
+            IndexedBatchTarget {
+                view: &target.view,
+                depth_view: depth.as_ref().map(|depth| &depth.view),
+                depth_has_stencil: depth_format.is_some_and(DepthFormat::has_stencil),
+                source_texture: None,
+            },
+            batches,
+            load_policy,
+            None,
+            target.size,
+        );
+        Ok(())
+    }
+
+    /// Clears a sampled offscreen color target without requiring a draw batch.
+    ///
+    /// This is the explicit clear-only counterpart to
+    /// [`Self::render_indexed_batches_to_target`]. The target must originate
+    /// from this RHI and retain the current surface format.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed target identity or device-loss error before submission.
+    pub fn clear_render_target(
+        &mut self,
+        target: &GpuRenderTarget,
+        color: ClearColor,
+    ) -> Result<(), RhiError> {
+        validate_render_target_identity(
+            target,
+            self.device_generation,
+            self.surface_config.format,
+        )?;
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        self.encode_clear(&target.view, None, color, None, None);
+        Ok(())
+    }
+
+    /// Submits renderer-owned indexed batches to a small offscreen target for
+    /// structural GPU validation. It performs no readback and makes no visual
+    /// quality or presentation claim.
+    ///
+    /// # Errors
+    ///
+    /// Returns typed draw or device-loss errors before submission.
+    #[doc(hidden)]
+    pub fn submit_indexed_batches_structural_validation(
+        &mut self,
+        batches: &[RhiRenderBatch<'_>],
+        color: ClearColor,
+    ) -> Result<(), RhiError> {
+        let size = structural_validation_target_size(batches)?;
+        self.submit_indexed_batches_structural_validation_for_target(batches, color, size)
+    }
+
+    /// Submits renderer-owned indexed batches to a caller-supplied offscreen
+    /// target for structural GPU validation. This is intended for tests that
+    /// must validate real frame scissors without depending on a window surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns typed draw, scissor, or device-loss errors before submission.
+    #[doc(hidden)]
+    pub fn submit_indexed_batches_structural_validation_for_target(
+        &mut self,
+        batches: &[RhiRenderBatch<'_>],
+        color: ClearColor,
+        size: WindowSize,
+    ) -> Result<(), RhiError> {
+        if size.is_zero() {
+            return Err(RhiError::new(
+                RhiErrorKind::InvalidTextureSize,
+                "indexed batch structural validation target must be non-zero",
+            ));
+        }
+        let depth_format = validate_rhi_render_batches(batches, size)?;
+        if let Some(loss) = self.device_loss() {
+            return Err(RhiError::new(
+                RhiErrorKind::DeviceLost,
+                format!("{:?}: {}", loss.reason, loss.message),
+            ));
+        }
+        let color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Meridian indexed batch structural validation color"),
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.surface_config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let depth = depth_format.map(|format| {
+            create_depth_buffer_for_device(
+                &self.device,
+                size,
+                format,
+                "Meridian indexed batch structural validation depth",
+            )
+        });
+        self.encode_indexed_batches(
+            IndexedBatchTarget {
+                view: &color_view,
+                depth_view: depth.as_ref().map(|depth| &depth.view),
+                depth_has_stencil: depth_format.is_some_and(DepthFormat::has_stencil),
+                source_texture: None,
+            },
+            batches,
+            RenderTargetLoadPolicy::Clear(color),
+            None,
+            size,
+        );
+        Ok(())
+    }
+
+    fn render_indexed_mesh_internal(
+        &mut self,
+        draw: &IndexedDraw<'_>,
+        color: ClearColor,
+    ) -> Result<FrameOutcome, RhiError> {
+        validate_indexed_batch(draw, self.size)?;
         if let Some(loss) = self.device_loss() {
             return Err(RhiError::new(
                 RhiErrorKind::DeviceLost,
@@ -3185,7 +4106,7 @@ impl Rhi {
     fn encode_indexed_mesh_and_present(
         &mut self,
         texture: wgpu::SurfaceTexture,
-        draw: IndexedDraw<'_>,
+        draw: &IndexedDraw<'_>,
         color: ClearColor,
         outcome: FrameOutcome,
     ) {
@@ -3210,11 +4131,106 @@ impl Rhi {
         self.queue.present(texture);
     }
 
+    fn encode_indexed_batches_and_present(
+        &mut self,
+        texture: wgpu::SurfaceTexture,
+        batches: &[RhiRenderBatch<'_>],
+        depth_format: Option<DepthFormat>,
+        color: ClearColor,
+        outcome: FrameOutcome,
+    ) {
+        let view = texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let capture = self.begin_capture_for_texture(
+            self.size,
+            self.surface_config.format,
+            CaptureSource::PresentedSurface,
+            Some(outcome),
+        );
+        let depth = depth_format.map(|format| {
+            create_depth_buffer_for_device(
+                &self.device,
+                self.size,
+                format,
+                "Meridian indexed batch present depth",
+            )
+        });
+        self.encode_indexed_batches(
+            IndexedBatchTarget {
+                view: &view,
+                depth_view: depth.as_ref().map(|depth| &depth.view),
+                depth_has_stencil: depth_format.is_some_and(DepthFormat::has_stencil),
+                source_texture: Some(&texture.texture),
+            },
+            batches,
+            RenderTargetLoadPolicy::Clear(color),
+            capture,
+            self.size,
+        );
+        self.queue.present(texture);
+    }
+
+    fn encode_indexed_batches(
+        &mut self,
+        target: IndexedBatchTarget<'_>,
+        batches: &[RhiRenderBatch<'_>],
+        load_policy: RenderTargetLoadPolicy,
+        capture: Option<PendingCapture>,
+        target_size: WindowSize,
+    ) {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Meridian indexed batch encoder"),
+            });
+        let timing = self.begin_pass_timing(INDEXED_MESH_PASS_LABEL);
+        self.prepare_timestamp_resolve(&mut encoder, timing);
+        let cpu_start = Instant::now();
+        {
+            let color_attachments = [Some(wgpu::RenderPassColorAttachment {
+                view: target.view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: render_target_color_load_op(load_policy),
+                    store: wgpu::StoreOp::Store,
+                },
+            })];
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Meridian indexed batch pass"),
+                color_attachments: &color_attachments,
+                depth_stencil_attachment: target.depth_view.map(|depth_view| {
+                    wgpu::RenderPassDepthStencilAttachment {
+                        view: depth_view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: target.depth_has_stencil.then_some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                    }
+                }),
+                timestamp_writes: self.timestamp_writes(timing),
+                ..Default::default()
+            });
+            for batch in batches {
+                set_indexed_batch(&mut pass, batch, target_size);
+            }
+        }
+        if let (Some(source_texture), Some(capture)) = (target.source_texture, capture) {
+            record_capture_copy(&mut encoder, source_texture, &self.capture, capture);
+        }
+        self.submit_timed_encoder_with_capture(encoder, timing, cpu_start.elapsed(), capture);
+    }
+
     fn encode_indexed_mesh(
         &mut self,
         view: &wgpu::TextureView,
         depth_view: Option<&wgpu::TextureView>,
-        draw: IndexedDraw<'_>,
+        draw: &IndexedDraw<'_>,
         color: ClearColor,
         source_texture: Option<&wgpu::Texture>,
         capture: Option<PendingCapture>,
@@ -3279,7 +4295,17 @@ impl Rhi {
                 draw.index_buffer.buffer.slice(..),
                 wgpu::IndexFormat::Uint32,
             );
-            pass.draw_indexed(0..draw.index_count, 0, 0..1);
+            if let Some(scissor) = draw.scissor {
+                pass.set_scissor_rect(scissor.x, scissor.y, scissor.width, scissor.height);
+            }
+            if let Some(stencil_reference) = draw.stencil_reference {
+                pass.set_stencil_reference(stencil_reference);
+            }
+            pass.draw_indexed(
+                draw.index_range.clone(),
+                draw.base_vertex,
+                0..draw.instance_count,
+            );
         }
         if let (Some(source_texture), Some(capture)) = (source_texture, capture) {
             record_capture_copy(&mut encoder, source_texture, &self.capture, capture);
@@ -3793,6 +4819,7 @@ impl Rhi {
                     "recreated surface reports no texture formats",
                 )
             })?;
+        self.surface_generation = self.surface_generation.saturating_add(1);
         self.resize(self.size);
         Ok(())
     }
@@ -4435,6 +5462,9 @@ pub enum RhiErrorKind {
     InvalidTextureWrite,
     InvalidShadowMapSize,
     InvalidShadowCascade,
+    InvalidBatchRange,
+    InvalidScissor,
+    InvalidPipelineConfig,
     TimestampReadback,
     TimingFrameState,
 }
@@ -4477,6 +5507,170 @@ fn wgpu_buffer_usage(usage: BufferUsage) -> wgpu::BufferUsages {
     }
 }
 
+fn validate_render_target_size(
+    size: WindowSize,
+    max_texture_dimension_2d: u32,
+) -> Result<(), RhiError> {
+    if size.is_zero() {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidTextureSize,
+            "surface render targets must have a non-zero size",
+        ));
+    }
+    if size.width > max_texture_dimension_2d || size.height > max_texture_dimension_2d {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidTextureSize,
+            format!(
+                "surface render target {}x{} exceeds adapter 2D texture limit {}",
+                size.width, size.height, max_texture_dimension_2d
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_render_target_identity(
+    target: &GpuRenderTarget,
+    device_generation: u64,
+    surface_format: wgpu::TextureFormat,
+) -> Result<(), RhiError> {
+    if target.device_generation != device_generation {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidPipelineConfig,
+            "render target belongs to another RHI device",
+        ));
+    }
+    validate_render_target_format(target.format, surface_format)
+}
+
+fn validate_render_target_format(
+    target_format: wgpu::TextureFormat,
+    surface_format: wgpu::TextureFormat,
+) -> Result<(), RhiError> {
+    if target_format != surface_format {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidPipelineConfig,
+            format!(
+                "render target format {target_format:?} does not match current surface format {surface_format:?}"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_render_target_pipelines(
+    batches: &[RhiRenderBatch<'_>],
+    device_generation: u64,
+    target_format: wgpu::TextureFormat,
+) -> Result<(), RhiError> {
+    for batch in batches {
+        if batch.pipeline.device_generation != device_generation {
+            return Err(RhiError::new(
+                RhiErrorKind::InvalidPipelineConfig,
+                "indexed batch pipeline belongs to another RHI device",
+            ));
+        }
+        if batch.pipeline.color_format != Some(target_format) {
+            return Err(RhiError::new(
+                RhiErrorKind::InvalidPipelineConfig,
+                "indexed batch pipeline color format does not match the render target",
+            ));
+        }
+    }
+    Ok(())
+}
+
+const fn render_target_color_load_op(
+    load_policy: RenderTargetLoadPolicy,
+) -> wgpu::LoadOp<wgpu::Color> {
+    match load_policy {
+        RenderTargetLoadPolicy::Clear(color) => wgpu::LoadOp::Clear(wgpu::Color {
+            r: color.red,
+            g: color.green,
+            b: color.blue,
+            a: color.alpha,
+        }),
+        RenderTargetLoadPolicy::Load => wgpu::LoadOp::Load,
+    }
+}
+
+const fn wgpu_stencil_compare(compare: PipelineStencilCompare) -> wgpu::CompareFunction {
+    match compare {
+        PipelineStencilCompare::Always => wgpu::CompareFunction::Always,
+        PipelineStencilCompare::Equal => wgpu::CompareFunction::Equal,
+    }
+}
+
+const fn wgpu_stencil_operation(operation: PipelineStencilOperation) -> wgpu::StencilOperation {
+    match operation {
+        PipelineStencilOperation::Keep => wgpu::StencilOperation::Keep,
+        PipelineStencilOperation::Replace => wgpu::StencilOperation::Replace,
+        PipelineStencilOperation::IncrementClamp => wgpu::StencilOperation::IncrementClamp,
+        PipelineStencilOperation::DecrementClamp => wgpu::StencilOperation::DecrementClamp,
+    }
+}
+
+const fn wgpu_stencil_face(state: PipelineStencilFaceState) -> wgpu::StencilFaceState {
+    wgpu::StencilFaceState {
+        compare: wgpu_stencil_compare(state.compare),
+        fail_op: wgpu_stencil_operation(state.fail),
+        depth_fail_op: wgpu_stencil_operation(state.depth_fail),
+        pass_op: wgpu_stencil_operation(state.pass),
+    }
+}
+
+const fn wgpu_stencil_state(config: PipelineStencilConfig) -> wgpu::StencilState {
+    wgpu::StencilState {
+        front: wgpu_stencil_face(config.front),
+        back: wgpu_stencil_face(config.back),
+        read_mask: config.read_mask,
+        write_mask: config.write_mask,
+    }
+}
+
+const fn wgpu_blend_state(mode: PipelineBlendMode) -> Option<wgpu::BlendState> {
+    match mode {
+        PipelineBlendMode::Opaque => None,
+        PipelineBlendMode::Alpha => Some(wgpu::BlendState::ALPHA_BLENDING),
+        PipelineBlendMode::PremultipliedAlpha => {
+            Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING)
+        }
+    }
+}
+
+fn validate_pipeline_config(config: RenderPipelineConfig) -> Result<(), RhiError> {
+    let Some(depth_format) = config.depth_format else {
+        if config.depth_write_enabled {
+            return Err(RhiError::new(
+                RhiErrorKind::InvalidPipelineConfig,
+                "depth writes require a depth attachment format",
+            ));
+        }
+        if config.stencil.is_some() {
+            return Err(RhiError::new(
+                RhiErrorKind::InvalidPipelineConfig,
+                "stencil state requires a depth-stencil attachment format",
+            ));
+        }
+        return Ok(());
+    };
+    if config.stencil.is_some() && !depth_format.has_stencil() {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidPipelineConfig,
+            "stencil state requires a stencil-capable depth format",
+        ));
+    }
+    if let Some(stencil) = config.stencil {
+        if stencil.read_mask > 0xff || stencil.write_mask > 0xff {
+            return Err(RhiError::new(
+                RhiErrorKind::InvalidPipelineConfig,
+                "stencil read/write masks must fit 8 bits",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_buffer_write(size: u64, offset: u64, data_len: usize) -> Result<(), String> {
     let data_len = u64::try_from(data_len).map_err(|_| "buffer write is too large".to_owned())?;
     if !offset.is_multiple_of(4) || !data_len.is_multiple_of(4) {
@@ -4496,7 +5690,8 @@ fn validate_buffer_write(size: u64, offset: u64, data_len: usize) -> Result<(), 
 fn validate_indexed_draw(
     vertex_buffer: &GpuBuffer,
     index_buffer: &GpuBuffer,
-    index_count: u32,
+    index_range: Range<u32>,
+    scissor: Option<RenderScissor>,
 ) -> Result<(), RhiError> {
     if vertex_buffer.usage != BufferUsage::Vertex {
         return Err(RhiError::new(
@@ -4510,19 +5705,392 @@ fn validate_indexed_draw(
             "indexed draw requires an index buffer",
         ));
     }
-    let required_bytes = u64::from(index_count)
-        .checked_mul(4)
-        .ok_or_else(|| RhiError::new(RhiErrorKind::InvalidDraw, "index count overflowed"))?;
-    if index_count == 0 || required_bytes > index_buffer.size {
+    validate_index_range(index_buffer.size, index_range)?;
+    validate_scissor_shape(scissor)?;
+    Ok(())
+}
+
+fn validate_index_range(index_buffer_size: u64, index_range: Range<u32>) -> Result<(), RhiError> {
+    if index_range.start >= index_range.end {
         return Err(RhiError::new(
-            RhiErrorKind::InvalidDraw,
+            RhiErrorKind::InvalidBatchRange,
             format!(
-                "indexed draw needs {required_bytes} index bytes but buffer has {}",
-                index_buffer.size
+                "indexed draw range {}..{} is empty or reversed",
+                index_range.start, index_range.end
+            ),
+        ));
+    }
+    let required_bytes = u64::from(index_range.end)
+        .checked_mul(4)
+        .ok_or_else(|| RhiError::new(RhiErrorKind::InvalidBatchRange, "index range overflowed"))?;
+    if required_bytes > index_buffer_size {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidBatchRange,
+            format!(
+                "indexed draw needs {required_bytes} index bytes but buffer has {index_buffer_size}"
             ),
         ));
     }
     Ok(())
+}
+
+fn validate_indexed_batch(draw: &IndexedDraw<'_>, target_size: WindowSize) -> Result<(), RhiError> {
+    validate_indexed_draw(
+        draw.vertex_buffer,
+        draw.index_buffer,
+        draw.index_range.clone(),
+        draw.scissor,
+    )?;
+    validate_instance_count(draw.instance_count)?;
+    validate_scissor_bounds(draw.scissor, target_size)?;
+    validate_stencil_reference(draw.stencil_reference)
+}
+
+fn validate_rhi_render_batch_without_target(batch: &RhiRenderBatch<'_>) -> Result<(), RhiError> {
+    validate_indexed_draw(
+        batch.vertex_buffer,
+        batch.index_buffer,
+        batch.index_range.clone(),
+        batch.scissor,
+    )?;
+    validate_instance_count(batch.instance_count)?;
+    validate_base_vertex(batch.base_vertex)?;
+    validate_stencil_reference(batch.stencil_reference)?;
+    if batch.stencil_reference.is_some() && batch.pipeline.config.stencil.is_none() {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidPipelineConfig,
+            "stencil reference requires a stencil-enabled pipeline",
+        ));
+    }
+    validate_rhi_render_batch_bindings(batch)?;
+    Ok(())
+}
+
+fn validate_base_vertex(base_vertex: i32) -> Result<(), RhiError> {
+    if base_vertex < 0 {
+        Err(RhiError::new(
+            RhiErrorKind::InvalidDraw,
+            "indexed batch base vertex must be non-negative",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_rhi_render_batches_without_target(
+    batches: &[RhiRenderBatch<'_>],
+) -> Result<Option<DepthFormat>, RhiError> {
+    validate_indexed_batch_count(batches.len())?;
+    let mut common_depth_format = None;
+    for batch in batches {
+        validate_rhi_render_batch_without_target(batch)?;
+        match common_depth_format {
+            None => common_depth_format = Some(batch.pipeline.config.depth_format),
+            Some(expected) if expected == batch.pipeline.config.depth_format => {}
+            Some(_) => {
+                return Err(RhiError::new(
+                    RhiErrorKind::InvalidPipelineConfig,
+                    "all indexed batches in one pass must use one depth-stencil format",
+                ));
+            }
+        }
+    }
+    Ok(common_depth_format.flatten())
+}
+
+fn validate_indexed_batch_count(batch_count: usize) -> Result<(), RhiError> {
+    if batch_count == 0 {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidDraw,
+            "indexed batch submission must contain at least one batch",
+        ));
+    }
+    if batch_count > MAX_INDEXED_RENDER_BATCHES {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidBatchRange,
+            format!(
+                "indexed batch submission contains {batch_count} batches, exceeding cap {MAX_INDEXED_RENDER_BATCHES}"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_rhi_render_batches(
+    batches: &[RhiRenderBatch<'_>],
+    target_size: WindowSize,
+) -> Result<Option<DepthFormat>, RhiError> {
+    let depth_format = validate_rhi_render_batches_without_target(batches)?;
+    validate_rhi_render_batch_scissors(batches, target_size)?;
+    Ok(depth_format)
+}
+
+fn validate_rhi_render_batch_scissors(
+    batches: &[RhiRenderBatch<'_>],
+    target_size: WindowSize,
+) -> Result<(), RhiError> {
+    for batch in batches {
+        validate_scissor_bounds(batch.scissor, target_size)?;
+    }
+    Ok(())
+}
+
+fn validate_rhi_render_batch_bindings(batch: &RhiRenderBatch<'_>) -> Result<(), RhiError> {
+    validate_render_batch_binding_presence(
+        batch.pipeline.config.bindings,
+        RenderBatchBindingMask::from_batch(batch),
+    )
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RenderBatchBindingMask(u8);
+
+impl RenderBatchBindingMask {
+    const TEXTURE: u8 = 1 << 0;
+    const MATERIAL_TEXTURES: u8 = 1 << 1;
+    const UNIFORM: u8 = 1 << 2;
+    const MATERIAL_PARAMETERS: u8 = 1 << 3;
+    const LIGHTING: u8 = 1 << 4;
+
+    #[cfg(test)]
+    const fn empty() -> Self {
+        Self(0)
+    }
+
+    #[cfg(test)]
+    const fn from_bits(bits: u8) -> Self {
+        Self(bits)
+    }
+
+    fn from_batch(batch: &RhiRenderBatch<'_>) -> Self {
+        Self(
+            (u8::from(batch.texture_bind_group.is_some()) * Self::TEXTURE)
+                | (u8::from(batch.material_texture_bind_group.is_some()) * Self::MATERIAL_TEXTURES)
+                | (u8::from(batch.uniform_bind_group.is_some()) * Self::UNIFORM)
+                | (u8::from(batch.material_parameter_bind_group.is_some())
+                    * Self::MATERIAL_PARAMETERS)
+                | (u8::from(batch.lighting_bind_group.is_some()) * Self::LIGHTING),
+        )
+    }
+
+    const fn contains(self, bit: u8) -> bool {
+        self.0 & bit != 0
+    }
+}
+
+fn validate_render_batch_binding_presence(
+    bindings: RenderPipelineBindings,
+    presence: RenderBatchBindingMask,
+) -> Result<(), RhiError> {
+    if presence.contains(RenderBatchBindingMask::TEXTURE)
+        && presence.contains(RenderBatchBindingMask::MATERIAL_TEXTURES)
+    {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidPipelineConfig,
+            "indexed batch cannot bind both single-texture and material-texture group 0",
+        ));
+    }
+    match bindings.group0 {
+        RenderPipelineGroup0Binding::None => {
+            if presence.contains(RenderBatchBindingMask::TEXTURE)
+                || presence.contains(RenderBatchBindingMask::MATERIAL_TEXTURES)
+            {
+                return Err(RhiError::new(
+                    RhiErrorKind::InvalidPipelineConfig,
+                    "unbound pipeline cannot use a group 0 texture binding",
+                ));
+            }
+        }
+        RenderPipelineGroup0Binding::Texture => {
+            if !presence.contains(RenderBatchBindingMask::TEXTURE) {
+                return Err(RhiError::new(
+                    RhiErrorKind::InvalidPipelineConfig,
+                    "pipeline requires a single texture bind group at group 0",
+                ));
+            }
+            if presence.contains(RenderBatchBindingMask::MATERIAL_TEXTURES) {
+                return Err(RhiError::new(
+                    RhiErrorKind::InvalidPipelineConfig,
+                    "single-texture pipeline cannot use material texture group 0",
+                ));
+            }
+        }
+        RenderPipelineGroup0Binding::MaterialTextures => {
+            if !presence.contains(RenderBatchBindingMask::MATERIAL_TEXTURES) {
+                return Err(RhiError::new(
+                    RhiErrorKind::InvalidPipelineConfig,
+                    "pipeline requires material texture bind group at group 0",
+                ));
+            }
+            if presence.contains(RenderBatchBindingMask::TEXTURE) {
+                return Err(RhiError::new(
+                    RhiErrorKind::InvalidPipelineConfig,
+                    "material-texture pipeline cannot use single texture group 0",
+                ));
+            }
+        }
+    }
+    if bindings.uniform && !presence.contains(RenderBatchBindingMask::UNIFORM) {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidPipelineConfig,
+            "pipeline requires a uniform bind group at group 1",
+        ));
+    }
+    if bindings.material_parameters
+        && !presence.contains(RenderBatchBindingMask::MATERIAL_PARAMETERS)
+    {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidPipelineConfig,
+            "pipeline requires a material parameter bind group at group 2",
+        ));
+    }
+    if bindings.lighting && !presence.contains(RenderBatchBindingMask::LIGHTING) {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidPipelineConfig,
+            "pipeline requires a lighting bind group at group 3",
+        ));
+    }
+    Ok(())
+}
+
+fn structural_validation_target_size(
+    batches: &[RhiRenderBatch<'_>],
+) -> Result<WindowSize, RhiError> {
+    validate_rhi_render_batches_without_target(batches)?;
+    structural_validation_target_size_from_scissors(batches.iter().map(|batch| batch.scissor))
+}
+
+fn structural_validation_target_size_from_scissors(
+    scissors: impl IntoIterator<Item = Option<RenderScissor>>,
+) -> Result<WindowSize, RhiError> {
+    let mut width = 64;
+    let mut height = 64;
+    for scissor in scissors.into_iter().flatten() {
+        validate_scissor_shape(Some(scissor))?;
+        width = width.max(scissor.x.checked_add(scissor.width).ok_or_else(|| {
+            RhiError::new(RhiErrorKind::InvalidScissor, "scissor x range overflowed")
+        })?);
+        height = height.max(scissor.y.checked_add(scissor.height).ok_or_else(|| {
+            RhiError::new(RhiErrorKind::InvalidScissor, "scissor y range overflowed")
+        })?);
+    }
+    Ok(WindowSize::new(width, height))
+}
+
+fn validate_scissor_shape(scissor: Option<RenderScissor>) -> Result<(), RhiError> {
+    if let Some(scissor) = scissor {
+        if scissor.width == 0 || scissor.height == 0 {
+            return Err(RhiError::new(
+                RhiErrorKind::InvalidScissor,
+                "scissor rectangle must have non-zero dimensions",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_instance_count(instance_count: u32) -> Result<(), RhiError> {
+    if instance_count == 0 {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidBatchRange,
+            "indexed batch must draw at least one instance",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_stencil_reference(reference: Option<u32>) -> Result<(), RhiError> {
+    if reference.is_some_and(|reference| reference > 0xff) {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidPipelineConfig,
+            "stencil reference must fit 8 bits",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_scissor_bounds(
+    scissor: Option<RenderScissor>,
+    target_size: WindowSize,
+) -> Result<(), RhiError> {
+    let Some(scissor) = scissor else {
+        return Ok(());
+    };
+    let scissor_end_x = scissor
+        .x
+        .checked_add(scissor.width)
+        .ok_or_else(|| RhiError::new(RhiErrorKind::InvalidScissor, "scissor x range overflowed"))?;
+    let scissor_end_y = scissor
+        .y
+        .checked_add(scissor.height)
+        .ok_or_else(|| RhiError::new(RhiErrorKind::InvalidScissor, "scissor y range overflowed"))?;
+    if scissor_end_x > target_size.width || scissor_end_y > target_size.height {
+        return Err(RhiError::new(
+            RhiErrorKind::InvalidScissor,
+            format!(
+                "scissor rectangle {}..{} x {}..{} exceeds target {}x{}",
+                scissor.x,
+                scissor_end_x,
+                scissor.y,
+                scissor_end_y,
+                target_size.width,
+                target_size.height
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn set_indexed_batch<'pass, 'resources>(
+    pass: &mut wgpu::RenderPass<'pass>,
+    batch: &'resources RhiRenderBatch<'resources>,
+    target_size: WindowSize,
+) where
+    'resources: 'pass,
+{
+    pass.set_pipeline(&batch.pipeline.pipeline);
+    if let Some(material_texture_bind_group) = batch.material_texture_bind_group {
+        pass.set_bind_group(0, &material_texture_bind_group.bind_group, &[]);
+    }
+    if let Some(texture_bind_group) = batch.texture_bind_group {
+        pass.set_bind_group(0, &texture_bind_group.bind_group, &[]);
+    }
+    if let Some(uniform_bind_group) = batch.uniform_bind_group {
+        pass.set_bind_group(1, &uniform_bind_group.bind_group, &[]);
+    }
+    if let Some(material_parameter_bind_group) = batch.material_parameter_bind_group {
+        pass.set_bind_group(2, &material_parameter_bind_group.bind_group, &[]);
+    }
+    if let Some(lighting_bind_group) = batch.lighting_bind_group {
+        pass.set_bind_group(3, &lighting_bind_group.bind_group, &[]);
+    }
+    pass.set_vertex_buffer(0, batch.vertex_buffer.buffer.slice(..));
+    pass.set_index_buffer(
+        batch.index_buffer.buffer.slice(..),
+        wgpu::IndexFormat::Uint32,
+    );
+    let scissor = effective_render_scissor(batch.scissor, target_size);
+    pass.set_scissor_rect(scissor.x, scissor.y, scissor.width, scissor.height);
+    if let Some(stencil_reference) = batch.stencil_reference {
+        pass.set_stencil_reference(stencil_reference);
+    }
+    pass.draw_indexed(
+        batch.index_range.clone(),
+        batch.base_vertex,
+        0..batch.instance_count,
+    );
+}
+
+fn effective_render_scissor(
+    scissor: Option<RenderScissor>,
+    target_size: WindowSize,
+) -> RenderScissor {
+    scissor.unwrap_or(RenderScissor::new(
+        0,
+        0,
+        target_size.width,
+        target_size.height,
+    ))
 }
 
 fn validate_texture_write(
@@ -4753,6 +6321,275 @@ mod tests {
             DepthFormat::Depth32Float.wgpu_format(),
             wgpu::TextureFormat::Depth32Float
         );
+    }
+
+    #[test]
+    fn render_target_load_policy_preserves_clear_values_and_load_intent() {
+        let clear_color = ClearColor::new(0.25, 0.5, 0.75, 0.125);
+        match render_target_color_load_op(RenderTargetLoadPolicy::Clear(clear_color)) {
+            wgpu::LoadOp::Clear(color) => {
+                assert_eq!(color.r.to_bits(), clear_color.red.to_bits());
+                assert_eq!(color.g.to_bits(), clear_color.green.to_bits());
+                assert_eq!(color.b.to_bits(), clear_color.blue.to_bits());
+                assert_eq!(color.a.to_bits(), clear_color.alpha.to_bits());
+            }
+            wgpu::LoadOp::Load => panic!("clear policy must not load old target contents"),
+            wgpu::LoadOp::DontCare(_) => {
+                panic!("clear policy must not discard target contents")
+            }
+        }
+        assert!(matches!(
+            render_target_color_load_op(RenderTargetLoadPolicy::Load),
+            wgpu::LoadOp::Load
+        ));
+    }
+
+    #[test]
+    fn missing_batch_scissor_resets_to_the_complete_target() {
+        let target = WindowSize::new(1280, 720);
+        assert_eq!(
+            effective_render_scissor(None, target),
+            RenderScissor::new(0, 0, 1280, 720)
+        );
+        let explicit = RenderScissor::new(10, 20, 30, 40);
+        assert_eq!(effective_render_scissor(Some(explicit), target), explicit);
+    }
+
+    #[test]
+    fn render_target_size_and_surface_format_bounds_are_typed() {
+        assert!(validate_render_target_size(WindowSize::new(1, 1), 4096).is_ok());
+        for size in [
+            WindowSize::new(0, 1),
+            WindowSize::new(1, 0),
+            WindowSize::new(4097, 1),
+            WindowSize::new(1, 4097),
+        ] {
+            assert_eq!(
+                validate_render_target_size(size, 4096)
+                    .expect_err("invalid target size must stay typed")
+                    .kind(),
+                RhiErrorKind::InvalidTextureSize
+            );
+        }
+        assert!(validate_render_target_format(
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+            wgpu::TextureFormat::Bgra8UnormSrgb
+        )
+        .is_ok());
+        assert_eq!(
+            validate_render_target_format(
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+                wgpu::TextureFormat::Bgra8UnormSrgb
+            )
+            .expect_err("stale target format must fail before submission")
+            .kind(),
+            RhiErrorKind::InvalidPipelineConfig
+        );
+    }
+
+    #[test]
+    fn pipeline_config_validates_stencil_and_depth_combinations() {
+        assert!(validate_pipeline_config(RenderPipelineConfig::alpha_surface_no_depth()).is_ok());
+        assert!(
+            validate_pipeline_config(RenderPipelineConfig::premultiplied_alpha_surface_depth())
+                .is_ok()
+        );
+        assert!(validate_pipeline_config(
+            RenderPipelineConfig::premultiplied_alpha_surface_no_depth()
+        )
+        .is_ok());
+        assert!(
+            validate_pipeline_config(RenderPipelineConfig::alpha_surface_stencil(
+                PipelineStencilConfig::read_equal_keep()
+            ))
+            .is_ok()
+        );
+        assert!(validate_pipeline_config(
+            RenderPipelineConfig::premultiplied_alpha_surface_stencil(
+                PipelineStencilConfig::read_equal_keep()
+            )
+        )
+        .is_ok());
+        assert_eq!(
+            validate_pipeline_config(RenderPipelineConfig {
+                blend: PipelineBlendMode::Alpha,
+                depth_format: None,
+                depth_write_enabled: true,
+                depth_compare: PipelineDepthCompare::Always,
+                stencil: None,
+                bindings: RenderPipelineBindings::unbound(),
+            })
+            .expect_err("depth writes need an attachment")
+            .kind(),
+            RhiErrorKind::InvalidPipelineConfig
+        );
+        assert_eq!(
+            validate_pipeline_config(RenderPipelineConfig {
+                blend: PipelineBlendMode::Alpha,
+                depth_format: Some(DepthFormat::Depth32Float),
+                depth_write_enabled: false,
+                depth_compare: PipelineDepthCompare::Always,
+                stencil: Some(PipelineStencilConfig::read_equal_keep()),
+                bindings: RenderPipelineBindings::unbound(),
+            })
+            .expect_err("stencil needs a stencil format")
+            .kind(),
+            RhiErrorKind::InvalidPipelineConfig
+        );
+    }
+
+    #[test]
+    fn pipeline_blend_modes_preserve_straight_and_premultiplied_contracts() {
+        assert!(wgpu_blend_state(PipelineBlendMode::Opaque).is_none());
+        assert_eq!(
+            wgpu_blend_state(PipelineBlendMode::Alpha),
+            Some(wgpu::BlendState::ALPHA_BLENDING)
+        );
+
+        let premultiplied = wgpu_blend_state(PipelineBlendMode::PremultipliedAlpha)
+            .expect("premultiplied alpha must enable blending");
+        for component in [premultiplied.color, premultiplied.alpha] {
+            assert_eq!(component.src_factor, wgpu::BlendFactor::One);
+            assert_eq!(component.dst_factor, wgpu::BlendFactor::OneMinusSrcAlpha);
+            assert_eq!(component.operation, wgpu::BlendOperation::Add);
+        }
+    }
+
+    #[test]
+    fn indexed_batch_ranges_scissors_and_stencil_refs_are_typed() {
+        assert!(validate_index_range(16, 1..4).is_ok());
+        assert_eq!(
+            validate_index_range(16, 4..4)
+                .expect_err("empty range is invalid")
+                .kind(),
+            RhiErrorKind::InvalidBatchRange
+        );
+        assert_eq!(
+            validate_index_range(16, 0..5)
+                .expect_err("range exceeds index buffer")
+                .kind(),
+            RhiErrorKind::InvalidBatchRange
+        );
+        assert!(validate_scissor_bounds(
+            Some(RenderScissor::new(4, 4, 8, 8)),
+            WindowSize::new(16, 16)
+        )
+        .is_ok());
+        assert_eq!(
+            validate_scissor_bounds(
+                Some(RenderScissor::new(12, 4, 8, 8)),
+                WindowSize::new(16, 16)
+            )
+            .expect_err("scissor must fit target")
+            .kind(),
+            RhiErrorKind::InvalidScissor
+        );
+        assert!(validate_stencil_reference(Some(255)).is_ok());
+        assert_eq!(
+            validate_stencil_reference(Some(256))
+                .expect_err("stencil ref must be 8-bit")
+                .kind(),
+            RhiErrorKind::InvalidPipelineConfig
+        );
+        assert!(validate_base_vertex(0).is_ok());
+        assert_eq!(
+            validate_base_vertex(-1)
+                .expect_err("negative base vertices must fail before backend submission")
+                .kind(),
+            RhiErrorKind::InvalidDraw
+        );
+    }
+
+    #[test]
+    fn indexed_batch_count_cap_is_typed() {
+        assert_eq!(MAX_INDEXED_RENDER_BATCHES, 4096);
+        let too_many = MAX_INDEXED_RENDER_BATCHES + 1;
+        assert_eq!(
+            validate_indexed_batch_count(too_many)
+                .expect_err("batch count cap should be enforced")
+                .kind(),
+            RhiErrorKind::InvalidBatchRange
+        );
+    }
+
+    #[test]
+    fn structural_validation_target_derives_from_real_scissors() {
+        let scissors = [
+            RenderScissor::new(80, 40, 320, 200),
+            RenderScissor::new(12, 500, 8, 140),
+        ];
+        assert_eq!(
+            structural_validation_target_size_from_scissors(scissors.into_iter().map(Some))
+                .expect("scissors derive a nonzero target"),
+            WindowSize::new(400, 640)
+        );
+        assert_eq!(
+            structural_validation_target_size_from_scissors([Some(RenderScissor::new(
+                u32::MAX,
+                0,
+                1,
+                1
+            ))])
+            .expect_err("overflow stays typed")
+            .kind(),
+            RhiErrorKind::InvalidScissor
+        );
+    }
+
+    #[test]
+    fn indexed_batch_bindings_reject_missing_and_conflicting_groups() {
+        let empty = RenderBatchBindingMask::empty();
+        assert_eq!(
+            validate_render_batch_binding_presence(RenderPipelineBindings::single_texture(), empty)
+                .expect_err("texture pipeline requires group 0")
+                .kind(),
+            RhiErrorKind::InvalidPipelineConfig
+        );
+        assert_eq!(
+            validate_render_batch_binding_presence(
+                RenderPipelineBindings::unbound(),
+                RenderBatchBindingMask::from_bits(
+                    RenderBatchBindingMask::TEXTURE | RenderBatchBindingMask::MATERIAL_TEXTURES
+                )
+            )
+            .expect_err("group 0 roles conflict")
+            .kind(),
+            RhiErrorKind::InvalidPipelineConfig
+        );
+        assert_eq!(
+            validate_render_batch_binding_presence(
+                RenderPipelineBindings::unbound(),
+                RenderBatchBindingMask::from_bits(RenderBatchBindingMask::TEXTURE)
+            )
+            .expect_err("unbound pipeline rejects stray texture group 0")
+            .kind(),
+            RhiErrorKind::InvalidPipelineConfig
+        );
+        assert_eq!(
+            validate_render_batch_binding_presence(
+                RenderPipelineBindings::unbound(),
+                RenderBatchBindingMask::from_bits(RenderBatchBindingMask::MATERIAL_TEXTURES)
+            )
+            .expect_err("unbound pipeline rejects stray material texture group 0")
+            .kind(),
+            RhiErrorKind::InvalidPipelineConfig
+        );
+        assert_eq!(
+            validate_render_batch_binding_presence(RenderPipelineBindings::pbr_material(), empty)
+                .expect_err("pbr pipeline requires all material groups")
+                .kind(),
+            RhiErrorKind::InvalidPipelineConfig
+        );
+        assert!(validate_render_batch_binding_presence(
+            RenderPipelineBindings::pbr_material(),
+            RenderBatchBindingMask::from_bits(
+                RenderBatchBindingMask::MATERIAL_TEXTURES
+                    | RenderBatchBindingMask::UNIFORM
+                    | RenderBatchBindingMask::MATERIAL_PARAMETERS
+                    | RenderBatchBindingMask::LIGHTING
+            )
+        )
+        .is_ok());
     }
 
     #[test]

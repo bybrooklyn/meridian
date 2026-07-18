@@ -291,6 +291,7 @@ fn workspace_canvas_style() -> UiStyle {
     UiStyle {
         background: Some(UiColor::background()),
         border: None,
+        corner_radius: 0.0,
         foreground: UiColor::foreground(),
         padding: 14.0,
         font_size: 16.0,
@@ -304,6 +305,7 @@ fn creator_header_style() -> UiStyle {
             color: UiColor::border(),
             width: 1,
         }),
+        corner_radius: 0.0,
         foreground: UiColor::foreground(),
         padding: 12.0,
         font_size: 16.0,
@@ -314,6 +316,7 @@ fn creator_title_style() -> UiStyle {
     UiStyle {
         background: None,
         border: None,
+        corner_radius: 0.0,
         foreground: UiColor::text(),
         padding: 0.0,
         font_size: 20.0,
@@ -324,6 +327,7 @@ fn creator_meta_style() -> UiStyle {
     UiStyle {
         background: None,
         border: None,
+        corner_radius: 0.0,
         foreground: UiColor::secondary_text(),
         padding: 0.0,
         font_size: 12.0,
@@ -342,6 +346,7 @@ fn creator_mode_style(play_active: bool) -> UiStyle {
             color: border,
             width: 1,
         }),
+        corner_radius: 0.0,
         foreground,
         padding: 6.0,
         font_size: 11.0,
@@ -375,6 +380,7 @@ fn creator_panel_style(panel: EditorPanelId) -> UiStyle {
                 1
             },
         }),
+        corner_radius: 0.0,
         foreground: UiColor::foreground(),
         padding: if panel == EditorPanelId::Viewport {
             14.0
@@ -389,6 +395,7 @@ fn creator_panel_heading_style(panel: EditorPanelId) -> UiStyle {
     UiStyle {
         background: None,
         border: None,
+        corner_radius: 0.0,
         foreground: creator_panel_accent(panel),
         padding: 0.0,
         font_size: 15.0,
@@ -402,6 +409,7 @@ fn creator_preview_style() -> UiStyle {
             color: UiColor::border(),
             width: 1,
         }),
+        corner_radius: 0.0,
         foreground: UiColor::text(),
         padding: 18.0,
         font_size: 16.0,
@@ -415,6 +423,7 @@ fn creator_hub_card_style() -> UiStyle {
             color: UiColor::border(),
             width: 1,
         }),
+        corner_radius: 0.0,
         foreground: UiColor::foreground(),
         padding: 20.0,
         font_size: 16.0,
@@ -428,6 +437,7 @@ fn creator_hub_status_style() -> UiStyle {
             color: UiColor::border(),
             width: 1,
         }),
+        corner_radius: 0.0,
         foreground: UiColor::secondary_text(),
         padding: 8.0,
         font_size: 12.0,
@@ -438,6 +448,7 @@ fn creator_hub_field_label_style() -> UiStyle {
     UiStyle {
         background: None,
         border: None,
+        corner_radius: 0.0,
         foreground: UiColor::muted_text(),
         padding: 0.0,
         font_size: 11.0,
@@ -459,6 +470,7 @@ fn creator_recent_row_style(available: bool) -> UiStyle {
             },
             width: 1,
         }),
+        corner_radius: 0.0,
         foreground: UiColor::foreground(),
         padding: 10.0,
         font_size: 16.0,
@@ -488,6 +500,7 @@ fn creator_compact_action_style(panel: EditorPanelId, command: &str) -> UiStyle 
             color: if primary { accent } else { UiColor::border() },
             width: 1,
         }),
+        corner_radius: 0.0,
         foreground: if primary {
             UiColor::text()
         } else {

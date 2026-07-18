@@ -2,14 +2,29 @@
 
 use std::collections::VecDeque;
 
-use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, SwashCache, SwashContent};
+use cosmic_text::{
+    fontdb, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, SwashContent,
+};
 use meridian_ui_core::{
-    sanitized_scale_factor, UiNodeId, UiPoint, UiTextValidation, MAX_RETAINED_NODES, MAX_TEXT_BYTES,
+    sanitized_scale_factor, UiFontRole, UiNodeId, UiPoint, UiTextValidation, MAX_RETAINED_NODES,
+    MAX_TEXT_BYTES,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Aggregate alpha-mask budget accepted for one immutable UI frame.
 pub const MAX_GLYPH_RASTER_BYTES: usize = 1024 * 1024;
+
+const MONA_SANS: &[u8] = include_bytes!("../assets/fonts/MonaSansVF.ttf");
+const HUBOT_SANS: &[u8] = include_bytes!("../assets/fonts/HubotSansVF.ttf");
+const JETBRAINS_MONO: &[u8] = include_bytes!("../assets/fonts/JetBrainsMonoVF.ttf");
+
+const fn bundled_family(font_role: UiFontRole) -> &'static str {
+    match font_role {
+        UiFontRole::Interface => "Mona Sans VF",
+        UiFontRole::Display => "Hubot Sans",
+        UiFontRole::Monospace => "JetBrains Mono",
+    }
+}
 
 /// A cursor movement expressed in extended-grapheme positions, not UTF-8 bytes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -460,6 +475,8 @@ pub struct UiTextLayout {
     pub width: f32,
     pub height: f32,
     pub used_fallback_metrics: bool,
+    pub used_fallback_font: bool,
+    pub font_role: UiFontRole,
 }
 
 /// One alpha-mask glyph bitmap relative to its text primitive's origin.
@@ -488,7 +505,12 @@ pub struct UiTextEngine {
 impl Default for UiTextEngine {
     fn default() -> Self {
         let mut fonts = FontSystem::new();
+        fonts.db_mut().load_font_data(MONA_SANS.to_vec());
+        fonts.db_mut().load_font_data(HUBOT_SANS.to_vec());
+        fonts.db_mut().load_font_data(JETBRAINS_MONO.to_vec());
         fonts.db_mut().load_system_fonts();
+        fonts.db_mut().set_sans_serif_family("Mona Sans VF");
+        fonts.db_mut().set_monospace_family("JetBrains Mono");
         Self {
             fonts,
             swash: SwashCache::new(),
@@ -503,16 +525,23 @@ impl UiTextEngine {
         width: f32,
         font_size: f32,
         scale_factor: f32,
+        font_role: UiFontRole,
     ) -> UiTextOutput {
         let scale_factor = sanitized_scale_factor(scale_factor);
+        let family = Family::Name(bundled_family(font_role));
+        let expected_font = self.fonts.db().query(&fontdb::Query {
+            families: &[family],
+            ..fontdb::Query::default()
+        });
         let metrics = Metrics::relative((font_size * scale_factor).max(1.0), 1.25);
         let mut buffer = Buffer::new(&mut self.fonts, metrics);
         buffer.set_size(Some((width * scale_factor).max(1.0)), None);
-        buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
+        buffer.set_text(text, &Attrs::new().family(family), Shaping::Advanced, None);
         let mut line_count = 0;
         let mut glyph_count = 0;
         let mut observed_width = 0.0_f32;
         let mut height = 0.0_f32;
+        let mut used_fallback_font = false;
         let mut physical_glyphs = Vec::new();
         {
             let mut borrowed = buffer.borrow_with(&mut self.fonts);
@@ -521,6 +550,10 @@ impl UiTextEngine {
                 glyph_count += run.glyphs.len();
                 observed_width = observed_width.max(run.line_w);
                 height += run.line_height;
+                used_fallback_font |= run
+                    .glyphs
+                    .iter()
+                    .any(|glyph| Some(glyph.font_id) != expected_font);
                 physical_glyphs.extend(
                     run.glyphs
                         .iter()
@@ -544,6 +577,8 @@ impl UiTextEngine {
             width: observed_width,
             height,
             used_fallback_metrics,
+            used_fallback_font,
+            font_role,
         };
         let mut raster = UiTextRaster::default();
         let mut raster_bytes = 0_usize;
@@ -604,6 +639,27 @@ fn i32_to_f32(value: i32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundled_locked_fonts_shape_without_platform_substitution() {
+        let mut engine = UiTextEngine::default();
+        for role in [
+            UiFontRole::Interface,
+            UiFontRole::Display,
+            UiFontRole::Monospace,
+        ] {
+            let output = engine.layout("Meridian 0123", 320.0, 14.0, 2.0, role);
+            assert_eq!(output.layout.font_role, role);
+            assert!(!output.layout.used_fallback_metrics);
+            assert!(
+                !output.layout.used_fallback_font,
+                "locked {role:?} font unexpectedly substituted: {:?}",
+                output.layout
+            );
+            assert!(output.layout.glyph_count > 0);
+            assert!(!output.raster.glyphs.is_empty());
+        }
+    }
 
     #[test]
     fn completion_prefix_stops_at_the_grapheme_cursor() {

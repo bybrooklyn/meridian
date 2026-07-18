@@ -39,11 +39,15 @@ Creator journey, and universal macOS bundle. That evidence does not qualify the
 Meridian UI 1.0 framework, production shell, platform accessibility, or visual
 quality. `WP-UI-002` through `WP-UI-005` are `Partial` after locally validated
 source packages; GitHub Actions runs `29611418454`, `29621896632`, and
-`29622972884` were `NotRun` because the account could not allocate hosted
-runners. `ADR-0029` decided `RG-UI-001` for a Penumbra-owned direct display-list
+`29622972884` concluded `failure` before executing implementation steps because
+the account could not allocate hosted runners; their Linux, Windows, and macOS
+implementation rows are `NotRun`. `ADR-0029` decided `RG-UI-001` for a Penumbra-owned direct display-list
 path while retaining the current CPU raster bridge as structural/recovery only.
-`WVR-UI-001` permits non-promoting local continuation through 2026-08-17, and
-`WP-EDT-002` is the sole active package.
+`WVR-UI-001` permits non-promoting local continuation through 2026-08-17.
+`WP-UI-005` is reactivated as the sole corrective framework package;
+`WP-EDT-002` is `Partial` and paused so current work does not expand editor
+composition before the framework renderer, diagnostics, recovery, and platform
+evidence are closed.
 `WP-PRC-001` is `ImplementedFoundation` after GitHub Actions run
 `29511174569` for `9c88cc152878b1eb22f18c236c00ad1abd984fa5` passed governance
 and the Linux, Windows, and macOS workspace rows. `WP-MDL-001` is `Partial`:

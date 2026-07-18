@@ -1,1 +1,75 @@
-{"$schema":"../../schemas/governance/source-provenance.schema.json","version":"0.5","records":[]}
+{
+  "$schema": "../../schemas/governance/source-provenance.schema.json",
+  "version": "0.5",
+  "records": [
+    {
+      "id": "SRC-UI-005",
+      "source_url": "https://github.com/github/mona-sans/releases/download/v2.0.27/mona-sans-variable-v2.0.27.zip",
+      "revision": "v2.0.27 / 0f7dc66ddd766605eb0e75c3f47bf9d1dd38ceca",
+      "archive_hash": "sha256:a95127550b2957ff84cd636d4532b227ddc33d3485082437fa27816ef1d066ec",
+      "spdx": "OFL-1.1",
+      "notices": ["third_party/licenses/mona-sans-OFL-1.1.txt"],
+      "modifications": ["Selected reviewed variable TTF member", "Renamed only; font bytes unchanged"],
+      "owner": "WP-UI-005",
+      "tests": [
+        "python3 scripts/import_ui_assets.py",
+        "cargo run -p meridian-spec -- check"
+      ],
+      "exit_strategy": "Replace only through DEP-UI-005 amendment and golden typography corpus.",
+      "status": "Imported"
+    },
+    {
+      "id": "SRC-UI-006",
+      "source_url": "https://github.com/github/hubot-sans/releases/download/v1.0.1/Hubot-Sans.zip",
+      "revision": "v1.0.1 / 05d5ea150c20e6434485db8ffd2277ed18a9e911",
+      "archive_hash": "sha256:b460d36097a5c9a3e45710cbe1554589eaa5765d7c2c88df364516f3e27159b1",
+      "spdx": "OFL-1.1",
+      "notices": ["third_party/licenses/hubot-sans-OFL-1.1.txt"],
+      "modifications": ["Selected reviewed TTF member", "Renamed only; font bytes unchanged"],
+      "owner": "WP-UI-005",
+      "tests": [
+        "python3 scripts/import_ui_assets.py",
+        "cargo run -p meridian-spec -- check"
+      ],
+      "exit_strategy": "Replace only through DEP-UI-006 amendment and heading layout corpus.",
+      "status": "Imported"
+    },
+    {
+      "id": "SRC-UI-007",
+      "source_url": "https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip",
+      "revision": "v2.304 / cd5227bd1f61dff3bbd6c814ceaf7ffd95e947d9",
+      "archive_hash": "sha256:6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf",
+      "spdx": "OFL-1.1",
+      "notices": ["third_party/licenses/jetbrains-mono-OFL-1.1.txt"],
+      "modifications": ["Selected reviewed variable TTF member", "Renamed only; font bytes unchanged"],
+      "owner": "WP-UI-005",
+      "tests": [
+        "python3 scripts/import_ui_assets.py",
+        "cargo run -p meridian-spec -- check"
+      ],
+      "exit_strategy": "Replace only through DEP-UI-007 amendment and code/data typography corpus.",
+      "status": "Imported"
+    },
+    {
+      "id": "SRC-UI-008",
+      "source_url": "https://github.com/lucide-icons/lucide/releases/download/1.25.0/lucide-icons-1.25.0.zip",
+      "revision": "1.25.0 / 5136572c10214634858fcf5f726b2a9d26683918",
+      "archive_hash": "sha256:070ca0b59b5b9c6587f9d09a033d8085596938784b71cfb3da9837c02b2b3a71",
+      "spdx": "ISC AND MIT",
+      "notices": ["third_party/licenses/lucide-ISC-MIT.txt"],
+      "modifications": [
+        "Selected reviewed SVG subset",
+        "Source SVG bytes unchanged",
+        "Generated renderer-neutral Meridian path geometry"
+      ],
+      "owner": "WP-UI-005",
+      "tests": [
+        "python3 scripts/import_ui_assets.py",
+        "python3 scripts/generate_ui_icons.py --check",
+        "cargo run -p meridian-spec -- check"
+      ],
+      "exit_strategy": "Update only through DEP-UI-008 amendment, pinned hashes, and regenerated icon corpus.",
+      "status": "Imported"
+    }
+  ]
+}

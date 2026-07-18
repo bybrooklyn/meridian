@@ -13,10 +13,12 @@ use meridian_ui_core::{
     UiDocumentDelta, UiDocumentError, UiDragKind, UiDragPayload, UiDropOperation, UiInputDeviceId,
     UiInputDeviceKind, UiLayout, UiLayoutHints, UiNode, UiNodeId, UiPoint, UiPointerButton,
     UiPointerEvent, UiPointerPhase, UiRect, UiScrollEvent, UiScrollPhase, UiScrollUnit, UiSize,
-    UiTextValidation, UiTheme, UiWidgetKind, MAX_FRAME_EVENTS, MAX_TEXT_BYTES,
+    UiStyle, UiStyleSelector, UiTextValidation, UiTheme, UiVisualState, UiWidgetKind,
+    MAX_FRAME_EVENTS, MAX_TEXT_BYTES,
 };
 use meridian_ui_render::{
-    DisplayList, DisplayListError, DisplayPrimitive, UiClipId, UiCornerRadii,
+    icon_geometry, DisplayList, DisplayListError, DisplayPrimitive, UiClipId, UiCornerRadii,
+    UiStroke,
 };
 use meridian_ui_semantics::{
     SemanticAction, SemanticDelta, SemanticLive, SemanticNode, SemanticTree, SemanticTreeError,
@@ -197,7 +199,23 @@ pub enum UiDiagnostic {
     TextFallbackMetrics {
         node: UiNodeId,
     },
+    TextFontSubstituted {
+        node: UiNodeId,
+    },
     TextRasterIncomplete {
+        node: UiNodeId,
+    },
+    IconGeometryRejected {
+        node: UiNodeId,
+    },
+    StyleTokenFallback {
+        node: UiNodeId,
+    },
+    IconThemeTokensFallback {
+        node: UiNodeId,
+    },
+    MotionThemeTokensFallback,
+    MotionTrackRejected {
         node: UiNodeId,
     },
     TextInputNotFocused,
@@ -285,6 +303,8 @@ pub struct UiFrameInput {
     pub density: UiDensity,
     pub contrast: UiContrast,
     pub motion: MotionPreference,
+    /// Caller-owned monotonic presentation interval for this frame.
+    pub presentation_delta_ms: u32,
     pub events: Vec<UiEvent>,
 }
 
@@ -300,9 +320,20 @@ impl UiFrameInput {
             density: UiDensity::Standard,
             contrast: UiContrast::Standard,
             motion: MotionPreference::Full,
+            presentation_delta_ms: 16,
             events: Vec::new(),
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct RejectedFrameContext {
+    theme: ThemeId,
+    density: UiDensity,
+    contrast: UiContrast,
+    motion: MotionPreference,
+    scale_factor: f32,
+    input_events: usize,
 }
 
 /// Accepted logical geometry for one stable retained node.
@@ -312,11 +343,305 @@ pub struct UiLayoutSnapshot {
     pub bounds: UiRect,
 }
 
+/// Retained visual state and resolved selector for one immutable frame.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiVisualStateSnapshot {
+    pub node: UiNodeId,
+    pub state: UiVisualState,
+    pub selector: UiStyleSelector,
+}
+
+/// Availability of a measurement owned by a later renderer or host adapter.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum UiMeasurementAvailability {
+    #[default]
+    Unavailable,
+    Available,
+}
+
+/// Explicit timing measurement contract for one reconciled frame.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiFrameTimingDiagnostics {
+    pub reconciliation: UiMeasurementAvailability,
+    pub layout: UiMeasurementAvailability,
+    pub text_shaping: UiMeasurementAvailability,
+    pub text_rasterization: UiMeasurementAvailability,
+    pub display_validation: UiMeasurementAvailability,
+    pub semantic_delta: UiMeasurementAvailability,
+}
+
+/// Stable identity reconciliation and layout coverage for one frame.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiReconciliationDiagnostics {
+    pub accepted_nodes: u32,
+    pub retained_nodes: u32,
+    pub inserted_nodes: u32,
+    pub removed_nodes: u32,
+    pub updated_nodes: u32,
+    pub layout_roots: u32,
+    pub reconciled_layout_nodes: u32,
+}
+
+/// Display-list primitive coverage emitted by the retained runtime.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiPrimitiveDiagnostics {
+    pub rects: u32,
+    pub borders: u32,
+    pub text: u32,
+    pub glyph_runs: u32,
+    pub focus_indicators: u32,
+    pub rounded_rects: u32,
+    pub paths: u32,
+    pub images: u32,
+    pub meshes: u32,
+    pub clip_pushes: u32,
+    pub clip_pops: u32,
+    pub layer_begins: u32,
+    pub layer_ends: u32,
+    pub shadows: u32,
+    pub backdrops: u32,
+}
+
+impl UiPrimitiveDiagnostics {
+    fn record(&mut self, primitive: &DisplayPrimitive) {
+        match primitive {
+            DisplayPrimitive::Rect { .. } => self.rects = self.rects.saturating_add(1),
+            DisplayPrimitive::Border { .. } => self.borders = self.borders.saturating_add(1),
+            DisplayPrimitive::Text { .. } => self.text = self.text.saturating_add(1),
+            DisplayPrimitive::GlyphRun { .. } => {
+                self.glyph_runs = self.glyph_runs.saturating_add(1);
+            }
+            DisplayPrimitive::FocusIndicator { .. } => {
+                self.focus_indicators = self.focus_indicators.saturating_add(1);
+            }
+            DisplayPrimitive::RoundedRect { .. } => {
+                self.rounded_rects = self.rounded_rects.saturating_add(1);
+            }
+            DisplayPrimitive::Path { .. } => self.paths = self.paths.saturating_add(1),
+            DisplayPrimitive::Image { .. } => self.images = self.images.saturating_add(1),
+            DisplayPrimitive::Mesh { .. } => self.meshes = self.meshes.saturating_add(1),
+            DisplayPrimitive::PushClip { .. } => {
+                self.clip_pushes = self.clip_pushes.saturating_add(1);
+            }
+            DisplayPrimitive::PopClip { .. } => self.clip_pops = self.clip_pops.saturating_add(1),
+            DisplayPrimitive::BeginLayer { .. } => {
+                self.layer_begins = self.layer_begins.saturating_add(1);
+            }
+            DisplayPrimitive::EndLayer { .. } => {
+                self.layer_ends = self.layer_ends.saturating_add(1);
+            }
+            DisplayPrimitive::Shadow { .. } => self.shadows = self.shadows.saturating_add(1),
+            DisplayPrimitive::Backdrop { .. } => self.backdrops = self.backdrops.saturating_add(1),
+        }
+    }
+}
+
+/// Text work observed from Meridian-owned layout/raster summaries.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiTextWorkDiagnostics {
+    pub primitives: u32,
+    pub glyphs: u32,
+    pub raster_glyphs: u32,
+    pub fallback_metrics: u32,
+    pub font_substitutions: u32,
+    pub unrasterized_primitives: u32,
+}
+
+/// Input, routing, focus, capture, virtualization, and motion coverage for a frame.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiInteractionDiagnostics {
+    pub input_events: u32,
+    pub event_routes: u32,
+    pub focus_entries: u32,
+    pub pointer_captures: u32,
+    pub scroll_captures: u32,
+    pub active_drags: u32,
+    pub virtualized_regions: u32,
+    pub active_animation_tracks: Option<u32>,
+    pub recovery_events: u32,
+}
+
+/// Renderer/cache measurements are owned by renderer adapters, not this runtime.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiRendererCacheDiagnostics {
+    pub renderer_batches: Option<u32>,
+    pub renderer_draws: Option<u32>,
+    pub cache_hits: Option<u32>,
+    pub cache_misses: Option<u32>,
+    pub cache_evictions: Option<u32>,
+}
+
+/// Bounded frame summary consumed by diagnostics, renderer caches, and recovery evidence.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UiFrameDiagnostics {
+    pub reconciliation: UiReconciliationDiagnostics,
+    pub timing: UiFrameTimingDiagnostics,
+    pub primitives: UiPrimitiveDiagnostics,
+    pub text: UiTextWorkDiagnostics,
+    pub interaction: UiInteractionDiagnostics,
+    pub renderer_cache: UiRendererCacheDiagnostics,
+    pub layout_nodes: u32,
+    pub display_primitives: u32,
+    pub semantic_nodes: u32,
+    pub event_routes: u32,
+    pub commands: u32,
+    pub clipboard_requests: u32,
+    pub completion_requests: u32,
+    pub text_inputs: u32,
+    pub scroll_snapshots: u32,
+    pub scroll_outcomes: u32,
+    pub drops: u32,
+    pub diagnostics: u32,
+    pub scale_factor: f32,
+    pub contrast: UiContrast,
+    pub motion: MotionPreference,
+    pub recovered_previous_snapshot: bool,
+}
+
+impl Default for UiFrameDiagnostics {
+    fn default() -> Self {
+        Self {
+            reconciliation: UiReconciliationDiagnostics::default(),
+            timing: UiFrameTimingDiagnostics::default(),
+            primitives: UiPrimitiveDiagnostics::default(),
+            text: UiTextWorkDiagnostics::default(),
+            interaction: UiInteractionDiagnostics {
+                active_animation_tracks: None,
+                ..UiInteractionDiagnostics::default()
+            },
+            renderer_cache: UiRendererCacheDiagnostics::default(),
+            layout_nodes: 0,
+            display_primitives: 0,
+            semantic_nodes: 0,
+            event_routes: 0,
+            commands: 0,
+            clipboard_requests: 0,
+            completion_requests: 0,
+            text_inputs: 0,
+            scroll_snapshots: 0,
+            scroll_outcomes: 0,
+            drops: 0,
+            diagnostics: 0,
+            scale_factor: 1.0,
+            contrast: UiContrast::Standard,
+            motion: MotionPreference::Full,
+            recovered_previous_snapshot: false,
+        }
+    }
+}
+
+impl UiFrameDiagnostics {
+    fn count(value: usize) -> u32 {
+        u32::try_from(value).unwrap_or(u32::MAX)
+    }
+
+    fn from_runtime(
+        runtime: &UiRuntime,
+        snapshot: &UiFrameSnapshot,
+        recovered_previous_snapshot: bool,
+        input_events: usize,
+    ) -> Self {
+        let mut primitives = UiPrimitiveDiagnostics::default();
+        let mut text = UiTextWorkDiagnostics::default();
+        for primitive in &snapshot.display_list.primitives {
+            primitives.record(primitive);
+            match primitive {
+                DisplayPrimitive::Text { layout, raster, .. }
+                | DisplayPrimitive::GlyphRun { layout, raster, .. } => {
+                    text.primitives = text.primitives.saturating_add(1);
+                    text.glyphs = text.glyphs.saturating_add(Self::count(layout.glyph_count));
+                    text.raster_glyphs = text
+                        .raster_glyphs
+                        .saturating_add(Self::count(raster.glyphs.len()));
+                    if layout.used_fallback_metrics {
+                        text.fallback_metrics = text.fallback_metrics.saturating_add(1);
+                    }
+                    if layout.used_fallback_font {
+                        text.font_substitutions = text.font_substitutions.saturating_add(1);
+                    }
+                    if raster.has_unrasterized_glyphs {
+                        text.unrasterized_primitives =
+                            text.unrasterized_primitives.saturating_add(1);
+                    }
+                }
+                DisplayPrimitive::Rect { .. }
+                | DisplayPrimitive::Border { .. }
+                | DisplayPrimitive::FocusIndicator { .. }
+                | DisplayPrimitive::RoundedRect { .. }
+                | DisplayPrimitive::Path { .. }
+                | DisplayPrimitive::Image { .. }
+                | DisplayPrimitive::Mesh { .. }
+                | DisplayPrimitive::PushClip { .. }
+                | DisplayPrimitive::PopClip { .. }
+                | DisplayPrimitive::BeginLayer { .. }
+                | DisplayPrimitive::EndLayer { .. }
+                | DisplayPrimitive::Shadow { .. }
+                | DisplayPrimitive::Backdrop { .. } => {}
+            }
+        }
+        let recovery_events = u32::from(recovered_previous_snapshot);
+        Self {
+            reconciliation: UiReconciliationDiagnostics {
+                accepted_nodes: Self::count(runtime.document.nodes().count()),
+                retained_nodes: Self::count(runtime.last_document_delta.retained.len()),
+                inserted_nodes: Self::count(runtime.last_document_delta.inserted.len()),
+                removed_nodes: Self::count(runtime.last_document_delta.removed.len()),
+                updated_nodes: Self::count(runtime.last_document_delta.updated.len()),
+                layout_roots: u32::from(
+                    snapshot
+                        .layout
+                        .iter()
+                        .any(|entry| entry.node == runtime.document.root()),
+                ),
+                reconciled_layout_nodes: Self::count(snapshot.layout.len()),
+            },
+            timing: UiFrameTimingDiagnostics::default(),
+            primitives,
+            text,
+            interaction: UiInteractionDiagnostics {
+                input_events: Self::count(input_events),
+                event_routes: Self::count(snapshot.event_routes.len()),
+                focus_entries: u32::from(snapshot.focused.is_some()),
+                pointer_captures: u32::from(runtime.pointer_capture.is_some()),
+                scroll_captures: u32::from(runtime.scroll_capture.is_some()),
+                active_drags: u32::from(snapshot.drag.is_some()),
+                virtualized_regions: Self::count(
+                    runtime
+                        .document
+                        .nodes()
+                        .filter(|node| node.kind == UiWidgetKind::VirtualList)
+                        .count(),
+                ),
+                active_animation_tracks: Some(Self::count(runtime.motion_system.active_count())),
+                recovery_events,
+            },
+            renderer_cache: UiRendererCacheDiagnostics::default(),
+            layout_nodes: Self::count(snapshot.layout.len()),
+            display_primitives: Self::count(snapshot.display_list.primitives.len()),
+            semantic_nodes: Self::count(snapshot.semantic_tree.nodes.len()),
+            event_routes: Self::count(snapshot.event_routes.len()),
+            commands: Self::count(snapshot.commands.len()),
+            clipboard_requests: Self::count(snapshot.clipboard_requests.len()),
+            completion_requests: Self::count(snapshot.completion_requests.len()),
+            text_inputs: Self::count(snapshot.text_inputs.len()),
+            scroll_snapshots: Self::count(snapshot.scroll.len()),
+            scroll_outcomes: Self::count(snapshot.scroll_outcomes.len()),
+            drops: Self::count(snapshot.drops.len()),
+            diagnostics: Self::count(snapshot.diagnostics.len()),
+            scale_factor: sanitized_scale_factor(snapshot.scale_factor),
+            contrast: snapshot.contrast,
+            motion: snapshot.motion,
+            recovered_previous_snapshot,
+        }
+    }
+}
+
 /// Immutable frame result handed to renderer and semantic adapters.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiFrameSnapshot {
     pub revision: u64,
     pub layout: Vec<UiLayoutSnapshot>,
+    pub visual_states: Vec<UiVisualStateSnapshot>,
     pub theme: ThemeId,
     pub density: UiDensity,
     pub contrast: UiContrast,
@@ -336,6 +661,7 @@ pub struct UiFrameSnapshot {
     pub drag: Option<UiDragSnapshot>,
     pub drops: Vec<UiDropRequest>,
     pub diagnostics: Vec<UiDiagnostic>,
+    pub frame_diagnostics: UiFrameDiagnostics,
     pub focused: Option<UiNodeId>,
     pub preedit: Option<String>,
 }
@@ -375,6 +701,19 @@ struct ActiveDrag {
     keyboard: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UiAnimatedColorSlot {
+    Border,
+    Background,
+    Foreground,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct UiAnimatedColorTarget {
+    slot: UiAnimatedColorSlot,
+    color: UiColor,
+}
+
 fn bounded_count_as_f32(value: usize) -> f32 {
     f32::from(u16::try_from(value).unwrap_or(u16::MAX))
 }
@@ -384,6 +723,52 @@ fn finite_nonnegative(value: f32) -> f32 {
         value.max(0.0)
     } else {
         0.0
+    }
+}
+
+fn effective_preferences(input: &UiFrameInput) -> (UiContrast, MotionPreference) {
+    (
+        if input.high_contrast {
+            UiContrast::High
+        } else {
+            input.contrast
+        },
+        if input.reduced_motion {
+            MotionPreference::Reduced
+        } else {
+            input.motion
+        },
+    )
+}
+
+fn animated_color_target(style: UiStyle) -> UiAnimatedColorTarget {
+    if let Some(border) = style.border {
+        UiAnimatedColorTarget {
+            slot: UiAnimatedColorSlot::Border,
+            color: border.color,
+        }
+    } else if let Some(background) = style.background {
+        UiAnimatedColorTarget {
+            slot: UiAnimatedColorSlot::Background,
+            color: background,
+        }
+    } else {
+        UiAnimatedColorTarget {
+            slot: UiAnimatedColorSlot::Foreground,
+            color: style.foreground,
+        }
+    }
+}
+
+fn apply_animated_color(style: &mut UiStyle, slot: UiAnimatedColorSlot, color: UiColor) {
+    match slot {
+        UiAnimatedColorSlot::Border => {
+            if let Some(border) = style.border.as_mut() {
+                border.color = color;
+            }
+        }
+        UiAnimatedColorSlot::Background => style.background = Some(color),
+        UiAnimatedColorSlot::Foreground => style.foreground = color,
     }
 }
 
@@ -427,6 +812,120 @@ fn inset_bounds(bounds: UiRect, inset: f32) -> UiRect {
     )
 }
 
+fn emit_node_surface(
+    node: UiNodeId,
+    style: UiStyle,
+    bounds: UiRect,
+    display: &mut DisplayList,
+) -> Result<(), DisplayListError> {
+    let radius = style.corner_radius;
+    match (style.background, style.border, radius > 0.0) {
+        (Some(background), Some(border), true) => {
+            let width = border.width.max(1);
+            display.try_push(DisplayPrimitive::RoundedRect {
+                node,
+                bounds,
+                radii: UiCornerRadii::uniform(radius),
+                color: border.color,
+            })?;
+            display.try_push(DisplayPrimitive::RoundedRect {
+                node,
+                bounds: inset_bounds(bounds, f32::from(width)),
+                radii: UiCornerRadii::uniform((radius - f32::from(width)).max(0.0)),
+                color: background,
+            })?;
+        }
+        (Some(background), _, true) => {
+            display.try_push(DisplayPrimitive::RoundedRect {
+                node,
+                bounds,
+                radii: UiCornerRadii::uniform(radius),
+                color: background,
+            })?;
+        }
+        (Some(background), _, false) => {
+            display.try_push(DisplayPrimitive::Rect {
+                node,
+                bounds,
+                color: background,
+            })?;
+            if let Some(border) = style.border {
+                display.try_push(DisplayPrimitive::Border {
+                    node,
+                    bounds,
+                    color: border.color,
+                    width: border.width.max(1),
+                })?;
+            }
+        }
+        (None, Some(border), _) => {
+            display.try_push(DisplayPrimitive::Border {
+                node,
+                bounds,
+                color: border.color,
+                width: border.width.max(1),
+            })?;
+        }
+        (None, None, _) => {}
+    }
+    Ok(())
+}
+
+fn emit_state_treatments(
+    node: UiNodeId,
+    bounds: UiRect,
+    style: UiStyle,
+    state: UiVisualState,
+    display: &mut DisplayList,
+) -> Result<(), DisplayListError> {
+    let indicator = style.border.map_or(style.foreground, |border| border.color);
+    match state.selector() {
+        UiStyleSelector::Selected => {
+            display.try_push(DisplayPrimitive::Rect {
+                node,
+                bounds: UiRect::new(
+                    bounds.origin,
+                    UiSize::new(3.0_f32.min(bounds.size.width), bounds.size.height),
+                ),
+                color: indicator,
+            })?;
+        }
+        UiStyleSelector::Invalid => {
+            display.try_push(DisplayPrimitive::Border {
+                node,
+                bounds,
+                color: indicator,
+                width: 2,
+            })?;
+            let height = 3.0_f32.min(bounds.size.height);
+            display.try_push(DisplayPrimitive::Rect {
+                node,
+                bounds: UiRect::new(
+                    UiPoint {
+                        x: bounds.origin.x,
+                        y: bounds.origin.y + bounds.size.height - height,
+                    },
+                    UiSize::new(bounds.size.width, height),
+                ),
+                color: indicator,
+            })?;
+        }
+        UiStyleSelector::Idle
+        | UiStyleSelector::Hovered
+        | UiStyleSelector::Focused
+        | UiStyleSelector::Pressed
+        | UiStyleSelector::Disabled => {}
+    }
+    if state.focused {
+        display.try_push(DisplayPrimitive::FocusIndicator {
+            node,
+            bounds,
+            color: indicator,
+        })?;
+    }
+    Ok(())
+}
+
 fn resolve_constraints(bounds: UiRect, constraints: UiConstraints) -> UiRect {
     let maximum = constraints
         .maximum
@@ -467,7 +966,8 @@ fn resolve_constraints(bounds: UiRect, constraints: UiConstraints) -> UiRect {
 struct UiEmission<'a> {
     layout: &'a BTreeMap<UiNodeId, UiRect>,
     scale_factor: f32,
-    high_contrast: bool,
+    icon_tokens: meridian_ui_core::UiIconTokens,
+    icon_tokens_fallback: bool,
     display: &'a mut DisplayList,
     semantic_nodes: &'a mut Vec<SemanticNode>,
     diagnostics: &'a mut Vec<UiDiagnostic>,
@@ -519,12 +1019,16 @@ impl UiFrameEffects {
 struct UiInteractionCheckpoint {
     text_inputs: BTreeMap<UiNodeId, UiTextInputState>,
     focused: Option<UiNodeId>,
+    hovered: Option<UiNodeId>,
     collection_cursor: UiCollectionCursor,
     pointer_capture: Option<PointerCapture>,
     scroll_offsets: BTreeMap<UiNodeId, f32>,
     scroll_capture: Option<ScrollCapture>,
     drag: Option<ActiveDrag>,
     previous_semantics: Option<SemanticTree>,
+    motion_system: UiMotionSystem,
+    resolved_styles: BTreeMap<UiNodeId, UiStyle>,
+    animated_color_targets: BTreeMap<UiNodeId, UiAnimatedColorTarget>,
 }
 
 /// Retained runtime state.  All mutation is applied between immutable outputs.
@@ -534,6 +1038,7 @@ pub struct UiRuntime {
     text: UiTextEngine,
     text_inputs: BTreeMap<UiNodeId, UiTextInputState>,
     focused: Option<UiNodeId>,
+    hovered: Option<UiNodeId>,
     collection_cursor: UiCollectionCursor,
     pointer_capture: Option<PointerCapture>,
     scroll_offsets: BTreeMap<UiNodeId, f32>,
@@ -543,6 +1048,9 @@ pub struct UiRuntime {
     revision: u64,
     last_document_delta: UiDocumentDelta,
     last_snapshot: Option<Arc<UiFrameSnapshot>>,
+    motion_system: UiMotionSystem,
+    resolved_styles: BTreeMap<UiNodeId, UiStyle>,
+    animated_color_targets: BTreeMap<UiNodeId, UiAnimatedColorTarget>,
 }
 
 impl UiRuntime {
@@ -568,6 +1076,7 @@ impl UiRuntime {
             text: UiTextEngine::default(),
             text_inputs,
             focused: None,
+            hovered: None,
             collection_cursor: UiCollectionCursor::default(),
             pointer_capture: None,
             scroll_offsets,
@@ -577,6 +1086,9 @@ impl UiRuntime {
             revision: 0,
             last_document_delta: UiDocumentDelta::default(),
             last_snapshot: None,
+            motion_system: UiMotionSystem::default(),
+            resolved_styles: BTreeMap::new(),
+            animated_color_targets: BTreeMap::new(),
         }
     }
 
@@ -641,6 +1153,18 @@ impl UiRuntime {
         {
             self.focused = self.collection_cursor.selected;
         }
+        if self.hovered.is_some_and(|id| {
+            document
+                .node(id)
+                .is_none_or(|node| node.semantics.state.disabled)
+        }) {
+            self.hovered = None;
+        }
+        for removed in &delta.removed {
+            self.motion_system.remove_node(*removed);
+            self.resolved_styles.remove(removed);
+            self.animated_color_targets.remove(removed);
+        }
         self.pointer_capture = None;
         self.scroll_capture = None;
         self.drag = None;
@@ -680,6 +1204,23 @@ impl UiRuntime {
             .and_then(UiTextInputState::value)
     }
 
+    /// Moves focus to one enabled retained control after a typed application
+    /// command such as Search or pane restoration.
+    ///
+    /// Returns `false` without changing focus when the identity is absent,
+    /// disabled, or not keyboard-focusable.
+    pub fn focus_retained_node(&mut self, node: UiNodeId) -> bool {
+        if !self
+            .document
+            .node(node)
+            .is_some_and(|candidate| candidate.focusable && !candidate.semantics.state.disabled)
+        {
+            return false;
+        }
+        self.set_focus(node);
+        true
+    }
+
     /// Restores one non-password text control to the current document value.
     ///
     /// Documents normally preserve a user's in-progress text by stable node
@@ -707,82 +1248,60 @@ impl UiRuntime {
 
     /// Processes events, resolves retained layout, and returns only immutable output.
     pub fn reconcile(&mut self, input: UiFrameInput) -> UiFrameOutput {
-        let fallback_theme = input.theme.id;
-        let fallback_density = input.density;
-        let fallback_contrast = input.contrast;
-        let fallback_motion = input.motion;
-        let fallback_scale = sanitized_scale_factor(input.scale_factor);
+        let (contrast, motion) = effective_preferences(&input);
+        let fallback = RejectedFrameContext {
+            theme: input.theme.id,
+            density: input.density,
+            contrast,
+            motion,
+            scale_factor: sanitized_scale_factor(input.scale_factor),
+            input_events: input.events.len(),
+        };
         match self.try_reconcile(input) {
             Ok(snapshot) => snapshot,
             Err(UiFrameError::TooManyEvents { count, maximum }) => self.rejected_snapshot(
-                fallback_theme,
-                fallback_density,
-                fallback_contrast,
-                fallback_motion,
-                fallback_scale,
+                RejectedFrameContext {
+                    input_events: count,
+                    ..fallback
+                },
                 UiDiagnostic::EventBatchRejected { count, maximum },
             ),
             Err(UiFrameError::TooManyInputBytes { bytes, maximum }) => self.rejected_snapshot(
-                fallback_theme,
-                fallback_density,
-                fallback_contrast,
-                fallback_motion,
-                fallback_scale,
+                fallback,
                 UiDiagnostic::InputByteLimitExceeded { bytes, maximum },
             ),
             Err(UiFrameError::TooManyEffects { count, maximum }) => self.rejected_snapshot(
-                fallback_theme,
-                fallback_density,
-                fallback_contrast,
-                fallback_motion,
-                fallback_scale,
+                fallback,
                 UiDiagnostic::FrameEffectLimitExceeded { count, maximum },
             ),
             Err(UiFrameError::TooManyEffectBytes { bytes, maximum }) => self.rejected_snapshot(
-                fallback_theme,
-                fallback_density,
-                fallback_contrast,
-                fallback_motion,
-                fallback_scale,
+                fallback,
                 UiDiagnostic::FrameEffectByteLimitExceeded { bytes, maximum },
             ),
-            Err(UiFrameError::InvalidDisplayList(error)) => self.rejected_snapshot(
-                fallback_theme,
-                fallback_density,
-                fallback_contrast,
-                fallback_motion,
-                fallback_scale,
-                UiDiagnostic::FrameRejected(error),
-            ),
-            Err(UiFrameError::SemanticTreeRejected(error)) => self.rejected_snapshot(
-                fallback_theme,
-                fallback_density,
-                fallback_contrast,
-                fallback_motion,
-                fallback_scale,
-                UiDiagnostic::SemanticTreeRejected(error),
-            ),
+            Err(UiFrameError::InvalidDisplayList(error)) => {
+                self.rejected_snapshot(fallback, UiDiagnostic::FrameRejected(error))
+            }
+            Err(UiFrameError::SemanticTreeRejected(error)) => {
+                self.rejected_snapshot(fallback, UiDiagnostic::SemanticTreeRejected(error))
+            }
         }
     }
 
     fn rejected_snapshot(
         &self,
-        theme: ThemeId,
-        density: UiDensity,
-        contrast: UiContrast,
-        motion: MotionPreference,
-        scale_factor: f32,
+        context: RejectedFrameContext,
         diagnostic: UiDiagnostic,
     ) -> UiFrameOutput {
         let mut fallback = self.last_snapshot.clone().unwrap_or_else(|| {
             Arc::new(UiFrameSnapshot {
                 revision: self.revision,
                 layout: Vec::new(),
-                theme,
-                density,
-                contrast,
-                motion,
-                scale_factor,
+                visual_states: Vec::new(),
+                theme: context.theme,
+                density: context.density,
+                contrast: context.contrast,
+                motion: context.motion,
+                scale_factor: context.scale_factor,
                 display_list: DisplayList::default(),
                 semantic_tree: SemanticTree::default(),
                 semantic_delta: SemanticDelta::Unchanged,
@@ -797,6 +1316,7 @@ impl UiRuntime {
                 drag: None,
                 drops: Vec::new(),
                 diagnostics: Vec::new(),
+                frame_diagnostics: UiFrameDiagnostics::default(),
                 focused: self.focused,
                 preedit: self.focused_preedit(),
             })
@@ -815,6 +1335,8 @@ impl UiRuntime {
             snapshot.drag = self.drag.map(Self::drag_snapshot);
             snapshot.focused = self.focused;
             snapshot.preedit = self.focused_preedit();
+            snapshot.frame_diagnostics =
+                UiFrameDiagnostics::from_runtime(self, snapshot, true, context.input_events);
         }
         fallback
     }
@@ -827,10 +1349,22 @@ impl UiRuntime {
     /// accepted snapshot.
     pub fn try_reconcile(&mut self, input: UiFrameInput) -> Result<UiFrameOutput, UiFrameError> {
         Self::validate_input_bound(&input)?;
+        let input_event_count = input.events.len();
         let checkpoint = self.interaction_checkpoint();
+        let (contrast, motion) = effective_preferences(&input);
+        self.motion_system.advance(input.presentation_delta_ms);
+        self.motion_system.apply_preference(motion);
+        self.resolve_base_styles(&input.theme, contrast);
         let mut layout = self.resolved_layout(input.viewport);
         let mut effects = UiFrameEffects::default();
-        let line_step = finite_nonnegative(input.theme.geometry.spacing_base) * 4.0;
+        let (_, motion_tokens_fallback) = input.theme.resolved_motion_tokens();
+        if motion_tokens_fallback {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::MotionThemeTokensFallback);
+        }
+        let (geometry_tokens, _) = input.theme.resolved_geometry_tokens();
+        let line_step = geometry_tokens.spacing_base * 4.0;
         for event in input.events {
             let layout_changed = self.process_event(event, &layout, &mut effects, line_step);
             self.ensure_effect_bound(&effects, &checkpoint)?;
@@ -841,21 +1375,14 @@ impl UiRuntime {
         let text_validation = self.text_validation_snapshots(&mut effects.diagnostics);
         let mut display_list = DisplayList::default();
         let mut semantic_nodes = Vec::new();
-        let contrast = if input.high_contrast {
-            UiContrast::High
-        } else {
-            input.contrast
-        };
-        let motion = if input.reduced_motion {
-            MotionPreference::Reduced
-        } else {
-            input.motion
-        };
-        let high_contrast = contrast == UiContrast::High;
+        let visual_states =
+            self.resolve_visual_styles(&input.theme, contrast, motion, &mut effects.diagnostics);
+        let (icon_tokens, icon_tokens_fallback) = input.theme.resolved_icon_tokens();
         let mut emission = UiEmission {
             layout: &layout,
             scale_factor: sanitized_scale_factor(input.scale_factor),
-            high_contrast,
+            icon_tokens,
+            icon_tokens_fallback,
             display: &mut display_list,
             semantic_nodes: &mut semantic_nodes,
             diagnostics: &mut effects.diagnostics,
@@ -872,12 +1399,10 @@ impl UiRuntime {
             focus: self.focused,
             nodes: semantic_nodes,
         };
-        let semantic_delta = tree
-            .delta_from(self.previous_semantics.as_ref())
-            .map_err(UiFrameError::SemanticTreeRejected)?;
+        let semantic_delta = self.semantic_delta_or_restore(&tree, checkpoint)?;
         self.previous_semantics = Some(tree.clone());
         self.revision = self.revision.saturating_add(1);
-        let snapshot = Arc::new(UiFrameSnapshot {
+        let mut snapshot = UiFrameSnapshot {
             revision: self.revision,
             layout: layout
                 .iter()
@@ -886,6 +1411,7 @@ impl UiRuntime {
                     bounds: *bounds,
                 })
                 .collect(),
+            visual_states,
             theme: input.theme.id,
             density: input.density,
             contrast,
@@ -909,9 +1435,13 @@ impl UiRuntime {
             drag: self.drag.map(Self::drag_snapshot),
             drops: effects.drops,
             diagnostics: effects.diagnostics,
+            frame_diagnostics: UiFrameDiagnostics::default(),
             focused: self.focused,
             preedit: self.focused_preedit(),
-        });
+        };
+        snapshot.frame_diagnostics =
+            UiFrameDiagnostics::from_runtime(self, &snapshot, false, input_event_count);
+        let snapshot = Arc::new(snapshot);
         self.last_snapshot = Some(Arc::clone(&snapshot));
         Ok(snapshot)
     }
@@ -984,24 +1514,165 @@ impl UiRuntime {
         UiInteractionCheckpoint {
             text_inputs: self.text_inputs.clone(),
             focused: self.focused,
+            hovered: self.hovered,
             collection_cursor: self.collection_cursor,
             pointer_capture: self.pointer_capture,
             scroll_offsets: self.scroll_offsets.clone(),
             scroll_capture: self.scroll_capture,
             drag: self.drag,
             previous_semantics: self.previous_semantics.clone(),
+            motion_system: self.motion_system.clone(),
+            resolved_styles: self.resolved_styles.clone(),
+            animated_color_targets: self.animated_color_targets.clone(),
         }
     }
 
     fn restore_interaction(&mut self, checkpoint: UiInteractionCheckpoint) {
         self.text_inputs = checkpoint.text_inputs;
         self.focused = checkpoint.focused;
+        self.hovered = checkpoint.hovered;
         self.collection_cursor = checkpoint.collection_cursor;
         self.pointer_capture = checkpoint.pointer_capture;
         self.scroll_offsets = checkpoint.scroll_offsets;
         self.scroll_capture = checkpoint.scroll_capture;
         self.drag = checkpoint.drag;
         self.previous_semantics = checkpoint.previous_semantics;
+        self.motion_system = checkpoint.motion_system;
+        self.resolved_styles = checkpoint.resolved_styles;
+        self.animated_color_targets = checkpoint.animated_color_targets;
+    }
+
+    fn semantic_delta_or_restore(
+        &mut self,
+        tree: &SemanticTree,
+        checkpoint: UiInteractionCheckpoint,
+    ) -> Result<SemanticDelta, UiFrameError> {
+        tree.delta_from(self.previous_semantics.as_ref())
+            .map_err(|error| {
+                self.restore_interaction(checkpoint);
+                UiFrameError::SemanticTreeRejected(error)
+            })
+    }
+
+    fn resolve_base_styles(&mut self, theme: &UiTheme, contrast: UiContrast) {
+        self.resolved_styles = self
+            .document
+            .nodes()
+            .map(|node| {
+                (
+                    node.id,
+                    (*theme)
+                        .resolve_style(
+                            node.style_reference,
+                            node.style,
+                            UiVisualState::default(),
+                            contrast,
+                        )
+                        .style,
+                )
+            })
+            .collect();
+    }
+
+    fn resolve_visual_styles(
+        &mut self,
+        theme: &UiTheme,
+        contrast: UiContrast,
+        motion: MotionPreference,
+        diagnostics: &mut Vec<UiDiagnostic>,
+    ) -> Vec<UiVisualStateSnapshot> {
+        let nodes: Vec<_> = self.document.nodes().cloned().collect();
+        let (motion_tokens, motion_tokens_fallback) = (*theme).resolved_motion_tokens();
+        if motion_tokens_fallback && !diagnostics.contains(&UiDiagnostic::MotionThemeTokensFallback)
+        {
+            diagnostics.push(UiDiagnostic::MotionThemeTokensFallback);
+        }
+        let mut retained_targets = BTreeMap::new();
+        let mut resolved_styles = BTreeMap::new();
+        let mut visual_states = Vec::with_capacity(nodes.len());
+        for node in nodes {
+            let state = self.visual_state(&node);
+            let resolution =
+                (*theme).resolve_style(node.style_reference, node.style, state, contrast);
+            if resolution.used_token_fallback {
+                diagnostics.push(UiDiagnostic::StyleTokenFallback { node: node.id });
+            }
+            let mut style = resolution.style;
+            let target = animated_color_target(style);
+            if let Some(previous) = self.animated_color_targets.get(&node.id).copied() {
+                if previous != target {
+                    if previous.slot == target.slot {
+                        if self
+                            .motion_system
+                            .retarget_color(
+                                node.id,
+                                previous.color,
+                                target.color,
+                                motion_tokens.state_transition_min_ms,
+                                motion,
+                                motion_tokens,
+                            )
+                            .is_err()
+                        {
+                            self.motion_system
+                                .remove_channel(node.id, UiMotionChannel::Color);
+                            diagnostics.push(UiDiagnostic::MotionTrackRejected { node: node.id });
+                        }
+                    } else {
+                        self.motion_system
+                            .remove_channel(node.id, UiMotionChannel::Color);
+                    }
+                }
+            } else {
+                self.motion_system
+                    .remove_channel(node.id, UiMotionChannel::Color);
+            }
+            if let Some(UiMotionSnapshot {
+                current: UiPresentationValue::Color(color),
+                ..
+            }) = self.motion_system.snapshot(node.id, UiMotionChannel::Color)
+            {
+                apply_animated_color(&mut style, target.slot, color);
+            }
+            retained_targets.insert(node.id, target);
+            resolved_styles.insert(node.id, style);
+            visual_states.push(UiVisualStateSnapshot {
+                node: node.id,
+                state,
+                selector: resolution.selector,
+            });
+        }
+        self.animated_color_targets = retained_targets;
+        self.resolved_styles = resolved_styles;
+        visual_states
+    }
+
+    fn visual_state(&self, node: &UiNode) -> UiVisualState {
+        let invalid = node.semantics.state.invalid
+            || node.text_validation.is_some_and(|rule| {
+                self.text_inputs
+                    .get(&node.id)
+                    .is_none_or(|state| !state.is_valid(rule))
+            });
+        let disabled = node.semantics.state.disabled;
+        UiVisualState {
+            hovered: !disabled && self.hovered == Some(node.id),
+            pressed: !disabled
+                && self
+                    .pointer_capture
+                    .is_some_and(|capture| capture.target == node.id),
+            focused: !disabled && self.focused == Some(node.id),
+            disabled,
+            selected: node.semantics.state.selected,
+            invalid,
+        }
+    }
+
+    fn resolved_style(&self, node: UiNodeId) -> UiStyle {
+        self.resolved_styles
+            .get(&node)
+            .copied()
+            .unwrap_or_else(UiStyle::transparent)
     }
 
     fn resolved_layout(&mut self, viewport: UiSize) -> BTreeMap<UiNodeId, UiRect> {
@@ -1032,7 +1703,7 @@ impl UiRuntime {
         if count == 0 {
             return;
         }
-        let content_bounds = inset_bounds(bounds, node.style.padding);
+        let content_bounds = inset_bounds(bounds, self.resolved_style(id).padding);
         match node.layout {
             UiLayout::Overlay => {
                 for child in &node.children {
@@ -1556,9 +2227,19 @@ impl UiRuntime {
                 self.pointer_capture = None;
                 self.drag = None;
             }
+            self.hovered = None;
             effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
             return false;
         }
+        let hover_capable = matches!(
+            event.kind,
+            UiInputDeviceKind::Mouse | UiInputDeviceKind::Trackpad | UiInputDeviceKind::Pen
+        );
+        self.hovered = if event.phase == UiPointerPhase::Cancel || !hover_capable {
+            None
+        } else {
+            self.hit_test(event.position, layout)
+        };
         match event.phase {
             UiPointerPhase::Press => {
                 let Some(button) = Self::effective_pointer_button(event) else {
@@ -2397,7 +3078,7 @@ impl UiRuntime {
         let Some(bounds) = layout.get(&id).copied() else {
             return 0.0;
         };
-        let viewport = inset_bounds(bounds, node.style.padding);
+        let viewport = inset_bounds(bounds, self.resolved_style(id).padding);
         let viewport_extent = if axis == UiAxis::Vertical {
             viewport.size.height
         } else {
@@ -2467,11 +3148,7 @@ impl UiRuntime {
         let Some(bounds) = emission.layout.get(&id).copied() else {
             return Ok(());
         };
-        let foreground = if emission.high_contrast {
-            UiColor::rgba(1.0, 1.0, 1.0, 1.0)
-        } else {
-            node.style.foreground
-        };
+        let style = self.resolved_style(id);
         let clip = node.constraints.clip;
         let mut semantics = node.semantics.clone();
         if let Some(rule) = node.text_validation {
@@ -2488,13 +3165,13 @@ impl UiRuntime {
             emission.display.try_push(DisplayPrimitive::PushClip {
                 id,
                 bounds,
-                radii: UiCornerRadii::default(),
+                radii: UiCornerRadii::uniform(style.corner_radius),
             })?;
             Some(id)
         } else {
             None
         };
-        self.emit_node_visuals(id, bounds, foreground, emission)?;
+        self.emit_node_visuals(id, bounds, style, emission)?;
         emission.semantic_nodes.push(SemanticNode {
             id,
             parent,
@@ -2534,79 +3211,176 @@ impl UiRuntime {
         &mut self,
         id: UiNodeId,
         bounds: UiRect,
-        foreground: UiColor,
+        style: UiStyle,
         emission: &mut UiEmission<'_>,
     ) -> Result<(), DisplayListError> {
         let Some(node) = self.document.node(id) else {
             return Ok(());
         };
-        if let Some(background) = node.style.background {
-            emission.display.try_push(DisplayPrimitive::Rect {
-                node: id,
-                bounds,
-                color: background,
-            })?;
-        }
-        if let Some(border) = node.style.border {
-            emission.display.try_push(DisplayPrimitive::Border {
-                node: id,
-                bounds,
-                color: border.color,
-                width: border.width.max(1),
-            })?;
-        }
+        let visual_state = self.visual_state(node);
+        emit_node_surface(id, style, bounds, emission.display)?;
         let rendered_text = self
             .text_inputs
             .get(&id)
             .map(UiTextInputState::rendered_text)
             .or_else(|| node.text.clone());
+        let content_width = (bounds.size.width - style.padding * 2.0).max(1.0);
+        let content_height = (bounds.size.height - style.padding * 2.0).max(1.0);
+        let mut text_origin_x = bounds.origin.x + style.padding;
+        let mut text_width = content_width;
+        emit_node_icon(
+            IconVisualParams {
+                id,
+                node,
+                bounds,
+                style,
+                has_text: rendered_text.is_some(),
+            },
+            emission,
+            &mut text_origin_x,
+            &mut text_width,
+        )?;
         if let Some(text) = rendered_text {
-            let text_bounds = UiRect::new(
-                UiPoint {
-                    x: bounds.origin.x + node.style.padding,
-                    y: bounds.origin.y + node.style.padding,
-                },
-                UiSize::new(
-                    (bounds.size.width - node.style.padding * 2.0).max(1.0),
-                    (bounds.size.height - node.style.padding * 2.0).max(1.0),
-                ),
-            );
-            let text_output = self.text.layout(
-                &text,
-                text_bounds.size.width,
-                node.style.font_size,
-                emission.scale_factor,
-            );
-            if text_output.layout.used_fallback_metrics {
-                emission
-                    .diagnostics
-                    .push(UiDiagnostic::TextFallbackMetrics { node: id });
-            }
-            if text_output.raster.has_unrasterized_glyphs {
-                emission
-                    .diagnostics
-                    .push(UiDiagnostic::TextRasterIncomplete { node: id });
-            }
-            emission.display.try_push(DisplayPrimitive::Text {
-                node: id,
-                bounds: text_bounds,
-                text,
-                color: foreground,
-                layout: text_output.layout,
-                raster: text_output.raster,
-            })?;
-        }
-        if self.focused == Some(id) {
-            emission
-                .display
-                .try_push(DisplayPrimitive::FocusIndicator {
-                    node: id,
+            emit_node_text(
+                &mut self.text,
+                TextVisualParams {
+                    id,
+                    node,
+                    style,
+                    text,
+                    origin_x: text_origin_x,
+                    width: text_width,
+                    height: content_height,
                     bounds,
-                    color: UiColor::focus(),
-                })?;
+                },
+                emission,
+            )?;
         }
+        emit_state_treatments(id, bounds, style, visual_state, emission.display)?;
         Ok(())
     }
+}
+
+struct TextVisualParams<'a> {
+    id: UiNodeId,
+    node: &'a UiNode,
+    style: UiStyle,
+    text: String,
+    origin_x: f32,
+    width: f32,
+    height: f32,
+    bounds: UiRect,
+}
+
+fn emit_node_text(
+    text_engine: &mut UiTextEngine,
+    params: TextVisualParams<'_>,
+    emission: &mut UiEmission<'_>,
+) -> Result<(), DisplayListError> {
+    let text_bounds = UiRect::new(
+        UiPoint {
+            x: params.origin_x,
+            y: params.bounds.origin.y + params.style.padding,
+        },
+        UiSize::new(params.width, params.height),
+    );
+    let text_output = text_engine.layout(
+        &params.text,
+        text_bounds.size.width,
+        params.style.font_size,
+        emission.scale_factor,
+        params.node.font_role,
+    );
+    if text_output.layout.used_fallback_metrics {
+        emission
+            .diagnostics
+            .push(UiDiagnostic::TextFallbackMetrics { node: params.id });
+    }
+    if text_output.layout.used_fallback_font {
+        emission
+            .diagnostics
+            .push(UiDiagnostic::TextFontSubstituted { node: params.id });
+    }
+    if text_output.raster.has_unrasterized_glyphs {
+        emission
+            .diagnostics
+            .push(UiDiagnostic::TextRasterIncomplete { node: params.id });
+    }
+    emission.display.try_push(DisplayPrimitive::Text {
+        node: params.id,
+        bounds: text_bounds,
+        text: params.text,
+        color: params.style.foreground,
+        layout: text_output.layout,
+        raster: text_output.raster,
+    })
+}
+
+#[derive(Clone, Copy)]
+struct IconVisualParams<'a> {
+    id: UiNodeId,
+    node: &'a UiNode,
+    bounds: UiRect,
+    style: UiStyle,
+    has_text: bool,
+}
+
+fn emit_node_icon(
+    params: IconVisualParams<'_>,
+    emission: &mut UiEmission<'_>,
+    text_origin_x: &mut f32,
+    text_width: &mut f32,
+) -> Result<(), DisplayListError> {
+    let Some(icon) = params.node.icon else {
+        return Ok(());
+    };
+    let content_width = (params.bounds.size.width - params.style.padding * 2.0).max(1.0);
+    let content_height = (params.bounds.size.height - params.style.padding * 2.0).max(1.0);
+    let side = emission
+        .icon_tokens
+        .size
+        .min(content_width)
+        .min(content_height)
+        .max(1.0);
+    let icon_x = if params.has_text {
+        *text_origin_x
+    } else {
+        params.bounds.origin.x + (params.bounds.size.width - side) * 0.5
+    };
+    let icon_bounds = UiRect::new(
+        UiPoint {
+            x: icon_x,
+            y: params.bounds.origin.y + (params.bounds.size.height - side) * 0.5,
+        },
+        UiSize::new(side, side),
+    );
+    match icon_geometry(icon, icon_bounds) {
+        Ok(geometry) => {
+            let stroke = UiStroke::new(params.style.foreground, emission.icon_tokens.stroke_width);
+            for commands in geometry.paths {
+                emission.display.try_push(DisplayPrimitive::Path {
+                    node: params.id,
+                    commands,
+                    fill: None,
+                    stroke: Some(stroke),
+                })?;
+            }
+            if params.has_text {
+                let gap = emission.icon_tokens.text_gap;
+                *text_origin_x += side + gap;
+                *text_width = (*text_width - side - gap).max(1.0);
+            }
+        }
+        Err(_) => emission
+            .diagnostics
+            .push(UiDiagnostic::IconGeometryRejected { node: params.id }),
+    }
+    if emission.icon_tokens_fallback {
+        emission
+            .diagnostics
+            .push(UiDiagnostic::IconThemeTokensFallback { node: params.id });
+    }
+    Ok(())
 }
 
 /// A keyboard-operable recovery panel fixture used by native and headless smoke tests.
@@ -2645,9 +3419,9 @@ pub fn recovery_panel_document() -> Result<UiDocument, UiDocumentError> {
 pub fn runtime_overlay_document() -> Result<UiDocument, UiDocumentError> {
     let root = UiNodeId::new(0x200);
     let label = UiNodeId::new(0x201);
-    let mut overlay = UiNode::container(root, "Runtime overlay", UiLayout::Overlay, vec![label]);
+    let mut overlay = UiNode::container(root, "Runtime overlay", UiLayout::Overlay, vec![label])
+        .with_style_variant(meridian_ui_core::UiStyleVariant::Transparent);
     overlay.kind = UiWidgetKind::Overlay;
-    overlay.style.background = None;
     UiDocument::new(
         root,
         vec![
@@ -2661,7 +3435,8 @@ pub fn runtime_overlay_document() -> Result<UiDocument, UiDocumentError> {
 mod tests {
     use super::*;
     use meridian_ui_core::{
-        UiAbsolutePosition, UiDragItemId, UiScrollDelta, UiStyle, UiTextInputOptions,
+        UiAbsolutePosition, UiControlState, UiDragItemId, UiScrollDelta, UiStyle,
+        UiTextInputOptions,
     };
     use meridian_ui_text::UiTextSelection;
 
@@ -2679,6 +3454,88 @@ mod tests {
         let output = runtime.reconcile(frame(Vec::new()));
         assert!(output.display_list.primitives.len() >= 3);
         assert!(matches!(output.semantic_delta, SemanticDelta::Replace(_)));
+        assert_eq!(
+            output.frame_diagnostics.display_primitives,
+            UiFrameDiagnostics::count(output.display_list.primitives.len())
+        );
+        assert_eq!(
+            output.frame_diagnostics.semantic_nodes,
+            UiFrameDiagnostics::count(output.semantic_tree.nodes.len())
+        );
+        assert!((output.frame_diagnostics.scale_factor - 1.0).abs() < f32::EPSILON);
+        assert!(!output.frame_diagnostics.recovered_previous_snapshot);
+    }
+
+    #[test]
+    fn frame_diagnostics_report_runtime_coverage_without_renderer_claims() {
+        let root = UiNodeId::new(0x2a0);
+        let list = UiNodeId::new(0x2a1);
+        let action = UiNodeId::new(0x2a2);
+        let icon = UiNodeId::new(0x2a3);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Diagnostics",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![list],
+                )
+                .with_style(UiStyle::transparent()),
+                UiNode::virtual_list(list, "Virtual rows", vec![action, icon]).with_constraints(
+                    UiConstraints {
+                        clip: true,
+                        ..UiConstraints::default()
+                    },
+                ),
+                UiNode::button(action, "Run diagnostics", "diagnostics.run", "Run"),
+                UiNode::icon_button(
+                    icon,
+                    "Play diagnostics",
+                    "diagnostics.play",
+                    meridian_ui_core::IconId::Play,
+                ),
+            ],
+        )
+        .expect("diagnostics fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(frame(vec![UiEvent::FocusNext, UiEvent::Activate]));
+        let diagnostics = output.frame_diagnostics;
+
+        assert_eq!(diagnostics.reconciliation.accepted_nodes, 4);
+        assert_eq!(diagnostics.reconciliation.layout_roots, 1);
+        assert_eq!(
+            diagnostics.reconciliation.reconciled_layout_nodes,
+            diagnostics.layout_nodes
+        );
+        assert_eq!(diagnostics.interaction.input_events, 2);
+        assert_eq!(
+            diagnostics.interaction.event_routes,
+            diagnostics.event_routes
+        );
+        assert_eq!(diagnostics.interaction.focus_entries, 1);
+        assert_eq!(diagnostics.interaction.virtualized_regions, 1);
+        assert_eq!(diagnostics.interaction.active_animation_tracks, Some(0));
+        assert_eq!(diagnostics.primitives.clip_pushes, 1);
+        assert_eq!(diagnostics.primitives.clip_pops, 1);
+        assert!(diagnostics.primitives.paths >= 1);
+        assert!(diagnostics.text.primitives >= 1);
+        assert!(diagnostics.text.glyphs >= 1);
+        assert_eq!(
+            diagnostics.timing,
+            UiFrameTimingDiagnostics {
+                reconciliation: UiMeasurementAvailability::Unavailable,
+                layout: UiMeasurementAvailability::Unavailable,
+                text_shaping: UiMeasurementAvailability::Unavailable,
+                text_rasterization: UiMeasurementAvailability::Unavailable,
+                display_validation: UiMeasurementAvailability::Unavailable,
+                semantic_delta: UiMeasurementAvailability::Unavailable,
+            }
+        );
+        assert_eq!(
+            diagnostics.renderer_cache,
+            UiRendererCacheDiagnostics::default()
+        );
     }
 
     #[test]
@@ -2752,7 +3609,10 @@ mod tests {
             .display_list
             .primitives
             .iter()
-            .any(|primitive| matches!(primitive, DisplayPrimitive::Border { .. })));
+            .any(|primitive| matches!(
+                primitive,
+                DisplayPrimitive::Border { .. } | DisplayPrimitive::RoundedRect { .. }
+            )));
     }
 
     #[test]
@@ -2789,6 +3649,34 @@ mod tests {
         .expect("focus-order fixture is valid");
 
         assert_eq!(document.focus_order(), vec![first, second]);
+    }
+
+    #[test]
+    fn typed_focus_restoration_accepts_only_enabled_focusable_identity() {
+        let root = UiNodeId::new(1);
+        let action = UiNodeId::new(2);
+        let label = UiNodeId::new(3);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Focus restoration fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![action, label],
+                ),
+                UiNode::button(action, "Search", "fixture.search", "Search"),
+                UiNode::label(label, "Read-only status", "Ready"),
+            ],
+        )
+        .expect("focus restoration fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        assert!(!runtime.focus_retained_node(UiNodeId::new(99)));
+        assert!(!runtime.focus_retained_node(label));
+        assert!(runtime.focus_retained_node(action));
+        let output = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(output.focused, Some(action));
     }
 
     #[test]
@@ -2932,6 +3820,311 @@ mod tests {
                     _ => None,
                 });
         assert!(glyph_count.is_some_and(|count| count > 0));
+    }
+
+    #[test]
+    fn icon_button_emits_owned_paths_and_preserves_accessible_name() {
+        let button = UiNodeId::new(0x240);
+        let document = UiDocument::new(
+            button,
+            vec![UiNode::icon_button(
+                button,
+                "Run project",
+                "project.play",
+                meridian_ui_core::IconId::Play,
+            )],
+        )
+        .expect("icon button fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let output = runtime.reconcile(frame(Vec::new()));
+
+        assert!(output
+            .display_list
+            .primitives
+            .iter()
+            .any(|primitive| matches!(primitive, DisplayPrimitive::Path { .. })));
+        assert!(!output
+            .diagnostics
+            .contains(&UiDiagnostic::IconGeometryRejected { node: button }));
+        let semantic = output
+            .semantic_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == button)
+            .expect("icon button semantic node");
+        assert_eq!(semantic.name, "Run project");
+        assert_eq!(semantic.command.as_deref(), Some("project.play"));
+    }
+
+    #[test]
+    fn active_theme_icon_tokens_control_size_stroke_and_text_gap() {
+        let root = UiNodeId::new(0x77a);
+        let mut button = UiNode::button(root, "Run", "run", "Run").with_style(UiStyle {
+            font_size: 28.0,
+            ..UiStyle::secondary_action()
+        });
+        button.icon = Some(meridian_ui_core::IconId::Play);
+        let document = UiDocument::new(root, vec![button]).expect("icon and text button");
+        let mut runtime = UiRuntime::new(document);
+        let mut input = frame(Vec::new());
+        input.theme.icons.size = 10.0;
+        input.theme.icons.stroke_width = 3.0;
+        input.theme.icons.text_gap = 5.0;
+        let output = runtime.reconcile(input);
+
+        let strokes: Vec<_> = output
+            .display_list
+            .primitives
+            .iter()
+            .filter_map(|primitive| match primitive {
+                DisplayPrimitive::Path { stroke, .. } => *stroke,
+                _ => None,
+            })
+            .collect();
+        assert!(!strokes.is_empty());
+        assert!(strokes
+            .iter()
+            .all(|stroke| (stroke.width - 3.0).abs() < f32::EPSILON));
+        let text_x = output
+            .display_list
+            .primitives
+            .iter()
+            .find_map(|primitive| match primitive {
+                DisplayPrimitive::Text { bounds, .. } => Some(bounds.origin.x),
+                _ => None,
+            })
+            .expect("text primitive");
+        assert!((text_x - 25.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn huge_finite_theme_metrics_emit_registered_fallback_geometry() {
+        let root = UiNodeId::new(0x77d);
+        let mut button = UiNode::button(root, "Run", "run", "Run");
+        button.icon = Some(meridian_ui_core::IconId::Play);
+        let document = UiDocument::new(root, vec![button]).expect("icon and text button");
+        let mut runtime = UiRuntime::new(document);
+        let mut input = frame(Vec::new());
+        input.theme.icons.size = f32::MAX;
+        input.theme.icons.stroke_width = f32::MAX;
+        input.theme.icons.text_gap = f32::MAX;
+        input.theme.geometry.spacing_base = f32::MAX;
+        input.theme.geometry.radius_control = f32::MAX;
+        let output = runtime
+            .try_reconcile(input)
+            .expect("huge finite theme metrics fall back before emission");
+
+        assert!(output
+            .diagnostics
+            .contains(&UiDiagnostic::IconThemeTokensFallback { node: root }));
+        assert!(output
+            .diagnostics
+            .contains(&UiDiagnostic::StyleTokenFallback { node: root }));
+        let strokes: Vec<_> = output
+            .display_list
+            .primitives
+            .iter()
+            .filter_map(|primitive| match primitive {
+                DisplayPrimitive::Path { stroke, .. } => *stroke,
+                _ => None,
+            })
+            .collect();
+        assert!(!strokes.is_empty());
+        assert!(strokes.iter().all(|stroke| {
+            (stroke.width - UiTheme::meridian_dark().icons.stroke_width).abs() < f32::EPSILON
+        }));
+        assert!(
+            (runtime.resolved_styles[&root].corner_radius
+                - UiTheme::meridian_dark().geometry.radius_control)
+                .abs()
+                < f32::EPSILON
+        );
+        assert!(
+            (runtime.resolved_styles[&root].padding
+                - UiTheme::meridian_dark().geometry.spacing_base * 2.5)
+                .abs()
+                < f32::EPSILON
+        );
+    }
+
+    #[test]
+    fn retained_visual_states_resolve_selectors_and_non_color_indicators() {
+        let root = UiNodeId::new(0x77b);
+        let document = UiDocument::new(root, vec![UiNode::button(root, "Run", "run", "Run")])
+            .expect("button document");
+        let mut runtime = UiRuntime::new(document);
+
+        let hovered = runtime.reconcile(frame(vec![UiEvent::Pointer(UiPointerEvent {
+            device: LEGACY_POINTER_DEVICE,
+            kind: UiInputDeviceKind::Mouse,
+            phase: UiPointerPhase::Move,
+            position: UiPoint { x: 20.0, y: 20.0 },
+            button: None,
+        })]));
+        assert_eq!(hovered.visual_states[0].selector, UiStyleSelector::Hovered);
+        assert!(hovered.visual_states[0].state.hovered);
+
+        let pressed = runtime.reconcile(frame(vec![UiEvent::PointerDown(UiPoint {
+            x: 20.0,
+            y: 20.0,
+        })]));
+        assert_eq!(pressed.visual_states[0].selector, UiStyleSelector::Pressed);
+        assert!(pressed.visual_states[0].state.pressed);
+        assert!(pressed.visual_states[0].state.focused);
+
+        let focused = runtime.reconcile(frame(vec![UiEvent::PointerUp(UiPoint {
+            x: 20.0,
+            y: 20.0,
+        })]));
+        assert_eq!(focused.visual_states[0].selector, UiStyleSelector::Focused);
+        assert!(focused
+            .display_list
+            .primitives
+            .iter()
+            .any(|primitive| matches!(primitive, DisplayPrimitive::FocusIndicator { node, .. } if *node == root)));
+
+        let selected_document = UiDocument::new(
+            root,
+            vec![
+                UiNode::button(root, "Selected", "select", "Selected").with_control_state(
+                    UiControlState {
+                        selected: true,
+                        ..UiControlState::default()
+                    },
+                ),
+            ],
+        )
+        .expect("selected button");
+        runtime.replace_document(selected_document);
+        let selected = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(
+            selected.visual_states[0].selector,
+            UiStyleSelector::Selected
+        );
+        assert!(selected.display_list.primitives.iter().any(|primitive| {
+            matches!(primitive, DisplayPrimitive::Rect { node, bounds, .. }
+                if *node == root && (bounds.size.width - 3.0).abs() < f32::EPSILON)
+        }));
+
+        let invalid_document = UiDocument::new(
+            root,
+            vec![
+                UiNode::text_input(root, "Invalid field", "bad", UiTextInputOptions::default())
+                    .with_control_state(UiControlState {
+                        invalid: true,
+                        ..UiControlState::default()
+                    }),
+            ],
+        )
+        .expect("invalid field");
+        runtime.replace_document(invalid_document);
+        let invalid = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(invalid.visual_states[0].selector, UiStyleSelector::Invalid);
+        assert!(invalid.display_list.primitives.iter().any(|primitive| {
+            matches!(primitive, DisplayPrimitive::Border { node, width: 2, .. } if *node == root)
+        }));
+    }
+
+    #[test]
+    fn disabled_selector_suppresses_selected_and_invalid_structural_treatments() {
+        let root = UiNodeId::new(0x77e);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::button(root, "Disabled", "disabled", "Disabled").with_control_state(
+                    UiControlState {
+                        disabled: true,
+                        selected: true,
+                        invalid: true,
+                        ..UiControlState::default()
+                    },
+                ),
+            ],
+        )
+        .expect("disabled button");
+        let mut runtime = UiRuntime::new(document);
+        let mut high_contrast = frame(Vec::new());
+        high_contrast.high_contrast = true;
+        let disabled = runtime.reconcile(high_contrast);
+        assert_eq!(
+            disabled.visual_states[0].selector,
+            UiStyleSelector::Disabled
+        );
+        assert_eq!(
+            runtime.resolved_styles[&root].foreground,
+            UiTheme::meridian_dark().high_contrast_colors.muted
+        );
+        assert!(!disabled.display_list.primitives.iter().any(|primitive| {
+            matches!(primitive, DisplayPrimitive::Rect { node, bounds, .. }
+                if *node == root
+                    && ((bounds.size.width - 3.0).abs() < f32::EPSILON
+                        || (bounds.size.height - 3.0).abs() < f32::EPSILON))
+        }));
+        assert!(!disabled.display_list.primitives.iter().any(|primitive| {
+            matches!(primitive, DisplayPrimitive::Border { node, width: 2, .. } if *node == root)
+        }));
+    }
+
+    #[test]
+    fn frame_motion_animates_state_color_and_reduced_motion_settles_it() {
+        let root = UiNodeId::new(0x77c);
+        let document = UiDocument::new(root, vec![UiNode::button(root, "Run", "run", "Run")])
+            .expect("button document");
+        let mut runtime = UiRuntime::new(document);
+        let initial = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(
+            initial
+                .frame_diagnostics
+                .interaction
+                .active_animation_tracks,
+            Some(0)
+        );
+
+        let hovered = runtime.reconcile(frame(vec![UiEvent::Pointer(UiPointerEvent {
+            device: LEGACY_POINTER_DEVICE,
+            kind: UiInputDeviceKind::Mouse,
+            phase: UiPointerPhase::Move,
+            position: UiPoint { x: 20.0, y: 20.0 },
+            button: None,
+        })]));
+        assert_eq!(
+            hovered
+                .frame_diagnostics
+                .interaction
+                .active_animation_tracks,
+            Some(1)
+        );
+        assert_eq!(hovered.motion, MotionPreference::Full);
+
+        let mut advanced_input = frame(Vec::new());
+        advanced_input.presentation_delta_ms = 50;
+        let advanced = runtime.reconcile(advanced_input);
+        assert_eq!(advanced.visual_states[0].selector, UiStyleSelector::Hovered);
+        assert_eq!(
+            advanced
+                .frame_diagnostics
+                .interaction
+                .active_animation_tracks,
+            Some(1)
+        );
+
+        let mut reduced_input = frame(Vec::new());
+        reduced_input.reduced_motion = true;
+        let reduced = runtime.reconcile(reduced_input);
+        assert_eq!(reduced.motion, MotionPreference::Reduced);
+        assert_eq!(
+            reduced
+                .frame_diagnostics
+                .interaction
+                .active_animation_tracks,
+            Some(0)
+        );
+        assert_eq!(
+            runtime.resolved_styles[&root]
+                .border
+                .map(|border| border.color),
+            Some(UiTheme::meridian_dark().colors.warning)
+        );
     }
 
     #[test]
@@ -3366,6 +4559,52 @@ mod tests {
     }
 
     #[test]
+    fn semantic_rejection_rolls_back_focus_and_private_text_state() {
+        let root = UiNodeId::new(0x5a0);
+        let input = UiNodeId::new(0x5a1);
+        let semantic_name_bytes = 112;
+        let semantic_label_count = MAX_TEXT_BYTES / semantic_name_bytes + 1;
+        let mut children = Vec::with_capacity(semantic_label_count + 1);
+        children.push(input);
+        let mut nodes = vec![UiNode::text_input(
+            input,
+            "Project title",
+            "safe",
+            UiTextInputOptions { password: false },
+        )];
+        for index in 0..semantic_label_count {
+            let id = UiNodeId::new(0x600 + u128::try_from(index).expect("test index fits"));
+            children.push(id);
+            nodes.push(UiNode::label(id, "x".repeat(semantic_name_bytes), ""));
+        }
+        nodes.push(UiNode::container(
+            root,
+            "Aggregate semantics",
+            UiLayout::VerticalStack { gap: 0.0 },
+            children,
+        ));
+        let document = UiDocument::new(root, nodes).expect("per-node semantic text is bounded");
+        let mut runtime = UiRuntime::new(document);
+
+        let error = runtime
+            .try_reconcile(frame(vec![
+                UiEvent::FocusNext,
+                UiEvent::SelectAllText,
+                UiEvent::TextCommit("mutated".to_owned()),
+            ]))
+            .expect_err("aggregate semantic text must reject the frame");
+
+        assert!(matches!(
+            error,
+            UiFrameError::SemanticTreeRejected(SemanticTreeError::TextTooLarge { .. })
+        ));
+        assert_eq!(runtime.text_input_value(input), Some("safe"));
+        assert_eq!(runtime.focused, None);
+        assert_eq!(runtime.revision, 0);
+        assert!(runtime.previous_semantics.is_none());
+    }
+
+    #[test]
     fn accepted_replacement_reports_incremental_identity_changes() {
         let root = UiNodeId::new(0x510);
         let stable = UiNodeId::new(0x511);
@@ -3395,30 +4634,27 @@ mod tests {
     }
 
     #[test]
-    fn malformed_frame_rolls_back_to_the_last_accepted_immutable_snapshot() {
+    fn malformed_legacy_style_falls_back_to_tokens_before_emission() {
         let valid = recovery_panel_document().expect("valid recovery document");
         let mut runtime = UiRuntime::new(valid);
         let accepted = runtime.reconcile(frame(vec![UiEvent::FocusNext]));
         let root = UiNodeId::new(0x520);
-        let mut invalid_node = UiNode::label(root, "Invalid pixels", "Invalid pixels");
-        invalid_node.style.foreground = UiColor::rgba(f32::NAN, 1.0, 1.0, 1.0);
+        let invalid_node =
+            UiNode::label(root, "Invalid pixels", "Invalid pixels").with_style(UiStyle {
+                foreground: UiColor::rgba(f32::NAN, 1.0, 1.0, 1.0),
+                ..UiStyle::text()
+            });
         let invalid = UiDocument::new(root, vec![invalid_node]).expect("logical tree is valid");
         runtime.replace_document(invalid);
 
+        let resolved = runtime
+            .try_reconcile(frame(Vec::new()))
+            .expect("legacy raw style is token-resolved");
+        assert_eq!(resolved.revision, accepted.revision + 1);
+        assert!(!resolved.frame_diagnostics.recovered_previous_snapshot);
         assert!(matches!(
-            runtime.try_reconcile(frame(Vec::new())),
-            Err(UiFrameError::InvalidDisplayList(
-                DisplayListError::InvalidGeometry { .. }
-            ))
-        ));
-        let fallback = runtime.reconcile(frame(Vec::new()));
-        assert_eq!(fallback.revision, accepted.revision);
-        assert_eq!(fallback.display_list, accepted.display_list);
-        assert!(matches!(
-            fallback.diagnostics.last(),
-            Some(UiDiagnostic::FrameRejected(
-                DisplayListError::InvalidGeometry { .. }
-            ))
+            resolved.diagnostics.last(),
+            Some(UiDiagnostic::StyleTokenFallback { node }) if *node == root
         ));
     }
 
