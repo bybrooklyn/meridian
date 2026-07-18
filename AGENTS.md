@@ -37,11 +37,11 @@ governance and the complete Linux, Windows, and macOS rows for the persistent
 Creator hub, source-authoritative project persistence, native picker boundary,
 Creator journey, and universal macOS bundle. That evidence does not qualify the
 Meridian UI 1.0 framework, production shell, platform accessibility, or visual
-quality. `WP-UI-002` and `WP-UI-003` are `Partial` after locally validated
-source packages; GitHub Actions run `29611418454` was `NotRun` because the
-account could not allocate hosted runners. `WVR-UI-001` permits non-promoting
-local continuation through 2026-08-17, and `WP-UI-004` is the sole active
-package.
+quality. `WP-UI-002`, `WP-UI-003`, and `WP-UI-004` are `Partial` after locally
+validated source packages; GitHub Actions runs `29611418454` and `29621896632`
+were `NotRun` because the account could not allocate hosted runners.
+`WVR-UI-001` permits non-promoting local continuation through 2026-08-17,
+`RG-UI-001` is open, and `WP-UI-005` is the sole active package.
 `WP-PRC-001` is `ImplementedFoundation` after GitHub Actions run
 `29511174569` for `9c88cc152878b1eb22f18c236c00ad1abd984fa5` passed governance
 and the Linux, Windows, and macOS workspace rows. `WP-MDL-001` is `Partial`:

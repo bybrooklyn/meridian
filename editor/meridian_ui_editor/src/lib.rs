@@ -4,6 +4,10 @@
 //! selections, history, recipes, and model documents remain owned by their
 //! respective Meridian domain crates.
 
+mod workspace;
+
+pub use workspace::*;
+
 use meridian_alluvium::ProceduralRecipe;
 use meridian_editor_core::EditorSession;
 use meridian_modeler::{ModelDocument, ModelSelection, PenumbraPreview};
