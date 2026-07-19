@@ -1451,6 +1451,11 @@ impl UiFrameEffects {
             .iter()
             .map(|command| command.action.len())
             .chain(
+                self.assistive_requests
+                    .iter()
+                    .map(|request| request.command_name.len()),
+            )
+            .chain(
                 self.clipboard_requests
                     .iter()
                     .map(|request| request.text.len()),
@@ -6901,6 +6906,46 @@ mod tests {
             runtime.try_reconcile(frame(events)),
             Err(UiFrameError::TooManyEffectBytes {
                 bytes: action_len * activation_count,
+                maximum: MAX_TEXT_BYTES,
+            })
+        );
+        assert_eq!(runtime.focused, None);
+        assert_eq!(runtime.revision, 0);
+    }
+
+    #[test]
+    fn aggregate_effect_bytes_roll_back_repeated_assistive_command_requests() {
+        let command_len = 248;
+        let command = format!(
+            "accessibility.{}",
+            "a".repeat(command_len - "accessibility.".len())
+        );
+        let request_count = MAX_TEXT_BYTES / command_len + 1;
+        let tree = UiNodeId::new(0x690);
+        let item = UiNodeId::new(0x691);
+        let document = UiDocument::new(
+            tree,
+            vec![
+                UiNode::tree(tree, "Accessibility tree", vec![item]),
+                UiNode::tree_item(item, "Expandable item", "item.select", false, false)
+                    .with_assistive_action(UiHostAssistiveAction::Expand, command),
+            ],
+        )
+        .expect("bounded assistive command remains a valid document field");
+        let mut runtime = UiRuntime::new(document);
+        let events = std::iter::repeat_n(
+            UiEvent::AssistiveRequest {
+                target: item,
+                action: SemanticAction::Expand,
+            },
+            request_count,
+        )
+        .collect();
+
+        assert_eq!(
+            runtime.try_reconcile(frame(events)),
+            Err(UiFrameError::TooManyEffectBytes {
+                bytes: command_len * request_count,
                 maximum: MAX_TEXT_BYTES,
             })
         );
