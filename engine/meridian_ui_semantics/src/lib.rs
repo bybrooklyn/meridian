@@ -5,7 +5,7 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
 use meridian_ui_core::{
-    SemanticRole, UiControlState, UiNodeId, UiRect, MAX_RETAINED_NODES, MAX_TEXT_BYTES,
+    CommandId, SemanticRole, UiControlState, UiNodeId, UiRect, MAX_RETAINED_NODES, MAX_TEXT_BYTES,
     MAX_VIRTUAL_ITEMS,
 };
 
@@ -162,6 +162,9 @@ impl SemanticTree {
             {
                 return Err(SemanticTreeError::UnnamedInteractiveNode(node.id));
             }
+            if let Some(command) = node.command.as_deref() {
+                validate_command_name(node.id, command)?;
+            }
             for text in [
                 Some(node.name.as_str()),
                 node.description.as_deref(),
@@ -308,6 +311,7 @@ pub enum SemanticTreeError {
     },
     FocusedNodeCannotFocus(UiNodeId),
     UnnamedInteractiveNode(UiNodeId),
+    InvalidCommandName(UiNodeId),
     TextTooLarge {
         bytes: usize,
         maximum: usize,
@@ -349,12 +353,30 @@ impl Display for SemanticTreeError {
 
 impl Error for SemanticTreeError {}
 
+fn validate_command_name(node: UiNodeId, command: &str) -> Result<(), SemanticTreeError> {
+    if CommandId::from_name(command).is_some() {
+        Ok(())
+    } else {
+        Err(SemanticTreeError::InvalidCommandName(node))
+    }
+}
+
 fn action_is_valid(node: &SemanticNode, action: SemanticAction) -> bool {
     match action {
-        SemanticAction::Focus | SemanticAction::ScrollIntoView => true,
-        SemanticAction::Activate | SemanticAction::ShowContextMenu => node.command.is_some(),
-        SemanticAction::Expand | SemanticAction::Collapse => {
+        // Context actions carry their independent host binding in the retained
+        // document. A primary activation command is neither required nor
+        // implied by that assistive operation.
+        SemanticAction::Focus
+        | SemanticAction::ScrollIntoView
+        | SemanticAction::ShowContextMenu => true,
+        SemanticAction::Activate => node.command.is_some(),
+        SemanticAction::Expand => {
             matches!(node.role, SemanticRole::TreeItem | SemanticRole::ComboBox)
+                && !node.state.expanded
+        }
+        SemanticAction::Collapse => {
+            matches!(node.role, SemanticRole::TreeItem | SemanticRole::ComboBox)
+                && node.state.expanded
         }
         SemanticAction::Increment | SemanticAction::Decrement => {
             matches!(node.role, SemanticRole::Splitter | SemanticRole::Timeline)
@@ -730,6 +752,45 @@ mod tests {
         assert_eq!(
             invalid_role.validate(),
             Err(SemanticTreeError::DisabledNodeHasActions(UiNodeId::new(2)))
+        );
+
+        invalid_role.nodes[1].state.disabled = false;
+        invalid_role.nodes[1].command = Some("fixture activate".to_owned());
+        assert_eq!(
+            invalid_role.validate(),
+            Err(SemanticTreeError::InvalidCommandName(UiNodeId::new(2)))
+        );
+
+        let mut tree_item = node(2, Some(1), false);
+        tree_item.role = SemanticRole::TreeItem;
+        tree_item.actions = vec![SemanticAction::Expand];
+        tree_item.state.expanded = true;
+        let expanded_with_expand = SemanticTree {
+            root: Some(UiNodeId::new(1)),
+            focus: None,
+            nodes: vec![node(1, None, false), tree_item.clone()],
+        };
+        assert_eq!(
+            expanded_with_expand.validate(),
+            Err(SemanticTreeError::InvalidAction {
+                node: UiNodeId::new(2),
+                action: SemanticAction::Expand,
+            })
+        );
+
+        tree_item.actions = vec![SemanticAction::Collapse];
+        tree_item.state.expanded = false;
+        let collapsed_with_collapse = SemanticTree {
+            root: Some(UiNodeId::new(1)),
+            focus: None,
+            nodes: vec![node(1, None, false), tree_item],
+        };
+        assert_eq!(
+            collapsed_with_collapse.validate(),
+            Err(SemanticTreeError::InvalidAction {
+                node: UiNodeId::new(2),
+                action: SemanticAction::Collapse,
+            })
         );
     }
 }

@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use meridian_core::FrameId;
-use meridian_platform::{run, PlatformApplication, PlatformConfig, PlatformContext, PlatformEvent};
+use meridian_platform::{
+    run, EventLoopMode, PlatformApplication, PlatformConfig, PlatformContext, PlatformEvent,
+};
 use meridian_renderer::{
     UiDirectFramePlan, UiDirectGpuFrame, UiDirectGpuRenderer, UiDirectImage,
     UiDirectPrepareRequest, UiDirectResourceSet,
@@ -17,8 +19,9 @@ use meridian_ui_render::{
     UiEffectCapabilities, UiImageHandle, UiLayerId, UiMeshHandle, UiPathCommand, UiStroke,
 };
 
-const MAX_PRESENT_ATTEMPTS: u8 = 3;
+const PRESENTATION_TIMEOUT: Duration = Duration::from_secs(5);
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
+const PRESENT_RETRY_DELAY: Duration = Duration::from_millis(50);
 
 struct DirectUiSmoke {
     failure: Arc<Mutex<Option<String>>>,
@@ -27,6 +30,7 @@ struct DirectUiSmoke {
     gpu: Option<UiDirectGpuFrame>,
     present_attempts: u8,
     visible_outcome: Option<FrameOutcome>,
+    presentation_deadline: Option<Instant>,
     capture_deadline: Option<Instant>,
 }
 
@@ -145,7 +149,8 @@ impl DirectUiSmoke {
         self.gpu = Some(gpu);
         self.present_attempts = 0;
         self.visible_outcome = None;
-        self.capture_deadline = Some(Instant::now() + CAPTURE_TIMEOUT);
+        self.presentation_deadline = Some(Instant::now() + PRESENTATION_TIMEOUT);
+        self.capture_deadline = None;
         Ok(())
     }
 
@@ -195,6 +200,8 @@ impl DirectUiSmoke {
         self.present_attempts = self.present_attempts.saturating_add(1);
         if outcome.visible() {
             self.visible_outcome = Some(outcome);
+            self.presentation_deadline = None;
+            self.capture_deadline = Some(Instant::now() + CAPTURE_TIMEOUT);
             return self.finish_capture(outcome, context);
         }
         if matches!(
@@ -203,13 +210,15 @@ impl DirectUiSmoke {
         ) {
             return Err(format!("direct UI surface is unavailable: {outcome:?}").into());
         }
-        if self.present_attempts < MAX_PRESENT_ATTEMPTS {
-            self.rebuild()?;
-            context.request_redraw();
+        if self
+            .presentation_deadline
+            .is_some_and(|deadline| Instant::now() < deadline)
+        {
+            context.request_redraw_after(PRESENT_RETRY_DELAY);
             return Ok(());
         }
         Err(format!(
-            "direct UI presentation remained unavailable after {} attempts: {outcome:?}",
+            "direct UI presentation remained unavailable before its deadline after {} attempts: {outcome:?}",
             self.present_attempts
         )
         .into())
@@ -296,7 +305,9 @@ impl PlatformApplication for DirectUiSmoke {
                         Ok(()) => {
                             self.present_attempts = 0;
                             self.visible_outcome = None;
-                            self.capture_deadline = Some(Instant::now() + CAPTURE_TIMEOUT);
+                            self.presentation_deadline =
+                                Some(Instant::now() + PRESENTATION_TIMEOUT);
+                            self.capture_deadline = None;
                             context.request_redraw();
                         }
                         Err(error) => self.fail(error.to_string(), context),
@@ -469,6 +480,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     run(
         PlatformConfig {
             title: "Meridian Direct UI Smoke".to_owned(),
+            // A visible native smoke must give the compositor a chance to map
+            // the window between bounded redraw attempts. Interactive Meridian
+            // remains event-driven; this polling mode belongs only to the
+            // short-lived qualification runner.
+            event_loop_mode: EventLoopMode::Poll,
             ..PlatformConfig::default()
         },
         DirectUiSmoke {
@@ -478,6 +494,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             gpu: None,
             present_attempts: 0,
             visible_outcome: None,
+            presentation_deadline: None,
             capture_deadline: None,
         },
     )?;

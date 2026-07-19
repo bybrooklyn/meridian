@@ -2507,14 +2507,6 @@ fn validate_mesh(mesh: &UiDirectMesh) -> Result<(), UiDirectRendererError> {
     }
     let vertex_count = u32::try_from(mesh.vertices.len())
         .map_err(|_| UiDirectRendererError::InvalidMesh(mesh.handle))?;
-    if mesh.vertices.iter().any(|vertex| {
-        vertex.x_milli > 1000
-            || vertex.y_milli > 1000
-            || vertex.u_milli > 1000
-            || vertex.v_milli > 1000
-    }) {
-        return Err(UiDirectRendererError::InvalidMesh(mesh.handle));
-    }
     if mesh.indices.iter().any(|index| *index >= vertex_count) {
         return Err(UiDirectRendererError::InvalidMesh(mesh.handle));
     }

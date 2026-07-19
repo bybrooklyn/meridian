@@ -27,6 +27,12 @@ pub const MAX_VIRTUAL_ITEMS: usize = u16::MAX as usize;
 pub const MAX_DROP_KINDS: usize = 16;
 /// Complete built-in drop-operation vocabulary accepted by one target.
 pub const MAX_DROP_OPERATIONS: usize = 3;
+/// Maximum host-bound assistive operations declared by one retained node.
+///
+/// This is the complete current vocabulary rather than an arbitrary capacity:
+/// each operation needs an explicit, validated host command before it can be
+/// exposed to an assistive adapter.
+pub const MAX_ASSISTIVE_ACTION_BINDINGS: usize = 5;
 
 /// Sanitizes untrusted platform scale input to the supported 50-400% interval.
 #[must_use]
@@ -93,6 +99,44 @@ stable_ui_id!(
     UiSharedElementId,
     "Stable identity pairing source and destination presentations across retained nodes."
 );
+
+/// Maximum UTF-8 bytes accepted by one canonical command name.
+pub const MAX_COMMAND_NAME_BYTES: usize = 256;
+
+impl CommandId {
+    /// Derives a deterministic identity from Meridian's canonical command-name
+    /// grammar. Command names are intentionally limited to printable ASCII
+    /// identifiers so a UI frame cannot smuggle whitespace, control bytes, or
+    /// an arbitrary serialized payload across the command boundary.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        if name.is_empty() || name.len() > MAX_COMMAND_NAME_BYTES {
+            return None;
+        }
+        let mut bytes = name.bytes();
+        let first = bytes.next()?;
+        if !is_command_name_start(first) || !bytes.all(is_command_name_continue) {
+            return None;
+        }
+        // FNV-1a over 128 bits is stable across processes and platforms. The
+        // command text remains available as an audit label; this ID is the
+        // typed identity consumed by command adapters.
+        let mut hash = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d_u128;
+        for byte in name.bytes() {
+            hash ^= u128::from(byte);
+            hash = hash.wrapping_mul(0x0000_0000_0100_0000_0000_0000_0000_013b_u128);
+        }
+        Some(Self::new(hash))
+    }
+}
+
+const fn is_command_name_start(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric()
+}
+
+const fn is_command_name_continue(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b':' | b'-' | b'_' | b'/')
+}
 
 /// Meridian-owned device family; platform handles never cross this boundary.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -1023,6 +1067,57 @@ pub struct UiSemanticCollectionItem {
     pub set_size: u32,
 }
 
+/// An assistive operation whose source mutation remains owned by a typed host
+/// command adapter.
+///
+/// Focus, activation, text edits, and scrolling have retained-runtime paths.
+/// These operations require an explicit host command because they change a
+/// domain-owned tree, splitter, timeline, or context-menu state.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum UiHostAssistiveAction {
+    Expand,
+    Collapse,
+    Increment,
+    Decrement,
+    ShowContextMenu,
+}
+
+impl UiHostAssistiveAction {
+    const fn is_compatible_with(
+        self,
+        role: SemanticRole,
+        state: UiControlState,
+        focusable: bool,
+    ) -> bool {
+        if !focusable {
+            return false;
+        }
+        match self {
+            Self::Expand => {
+                matches!(role, SemanticRole::TreeItem | SemanticRole::ComboBox) && !state.expanded
+            }
+            Self::Collapse => {
+                matches!(role, SemanticRole::TreeItem | SemanticRole::ComboBox) && state.expanded
+            }
+            Self::Increment | Self::Decrement => {
+                matches!(role, SemanticRole::Splitter | SemanticRole::Timeline)
+            }
+            // A context command is independent from primary activation: a
+            // focusable canvas, hierarchy row, or property region can expose
+            // contextual operations without claiming that it is clickable.
+            Self::ShowContextMenu => true,
+        }
+    }
+}
+
+/// Validated binding between one advertised assistive operation and one
+/// canonical Meridian command name.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiAssistiveActionBinding {
+    pub action: UiHostAssistiveAction,
+    pub command: String,
+}
+
 /// Named semantics and a typed action token declared by a UI node.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiSemantics {
@@ -1030,6 +1125,9 @@ pub struct UiSemantics {
     pub name: String,
     pub description: Option<String>,
     pub action: Option<String>,
+    /// Explicit host commands for assistive operations that the retained
+    /// runtime must not guess or substitute with ordinary activation.
+    pub assistive_actions: Vec<UiAssistiveActionBinding>,
     pub value: Option<String>,
     pub state: UiControlState,
     pub relationships: UiSemanticRelationships,
@@ -1044,6 +1142,7 @@ impl UiSemantics {
             name: name.into(),
             description: None,
             action: None,
+            assistive_actions: Vec::new(),
             value: None,
             state: UiControlState::default(),
             relationships: UiSemanticRelationships::default(),
@@ -1058,6 +1157,7 @@ impl UiSemantics {
             name: name.into(),
             description: None,
             action: None,
+            assistive_actions: Vec::new(),
             value: None,
             state: UiControlState::default(),
             relationships: UiSemanticRelationships::default(),
@@ -1072,6 +1172,7 @@ impl UiSemantics {
             name: name.into(),
             description: None,
             action: Some(action.into()),
+            assistive_actions: Vec::new(),
             value: None,
             state: UiControlState::default(),
             relationships: UiSemanticRelationships::default(),
@@ -1086,6 +1187,7 @@ impl UiSemantics {
             name: name.into(),
             description: None,
             action: None,
+            assistive_actions: Vec::new(),
             value: None,
             state: UiControlState::default(),
             relationships: UiSemanticRelationships::default(),
@@ -1100,6 +1202,7 @@ impl UiSemantics {
             name: name.into(),
             description: None,
             action: Some(action.into()),
+            assistive_actions: Vec::new(),
             value: Some(if value { "on" } else { "off" }.to_owned()),
             state: UiControlState {
                 selected: value,
@@ -1117,6 +1220,7 @@ impl UiSemantics {
             name: name.into(),
             description: None,
             action: None,
+            assistive_actions: Vec::new(),
             value: Some(format!("{}%", value.min(100))),
             state: UiControlState::default(),
             relationships: UiSemanticRelationships::default(),
@@ -1131,6 +1235,7 @@ impl UiSemantics {
             name: name.into(),
             description: None,
             action: None,
+            assistive_actions: Vec::new(),
             value: None,
             state: UiControlState::default(),
             relationships: UiSemanticRelationships::default(),
@@ -2360,6 +2465,26 @@ impl UiNode {
         self
     }
 
+    /// Exposes one host-bound assistive operation only when a canonical typed
+    /// command can carry it across the frame barrier.
+    ///
+    /// Validation rejects duplicate, malformed, or role-incompatible bindings
+    /// before an adapter can advertise an action it cannot execute.
+    #[must_use]
+    pub fn with_assistive_action(
+        mut self,
+        action: UiHostAssistiveAction,
+        command: impl Into<String>,
+    ) -> Self {
+        self.semantics
+            .assistive_actions
+            .push(UiAssistiveActionBinding {
+                action,
+                command: command.into(),
+            });
+        self
+    }
+
     /// Declares validated non-structural semantic relationships for this node.
     #[must_use]
     pub fn with_semantic_relationships(mut self, relationships: UiSemanticRelationships) -> Self {
@@ -2852,7 +2977,22 @@ pub enum UiDocumentError {
     Cycle(UiNodeId),
     Unreachable(UiNodeId),
     UnnamedFocusable(UiNodeId),
+    InteractiveNodeNotFocusable(UiNodeId),
     MissingButtonAction(UiNodeId),
+    InvalidCommandName(UiNodeId),
+    TooManyAssistiveActionBindings {
+        node: UiNodeId,
+        count: usize,
+        maximum: usize,
+    },
+    DuplicateAssistiveActionBinding {
+        node: UiNodeId,
+        action: UiHostAssistiveAction,
+    },
+    InvalidAssistiveActionBinding {
+        node: UiNodeId,
+        action: UiHostAssistiveAction,
+    },
     TextInputNotFocusable(UiNodeId),
     MissingTextInputOptions(UiNodeId),
     UnexpectedTextInputOptions(UiNodeId),
@@ -3116,8 +3256,48 @@ impl UiDocument {
                 }
             }
         }
+        if node
+            .semantics
+            .action
+            .as_deref()
+            .is_some_and(|action| CommandId::from_name(action).is_none())
+        {
+            return Err(UiDocumentError::InvalidCommandName(id));
+        }
+        let bindings = &node.semantics.assistive_actions;
+        if bindings.len() > MAX_ASSISTIVE_ACTION_BINDINGS {
+            return Err(UiDocumentError::TooManyAssistiveActionBindings {
+                node: id,
+                count: bindings.len(),
+                maximum: MAX_ASSISTIVE_ACTION_BINDINGS,
+            });
+        }
+        let mut bound_actions = BTreeSet::new();
+        for binding in bindings {
+            if !bound_actions.insert(binding.action) {
+                return Err(UiDocumentError::DuplicateAssistiveActionBinding {
+                    node: id,
+                    action: binding.action,
+                });
+            }
+            if CommandId::from_name(&binding.command).is_none()
+                || !binding.action.is_compatible_with(
+                    node.semantics.role,
+                    node.semantics.state,
+                    node.focusable,
+                )
+            {
+                return Err(UiDocumentError::InvalidAssistiveActionBinding {
+                    node: id,
+                    action: binding.action,
+                });
+            }
+        }
         if node.focusable && node.semantics.name.trim().is_empty() {
             return Err(UiDocumentError::UnnamedFocusable(id));
+        }
+        if node.semantics.action.is_some() && !node.focusable {
+            return Err(UiDocumentError::InteractiveNodeNotFocusable(id));
         }
         if matches!(
             node.kind,
@@ -3991,6 +4171,80 @@ mod tests {
     }
 
     #[test]
+    fn host_assistive_bindings_are_explicit_bounded_and_role_validated() {
+        let node = UiNodeId::new(12);
+        let valid = UiNode::tree_item(node, "Camera", "world.select-camera", false, false)
+            .with_assistive_action(UiHostAssistiveAction::Expand, "world.expand-camera")
+            .with_assistive_action(
+                UiHostAssistiveAction::ShowContextMenu,
+                "world.camera-context",
+            );
+        assert!(UiDocument::new(node, vec![valid]).is_ok());
+
+        let context_only = UiNode::container(node, "Camera", UiLayout::Overlay, Vec::new())
+            .with_focusable(true)
+            .with_assistive_action(
+                UiHostAssistiveAction::ShowContextMenu,
+                "world.camera-context",
+            );
+        assert!(UiDocument::new(node, vec![context_only]).is_ok());
+
+        let duplicate = UiNode::tree_item(node, "Camera", "world.select-camera", false, false)
+            .with_assistive_action(UiHostAssistiveAction::Expand, "world.expand-camera")
+            .with_assistive_action(UiHostAssistiveAction::Expand, "world.expand-camera-again");
+        assert_eq!(
+            UiDocument::new(node, vec![duplicate]),
+            Err(UiDocumentError::DuplicateAssistiveActionBinding {
+                node,
+                action: UiHostAssistiveAction::Expand,
+            })
+        );
+
+        let incompatible = UiNode::tree_item(node, "Camera", "world.select-camera", false, true)
+            .with_assistive_action(UiHostAssistiveAction::Expand, "world.expand-camera");
+        assert_eq!(
+            UiDocument::new(node, vec![incompatible]),
+            Err(UiDocumentError::InvalidAssistiveActionBinding {
+                node,
+                action: UiHostAssistiveAction::Expand,
+            })
+        );
+
+        let non_focusable = UiNode::tree_item(node, "Camera", "world.select-camera", false, false)
+            .with_focusable(false)
+            .with_assistive_action(UiHostAssistiveAction::Expand, "world.expand-camera");
+        assert_eq!(
+            UiDocument::new(node, vec![non_focusable]),
+            Err(UiDocumentError::InvalidAssistiveActionBinding {
+                node,
+                action: UiHostAssistiveAction::Expand,
+            })
+        );
+
+        let malformed = UiNode::tree_item(node, "Camera", "world.select-camera", false, false)
+            .with_assistive_action(UiHostAssistiveAction::Expand, "world expand camera");
+        assert_eq!(
+            UiDocument::new(node, vec![malformed]),
+            Err(UiDocumentError::InvalidAssistiveActionBinding {
+                node,
+                action: UiHostAssistiveAction::Expand,
+            })
+        );
+    }
+
+    #[test]
+    fn interactive_nodes_must_be_keyboard_focusable() {
+        let button = UiNode::button(UiNodeId::new(14), "Build project", "build.start", "Build")
+            .with_focusable(false);
+        assert_eq!(
+            UiDocument::new(UiNodeId::new(14), vec![button]),
+            Err(UiDocumentError::InteractiveNodeNotFocusable(UiNodeId::new(
+                14
+            )))
+        );
+    }
+
+    #[test]
     fn professional_component_families_publish_owned_semantics() {
         let root = UiNodeId::new(30);
         let search = UiNodeId::new(31);
@@ -4106,6 +4360,29 @@ mod tests {
                 count: MAX_DROP_OPERATIONS + 1,
                 maximum: MAX_DROP_OPERATIONS,
             })
+        );
+    }
+
+    #[test]
+    fn command_ids_are_deterministic_and_reject_malformed_names() {
+        let first = CommandId::from_name("workspace.world").expect("canonical command name");
+        let same = CommandId::from_name("workspace.world").expect("same command name");
+        let other = CommandId::from_name("workspace.modeler").expect("other command name");
+        assert_eq!(first, same);
+        assert_ne!(first, other);
+        assert!(CommandId::from_name("").is_none());
+        assert!(CommandId::from_name("workspace world").is_none());
+        assert!(CommandId::from_name("workspace.world!").is_none());
+        assert!(CommandId::from_name(&"a".repeat(MAX_COMMAND_NAME_BYTES + 1)).is_none());
+    }
+
+    #[test]
+    fn retained_documents_reject_malformed_command_names_before_runtime() {
+        let node = UiNodeId::new(91);
+        let invalid = UiNode::button(node, "Build", "build start", "Build");
+        assert_eq!(
+            UiDocument::new(node, vec![invalid]),
+            Err(UiDocumentError::InvalidCommandName(node))
         );
     }
 }

@@ -548,7 +548,7 @@ mod tests {
             "World",
             UiRect::new(UiPoint { x: 16.0, y: 100.0 }, UiSize::new(120.0, 24.0)),
         );
-        option_node.actions = vec![SemanticAction::Focus, SemanticAction::Expand];
+        option_node.actions = vec![SemanticAction::Focus, SemanticAction::Collapse];
         option_node.state = UiControlState {
             expanded: true,
             selected: true,
@@ -589,6 +589,45 @@ mod tests {
                 action: SemanticAction::Activate,
                 data: None,
             }
+        );
+    }
+
+    #[test]
+    fn context_menu_projects_and_routes_without_a_primary_command() {
+        let target = UiNodeId::new(0x51);
+        let mut context_region = semantic_node(
+            target,
+            None,
+            SemanticRole::Canvas,
+            "World viewport",
+            UiRect::new(UiPoint::default(), UiSize::new(800.0, 600.0)),
+        );
+        context_region.focused = true;
+        context_region.actions = vec![SemanticAction::Focus, SemanticAction::ShowContextMenu];
+        let semantic = SemanticTree {
+            root: Some(target),
+            focus: Some(target),
+            nodes: vec![context_region],
+        };
+
+        let mut bridge = AccessKitBridge::default();
+        let update = bridge
+            .project(&semantic)
+            .expect("context-only tree projects");
+        assert!(update.nodes[0].1.supports_action(Action::ShowContextMenu));
+        assert!(!update.nodes[0].1.supports_action(Action::Click));
+        assert_eq!(
+            bridge.translate_action(ActionRequest {
+                action: Action::ShowContextMenu,
+                target_tree: TreeId::ROOT,
+                target_node: update.nodes[0].0,
+                data: None,
+            }),
+            Ok(PlatformAccessibilityActionRequest {
+                target,
+                action: SemanticAction::ShowContextMenu,
+                data: None,
+            })
         );
     }
 
@@ -710,6 +749,8 @@ mod tests {
         assert_eq!(option_node.role(), Role::TreeItem);
         assert_eq!(option_node.is_selected(), Some(true));
         assert_eq!(option_node.is_expanded(), Some(true));
+        assert!(option_node.supports_action(Action::Collapse));
+        assert!(!option_node.supports_action(Action::Expand));
         assert_eq!(option_node.position_in_set(), Some(2));
         assert_eq!(option_node.size_of_set(), Some(5));
     }

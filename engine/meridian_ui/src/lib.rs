@@ -9,7 +9,8 @@ pub use meridian_ui_runtime::*;
 pub use meridian_ui_semantics::*;
 pub use meridian_ui_text::{
     UiClipboardOperation, UiClipboardRequest, UiCompletionRequest, UiGlyphBitmap, UiPreeditError,
-    UiTextCursorDirection, UiTextInputSnapshot, UiTextLayout, UiTextRaster, UiTextSelection,
+    UiTextCursorDirection, UiTextInputError, UiTextInputSnapshot, UiTextLayout, UiTextLayoutError,
+    UiTextRaster, UiTextSelection,
 };
 
 #[cfg(test)]

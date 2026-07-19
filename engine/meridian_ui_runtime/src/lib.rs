@@ -9,13 +9,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use meridian_ui_core::{
-    sanitized_scale_factor, MotionPreference, ThemeId, UiAlignment, UiAxis, UiCollectionCursor,
-    UiCollectionNavigation, UiColor, UiConstraints, UiContrast, UiDensity, UiDocument,
-    UiDocumentDelta, UiDocumentError, UiDragKind, UiDragPayload, UiDropOperation, UiInputDeviceId,
-    UiInputDeviceKind, UiLayout, UiNode, UiNodeId, UiPoint, UiPointerButton, UiPointerEvent,
-    UiPointerPhase, UiRect, UiScrollEvent, UiScrollPhase, UiScrollUnit, UiSemanticRelationships,
-    UiSharedElementId, UiSize, UiStyle, UiStyleSelector, UiTextValidation, UiTheme, UiVisualState,
-    UiWidgetKind, MAX_FRAME_EVENTS, MAX_TEXT_BYTES,
+    sanitized_scale_factor, CommandId, MotionPreference, ThemeId, UiAlignment, UiAxis,
+    UiCollectionCursor, UiCollectionNavigation, UiColor, UiConstraints, UiContrast, UiDensity,
+    UiDocument, UiDocumentDelta, UiDocumentError, UiDragKind, UiDragPayload, UiDropOperation,
+    UiHostAssistiveAction, UiInputDeviceId, UiInputDeviceKind, UiLayout, UiNode, UiNodeId, UiPoint,
+    UiPointerButton, UiPointerEvent, UiPointerPhase, UiRect, UiScrollEvent, UiScrollPhase,
+    UiScrollUnit, UiSemanticRelationships, UiSharedElementId, UiSize, UiStyle, UiStyleSelector,
+    UiTextValidation, UiTheme, UiVisualState, UiWidgetKind, MAX_FRAME_EVENTS, MAX_TEXT_BYTES,
 };
 use meridian_ui_render::{
     icon_geometry, DisplayList, DisplayListError, DisplayPrimitive, UiClipId, UiCornerRadii,
@@ -27,7 +27,7 @@ use meridian_ui_semantics::{
 };
 use meridian_ui_text::{
     UiClipboardOperation, UiClipboardRequest, UiCompletionRequest, UiPreeditError,
-    UiTextCursorDirection, UiTextEngine, UiTextInputSnapshot, UiTextInputState,
+    UiTextCursorDirection, UiTextEngine, UiTextInputSnapshot, UiTextInputState, UiTextLayoutError,
 };
 
 const LEGACY_POINTER_DEVICE: UiInputDeviceId = UiInputDeviceId::new(1);
@@ -83,6 +83,12 @@ pub enum UiEvent {
     /// keyboard and pointer input.
     AssistiveFocus(UiNodeId),
     AssistiveActivate(UiNodeId),
+    /// Routes a platform-neutral assistive action through the same frame
+    /// barrier as keyboard and pointer commands.
+    AssistiveRequest {
+        target: UiNodeId,
+        action: SemanticAction,
+    },
     AssistiveSetValue {
         target: UiNodeId,
         text: String,
@@ -123,7 +129,8 @@ impl UiEvent {
             | Self::CancelDrag
             | Self::NavigateCollection(_)
             | Self::AssistiveFocus(_)
-            | Self::AssistiveActivate(_) => 0,
+            | Self::AssistiveActivate(_)
+            | Self::AssistiveRequest { .. } => 0,
         }
     }
 }
@@ -147,7 +154,23 @@ pub struct UiEventRoute {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiCommandRequest {
     pub source: UiNodeId,
+    /// Stable typed identity consumed by a host command adapter.
+    pub command: CommandId,
+    /// Canonical name retained as an audit/display label for compatibility.
     pub action: String,
+}
+
+/// Typed assistive action that a host may apply through its command/session
+/// adapter after the frame barrier. It carries no platform-native payload.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiAssistiveRequest {
+    pub target: UiNodeId,
+    pub action: SemanticAction,
+    /// Stable command identity validated with the retained source document.
+    pub command: CommandId,
+    /// Canonical command name for a host's whitelisted command adapter and
+    /// audit display. This is never a shell string or ambient authority.
+    pub command_name: String,
 }
 
 /// Accepted scroll position retained by stable container identity.
@@ -207,6 +230,11 @@ pub enum UiDiagnostic {
     TextRasterIncomplete {
         node: UiNodeId,
     },
+    TextLayoutLimitExceeded {
+        node: UiNodeId,
+        bytes: usize,
+        maximum: usize,
+    },
     IconGeometryRejected {
         node: UiNodeId,
     },
@@ -250,6 +278,13 @@ pub enum UiDiagnostic {
         node: UiNodeId,
     },
     AssistiveActivateDenied {
+        node: UiNodeId,
+    },
+    AssistiveActionDenied {
+        node: UiNodeId,
+        action: SemanticAction,
+    },
+    InvalidCommandName {
         node: UiNodeId,
     },
     AssistiveEditDenied {
@@ -545,6 +580,7 @@ pub struct UiFrameDiagnostics {
     pub semantic_nodes: u32,
     pub event_routes: u32,
     pub commands: u32,
+    pub assistive_requests: u32,
     pub clipboard_requests: u32,
     pub completion_requests: u32,
     pub text_inputs: u32,
@@ -579,6 +615,7 @@ impl Default for UiFrameDiagnostics {
             semantic_nodes: 0,
             event_routes: 0,
             commands: 0,
+            assistive_requests: 0,
             clipboard_requests: 0,
             completion_requests: 0,
             text_inputs: 0,
@@ -738,6 +775,7 @@ impl UiFrameDiagnostics {
             semantic_nodes: Self::count(snapshot.semantic_tree.nodes.len()),
             event_routes: Self::count(snapshot.event_routes.len()),
             commands: Self::count(snapshot.commands.len()),
+            assistive_requests: Self::count(snapshot.assistive_requests.len()),
             clipboard_requests: Self::count(snapshot.clipboard_requests.len()),
             completion_requests: Self::count(snapshot.completion_requests.len()),
             text_inputs: Self::count(snapshot.text_inputs.len()),
@@ -774,6 +812,7 @@ pub struct UiFrameSnapshot {
     pub semantic_delta: SemanticDelta,
     pub event_routes: Vec<UiEventRoute>,
     pub commands: Vec<UiCommandRequest>,
+    pub assistive_requests: Vec<UiAssistiveRequest>,
     pub clipboard_requests: Vec<UiClipboardRequest>,
     pub completion_requests: Vec<UiCompletionRequest>,
     pub text_inputs: Vec<UiTextInputSnapshot>,
@@ -794,13 +833,44 @@ pub type UiFrameOutput = Arc<UiFrameSnapshot>;
 /// Typed frame rejection before any mutated interaction state is committed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UiFrameError {
-    TooManyEvents { count: usize, maximum: usize },
-    TooManyInputBytes { bytes: usize, maximum: usize },
-    TooManyEffects { count: usize, maximum: usize },
-    TooManyEffectBytes { bytes: usize, maximum: usize },
+    TooManyEvents {
+        count: usize,
+        maximum: usize,
+    },
+    TooManyInputBytes {
+        bytes: usize,
+        maximum: usize,
+    },
+    TooManyEffects {
+        count: usize,
+        maximum: usize,
+    },
+    TooManyEffectBytes {
+        bytes: usize,
+        maximum: usize,
+    },
     LayoutRejected(UiLayoutError),
     InvalidDisplayList(DisplayListError),
+    TextLayoutRejected {
+        node: UiNodeId,
+        error: UiTextLayoutError,
+    },
     SemanticTreeRejected(SemanticTreeError),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum UiEmissionError {
+    DisplayList(DisplayListError),
+    TextLayout {
+        node: UiNodeId,
+        error: UiTextLayoutError,
+    },
+}
+
+impl From<DisplayListError> for UiEmissionError {
+    fn from(error: DisplayListError) -> Self {
+        Self::DisplayList(error)
+    }
 }
 
 /// Layout failure detected before an immutable frame can be accepted.
@@ -1033,29 +1103,61 @@ impl UiPresentationTransform {
 }
 
 fn semantic_actions(
-    role: meridian_ui_core::SemanticRole,
-    has_command: bool,
+    semantics: &meridian_ui_core::UiSemantics,
     focusable: bool,
-    state: meridian_ui_core::UiControlState,
 ) -> Vec<SemanticAction> {
-    if state.disabled {
+    if semantics.state.disabled {
         return Vec::new();
     }
     let mut actions = Vec::new();
     if focusable {
         actions.push(SemanticAction::Focus);
     }
-    if has_command {
+    if semantics.action.is_some() {
         actions.push(SemanticAction::Activate);
     }
-    match role {
+    match semantics.role {
         meridian_ui_core::SemanticRole::TextInput | meridian_ui_core::SemanticRole::SearchBox => {
             actions.push(SemanticAction::ReplaceSelectedText);
             actions.push(SemanticAction::SetValue);
         }
         _ => {}
     }
+    actions.extend(
+        semantics
+            .assistive_actions
+            .iter()
+            .map(|binding| semantic_action(binding.action)),
+    );
+    if focusable {
+        actions.push(SemanticAction::ScrollIntoView);
+    }
     actions
+}
+
+const fn semantic_action(action: UiHostAssistiveAction) -> SemanticAction {
+    match action {
+        UiHostAssistiveAction::Expand => SemanticAction::Expand,
+        UiHostAssistiveAction::Collapse => SemanticAction::Collapse,
+        UiHostAssistiveAction::Increment => SemanticAction::Increment,
+        UiHostAssistiveAction::Decrement => SemanticAction::Decrement,
+        UiHostAssistiveAction::ShowContextMenu => SemanticAction::ShowContextMenu,
+    }
+}
+
+const fn host_assistive_action(action: SemanticAction) -> Option<UiHostAssistiveAction> {
+    match action {
+        SemanticAction::Expand => Some(UiHostAssistiveAction::Expand),
+        SemanticAction::Collapse => Some(UiHostAssistiveAction::Collapse),
+        SemanticAction::Increment => Some(UiHostAssistiveAction::Increment),
+        SemanticAction::Decrement => Some(UiHostAssistiveAction::Decrement),
+        SemanticAction::ShowContextMenu => Some(UiHostAssistiveAction::ShowContextMenu),
+        SemanticAction::Focus
+        | SemanticAction::Activate
+        | SemanticAction::SetValue
+        | SemanticAction::ReplaceSelectedText
+        | SemanticAction::ScrollIntoView => None,
+    }
 }
 
 fn semantic_relationships(
@@ -1323,6 +1425,7 @@ struct UiPreparedFrame {
 struct UiFrameEffects {
     routes: Vec<UiEventRoute>,
     commands: Vec<UiCommandRequest>,
+    assistive_requests: Vec<UiAssistiveRequest>,
     clipboard_requests: Vec<UiClipboardRequest>,
     completion_requests: Vec<UiCompletionRequest>,
     scroll_outcomes: Vec<UiScrollOutcome>,
@@ -1335,6 +1438,7 @@ impl UiFrameEffects {
         self.routes
             .len()
             .saturating_add(self.commands.len())
+            .saturating_add(self.assistive_requests.len())
             .saturating_add(self.clipboard_requests.len())
             .saturating_add(self.completion_requests.len())
             .saturating_add(self.scroll_outcomes.len())
@@ -1366,6 +1470,7 @@ struct UiInteractionCheckpoint {
     focused: Option<UiNodeId>,
     hovered: Option<UiNodeId>,
     collection_cursor: UiCollectionCursor,
+    focus_recovery_guard: bool,
     pointer_capture: Option<PointerCapture>,
     scroll_offsets: BTreeMap<UiNodeId, f32>,
     scroll_capture: Option<ScrollCapture>,
@@ -1388,6 +1493,7 @@ pub struct UiRuntime {
     focused: Option<UiNodeId>,
     hovered: Option<UiNodeId>,
     collection_cursor: UiCollectionCursor,
+    focus_recovery_guard: bool,
     pointer_capture: Option<PointerCapture>,
     scroll_offsets: BTreeMap<UiNodeId, f32>,
     scroll_capture: Option<ScrollCapture>,
@@ -1416,7 +1522,8 @@ impl UiRuntime {
                         UiTextInputState::new(
                             node.text.clone().unwrap_or_default(),
                             options.password,
-                        ),
+                        )
+                        .unwrap_or_else(|_| UiTextInputState::empty(options.password)),
                     )
                 })
             })
@@ -1429,6 +1536,7 @@ impl UiRuntime {
             focused: None,
             hovered: None,
             collection_cursor: UiCollectionCursor::default(),
+            focus_recovery_guard: false,
             pointer_capture: None,
             scroll_offsets,
             scroll_capture: None,
@@ -1458,6 +1566,17 @@ impl UiRuntime {
     /// copying private text values into that source; non-password semantic
     /// values remain derived from the current accepted runtime text state.
     pub fn replace_document(&mut self, document: UiDocument) -> UiDocumentDelta {
+        let preserve_hidden_collection_selection = self
+            .collection_cursor
+            .selected
+            .and_then(|selected| self.document.route_to(selected))
+            .is_some_and(|route| {
+                route.iter().any(|node_id| {
+                    self.document
+                        .node(*node_id)
+                        .is_some_and(|node| Self::is_collection_kind(node.kind))
+                })
+            });
         let delta = self.document.delta_to(&document);
         let previous_inputs = std::mem::take(&mut self.text_inputs);
         self.text_inputs = document
@@ -1474,6 +1593,7 @@ impl UiRuntime {
                             node.text.clone().unwrap_or_default(),
                             options.password,
                         )
+                        .unwrap_or_else(|_| UiTextInputState::empty(options.password))
                     }),
                 ))
             })
@@ -1492,22 +1612,7 @@ impl UiRuntime {
                 _ => None,
             })
             .collect();
-        if self.focused.is_some_and(|id| {
-            !document
-                .node(id)
-                .is_some_and(|node| node.focusable && !node.semantics.state.disabled)
-        }) {
-            self.focused = None;
-        }
-        if self.focused.is_none()
-            && self.collection_cursor.selected.is_some_and(|id| {
-                document
-                    .node(id)
-                    .is_some_and(|node| node.focusable && !node.semantics.state.disabled)
-            })
-        {
-            self.focused = self.collection_cursor.selected;
-        }
+        self.restore_focus_after_document_replace(&document, preserve_hidden_collection_selection);
         if self.hovered.is_some_and(|id| {
             document
                 .node(id)
@@ -1529,6 +1634,34 @@ impl UiRuntime {
         self.document = document;
         self.last_document_delta.clone_from(&delta);
         delta
+    }
+
+    fn restore_focus_after_document_replace(
+        &mut self,
+        document: &UiDocument,
+        preserve_hidden_collection_selection: bool,
+    ) {
+        let focus_needs_recovery = self.focused.is_some_and(|id| {
+            !document
+                .node(id)
+                .is_some_and(|node| node.focusable && !node.semantics.state.disabled)
+        });
+        if focus_needs_recovery {
+            self.focused = None;
+        }
+        let selected_focus = self.collection_cursor.selected.filter(|id| {
+            document
+                .node(*id)
+                .is_some_and(|node| node.focusable && !node.semantics.state.disabled)
+        });
+        if self.focused.is_none() {
+            self.focused = selected_focus;
+        }
+        if focus_needs_recovery && self.focused.is_none() && !preserve_hidden_collection_selection {
+            self.focused = document.focus_order().into_iter().next();
+            self.collection_cursor.selected = self.focused;
+        }
+        self.focus_recovery_guard = focus_needs_recovery && self.focused.is_some();
     }
 
     /// Returns the most recent accepted identity reconciliation summary.
@@ -1647,6 +1780,17 @@ impl UiRuntime {
             Err(UiFrameError::InvalidDisplayList(error)) => {
                 self.rejected_snapshot(fallback, UiDiagnostic::FrameRejected(error))
             }
+            Err(UiFrameError::TextLayoutRejected {
+                node,
+                error: UiTextLayoutError::TextTooLarge { bytes, maximum },
+            }) => self.rejected_snapshot(
+                fallback,
+                UiDiagnostic::TextLayoutLimitExceeded {
+                    node,
+                    bytes,
+                    maximum,
+                },
+            ),
             Err(UiFrameError::SemanticTreeRejected(error)) => {
                 self.rejected_snapshot(fallback, UiDiagnostic::SemanticTreeRejected(error))
             }
@@ -1675,6 +1819,7 @@ impl UiRuntime {
                 semantic_delta: SemanticDelta::Unchanged,
                 event_routes: Vec::new(),
                 commands: Vec::new(),
+                assistive_requests: Vec::new(),
                 clipboard_requests: Vec::new(),
                 completion_requests: Vec::new(),
                 text_inputs: Vec::new(),
@@ -1694,6 +1839,7 @@ impl UiRuntime {
             snapshot.semantic_delta = SemanticDelta::Unchanged;
             snapshot.event_routes.clear();
             snapshot.commands.clear();
+            snapshot.assistive_requests.clear();
             snapshot.clipboard_requests.clear();
             snapshot.completion_requests.clear();
             snapshot.scroll_outcomes.clear();
@@ -1768,8 +1914,16 @@ impl UiRuntime {
             diagnostics: &mut effects.diagnostics,
             next_scope: 1,
         };
-        let emission_result = self.emit_node(self.document.root(), None, 1.0, &mut emission);
-        if let Err(error) = emission_result.and_then(|()| display_list.validate()) {
+        if let Err(error) = self.emit_node(self.document.root(), None, 1.0, &mut emission) {
+            self.restore_interaction(checkpoint);
+            return Err(match error {
+                UiEmissionError::DisplayList(error) => UiFrameError::InvalidDisplayList(error),
+                UiEmissionError::TextLayout { node, error } => {
+                    UiFrameError::TextLayoutRejected { node, error }
+                }
+            });
+        }
+        if let Err(error) = display_list.validate() {
             self.restore_interaction(checkpoint);
             return Err(UiFrameError::InvalidDisplayList(error));
         }
@@ -1845,6 +1999,7 @@ impl UiRuntime {
             semantic_delta,
             event_routes: effects.routes,
             commands: effects.commands,
+            assistive_requests: effects.assistive_requests,
             clipboard_requests: effects.clipboard_requests,
             completion_requests: effects.completion_requests,
             text_inputs: self
@@ -1969,6 +2124,7 @@ impl UiRuntime {
             focused: self.focused,
             hovered: self.hovered,
             collection_cursor: self.collection_cursor,
+            focus_recovery_guard: self.focus_recovery_guard,
             pointer_capture: self.pointer_capture,
             scroll_offsets: self.scroll_offsets.clone(),
             scroll_capture: self.scroll_capture,
@@ -1988,6 +2144,7 @@ impl UiRuntime {
         self.focused = checkpoint.focused;
         self.hovered = checkpoint.hovered;
         self.collection_cursor = checkpoint.collection_cursor;
+        self.focus_recovery_guard = checkpoint.focus_recovery_guard;
         self.pointer_capture = checkpoint.pointer_capture;
         self.scroll_offsets = checkpoint.scroll_offsets;
         self.scroll_capture = checkpoint.scroll_capture;
@@ -2317,17 +2474,17 @@ impl UiRuntime {
         effects: &mut UiFrameEffects,
         line_step: f32,
     ) -> bool {
+        let suppress_activation = self.focus_recovery_guard;
+        self.focus_recovery_guard = false;
         match event {
             UiEvent::FocusNext => self.move_focus(true, &mut effects.diagnostics),
             UiEvent::FocusPrevious => self.move_focus(false, &mut effects.diagnostics),
-            UiEvent::Activate => {
-                if let Some(target) = self.focused {
-                    self.dispatch(target, &mut effects.routes);
-                    self.activate(target, &mut effects.commands);
-                }
-            }
+            UiEvent::Activate => self.process_activation(suppress_activation, effects),
             UiEvent::AssistiveFocus(target) => self.assistive_focus(target, effects),
             UiEvent::AssistiveActivate(target) => self.assistive_activate(target, effects),
+            UiEvent::AssistiveRequest { target, action } => {
+                return self.assistive_request(target, action, layout, effects);
+            }
             UiEvent::AssistiveSetValue {
                 target,
                 text,
@@ -2416,6 +2573,16 @@ impl UiRuntime {
         false
     }
 
+    fn process_activation(&mut self, suppressed: bool, effects: &mut UiFrameEffects) {
+        if suppressed {
+            return;
+        }
+        if let Some(target) = self.focused {
+            self.dispatch(target, &mut effects.routes);
+            self.activate(target, &mut effects.commands, &mut effects.diagnostics);
+        }
+    }
+
     fn assistive_focus(&mut self, target: UiNodeId, effects: &mut UiFrameEffects) {
         if self
             .document
@@ -2437,12 +2604,140 @@ impl UiRuntime {
         });
         if accepted {
             self.dispatch(target, &mut effects.routes);
-            self.activate(target, &mut effects.commands);
+            self.activate(target, &mut effects.commands, &mut effects.diagnostics);
         } else {
             effects
                 .diagnostics
                 .push(UiDiagnostic::AssistiveActivateDenied { node: target });
         }
+    }
+
+    fn assistive_request(
+        &mut self,
+        target: UiNodeId,
+        action: SemanticAction,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+        effects: &mut UiFrameEffects,
+    ) -> bool {
+        let Some(node) = self.document.node(target) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::AssistiveActionDenied {
+                    node: target,
+                    action,
+                });
+            return false;
+        };
+        let supported = semantic_actions(&node.semantics, node.focusable).contains(&action);
+        if !supported {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::AssistiveActionDenied {
+                    node: target,
+                    action,
+                });
+            return false;
+        }
+        let command_name = if action == SemanticAction::ScrollIntoView {
+            None
+        } else {
+            let Some(host_action) = host_assistive_action(action) else {
+                effects
+                    .diagnostics
+                    .push(UiDiagnostic::AssistiveActionDenied {
+                        node: target,
+                        action,
+                    });
+                return false;
+            };
+            let Some(binding) = node
+                .semantics
+                .assistive_actions
+                .iter()
+                .find(|binding| binding.action == host_action)
+            else {
+                effects
+                    .diagnostics
+                    .push(UiDiagnostic::AssistiveActionDenied {
+                        node: target,
+                        action,
+                    });
+                return false;
+            };
+            Some(binding.command.clone())
+        };
+        self.dispatch(target, &mut effects.routes);
+        self.set_focus(target);
+        let Some(command_name) = command_name else {
+            return self.scroll_into_view(target, layout);
+        };
+        let Some(command) = CommandId::from_name(&command_name) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::InvalidCommandName { node: target });
+            return false;
+        };
+        effects.assistive_requests.push(UiAssistiveRequest {
+            target,
+            action,
+            command,
+            command_name,
+        });
+        false
+    }
+
+    fn scroll_into_view(&mut self, target: UiNodeId, layout: &BTreeMap<UiNodeId, UiRect>) -> bool {
+        let Some(target_bounds) = layout.get(&target).copied() else {
+            return false;
+        };
+        let mut changed = false;
+        for ancestor in self
+            .document
+            .route_to(target)
+            .unwrap_or_default()
+            .into_iter()
+            .rev()
+        {
+            let Some(node) = self.document.node(ancestor) else {
+                continue;
+            };
+            let UiLayout::Scroll { axis, .. } = node.layout else {
+                continue;
+            };
+            let Some(bounds) = layout.get(&ancestor).copied() else {
+                continue;
+            };
+            let viewport = inset_bounds(bounds, self.resolved_style(ancestor).padding);
+            let current = self.scroll_offsets.get(&ancestor).copied().unwrap_or(0.0);
+            let requested = if axis == UiAxis::Vertical {
+                if target_bounds.origin.y < viewport.origin.y {
+                    target_bounds.origin.y - viewport.origin.y
+                } else if target_bounds.origin.y + target_bounds.size.height
+                    > viewport.origin.y + viewport.size.height
+                {
+                    target_bounds.origin.y + target_bounds.size.height
+                        - (viewport.origin.y + viewport.size.height)
+                } else {
+                    0.0
+                }
+            } else if target_bounds.origin.x < viewport.origin.x {
+                target_bounds.origin.x - viewport.origin.x
+            } else if target_bounds.origin.x + target_bounds.size.width
+                > viewport.origin.x + viewport.size.width
+            {
+                target_bounds.origin.x + target_bounds.size.width
+                    - (viewport.origin.x + viewport.size.width)
+            } else {
+                0.0
+            };
+            let maximum = self.scroll_limit(ancestor, layout);
+            let next = (current + requested).clamp(0.0, maximum);
+            if (next - current).abs() > f32::EPSILON {
+                self.scroll_offsets.insert(ancestor, next);
+                changed = true;
+            }
+        }
+        changed
     }
 
     fn assistive_set_value(
@@ -2684,7 +2979,11 @@ impl UiRuntime {
                         && button == UiPointerButton::Primary
                         && released_over == Some(capture.target)
                     {
-                        self.activate(capture.target, &mut effects.commands);
+                        self.activate(
+                            capture.target,
+                            &mut effects.commands,
+                            &mut effects.diagnostics,
+                        );
                     }
                 }
             }
@@ -3386,7 +3685,12 @@ impl UiRuntime {
         }
     }
 
-    fn activate(&self, target: UiNodeId, commands: &mut Vec<UiCommandRequest>) {
+    fn activate(
+        &self,
+        target: UiNodeId,
+        commands: &mut Vec<UiCommandRequest>,
+        diagnostics: &mut Vec<UiDiagnostic>,
+    ) {
         let Some(node) = self.document.node(target) else {
             return;
         };
@@ -3394,8 +3698,13 @@ impl UiRuntime {
             return;
         }
         if let Some(action) = &node.semantics.action {
+            let Some(command) = CommandId::from_name(action) else {
+                diagnostics.push(UiDiagnostic::InvalidCommandName { node: target });
+                return;
+            };
             commands.push(UiCommandRequest {
                 source: target,
+                command,
                 action: action.clone(),
             });
         }
@@ -3527,7 +3836,7 @@ impl UiRuntime {
         parent: Option<UiNodeId>,
         inherited_opacity: f32,
         emission: &mut UiEmission<'_>,
-    ) -> Result<(), DisplayListError> {
+    ) -> Result<(), UiEmissionError> {
         let Some(node) = self.document.node(id) else {
             return Ok(());
         };
@@ -3543,7 +3852,12 @@ impl UiRuntime {
             finite_product(inherited_opacity, self.presentation_opacity(id)).clamp(0.0, 1.0);
         let mut style = self.resolved_style(id);
         apply_presentation_opacity(&mut style, opacity);
-        let clip = node.constraints.clip;
+        // A scroll viewport is a clipping boundary by definition.  Keeping
+        // this implicit prevents every workspace author from having to repeat
+        // the same safety-critical flag and keeps visual output aligned with
+        // the authoritative scroll/hit-test geometry.  Explicit clipping
+        // remains available for ordinary panels and overlays.
+        let clip = node.constraints.clip || matches!(node.layout, UiLayout::Scroll { .. });
         let mut semantics = node.semantics.clone();
         if let Some(options) = node.text_input {
             // Text state is runtime-owned. Non-password fields publish their
@@ -3566,6 +3880,7 @@ impl UiRuntime {
         }
         let children = node.children.clone();
         let focusable = node.focusable;
+        let actions = semantic_actions(&semantics, focusable);
         let clip_id = if clip {
             let id = UiClipId(emission.next_scope);
             emission.next_scope = emission.next_scope.saturating_add(1);
@@ -3585,12 +3900,7 @@ impl UiRuntime {
             role: semantics.role,
             name: semantics.name,
             description: semantics.description,
-            actions: semantic_actions(
-                semantics.role,
-                semantics.action.is_some(),
-                focusable,
-                semantics.state,
-            ),
+            actions,
             command: semantics.action,
             value: semantics.value,
             state: semantics.state,
@@ -3629,7 +3939,7 @@ impl UiRuntime {
         bounds: UiRect,
         style: UiStyle,
         emission: &mut UiEmission<'_>,
-    ) -> Result<(), DisplayListError> {
+    ) -> Result<(), UiEmissionError> {
         let Some(node) = self.document.node(id) else {
             return Ok(());
         };
@@ -4127,7 +4437,7 @@ fn emit_node_text(
     text_engine: &mut UiTextEngine,
     params: TextVisualParams<'_>,
     emission: &mut UiEmission<'_>,
-) -> Result<(), DisplayListError> {
+) -> Result<(), UiEmissionError> {
     let text_bounds = UiRect::new(
         UiPoint {
             x: params.origin_x,
@@ -4135,13 +4445,18 @@ fn emit_node_text(
         },
         UiSize::new(params.width, params.height),
     );
-    let text_output = text_engine.layout(
-        &params.text,
-        text_bounds.size.width,
-        params.style.font_size,
-        emission.scale_factor,
-        params.node.font_role,
-    );
+    let text_output = text_engine
+        .layout(
+            &params.text,
+            text_bounds.size.width,
+            params.style.font_size,
+            emission.scale_factor,
+            params.node.font_role,
+        )
+        .map_err(|error| UiEmissionError::TextLayout {
+            node: params.id,
+            error,
+        })?;
     if text_output.layout.used_fallback_metrics {
         emission
             .diagnostics
@@ -4164,7 +4479,8 @@ fn emit_node_text(
         color: params.style.foreground,
         layout: text_output.layout,
         raster: text_output.raster,
-    })
+    })?;
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -4652,10 +4968,29 @@ mod tests {
         let output = runtime.reconcile(frame(vec![UiEvent::FocusNext, UiEvent::Activate]));
         assert_eq!(output.commands.len(), 1);
         assert_eq!(output.commands[0].action, "project.retry_open");
+        assert_eq!(
+            output.commands[0].command,
+            CommandId::from_name("project.retry_open").expect("valid command")
+        );
         assert!(output
             .event_routes
             .iter()
             .any(|route| route.phase == UiEventPhase::Target));
+    }
+
+    #[test]
+    fn malformed_command_name_becomes_a_diagnostic_without_emission() {
+        let button = UiNodeId::new(0x1_001);
+        let document = UiDocument::new(
+            button,
+            vec![UiNode::button(
+                button,
+                "Malformed command",
+                "invalid command",
+                "Run",
+            )],
+        );
+        assert_eq!(document, Err(UiDocumentError::InvalidCommandName(button)));
     }
 
     #[test]
@@ -4710,6 +5045,51 @@ mod tests {
     }
 
     #[test]
+    fn document_replacement_recovers_removed_focus_in_declared_order() {
+        let root = UiNodeId::new(10);
+        let first = UiNodeId::new(11);
+        let second = UiNodeId::new(12);
+        let initial = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Initial focus fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![first, second],
+                ),
+                UiNode::button(first, "First", "focus.first", "First"),
+                UiNode::button(second, "Second", "focus.second", "Second"),
+            ],
+        )
+        .expect("initial focus fixture is valid");
+        let mut runtime = UiRuntime::new(initial);
+        assert!(runtime.focus_retained_node(second));
+
+        let replacement = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Replacement focus fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![first],
+                ),
+                UiNode::button(first, "First", "focus.first", "First"),
+            ],
+        )
+        .expect("replacement focus fixture is valid");
+        runtime.replace_document(replacement);
+
+        let output = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(output.focused, Some(first));
+        let guarded = runtime.reconcile(frame(vec![UiEvent::Activate]));
+        assert!(guarded.commands.is_empty());
+        let activated = runtime.reconcile(frame(vec![UiEvent::Activate]));
+        assert_eq!(activated.commands.len(), 1);
+    }
+
+    #[test]
     fn pointer_ignores_structural_groups_and_activates_the_visible_button() {
         let root = UiNodeId::new(1);
         let group = UiNodeId::new(90);
@@ -4735,6 +5115,7 @@ mod tests {
             output.commands,
             vec![UiCommandRequest {
                 source: action,
+                command: CommandId::from_name("fixture.activate").expect("valid command"),
                 action: "fixture.activate".to_owned(),
             }]
         );
@@ -5198,6 +5579,7 @@ mod tests {
             moved.commands,
             vec![UiCommandRequest {
                 source: button,
+                command: CommandId::from_name("inspector.apply").expect("valid command"),
                 action: "inspector.apply".to_owned(),
             }]
         );
@@ -5705,6 +6087,187 @@ mod tests {
     }
 
     #[test]
+    fn assistive_semantic_actions_are_exposed_and_routed_as_typed_requests() {
+        let tree = UiNodeId::new(0x410);
+        let item = UiNodeId::new(0x411);
+        let document = UiDocument::new(
+            tree,
+            vec![
+                UiNode::tree(tree, "World hierarchy", vec![item]),
+                UiNode::tree_item(item, "World root", "world.select", false, false)
+                    .with_assistive_action(UiHostAssistiveAction::Expand, "world.expand")
+                    .with_assistive_action(
+                        UiHostAssistiveAction::ShowContextMenu,
+                        "world.context-menu",
+                    ),
+            ],
+        )
+        .expect("assistive action fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let initial = runtime.reconcile(frame(Vec::new()));
+        let semantics = initial
+            .semantic_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == item)
+            .expect("tree item semantics are emitted");
+        assert!(semantics.actions.contains(&SemanticAction::Expand));
+        assert!(!semantics.actions.contains(&SemanticAction::Collapse));
+        assert!(semantics.actions.contains(&SemanticAction::ShowContextMenu));
+        assert!(semantics.actions.contains(&SemanticAction::ScrollIntoView));
+
+        let expanded_document = UiDocument::new(
+            tree,
+            vec![
+                UiNode::tree(tree, "World hierarchy", vec![item]),
+                UiNode::tree_item(item, "World root", "world.select", false, true)
+                    .with_assistive_action(UiHostAssistiveAction::Collapse, "world.collapse"),
+            ],
+        )
+        .expect("expanded tree item fixture is valid");
+        let expanded = UiRuntime::new(expanded_document).reconcile(frame(Vec::new()));
+        let expanded_semantics = expanded
+            .semantic_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == item)
+            .expect("expanded tree item semantics are emitted");
+        assert!(!expanded_semantics.actions.contains(&SemanticAction::Expand));
+        assert!(expanded_semantics
+            .actions
+            .contains(&SemanticAction::Collapse));
+
+        let routed = runtime.reconcile(frame(vec![UiEvent::AssistiveRequest {
+            target: item,
+            action: SemanticAction::Expand,
+        }]));
+        assert_eq!(
+            routed.assistive_requests,
+            vec![UiAssistiveRequest {
+                target: item,
+                action: SemanticAction::Expand,
+                command: CommandId::from_name("world.expand").expect("valid command"),
+                command_name: "world.expand".to_owned(),
+            }]
+        );
+        assert_eq!(routed.frame_diagnostics.assistive_requests, 1);
+        assert!(routed.diagnostics.is_empty());
+
+        let denied = runtime.reconcile(frame(vec![UiEvent::AssistiveRequest {
+            target: item,
+            action: SemanticAction::Increment,
+        }]));
+        assert!(denied.assistive_requests.is_empty());
+        assert!(denied
+            .diagnostics
+            .contains(&UiDiagnostic::AssistiveActionDenied {
+                node: item,
+                action: SemanticAction::Increment,
+            }));
+    }
+
+    #[test]
+    fn context_only_assistive_action_has_no_synthetic_primary_activation() {
+        let root = UiNodeId::new(0x412);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Viewport", UiLayout::Overlay, Vec::new())
+                    .with_focusable(true)
+                    .with_assistive_action(
+                        UiHostAssistiveAction::ShowContextMenu,
+                        "viewport.context-menu",
+                    ),
+            ],
+        )
+        .expect("context-only assistive action fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let initial = runtime.reconcile(frame(Vec::new()));
+        let semantics = initial
+            .semantic_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == root)
+            .expect("context-only semantics are emitted");
+        assert!(semantics.actions.contains(&SemanticAction::ShowContextMenu));
+        assert!(!semantics.actions.contains(&SemanticAction::Activate));
+
+        let routed = runtime.reconcile(frame(vec![UiEvent::AssistiveRequest {
+            target: root,
+            action: SemanticAction::ShowContextMenu,
+        }]));
+        assert_eq!(
+            routed.assistive_requests,
+            vec![UiAssistiveRequest {
+                target: root,
+                action: SemanticAction::ShowContextMenu,
+                command: CommandId::from_name("viewport.context-menu").expect("valid command"),
+                command_name: "viewport.context-menu".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn assistive_scroll_into_view_moves_the_nearest_scroll_ancestor() {
+        let root = UiNodeId::new(0x420);
+        let filler = UiNodeId::new(0x421);
+        let target = UiNodeId::new(0x422);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Scrollable controls",
+                    UiLayout::Scroll {
+                        axis: UiAxis::Vertical,
+                        offset: 0.0,
+                    },
+                    vec![filler, target],
+                ),
+                UiNode::label(filler, "Filler", "Filler")
+                    .with_layout_hints(UiLayoutHints::fixed_height(80.0)),
+                UiNode::button(target, "Target", "target.activate", "Target")
+                    .with_layout_hints(UiLayoutHints::fixed_height(40.0)),
+            ],
+        )
+        .expect("scroll-into-view fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let mut input = frame(vec![UiEvent::AssistiveRequest {
+            target,
+            action: SemanticAction::ScrollIntoView,
+        }]);
+        input.viewport = UiSize::new(200.0, 100.0);
+        let output = runtime.reconcile(input);
+
+        assert_eq!(output.focused, Some(target));
+        assert!(output.assistive_requests.is_empty());
+        let scroll = output
+            .scroll
+            .iter()
+            .find(|snapshot| snapshot.node == root)
+            .expect("scroll ancestor is reported");
+        assert!(scroll.maximum > 0.0);
+        assert!((scroll.offset - scroll.maximum).abs() < f32::EPSILON);
+        let root_bounds = output
+            .layout
+            .iter()
+            .find(|entry| entry.node == root)
+            .expect("scroll root bounds")
+            .bounds;
+        let target_bounds = output
+            .layout
+            .iter()
+            .find(|entry| entry.node == target)
+            .expect("target bounds")
+            .bounds;
+        assert!(target_bounds.origin.y >= root_bounds.origin.y);
+        assert!(
+            target_bounds.origin.y + target_bounds.size.height
+                <= root_bounds.origin.y + root_bounds.size.height
+        );
+    }
+
+    #[test]
     fn targeted_text_input_reset_uses_current_document_default_without_resetting_passwords() {
         let (document, input) = text_input_document("0", false);
         let mut runtime = UiRuntime::new(document);
@@ -5764,11 +6327,7 @@ mod tests {
                     },
                     vec![first, second],
                 )
-                .with_style(UiStyle::transparent())
-                .with_constraints(UiConstraints {
-                    clip: true,
-                    ..UiConstraints::default()
-                }),
+                .with_style(UiStyle::transparent()),
                 UiNode::label(first, "First", "First")
                     .with_layout_hints(UiLayoutHints::fixed_height(40.0)),
                 UiNode::label(second, "Second", "Second")
@@ -5809,6 +6368,11 @@ mod tests {
                     | DisplayPrimitive::Text { .. }
             )
         ));
+        assert!(output
+            .display_list
+            .primitives
+            .iter()
+            .any(|primitive| { matches!(primitive, DisplayPrimitive::PushClip { .. }) }));
     }
 
     #[test]
@@ -6320,23 +6884,23 @@ mod tests {
 
     #[test]
     fn aggregate_effect_bytes_roll_back_repeated_large_commands() {
-        let action = "a".repeat(MAX_TEXT_BYTES);
+        let action_len = 248;
+        let action = format!("command.{}", "a".repeat(action_len - "command.".len()));
+        let activation_count = MAX_TEXT_BYTES / action_len + 1;
         let button = UiNodeId::new(0x680);
         let document = UiDocument::new(
             button,
             vec![UiNode::button(button, "Bounded action", action, "Run")],
         )
-        .expect("maximum-sized action remains a valid document field");
+        .expect("bounded action remains a valid document field");
         let mut runtime = UiRuntime::new(document);
+        let mut events = vec![UiEvent::FocusNext];
+        events.extend(std::iter::repeat_n(UiEvent::Activate, activation_count));
 
         assert_eq!(
-            runtime.try_reconcile(frame(vec![
-                UiEvent::FocusNext,
-                UiEvent::Activate,
-                UiEvent::Activate,
-            ])),
+            runtime.try_reconcile(frame(events)),
             Err(UiFrameError::TooManyEffectBytes {
-                bytes: MAX_TEXT_BYTES * 2,
+                bytes: action_len * activation_count,
                 maximum: MAX_TEXT_BYTES,
             })
         );

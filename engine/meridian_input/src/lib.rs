@@ -27,6 +27,7 @@ pub enum KeyCode {
     P,
     Tab,
     Enter,
+    Space,
     Escape,
     Backspace,
     Delete,
@@ -524,6 +525,7 @@ pub mod winit_adapter {
             WinitKeyCode::KeyP => KeyCode::P,
             WinitKeyCode::Tab => KeyCode::Tab,
             WinitKeyCode::Enter => KeyCode::Enter,
+            WinitKeyCode::Space => KeyCode::Space,
             WinitKeyCode::Escape => KeyCode::Escape,
             WinitKeyCode::Backspace => KeyCode::Backspace,
             WinitKeyCode::Delete => KeyCode::Delete,
@@ -735,6 +737,10 @@ mod tests {
         assert_eq!(
             winit_adapter::map_key_code(WinitKeyCode::KeyW),
             Some(KeyCode::W)
+        );
+        assert_eq!(
+            winit_adapter::map_key_code(WinitKeyCode::Space),
+            Some(KeyCode::Space)
         );
         assert_eq!(winit_adapter::map_key_code(WinitKeyCode::Numpad0), None);
         assert_eq!(

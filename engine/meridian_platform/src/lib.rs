@@ -15,7 +15,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::sync::Arc;
 #[cfg(feature = "accessibility")]
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "accessibility")]
 use accesskit::{ActivationHandler, TreeUpdate};
@@ -24,7 +24,7 @@ use meridian_input::{winit_adapter, NativeInputEvent};
 #[cfg(feature = "accessibility")]
 use meridian_ui_semantics::SemanticTree;
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::event::{DeviceEvent, Ime, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::raw_window_handle::{
@@ -93,6 +93,35 @@ pub struct PlatformConfig {
     pub event_loop_mode: EventLoopMode,
 }
 
+/// Bounded logical rectangle used to place a native IME candidate window.
+///
+/// The rectangle is Meridian-owned so text composition can cross the platform
+/// boundary without exposing winit geometry to editor or runtime APIs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PlatformImeCursorArea {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+impl PlatformImeCursorArea {
+    /// Creates a finite, non-negative logical candidate rectangle.
+    #[must_use]
+    pub fn new(x: f32, y: f32, width: f32, height: f32) -> Option<Self> {
+        let values = [x, y, width, height];
+        values
+            .iter()
+            .all(|value| value.is_finite() && *value >= 0.0)
+            .then_some(Self {
+                x,
+                y,
+                width,
+                height,
+            })
+    }
+}
+
 impl Default for PlatformConfig {
     fn default() -> Self {
         Self {
@@ -129,6 +158,19 @@ impl PlatformWindow {
 
     pub fn set_visible(&self, visible: bool) {
         self.inner.set_visible(visible);
+    }
+
+    /// Enables or disables native text composition for the current window.
+    pub fn set_ime_allowed(&self, allowed: bool) {
+        self.inner.set_ime_allowed(allowed);
+    }
+
+    /// Updates the native IME candidate-window location from logical UI bounds.
+    pub fn set_ime_cursor_area(&self, area: PlatformImeCursorArea) {
+        self.inner.set_ime_cursor_area(
+            LogicalPosition::new(f64::from(area.x), f64::from(area.y)),
+            LogicalSize::new(f64::from(area.width), f64::from(area.height)),
+        );
     }
 }
 
@@ -392,6 +434,15 @@ impl Default for RuntimeLifecycle {
 struct PlatformControl {
     exit_requested: bool,
     redraw_requested: bool,
+    redraw_deadline: Option<Instant>,
+}
+
+const fn retain_redraw_request(
+    pending: bool,
+    processed_redraw: bool,
+    requested_redraw: bool,
+) -> bool {
+    (pending && !processed_redraw) || requested_redraw
 }
 
 /// Context supplied with each renderer-neutral platform event.
@@ -408,6 +459,25 @@ impl PlatformContext<'_> {
 
     pub fn request_redraw(&mut self) {
         self.control.redraw_requested = true;
+        self.control.redraw_deadline = None;
+    }
+
+    /// Schedules one non-blocking redraw after `delay`.
+    ///
+    /// Repeated delayed requests coalesce to the earliest deadline. An
+    /// immediate [`Self::request_redraw`] takes precedence.
+    pub fn request_redraw_after(&mut self, delay: Duration) {
+        if self.control.redraw_requested {
+            return;
+        }
+        let deadline = Instant::now()
+            .checked_add(delay)
+            .unwrap_or_else(Instant::now);
+        self.control.redraw_deadline = Some(
+            self.control
+                .redraw_deadline
+                .map_or(deadline, |current| current.min(deadline)),
+        );
     }
 
     pub fn exit(&mut self) {
@@ -495,6 +565,8 @@ struct WinitApplication<A> {
     next_event_sequence: u64,
     lifecycle: RuntimeLifecycle,
     initial_redraw_pending: bool,
+    requested_redraw_pending: bool,
+    delayed_redraw_deadline: Option<Instant>,
     #[cfg(feature = "accessibility")]
     event_proxy: Option<winit::event_loop::EventLoopProxy<PlatformUserEvent>>,
     #[cfg(feature = "accessibility")]
@@ -517,6 +589,8 @@ impl<A: PlatformApplication> WinitApplication<A> {
             next_event_sequence: 1,
             lifecycle: RuntimeLifecycle::new(),
             initial_redraw_pending: false,
+            requested_redraw_pending: false,
+            delayed_redraw_deadline: None,
             #[cfg(feature = "accessibility")]
             event_proxy: None,
             #[cfg(feature = "accessibility")]
@@ -535,6 +609,7 @@ impl<A: PlatformApplication> WinitApplication<A> {
     }
 
     fn dispatch(&mut self, event: PlatformEvent, event_loop: &ActiveEventLoop) {
+        let processed_redraw = matches!(event, PlatformEvent::RedrawRequested);
         let transition = self.lifecycle.observe_platform(&event);
         let sequence = self.next_event_sequence;
         self.next_event_sequence = self.next_event_sequence.wrapping_add(1).max(1);
@@ -559,7 +634,20 @@ impl<A: PlatformApplication> WinitApplication<A> {
         #[cfg(feature = "accessibility")]
         self.update_accessibility(event_loop);
 
+        self.requested_redraw_pending = retain_redraw_request(
+            self.requested_redraw_pending,
+            processed_redraw,
+            control.redraw_requested,
+        );
         if control.redraw_requested {
+            self.delayed_redraw_deadline = None;
+        } else if let Some(deadline) = control.redraw_deadline {
+            self.delayed_redraw_deadline = Some(
+                self.delayed_redraw_deadline
+                    .map_or(deadline, |current| current.min(deadline)),
+            );
+        }
+        if self.requested_redraw_pending {
             if let Some(window) = &self.window {
                 window.request_redraw();
             }
@@ -805,11 +893,30 @@ impl<A: PlatformApplication> ApplicationHandler<PlatformUserEvent> for WinitAppl
         self.dispatch(PlatformEvent::MemoryWarning, event_loop);
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(deadline) = self.delayed_redraw_deadline {
+            if Instant::now() < deadline {
+                event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+                return;
+            }
+            self.delayed_redraw_deadline = None;
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+        }
+        event_loop.set_control_flow(match self.config.event_loop_mode {
+            EventLoopMode::Wait => ControlFlow::Wait,
+            EventLoopMode::Poll => ControlFlow::Poll,
+        });
         if self.initial_redraw_pending {
             if let Some(window) = &self.window {
                 window.request_redraw();
                 self.initial_redraw_pending = false;
+            }
+        }
+        if self.requested_redraw_pending {
+            if let Some(window) = &self.window {
+                window.request_redraw();
             }
         }
     }
@@ -902,6 +1009,22 @@ mod tests {
     }
 
     #[test]
+    fn ime_cursor_area_rejects_untrusted_geometry_and_retains_logical_units() {
+        assert!(PlatformImeCursorArea::new(16.0, 24.0, 240.0, 32.0).is_some());
+        assert!(PlatformImeCursorArea::new(f32::NAN, 24.0, 240.0, 32.0).is_none());
+        assert!(PlatformImeCursorArea::new(16.0, 24.0, -1.0, 32.0).is_none());
+        assert_eq!(
+            PlatformImeCursorArea::new(16.0, 24.0, 240.0, 32.0),
+            Some(PlatformImeCursorArea {
+                x: 16.0,
+                y: 24.0,
+                width: 240.0,
+                height: 32.0,
+            })
+        );
+    }
+
+    #[test]
     fn platform_context_records_redraw_and_exit_requests() {
         let mut control = PlatformControl::default();
         let mut context = PlatformContext {
@@ -914,6 +1037,26 @@ mod tests {
 
         assert!(control.redraw_requested);
         assert!(control.exit_requested);
+    }
+
+    #[test]
+    fn platform_context_coalesces_delayed_redraw_without_blocking() {
+        let mut control = PlatformControl::default();
+        let mut context = PlatformContext {
+            window: None,
+            control: &mut control,
+        };
+
+        context.request_redraw_after(Duration::from_secs(1));
+        let first = context
+            .control
+            .redraw_deadline
+            .expect("delayed redraw is retained");
+        context.request_redraw_after(Duration::from_secs(2));
+        assert_eq!(context.control.redraw_deadline, Some(first));
+        context.request_redraw();
+        assert!(context.control.redraw_requested);
+        assert_eq!(context.control.redraw_deadline, None);
     }
 
     #[test]
@@ -945,6 +1088,16 @@ mod tests {
         let adapter = WinitApplication::new(PlatformConfig::default(), FailedApplication);
 
         assert!(!adapter.initial_redraw_pending);
+        assert!(!adapter.requested_redraw_pending);
+        assert_eq!(adapter.delayed_redraw_deadline, None);
+    }
+
+    #[test]
+    fn redraw_request_remains_durable_until_a_redraw_event_processes_it() {
+        assert!(retain_redraw_request(false, false, true));
+        assert!(retain_redraw_request(true, false, false));
+        assert!(!retain_redraw_request(true, true, false));
+        assert!(retain_redraw_request(true, true, true));
     }
 
     #[test]

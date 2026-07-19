@@ -42,6 +42,20 @@ pub enum UiPreeditError {
     InvalidCursor,
 }
 
+/// Rejection returned when a public text-input constructor exceeds the shared
+/// retained-value bound.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiTextInputError {
+    InitialValueTooLong,
+}
+
+/// Rejection returned before untrusted text reaches the private shaping
+/// adapter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiTextLayoutError {
+    TextTooLarge { bytes: usize, maximum: usize },
+}
+
 /// A half-open text selection in extended-grapheme positions.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct UiTextSelection {
@@ -174,20 +188,46 @@ impl UiTextHistory {
 }
 
 impl UiTextInputState {
+    /// Creates an empty retained editing state for a control whose authoritative
+    /// initial value is intentionally absent.
     #[must_use]
-    pub fn new(initial_value: impl Into<String>, password: bool) -> Self {
+    pub fn empty(password: bool) -> Self {
         Self {
-            value: if password {
-                String::new()
-            } else {
-                initial_value.into()
-            },
+            value: String::new(),
             selection: UiTextSelection::default(),
             preedit: None,
             password,
             undo: UiTextHistory::default(),
             redo: UiTextHistory::default(),
         }
+    }
+
+    /// Creates a bounded text-input state without silently retaining or
+    /// discarding an oversized initial value.
+    ///
+    /// Password initial values retain the existing redaction policy and are
+    /// discarded rather than stored.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UiTextInputError::InitialValueTooLong`] when a non-password
+    /// initial value exceeds [`MAX_TEXT_BYTES`].
+    pub fn new(initial_value: impl AsRef<str>, password: bool) -> Result<Self, UiTextInputError> {
+        let initial_value = initial_value.as_ref();
+        if password {
+            return Ok(Self::empty(true));
+        }
+        if initial_value.len() > MAX_TEXT_BYTES {
+            return Err(UiTextInputError::InitialValueTooLong);
+        }
+        Ok(Self {
+            value: initial_value.to_owned(),
+            selection: UiTextSelection::default(),
+            preedit: None,
+            password,
+            undo: UiTextHistory::default(),
+            redo: UiTextHistory::default(),
+        })
     }
 
     #[must_use]
@@ -519,6 +559,16 @@ impl Default for UiTextEngine {
 }
 
 impl UiTextEngine {
+    /// Shapes and rasterizes one bounded text value.
+    ///
+    /// The retained-document boundary already enforces this limit for normal
+    /// frames. This check remains at the direct adapter boundary so callers
+    /// cannot bypass that contract and allocate in the shaping engine first.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UiTextLayoutError::TextTooLarge`] before invoking Cosmic Text
+    /// when `text` exceeds [`MAX_TEXT_BYTES`].
     pub fn layout(
         &mut self,
         text: &str,
@@ -526,7 +576,13 @@ impl UiTextEngine {
         font_size: f32,
         scale_factor: f32,
         font_role: UiFontRole,
-    ) -> UiTextOutput {
+    ) -> Result<UiTextOutput, UiTextLayoutError> {
+        if text.len() > MAX_TEXT_BYTES {
+            return Err(UiTextLayoutError::TextTooLarge {
+                bytes: text.len(),
+                maximum: MAX_TEXT_BYTES,
+            });
+        }
         let scale_factor = sanitized_scale_factor(scale_factor);
         let family = Family::Name(bundled_family(font_role));
         let expected_font = self.fonts.db().query(&fontdb::Query {
@@ -618,7 +674,7 @@ impl UiTextEngine {
                 alpha: image.data.clone(),
             });
         }
-        UiTextOutput { layout, raster }
+        Ok(UiTextOutput { layout, raster })
     }
 }
 
@@ -648,7 +704,9 @@ mod tests {
             UiFontRole::Display,
             UiFontRole::Monospace,
         ] {
-            let output = engine.layout("Meridian 0123", 320.0, 14.0, 2.0, role);
+            let output = engine
+                .layout("Meridian 0123", 320.0, 14.0, 2.0, role)
+                .expect("bounded fixture shapes");
             assert_eq!(output.layout.font_role, role);
             assert!(!output.layout.used_fallback_metrics);
             assert!(
@@ -662,8 +720,21 @@ mod tests {
     }
 
     #[test]
+    fn layout_rejects_oversized_text_before_shaping() {
+        let mut engine = UiTextEngine::default();
+        let bytes = MAX_TEXT_BYTES + 1;
+        assert!(matches!(
+            engine.layout(&"x".repeat(bytes), 320.0, 14.0, 1.0, UiFontRole::Interface),
+            Err(UiTextLayoutError::TextTooLarge {
+                bytes: observed,
+                maximum: MAX_TEXT_BYTES,
+            }) if observed == bytes
+        ));
+    }
+
+    #[test]
     fn completion_prefix_stops_at_the_grapheme_cursor() {
-        let mut state = UiTextInputState::new("alpha beta", false);
+        let mut state = UiTextInputState::new("alpha beta", false).expect("bounded fixture");
         state.move_cursor(UiTextCursorDirection::End, false);
         state.move_cursor(UiTextCursorDirection::Backward, false);
         state.move_cursor(UiTextCursorDirection::Backward, false);
@@ -674,7 +745,7 @@ mod tests {
 
     #[test]
     fn preedit_cursor_uses_valid_utf8_byte_boundaries() {
-        let mut state = UiTextInputState::new("", false);
+        let mut state = UiTextInputState::new("", false).expect("bounded fixture");
         assert_eq!(state.set_preedit("啊b".to_owned(), Some((3, 3))), Ok(()));
         assert_eq!(
             state.set_preedit("啊b".to_owned(), Some((1, 1))),
@@ -684,8 +755,22 @@ mod tests {
     }
 
     #[test]
+    fn public_constructor_rejects_oversized_initial_values_and_redacts_passwords() {
+        assert!(matches!(
+            UiTextInputState::new("x".repeat(MAX_TEXT_BYTES + 1), false),
+            Err(UiTextInputError::InitialValueTooLong)
+        ));
+        assert_eq!(
+            UiTextInputState::new("secret", true)
+                .expect("password initial values are discarded")
+                .value(),
+            None
+        );
+    }
+
+    #[test]
     fn cut_and_validation_remain_grapheme_safe_and_password_private() {
-        let mut state = UiTextInputState::new("12👩‍🔬", false);
+        let mut state = UiTextInputState::new("12👩‍🔬", false).expect("bounded fixture");
         state.move_cursor(UiTextCursorDirection::End, false);
         state.move_cursor(UiTextCursorDirection::Backward, true);
         assert_eq!(state.cut_selected_text().as_deref(), Some("👩‍🔬"));
@@ -693,7 +778,7 @@ mod tests {
         assert!(state.is_valid(UiTextValidation::Integer));
         assert!(!state.is_valid(UiTextValidation::MaximumGraphemes(1)));
 
-        let mut password = UiTextInputState::new("ignored", true);
+        let mut password = UiTextInputState::new("ignored", true).expect("bounded fixture");
         assert!(password.commit("secret"));
         password.select_all();
         assert_eq!(password.selected_text(), None);
@@ -703,7 +788,7 @@ mod tests {
 
     #[test]
     fn bounded_text_history_restores_value_and_selection_without_password_snapshots() {
-        let mut state = UiTextInputState::new("one", false);
+        let mut state = UiTextInputState::new("one", false).expect("bounded fixture");
         state.select_all();
         assert!(state.commit("two"));
         assert_eq!(state.value(), Some("two"));
@@ -713,7 +798,7 @@ mod tests {
         assert!(state.redo());
         assert_eq!(state.value(), Some("two"));
 
-        let mut password = UiTextInputState::new("", true);
+        let mut password = UiTextInputState::new("", true).expect("bounded fixture");
         assert!(password.commit("secret"));
         assert!(!password.undo());
         assert!(!password.redo());
@@ -721,7 +806,7 @@ mod tests {
 
     #[test]
     fn text_history_never_exceeds_shared_count_or_byte_bounds() {
-        let mut state = UiTextInputState::new("", false);
+        let mut state = UiTextInputState::new("", false).expect("bounded fixture");
         for _ in 0..1_000 {
             assert!(state.commit("x"));
         }

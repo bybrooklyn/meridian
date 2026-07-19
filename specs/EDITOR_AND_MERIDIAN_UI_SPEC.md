@@ -179,6 +179,7 @@ pub enum DevicePhase { Press, Move, Release, Cancel }
 pub enum ScrollUnit { Pixel, Line }
 pub struct FocusId(pub StableId);
 pub struct CommandId(pub StableId);
+pub struct UiAssistiveRequest { /* target and Meridian-owned semantic action */ }
 pub struct SemanticNode { /* role, name, value, state, actions */ }
 pub struct DisplayList { /* renderer-neutral ordered primitives */ }
 pub enum DisplayPrimitive { RoundedRect, Path, GlyphRun, Image, Mesh, Clip, Layer, Shadow, Backdrop }
@@ -186,6 +187,18 @@ pub struct DockTree { /* split, tab, floating and collapsed nodes */ }
 pub struct PanelId(pub StableId);
 pub struct WorkspaceLayout { /* versioned named layout and region state */ }
 ~~~
+
+Command names are canonical ASCII identifiers validated at the retained
+document boundary before a frame can observe them: the first byte is
+alphanumeric, later bytes may be alphanumeric or `.`, `:`, `-`, `_`, or `/`,
+and the UTF-8 representation is bounded to 256 bytes. Runtime activation
+emits the typed `CommandId`; it never executes an unvalidated action string.
+
+Public text-input construction and the direct text-shaping adapter independently
+enforce the retained `MAX_TEXT_BYTES` limit before retaining source or invoking
+their private implementation. An oversized direct request is a typed rejection;
+a future corrupted or incremental document therefore recovers its prior
+immutable frame rather than discarding source or allocating inside an adapter.
 
 Input also has typed pointer IDs, positions, buttons, modifiers, capture,
 scroll momentum, text/composition events, drag payload descriptors, and device
@@ -365,6 +378,19 @@ Home/End/Page behavior where applicable, accessible names, non-color state,
 error recovery, high-contrast behavior, text scaling, and Reduced Motion. The
 visual focus indicator is a rectangular outline, edge indicator, contrast, or
 shape change—never a decorative ring.
+
+Advertised assistive actions are executable contracts, not descriptive metadata.
+Focus, activation, value editing, expansion/collapse, increment/decrement, and
+context-menu requests route through Meridian-owned events and typed frame
+effects. `ScrollIntoView` is handled by the retained runtime against the
+nearest scroll ancestor; the remaining actions become bounded
+`UiAssistiveRequest` values for the host command/session adapter. Every
+advertised host-bound action names its own canonical command binding; an
+adapter must never substitute the target's ordinary activation command.
+In particular, a context-menu binding neither requires nor implies ordinary
+primary activation.
+Unsupported or malformed requests produce diagnostics and cannot mutate source
+authority.
 
 Virtualization keeps the active/focused semantic neighborhood available and
 reports collection position/size without instantiating millions of nodes.
