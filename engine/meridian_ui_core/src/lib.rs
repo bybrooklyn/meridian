@@ -150,6 +150,39 @@ pub enum UiInputDeviceKind {
     Assistive,
 }
 
+/// Controller command normalized by a platform adapter.
+///
+/// These are semantic controls rather than vendor button names, so controller
+/// bindings use the same retained focus graph and command meaning as keyboard
+/// navigation. Platform controller handles and mapping libraries stay outside
+/// this public Meridian contract.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum UiControllerControl {
+    FocusPrevious,
+    FocusNext,
+    Activate,
+    Cancel,
+}
+
+/// Controller control lifecycle after platform normalization.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum UiControllerPhase {
+    Press,
+    Release,
+    Cancel,
+}
+
+/// Platform-neutral controller event delivered to the retained UI runtime.
+///
+/// A platform adapter owns physical button mapping and device lifetime. The
+/// retained runtime consumes only this bounded semantic event.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiControllerEvent {
+    pub device: UiInputDeviceId,
+    pub phase: UiControllerPhase,
+    pub control: UiControllerControl,
+}
+
 /// Pointer buttons after platform normalization.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum UiPointerButton {

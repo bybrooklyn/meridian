@@ -10,8 +10,9 @@ use std::sync::Arc;
 
 use meridian_ui_core::{
     sanitized_scale_factor, CommandId, MotionPreference, ThemeId, UiAlignment, UiAxis,
-    UiCollectionCursor, UiCollectionNavigation, UiColor, UiConstraints, UiContrast, UiDensity,
-    UiDocument, UiDocumentDelta, UiDocumentError, UiDragKind, UiDragPayload, UiDropOperation,
+    UiCollectionCursor, UiCollectionNavigation, UiColor, UiConstraints, UiContrast,
+    UiControllerControl, UiControllerEvent, UiControllerPhase, UiDensity, UiDocument,
+    UiDocumentDelta, UiDocumentError, UiDragKind, UiDragPayload, UiDropOperation,
     UiHostAssistiveAction, UiInputDeviceId, UiInputDeviceKind, UiLayout, UiNode, UiNodeId, UiPoint,
     UiPointerButton, UiPointerEvent, UiPointerPhase, UiRect, UiScrollEvent, UiScrollPhase,
     UiScrollUnit, UiSemanticRelationships, UiSharedElementId, UiSize, UiStyle, UiStyleSelector,
@@ -66,6 +67,9 @@ pub enum UiEvent {
     PointerDown(UiPoint),
     PointerUp(UiPoint),
     PointerCancel,
+    /// Routes a normalized controller control through the same focus graph and
+    /// command path as keyboard navigation.
+    Controller(UiControllerEvent),
     Scroll(UiScrollEvent),
     BeginDrag(UiDragPayload),
     BeginKeyboardDrag {
@@ -122,6 +126,7 @@ impl UiEvent {
             | Self::PointerDown(_)
             | Self::PointerUp(_)
             | Self::PointerCancel
+            | Self::Controller(_)
             | Self::Scroll(_)
             | Self::BeginDrag(_)
             | Self::BeginKeyboardDrag { .. }
@@ -2553,6 +2558,9 @@ impl UiRuntime {
                 let event = Self::legacy_pointer_event(UiPointerPhase::Cancel, UiPoint::default());
                 return self.process_pointer(event, layout, effects, line_step);
             }
+            UiEvent::Controller(event) => {
+                self.process_controller(event, suppress_activation, effects);
+            }
             UiEvent::Scroll(event) => {
                 return self.process_scroll(event, layout, effects, line_step);
             }
@@ -2576,6 +2584,29 @@ impl UiRuntime {
             }
         }
         false
+    }
+
+    fn process_controller(
+        &mut self,
+        event: UiControllerEvent,
+        suppress_activation: bool,
+        effects: &mut UiFrameEffects,
+    ) {
+        if event.phase != UiControllerPhase::Press {
+            return;
+        }
+        match event.control {
+            UiControllerControl::FocusPrevious => {
+                self.move_focus(false, &mut effects.diagnostics);
+            }
+            UiControllerControl::FocusNext => {
+                self.move_focus(true, &mut effects.diagnostics);
+            }
+            UiControllerControl::Activate => {
+                self.process_activation(suppress_activation, effects);
+            }
+            UiControllerControl::Cancel => self.drag = None,
+        }
     }
 
     fn process_activation(&mut self, suppressed: bool, effects: &mut UiFrameEffects) {
@@ -4992,6 +5023,58 @@ mod tests {
             .event_routes
             .iter()
             .any(|route| route.phase == UiEventPhase::Target));
+    }
+
+    #[test]
+    fn controller_navigation_uses_the_keyboard_focus_and_command_paths() {
+        let document = recovery_panel_document().expect("recovery fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let controller = UiInputDeviceId::new(7);
+
+        let output = runtime.reconcile(frame(vec![
+            UiEvent::Controller(UiControllerEvent {
+                device: controller,
+                phase: UiControllerPhase::Press,
+                control: UiControllerControl::FocusNext,
+            }),
+            UiEvent::Controller(UiControllerEvent {
+                device: controller,
+                phase: UiControllerPhase::Press,
+                control: UiControllerControl::Activate,
+            }),
+        ]));
+
+        assert_eq!(output.focused, Some(UiNodeId::new(0x102)));
+        assert_eq!(output.commands.len(), 1);
+        assert_eq!(output.commands[0].action, "project.retry_open");
+        assert!(output
+            .event_routes
+            .iter()
+            .any(|route| route.phase == UiEventPhase::Target));
+    }
+
+    #[test]
+    fn controller_release_and_cancellation_do_not_activate_a_control() {
+        let document = recovery_panel_document().expect("recovery fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let controller = UiInputDeviceId::new(7);
+
+        let output = runtime.reconcile(frame(vec![
+            UiEvent::Controller(UiControllerEvent {
+                device: controller,
+                phase: UiControllerPhase::Release,
+                control: UiControllerControl::FocusNext,
+            }),
+            UiEvent::Controller(UiControllerEvent {
+                device: controller,
+                phase: UiControllerPhase::Cancel,
+                control: UiControllerControl::Activate,
+            }),
+        ]));
+
+        assert_eq!(output.focused, None);
+        assert!(output.commands.is_empty());
+        assert!(output.event_routes.is_empty());
     }
 
     #[test]
