@@ -16,6 +16,10 @@ jobs:
   rust:
     needs: governance
     strategy:
+      # Preserve independent macOS, Linux, and Windows evidence when one hosted
+      # runner is interrupted or fails. A failing row still fails the workflow;
+      # it no longer erases the other platform outcomes through matrix fail-fast.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-14]
     runs-on: ${{ matrix.os }}
