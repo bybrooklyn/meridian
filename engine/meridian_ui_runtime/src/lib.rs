@@ -2695,54 +2695,59 @@ impl UiRuntime {
         let Some(target_bounds) = layout.get(&target).copied() else {
             return false;
         };
-        let mut changed = false;
-        for ancestor in self
+        let Some(ancestor) = self
             .document
             .route_to(target)
             .unwrap_or_default()
             .into_iter()
             .rev()
-        {
-            let Some(node) = self.document.node(ancestor) else {
-                continue;
-            };
-            let UiLayout::Scroll { axis, .. } = node.layout else {
-                continue;
-            };
-            let Some(bounds) = layout.get(&ancestor).copied() else {
-                continue;
-            };
-            let viewport = inset_bounds(bounds, self.resolved_style(ancestor).padding);
-            let current = self.scroll_offsets.get(&ancestor).copied().unwrap_or(0.0);
-            let requested = if axis == UiAxis::Vertical {
-                if target_bounds.origin.y < viewport.origin.y {
-                    target_bounds.origin.y - viewport.origin.y
-                } else if target_bounds.origin.y + target_bounds.size.height
-                    > viewport.origin.y + viewport.size.height
-                {
-                    target_bounds.origin.y + target_bounds.size.height
-                        - (viewport.origin.y + viewport.size.height)
-                } else {
-                    0.0
-                }
-            } else if target_bounds.origin.x < viewport.origin.x {
-                target_bounds.origin.x - viewport.origin.x
-            } else if target_bounds.origin.x + target_bounds.size.width
-                > viewport.origin.x + viewport.size.width
+            .find(|ancestor| {
+                self.document
+                    .node(*ancestor)
+                    .is_some_and(|node| matches!(node.layout, UiLayout::Scroll { .. }))
+            })
+        else {
+            return false;
+        };
+        let Some(node) = self.document.node(ancestor) else {
+            return false;
+        };
+        let UiLayout::Scroll { axis, .. } = node.layout else {
+            return false;
+        };
+        let Some(bounds) = layout.get(&ancestor).copied() else {
+            return false;
+        };
+        let viewport = inset_bounds(bounds, self.resolved_style(ancestor).padding);
+        let current = self.scroll_offsets.get(&ancestor).copied().unwrap_or(0.0);
+        let requested = if axis == UiAxis::Vertical {
+            if target_bounds.origin.y < viewport.origin.y {
+                target_bounds.origin.y - viewport.origin.y
+            } else if target_bounds.origin.y + target_bounds.size.height
+                > viewport.origin.y + viewport.size.height
             {
-                target_bounds.origin.x + target_bounds.size.width
-                    - (viewport.origin.x + viewport.size.width)
+                target_bounds.origin.y + target_bounds.size.height
+                    - (viewport.origin.y + viewport.size.height)
             } else {
                 0.0
-            };
-            let maximum = self.scroll_limit(ancestor, layout);
-            let next = (current + requested).clamp(0.0, maximum);
-            if (next - current).abs() > f32::EPSILON {
-                self.scroll_offsets.insert(ancestor, next);
-                changed = true;
             }
+        } else if target_bounds.origin.x < viewport.origin.x {
+            target_bounds.origin.x - viewport.origin.x
+        } else if target_bounds.origin.x + target_bounds.size.width
+            > viewport.origin.x + viewport.size.width
+        {
+            target_bounds.origin.x + target_bounds.size.width
+                - (viewport.origin.x + viewport.size.width)
+        } else {
+            0.0
+        };
+        let maximum = self.scroll_limit(ancestor, layout);
+        let next = (current + requested).clamp(0.0, maximum);
+        if (next - current).abs() <= f32::EPSILON {
+            return false;
         }
-        changed
+        self.scroll_offsets.insert(ancestor, next);
+        true
     }
 
     fn assistive_set_value(
@@ -2914,6 +2919,16 @@ impl UiRuntime {
             effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
             return false;
         }
+        // This runtime deliberately retains one capture at a time. While a
+        // device owns it, every phase from another device is rejected before
+        // it can change hover, cancel a drag, or replace the capture.
+        if self
+            .pointer_capture
+            .is_some_and(|capture| capture.device != event.device)
+        {
+            effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
+            return false;
+        }
         let hover_capable = matches!(
             event.kind,
             UiInputDeviceKind::Mouse | UiInputDeviceKind::Trackpad | UiInputDeviceKind::Pen
@@ -2962,10 +2977,6 @@ impl UiRuntime {
                     return false;
                 };
                 let captured = self.pointer_capture;
-                if captured.is_some_and(|capture| capture.device != event.device) {
-                    effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
-                    return false;
-                }
                 self.pointer_capture = None;
                 let released_over = self.hit_test(event.position, layout);
                 if self.drag.is_some() {
@@ -6273,6 +6284,70 @@ mod tests {
     }
 
     #[test]
+    fn assistive_scroll_into_view_does_not_overscroll_outer_containers() {
+        let outer = UiNodeId::new(0x423);
+        let outer_filler = UiNodeId::new(0x424);
+        let inner = UiNodeId::new(0x425);
+        let inner_filler = UiNodeId::new(0x426);
+        let target = UiNodeId::new(0x427);
+        let outer_tail = UiNodeId::new(0x428);
+        let document = UiDocument::new(
+            outer,
+            vec![
+                UiNode::container(
+                    outer,
+                    "Outer scroll",
+                    UiLayout::Scroll {
+                        axis: UiAxis::Vertical,
+                        offset: 0.0,
+                    },
+                    vec![outer_filler, inner, outer_tail],
+                )
+                .with_style(UiStyle::transparent()),
+                UiNode::label(outer_filler, "Outer filler", "Outer filler")
+                    .with_layout_hints(UiLayoutHints::fixed_height(50.0)),
+                UiNode::container(
+                    inner,
+                    "Inner scroll",
+                    UiLayout::Scroll {
+                        axis: UiAxis::Vertical,
+                        offset: 0.0,
+                    },
+                    vec![inner_filler, target],
+                )
+                .with_style(UiStyle::transparent())
+                .with_layout_hints(UiLayoutHints::fixed_height(60.0)),
+                UiNode::label(inner_filler, "Inner filler", "Inner filler")
+                    .with_layout_hints(UiLayoutHints::fixed_height(50.0)),
+                UiNode::button(target, "Target", "target.activate", "Target")
+                    .with_layout_hints(UiLayoutHints::fixed_height(50.0)),
+                UiNode::label(outer_tail, "Outer tail", "Outer tail")
+                    .with_layout_hints(UiLayoutHints::fixed_height(100.0)),
+            ],
+        )
+        .expect("nested scroll-into-view fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let mut input = frame(vec![UiEvent::AssistiveRequest {
+            target,
+            action: SemanticAction::ScrollIntoView,
+        }]);
+        input.viewport = UiSize::new(200.0, 100.0);
+        let output = runtime.reconcile(input);
+        let offset = |node| {
+            output
+                .scroll
+                .iter()
+                .find(|snapshot| snapshot.node == node)
+                .map(|snapshot| snapshot.offset)
+                .expect("scroll node is reported")
+        };
+
+        assert_eq!(output.focused, Some(target));
+        assert!((offset(inner) - 40.0).abs() < f32::EPSILON);
+        assert!(offset(outer).abs() < f32::EPSILON);
+    }
+
+    #[test]
     fn targeted_text_input_reset_uses_current_document_default_without_resetting_passwords() {
         let (document, input) = text_input_document("0", false);
         let mut runtime = UiRuntime::new(document);
@@ -7082,6 +7157,57 @@ mod tests {
             ),
         ]));
         assert_eq!(activated.commands.len(), 1);
+    }
+
+    #[test]
+    fn pointer_capture_cannot_be_stolen_by_a_different_device() {
+        let root = UiNodeId::new(0x602);
+        let action = UiNodeId::new(0x603);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Root", UiLayout::Overlay, vec![action]),
+                UiNode::button(action, "Action", "fixture.activate", "Action"),
+            ],
+        )
+        .expect("pointer capture fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let pointer = |device, phase| {
+            UiEvent::Pointer(UiPointerEvent {
+                device,
+                kind: UiInputDeviceKind::Mouse,
+                phase,
+                position: UiPoint { x: 20.0, y: 20.0 },
+                button: matches!(phase, UiPointerPhase::Press | UiPointerPhase::Release)
+                    .then_some(UiPointerButton::Primary),
+            })
+        };
+        let first = UiInputDeviceId::new(13);
+        let second = UiInputDeviceId::new(14);
+
+        let pressed = runtime.reconcile(frame(vec![pointer(first, UiPointerPhase::Press)]));
+        assert!(pressed.commands.is_empty());
+
+        let interference = runtime.reconcile(frame(vec![
+            pointer(second, UiPointerPhase::Move),
+            pointer(second, UiPointerPhase::Cancel),
+            pointer(second, UiPointerPhase::Press),
+        ]));
+        assert_eq!(
+            interference
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| **diagnostic == UiDiagnostic::InvalidPointerEvent)
+                .count(),
+            3
+        );
+
+        let activated = runtime.reconcile(frame(vec![pointer(first, UiPointerPhase::Release)]));
+        assert_eq!(activated.commands.len(), 1);
+
+        let second_release =
+            runtime.reconcile(frame(vec![pointer(second, UiPointerPhase::Release)]));
+        assert!(second_release.commands.is_empty());
     }
 
     fn nested_scroll_document() -> (UiDocument, UiNodeId, UiNodeId) {
