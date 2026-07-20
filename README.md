@@ -80,7 +80,7 @@ cargo run -p meridian-build --bin meridian-build -- --cargo-test-no-run --worksp
 
 ## License
 
-Meridian is dual-licensed under MIT or Apache-2.0. See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE). Project Meridian content is separate and proprietary.
+Meridian is licensed under the Mozilla Public License 2.0. See [LICENSE-MPL-2.0](LICENSE-MPL-2.0). Project Meridian content is separate and proprietary.
 
 ## AI notice
 

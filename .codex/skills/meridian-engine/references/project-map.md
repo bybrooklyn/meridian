@@ -135,7 +135,7 @@ quality. This snapshot will age; verify every claim live.
 
 ## Repository boundary
 
-The engine is dual-licensed MIT OR Apache-2.0. The private game repository is
-proprietary. The engine may hold sanitized proving requirements and surrogate
+The engine is licensed under the Mozilla Public License 2.0. The private game
+repository is proprietary. The engine may hold sanitized proving requirements and surrogate
 benchmarks, but never private game content. A local `game/` directory is both a
 separate Git repository and ignored by the engine.

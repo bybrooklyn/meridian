@@ -128,8 +128,8 @@ git -C /Users/brooklyn/meridian/game status -sb
 /opt/homebrew/bin/gh run list -R bybrooklyn/meridian --limit 5
 ```
 
-Never include `game/` in an engine commit. Never copy engine MIT/Apache licensing
-onto proprietary Project Meridian content.
+Never include `game/` in an engine commit. Never copy engine licensing onto
+proprietary Project Meridian content.
 
 ## Completion report
 
