@@ -27,6 +27,8 @@
     {"id":"RISK-PRC-010","status":"Open","title":"Dependency lock-in or unsustainable custom kernels","owner":"Procedural systems lead","milestone":"MS-09"},
     {"id":"RISK-ANI-001","status":"Open","title":"Skeleton retarget compression or event drift corrupts authored motion","owner":"Animation lead","milestone":"MS-08"},
     {"id":"RISK-ANI-002","status":"Open","title":"Animation graph pose memory and skinning cost scales without bounds","owner":"Animation lead","milestone":"MS-08"},
+    {"id":"RISK-ANI-003","status":"Open","title":"Artus contact priorities and Cairn disagreement create unstable or invalid body performance","owner":"Animation and physics leads","milestone":"MS-09"},
+    {"id":"RISK-ANI-004","status":"Open","title":"Motion profiles agent proposals or derived caches hide unsafe changes or provenance loss","owner":"Animation and security leads","milestone":"MS-09"},
     {"id":"RISK-NAV-001","status":"Open","title":"Stale streamed navigation generations produce invalid paths","owner":"Navigation lead","milestone":"MS-08"},
     {"id":"RISK-NAV-002","status":"Open","title":"Path crowd or dynamic rebuild work exceeds frame and memory budgets","owner":"Navigation lead","milestone":"MS-09"},
     {"id":"RISK-FWK-001","status":"Open","title":"Official frameworks become hidden engine coupling or private game policy","owner":"Gameplay lead","milestone":"MS-08"},

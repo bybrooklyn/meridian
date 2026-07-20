@@ -1,6 +1,6 @@
 //! Transactional editor docking and versioned workspace-state persistence.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::{self, Display, Formatter};
 use std::path::{Path, PathBuf};
 
@@ -15,7 +15,81 @@ const LEGACY_WORKSPACE_STATE_SCHEMA: &str = "meridian.ui-workspace-state/v0";
 pub const WORKSPACE_STATE_VERSION: u16 = 1;
 pub const DOCK_RATIO_PER_MILLE: u16 = 1_000;
 pub const DOCK_GUTTER: u32 = 8;
+pub const TIGHT_DOCK_GUTTER: u32 = DOCK_GUTTER / 2;
 pub const MIN_ACCESSIBLE_PANEL_EXTENT: u32 = 44;
+
+const DOCUMENT_FIELDS: &[&str] = &[
+    "schema",
+    "version",
+    "revision",
+    "session",
+    "active_workspace",
+    "active_layout_name",
+    "layouts",
+];
+const LAYOUT_FIELDS: &[&str] = &[
+    "name",
+    "workspace",
+    "dock",
+    "selected",
+    "active_document",
+    "camera",
+    "browser_query",
+    "expanded",
+    "scroll",
+    "focused_panel",
+    "focus_layout",
+    "companions",
+];
+
+/// Opaque, bounded forward-compatible fields retained from workspace JSON.
+///
+/// Values deliberately remain private so `serde_json::Value` never becomes a
+/// stable Meridian API. Callers can observe retained keys but cannot use this
+/// compatibility sidecar as an untyped authority channel.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct WorkspaceExtensions(BTreeMap<String, serde_json::Value>);
+
+impl WorkspaceExtensions {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[must_use]
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.0.contains_key(key)
+    }
+
+    fn validate(&self, reserved: &[&str]) -> Result<(), WorkspaceStateError> {
+        if self.len() > MAX_RETAINED_NODES {
+            return Err(WorkspaceStateError::TooManyExtensions {
+                count: self.len(),
+                maximum: MAX_RETAINED_NODES,
+            });
+        }
+        for key in self.0.keys() {
+            validate_bounded_text(key, WorkspaceTextField::ExtensionKey)?;
+            if key.is_empty() {
+                return Err(WorkspaceStateError::EmptyExtensionKey);
+            }
+            if reserved.contains(&key.as_str()) {
+                return Err(WorkspaceStateError::ReservedExtensionKey(key.clone()));
+            }
+        }
+        Ok(())
+    }
+
+    fn merge_from(&mut self, newer: Self) {
+        self.0.extend(newer.0);
+    }
+}
 
 macro_rules! workspace_id {
     ($name:ident, $description:literal) => {
@@ -1112,7 +1186,6 @@ pub struct CompanionWindow {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct WorkspaceLayout {
     pub name: String,
     pub workspace: WorkspaceKind,
@@ -1126,6 +1199,8 @@ pub struct WorkspaceLayout {
     pub focused_panel: Option<PanelId>,
     pub focus_layout: bool,
     pub companions: Vec<CompanionWindow>,
+    #[serde(default, flatten)]
+    pub extensions: WorkspaceExtensions,
 }
 
 impl WorkspaceLayout {
@@ -1137,6 +1212,7 @@ impl WorkspaceLayout {
     pub fn validate(&self, session: WorkspaceSessionId) -> Result<(), WorkspaceStateError> {
         validate_bounded_text(&self.name, WorkspaceTextField::LayoutName)?;
         validate_bounded_text(&self.browser_query, WorkspaceTextField::BrowserQuery)?;
+        self.extensions.validate(LAYOUT_FIELDS)?;
         if self.name.trim().is_empty() {
             return Err(WorkspaceStateError::EmptyLayoutName);
         }
@@ -1339,7 +1415,6 @@ impl WorkspaceLayout {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct WorkspaceStateDocument {
     pub schema: String,
     pub version: u16,
@@ -1348,6 +1423,8 @@ pub struct WorkspaceStateDocument {
     pub active_workspace: WorkspaceKind,
     pub active_layout_name: String,
     pub layouts: Vec<WorkspaceLayout>,
+    #[serde(default, flatten)]
+    pub extensions: WorkspaceExtensions,
 }
 
 #[derive(Deserialize)]
@@ -1383,6 +1460,7 @@ impl WorkspaceStateDocument {
             active_workspace,
             active_layout_name: String::new(),
             layouts: Vec::new(),
+            extensions: WorkspaceExtensions::default(),
         }
     }
 
@@ -1404,6 +1482,7 @@ impl WorkspaceStateDocument {
                 maximum: MAX_RETAINED_NODES,
             });
         }
+        self.extensions.validate(DOCUMENT_FIELDS)?;
         validate_bounded_text(
             &self.active_layout_name,
             WorkspaceTextField::ActiveLayoutName,
@@ -1510,6 +1589,7 @@ impl WorkspaceStateDocument {
                         .find(|layout| layout.workspace == legacy.active_workspace)
                         .map_or_else(String::new, |layout| layout.name.clone()),
                     layouts: legacy.layouts,
+                    extensions: WorkspaceExtensions::default(),
                 };
                 document.validate()?;
                 Ok(WorkspaceMigrationOutcome {
@@ -1531,7 +1611,7 @@ impl WorkspaceStateDocument {
     /// Returns a layout validation, document validation, or revision error.
     pub fn save_named_layout(
         &mut self,
-        layout: WorkspaceLayout,
+        mut layout: WorkspaceLayout,
     ) -> Result<(), WorkspaceStateError> {
         layout.validate(self.session)?;
         let layout_workspace = layout.workspace;
@@ -1546,6 +1626,9 @@ impl WorkspaceStateDocument {
             .iter_mut()
             .find(|existing| existing.workspace == layout.workspace && existing.name == layout.name)
         {
+            let mut extensions = existing.extensions.clone();
+            extensions.merge_from(std::mem::take(&mut layout.extensions));
+            layout.extensions = extensions;
             *existing = layout;
         } else {
             self.layouts.push(layout);
@@ -1751,6 +1834,219 @@ impl WorkspaceStateDocument {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WorkspaceHistoryEntry {
+    document: WorkspaceStateDocument,
+    encoded_bytes: usize,
+}
+
+/// Bounded transactional history for one validated workspace-state document.
+///
+/// Past and future checkpoints share the existing canonical workspace byte
+/// bound. Undo, redo, and reset allocate a fresh monotonic revision instead of
+/// reviving a stale persisted revision.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceStateHistory {
+    current: WorkspaceStateDocument,
+    baseline: WorkspaceStateDocument,
+    undo: VecDeque<WorkspaceHistoryEntry>,
+    redo: VecDeque<WorkspaceHistoryEntry>,
+    retained_bytes: usize,
+}
+
+impl WorkspaceStateHistory {
+    /// Starts a bounded history from one validated persistence baseline.
+    ///
+    /// # Errors
+    ///
+    /// Returns the document's validation, encoding, or byte-bound error.
+    pub fn new(document: WorkspaceStateDocument) -> Result<Self, WorkspaceStateError> {
+        document.canonical_json()?;
+        Ok(Self {
+            baseline: document.clone(),
+            current: document,
+            undo: VecDeque::new(),
+            redo: VecDeque::new(),
+            retained_bytes: 0,
+        })
+    }
+
+    #[must_use]
+    pub const fn current(&self) -> &WorkspaceStateDocument {
+        &self.current
+    }
+
+    #[must_use]
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    #[must_use]
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    #[must_use]
+    pub fn undo_len(&self) -> usize {
+        self.undo.len()
+    }
+
+    #[must_use]
+    pub fn redo_len(&self) -> usize {
+        self.redo.len()
+    }
+
+    #[must_use]
+    pub const fn retained_bytes(&self) -> usize {
+        self.retained_bytes
+    }
+
+    /// Commits one validated, newer workspace document and clears redo state.
+    ///
+    /// Callers construct `next` through the typed workspace operations before
+    /// crossing this checkpoint boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns a validation, size, session, or monotonic-revision error without
+    /// modifying the accepted history.
+    pub fn commit(&mut self, next: WorkspaceStateDocument) -> Result<(), WorkspaceStateError> {
+        let before = self.clone();
+        let result = (|| {
+            next.canonical_json()?;
+            if next.session != self.current.session {
+                return Err(WorkspaceStateError::SessionMismatch {
+                    expected: self.current.session,
+                    actual: next.session,
+                });
+            }
+            if next.revision <= self.current.revision {
+                return Err(WorkspaceStateError::HistoryRevisionNotAdvanced {
+                    current: self.current.revision,
+                    candidate: next.revision,
+                });
+            }
+            let current = Self::entry(self.current.clone())?;
+            self.clear_redo();
+            self.retained_bytes = self.retained_bytes.saturating_add(current.encoded_bytes);
+            self.undo.push_back(current);
+            self.current = next;
+            self.trim_to_bound();
+            Ok(())
+        })();
+        if result.is_err() {
+            *self = before;
+        }
+        result
+    }
+
+    /// Restores the newest past checkpoint under a fresh revision.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed unavailable, revision, validation, or size error without
+    /// changing history.
+    pub fn undo(&mut self) -> Result<&WorkspaceStateDocument, WorkspaceStateError> {
+        self.move_history(WorkspaceHistoryDirection::Undo)
+    }
+
+    /// Restores the newest future checkpoint under a fresh revision.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed unavailable, revision, validation, or size error without
+    /// changing history.
+    pub fn redo(&mut self) -> Result<&WorkspaceStateDocument, WorkspaceStateError> {
+        self.move_history(WorkspaceHistoryDirection::Redo)
+    }
+
+    /// Restores the captured baseline as a new, undoable revision.
+    ///
+    /// # Errors
+    ///
+    /// Returns a revision, validation, or size error without changing history.
+    pub fn reset(&mut self) -> Result<&WorkspaceStateDocument, WorkspaceStateError> {
+        let mut baseline = self.baseline.clone();
+        baseline.revision = self
+            .current
+            .revision
+            .checked_add(1)
+            .ok_or(WorkspaceStateError::RevisionExhausted)?;
+        self.commit(baseline)?;
+        Ok(&self.current)
+    }
+
+    fn move_history(
+        &mut self,
+        direction: WorkspaceHistoryDirection,
+    ) -> Result<&WorkspaceStateDocument, WorkspaceStateError> {
+        let before = self.clone();
+        let result = (|| {
+            let next_revision = self
+                .current
+                .revision
+                .checked_add(1)
+                .ok_or(WorkspaceStateError::RevisionExhausted)?;
+            let mut target = match direction {
+                WorkspaceHistoryDirection::Undo => self.undo.pop_back(),
+                WorkspaceHistoryDirection::Redo => self.redo.pop_back(),
+            }
+            .ok_or(WorkspaceStateError::HistoryUnavailable(direction))?;
+            self.retained_bytes = self.retained_bytes.saturating_sub(target.encoded_bytes);
+            let current = Self::entry(self.current.clone())?;
+            self.retained_bytes = self.retained_bytes.saturating_add(current.encoded_bytes);
+            match direction {
+                WorkspaceHistoryDirection::Undo => self.redo.push_back(current),
+                WorkspaceHistoryDirection::Redo => self.undo.push_back(current),
+            }
+            target.document.revision = next_revision;
+            target.document.canonical_json()?;
+            self.current = target.document;
+            self.trim_to_bound();
+            Ok(())
+        })();
+        if let Err(error) = result {
+            *self = before;
+            return Err(error);
+        }
+        Ok(&self.current)
+    }
+
+    fn entry(
+        document: WorkspaceStateDocument,
+    ) -> Result<WorkspaceHistoryEntry, WorkspaceStateError> {
+        let encoded_bytes = document.canonical_json()?.len();
+        Ok(WorkspaceHistoryEntry {
+            document,
+            encoded_bytes,
+        })
+    }
+
+    fn clear_redo(&mut self) {
+        self.retained_bytes = self.redo.iter().fold(self.retained_bytes, |bytes, entry| {
+            bytes.saturating_sub(entry.encoded_bytes)
+        });
+        self.redo.clear();
+    }
+
+    fn trim_to_bound(&mut self) {
+        while self.retained_bytes > MAX_TEXT_BYTES {
+            let removed = self.undo.pop_front().or_else(|| self.redo.pop_front());
+            let Some(removed) = removed else {
+                self.retained_bytes = 0;
+                break;
+            };
+            self.retained_bytes = self.retained_bytes.saturating_sub(removed.encoded_bytes);
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkspaceHistoryDirection {
+    Undo,
+    Redo,
+}
+
 pub struct WorkspaceStateStore {
     store: SaveStore,
 }
@@ -1836,6 +2132,7 @@ pub enum WorkspaceTextField {
     LayoutName,
     BrowserQuery,
     ActiveLayoutName,
+    ExtensionKey,
 }
 
 #[derive(Debug)]
@@ -1849,6 +2146,12 @@ pub enum WorkspaceStateError {
         count: usize,
         maximum: usize,
     },
+    TooManyExtensions {
+        count: usize,
+        maximum: usize,
+    },
+    EmptyExtensionKey,
+    ReservedExtensionKey(String),
     DuplicateLayoutName {
         workspace: WorkspaceKind,
         name: String,
@@ -1897,6 +2200,11 @@ pub enum WorkspaceStateError {
     Decoding(String),
     Storage(SaveError),
     RevisionExhausted,
+    HistoryRevisionNotAdvanced {
+        current: u64,
+        candidate: u64,
+    },
+    HistoryUnavailable(WorkspaceHistoryDirection),
 }
 
 impl Display for WorkspaceStateError {
@@ -1960,15 +2268,20 @@ pub struct ResponsiveRegion {
     pub panel: PanelId,
     pub priority: u8,
     pub preferred_extent: u32,
+    /// Extent after nonessential labels and chrome use their compact form.
+    pub compact_extent: u32,
     pub minimum_extent: u32,
     pub pinned: bool,
     pub working_canvas: bool,
+    /// Prevents collapse while the panel owns an active error or recovery path.
+    pub must_remain_visible: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ResponsiveStage {
     Preferred,
     Tightened,
+    LabelsShortened,
     Collapsed,
     ControlledOverflow,
 }
@@ -1976,20 +2289,14 @@ pub enum ResponsiveStage {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResponsiveLayout {
     pub stage: ResponsiveStage,
+    pub gutter: u32,
     pub visible: Vec<PanelId>,
+    pub shortened: Vec<PanelId>,
     pub collapsed: Vec<PanelId>,
     pub minimum_required: u32,
 }
 
-/// Adapts unpinned regions by priority while preserving canvas and accessible minima.
-///
-/// # Errors
-///
-/// Returns a typed count, identity, priority, or minimum-size error.
-pub fn adapt_responsive_regions(
-    available_extent: u32,
-    regions: &[ResponsiveRegion],
-) -> Result<ResponsiveLayout, ResponsiveError> {
+fn validate_responsive_regions(regions: &[ResponsiveRegion]) -> Result<(), ResponsiveError> {
     if regions.len() > MAX_RETAINED_NODES {
         return Err(ResponsiveError::TooManyRegions {
             count: regions.len(),
@@ -2003,57 +2310,104 @@ pub fn adapt_responsive_regions(
         }
         if !(1..=5).contains(&region.priority)
             || region.minimum_extent < MIN_ACCESSIBLE_PANEL_EXTENT
+            || region.compact_extent < region.minimum_extent
+            || region.compact_extent > region.preferred_extent
             || region.preferred_extent < region.minimum_extent
         {
             return Err(ResponsiveError::InvalidRegion(region.panel));
         }
     }
-    let gutters = DOCK_GUTTER
+    Ok(())
+}
+
+/// Adapts unpinned regions by priority while preserving canvas and accessible minima.
+///
+/// # Errors
+///
+/// Returns a typed count, identity, priority, or minimum-size error.
+pub fn adapt_responsive_regions(
+    available_extent: u32,
+    regions: &[ResponsiveRegion],
+) -> Result<ResponsiveLayout, ResponsiveError> {
+    validate_responsive_regions(regions)?;
+    let preferred_gutters = DOCK_GUTTER
+        .saturating_mul(u32::try_from(regions.len().saturating_sub(1)).unwrap_or(u32::MAX));
+    let tight_gutters = TIGHT_DOCK_GUTTER
         .saturating_mul(u32::try_from(regions.len().saturating_sub(1)).unwrap_or(u32::MAX));
     let preferred = regions
         .iter()
         .map(|region| region.preferred_extent)
-        .fold(gutters, u32::saturating_add);
+        .fold(preferred_gutters, u32::saturating_add);
+    let tightened = regions
+        .iter()
+        .map(|region| region.preferred_extent)
+        .fold(tight_gutters, u32::saturating_add);
+    let compact = regions
+        .iter()
+        .map(|region| region.compact_extent)
+        .fold(tight_gutters, u32::saturating_add);
     let minimum = regions
         .iter()
         .map(|region| region.minimum_extent)
-        .fold(gutters, u32::saturating_add);
+        .fold(tight_gutters, u32::saturating_add);
     let mut visible = regions
         .iter()
         .map(|region| region.panel)
         .collect::<Vec<_>>();
     let mut collapsed = Vec::new();
     let mut required = minimum;
-    let stage = if preferred <= available_extent {
-        ResponsiveStage::Preferred
-    } else if minimum <= available_extent {
-        ResponsiveStage::Tightened
+    let (stage, gutter) = if preferred <= available_extent {
+        (ResponsiveStage::Preferred, DOCK_GUTTER)
+    } else if tightened <= available_extent {
+        (ResponsiveStage::Tightened, TIGHT_DOCK_GUTTER)
+    } else if compact <= available_extent {
+        (ResponsiveStage::LabelsShortened, TIGHT_DOCK_GUTTER)
     } else {
         let mut candidates = regions
             .iter()
-            .filter(|region| !region.pinned && !region.working_canvas)
+            .filter(|region| {
+                !region.pinned && !region.working_canvas && !region.must_remain_visible
+            })
             .collect::<Vec<_>>();
         candidates.sort_by_key(|region| (region.priority, region.panel));
         for region in candidates {
-            if required <= available_extent {
-                break;
-            }
             required = required.saturating_sub(region.minimum_extent);
             if visible.len() > 1 {
-                required = required.saturating_sub(DOCK_GUTTER);
+                required = required.saturating_sub(TIGHT_DOCK_GUTTER);
             }
             visible.retain(|panel| *panel != region.panel);
             collapsed.push(region.panel);
+            if required <= available_extent {
+                break;
+            }
         }
-        if required <= available_extent {
-            ResponsiveStage::Collapsed
+        if !collapsed.is_empty() && required <= available_extent {
+            (ResponsiveStage::Collapsed, TIGHT_DOCK_GUTTER)
         } else {
-            ResponsiveStage::ControlledOverflow
+            (ResponsiveStage::ControlledOverflow, TIGHT_DOCK_GUTTER)
         }
+    };
+    let shortened = if matches!(
+        stage,
+        ResponsiveStage::LabelsShortened
+            | ResponsiveStage::Collapsed
+            | ResponsiveStage::ControlledOverflow
+    ) {
+        regions
+            .iter()
+            .filter(|region| {
+                region.compact_extent < region.preferred_extent && visible.contains(&region.panel)
+            })
+            .map(|region| region.panel)
+            .collect()
+    } else {
+        Vec::new()
     };
     Ok(ResponsiveLayout {
         stage,
+        gutter,
         visible,
+        shortened,
         collapsed,
         minimum_required: required,
     })
@@ -2180,6 +2534,7 @@ mod tests {
                 focused_panel: Some(PanelId::new(3)),
                 focus_layout: false,
                 companions: Vec::new(),
+                extensions: WorkspaceExtensions::default(),
             })
             .expect("default layout saves");
         document
@@ -2356,7 +2711,7 @@ mod tests {
     }
 
     #[test]
-    fn workspace_json_is_canonical_strict_and_bounded() {
+    fn workspace_json_preserves_compatible_extensions_and_rejects_structural_drift() {
         let document = workspace_fixture();
         let json = document.canonical_json().expect("workspace encodes");
         assert!(json.ends_with('\n'));
@@ -2365,13 +2720,48 @@ mod tests {
             WorkspaceStateDocument::from_json(json.as_bytes()).expect("workspace parses"),
             document
         );
-        let unknown = json.replacen(
-            "\"version\": 1,",
-            "\"version\": 1,\n  \"unexpected\": true,",
-            1,
+        let extended = json
+            .replacen(
+                "\"version\": 1,",
+                "\"version\": 1,\n  \"future-document-field\": true,",
+                1,
+            )
+            .replacen(
+                "\"workspace\": \"world\",",
+                "\"workspace\": \"world\",\n      \"future-layout-field\": {\"mode\": \"kept\"},",
+                1,
+            );
+        let mut parsed = WorkspaceStateDocument::from_json(extended.as_bytes())
+            .expect("compatible fields are retained");
+        assert!(parsed.extensions.contains_key("future-document-field"));
+        assert!(parsed.layouts[0]
+            .extensions
+            .contains_key("future-layout-field"));
+
+        let mut replacement = parsed.layouts[0].clone();
+        replacement.extensions = WorkspaceExtensions::default();
+        replacement.browser_query = "updated".to_owned();
+        parsed
+            .save_named_layout(replacement)
+            .expect("typed mutation preserves compatible fields");
+        let reencoded = parsed.canonical_json().expect("extended state encodes");
+        let value: serde_json::Value =
+            serde_json::from_str(&reencoded).expect("canonical extension JSON");
+        assert_eq!(value["future-document-field"], true);
+        assert_eq!(value["layouts"][0]["future-layout-field"]["mode"], "kept");
+        assert_eq!(
+            WorkspaceStateDocument::from_json(reencoded.as_bytes())
+                .expect("extended state round trips"),
+            parsed
         );
+
+        let mut structural_drift: serde_json::Value =
+            serde_json::from_str(&json).expect("strict fixture JSON");
+        structural_drift["layouts"][0]["dock"]["unknown-structural-field"] = true.into();
+        let structural_drift =
+            serde_json::to_vec(&structural_drift).expect("structural drift encodes");
         assert!(matches!(
-            WorkspaceStateDocument::from_json(unknown.as_bytes()),
+            WorkspaceStateDocument::from_json(&structural_drift),
             Err(WorkspaceStateError::Decoding(_))
         ));
         assert!(matches!(
@@ -2606,37 +2996,121 @@ mod tests {
     }
 
     #[test]
+    fn workspace_history_undo_redo_branch_and_reset_use_fresh_revisions() {
+        let baseline = workspace_fixture();
+        let baseline_query = baseline.layouts[0].browser_query.clone();
+        let mut history = WorkspaceStateHistory::new(baseline.clone()).expect("history starts");
+        let update_query = |document: &WorkspaceStateDocument, query: &str| {
+            let mut next = document.clone();
+            let mut layout = next.layouts[0].clone();
+            query.clone_into(&mut layout.browser_query);
+            next.save_named_layout(layout).expect("typed layout update");
+            next
+        };
+
+        history
+            .commit(update_query(history.current(), "first"))
+            .expect("first checkpoint commits");
+        history
+            .commit(update_query(history.current(), "second"))
+            .expect("second checkpoint commits");
+        let second_revision = history.current().revision;
+        assert_eq!(history.current().layouts[0].browser_query, "second");
+
+        let undone = history.undo().expect("history undoes");
+        assert_eq!(undone.layouts[0].browser_query, "first");
+        assert!(undone.revision > second_revision);
+        let undo_revision = undone.revision;
+        let redone = history.redo().expect("history redoes");
+        assert_eq!(redone.layouts[0].browser_query, "second");
+        assert!(redone.revision > undo_revision);
+
+        history.undo().expect("branch point restores");
+        history
+            .commit(update_query(history.current(), "branch"))
+            .expect("branch checkpoint commits");
+        assert!(!history.can_redo());
+        assert!(matches!(
+            history.redo(),
+            Err(WorkspaceStateError::HistoryUnavailable(
+                WorkspaceHistoryDirection::Redo
+            ))
+        ));
+
+        let before_rejection = history.clone();
+        let stale = history.current().clone();
+        assert!(matches!(
+            history.commit(stale),
+            Err(WorkspaceStateError::HistoryRevisionNotAdvanced { .. })
+        ));
+        assert_eq!(history, before_rejection);
+
+        let before_reset_revision = history.current().revision;
+        let reset = history.reset().expect("baseline resets");
+        assert_eq!(reset.layouts[0].browser_query, baseline_query);
+        assert!(reset.revision > before_reset_revision);
+        assert!(history.can_undo());
+    }
+
+    #[test]
+    fn workspace_history_uses_the_existing_aggregate_state_byte_bound() {
+        let mut history =
+            WorkspaceStateHistory::new(workspace_fixture()).expect("bounded history starts");
+        for index in 0..64 {
+            let mut next = history.current().clone();
+            let mut layout = next.layouts[0].clone();
+            layout.browser_query = format!("{index:02}-{}", "query".repeat(300));
+            next.save_named_layout(layout).expect("typed layout update");
+            history.commit(next).expect("bounded checkpoint commits");
+            assert!(history.retained_bytes() <= MAX_TEXT_BYTES);
+        }
+        assert!(history.can_undo());
+        assert!(history.undo_len() < 64);
+        history
+            .undo()
+            .expect("newest retained checkpoint remains usable");
+        assert!(history.retained_bytes() <= MAX_TEXT_BYTES);
+    }
+
+    #[test]
     fn responsive_priority_preserves_pins_canvas_and_accessible_minima() {
         let regions = [
             ResponsiveRegion {
                 panel: PanelId::new(1),
                 priority: 2,
                 preferred_extent: 240,
+                compact_extent: 120,
                 minimum_extent: 44,
                 pinned: false,
                 working_canvas: false,
+                must_remain_visible: false,
             },
             ResponsiveRegion {
                 panel: PanelId::new(2),
                 priority: 5,
                 preferred_extent: 800,
+                compact_extent: 600,
                 minimum_extent: 300,
                 pinned: false,
                 working_canvas: true,
+                must_remain_visible: false,
             },
             ResponsiveRegion {
                 panel: PanelId::new(3),
                 priority: 1,
                 preferred_extent: 344,
+                compact_extent: 240,
                 minimum_extent: 100,
                 pinned: true,
                 working_canvas: false,
+                must_remain_visible: false,
             },
         ];
         let layout = adapt_responsive_regions(420, &regions).expect("responsive layout");
         assert_eq!(layout.stage, ResponsiveStage::Collapsed);
+        assert_eq!(layout.gutter, TIGHT_DOCK_GUTTER);
         assert_eq!(layout.collapsed, vec![PanelId::new(1)]);
-        assert_eq!(layout.minimum_required, 408);
+        assert_eq!(layout.minimum_required, 404);
         assert!(layout.visible.contains(&PanelId::new(2)));
         assert!(layout.visible.contains(&PanelId::new(3)));
         assert!(matches!(
@@ -2660,5 +3134,90 @@ mod tests {
             resolve_split_extents(200, 500, 100, 100),
             Err(DockError::InsufficientSplitExtent { .. })
         ));
+    }
+
+    #[test]
+    fn active_error_region_forces_controlled_overflow_instead_of_hiding_recovery() {
+        let regions = [
+            ResponsiveRegion {
+                panel: PanelId::new(1),
+                priority: 1,
+                preferred_extent: 240,
+                compact_extent: 160,
+                minimum_extent: 100,
+                pinned: false,
+                working_canvas: false,
+                must_remain_visible: true,
+            },
+            ResponsiveRegion {
+                panel: PanelId::new(2),
+                priority: 5,
+                preferred_extent: 800,
+                compact_extent: 600,
+                minimum_extent: 300,
+                pinned: false,
+                working_canvas: true,
+                must_remain_visible: false,
+            },
+        ];
+
+        let layout = adapt_responsive_regions(300, &regions).expect("responsive layout");
+        assert_eq!(layout.stage, ResponsiveStage::ControlledOverflow);
+        assert_eq!(layout.gutter, TIGHT_DOCK_GUTTER);
+        assert_eq!(layout.minimum_required, 404);
+        assert!(layout.collapsed.is_empty());
+        assert_eq!(layout.visible, vec![PanelId::new(1), PanelId::new(2)]);
+    }
+
+    #[test]
+    fn responsive_adaptation_tightens_then_shortens_before_collapsing() {
+        let regions = [
+            ResponsiveRegion {
+                panel: PanelId::new(1),
+                priority: 1,
+                preferred_extent: 100,
+                compact_extent: 80,
+                minimum_extent: 44,
+                pinned: false,
+                working_canvas: false,
+                must_remain_visible: false,
+            },
+            ResponsiveRegion {
+                panel: PanelId::new(2),
+                priority: 5,
+                preferred_extent: 100,
+                compact_extent: 80,
+                minimum_extent: 44,
+                pinned: false,
+                working_canvas: true,
+                must_remain_visible: false,
+            },
+        ];
+
+        let preferred = adapt_responsive_regions(208, &regions).expect("preferred layout");
+        assert_eq!(preferred.stage, ResponsiveStage::Preferred);
+        assert_eq!(preferred.gutter, DOCK_GUTTER);
+        assert!(preferred.shortened.is_empty());
+
+        let tightened = adapt_responsive_regions(204, &regions).expect("tight layout");
+        assert_eq!(tightened.stage, ResponsiveStage::Tightened);
+        assert_eq!(tightened.gutter, TIGHT_DOCK_GUTTER);
+        assert!(tightened.shortened.is_empty());
+
+        let shortened = adapt_responsive_regions(164, &regions).expect("short layout");
+        assert_eq!(shortened.stage, ResponsiveStage::LabelsShortened);
+        assert_eq!(shortened.shortened, vec![PanelId::new(1), PanelId::new(2)]);
+        assert!(shortened.collapsed.is_empty());
+
+        let collapsed_after_shortening =
+            adapt_responsive_regions(150, &regions).expect("collapse follows shortening");
+        assert_eq!(collapsed_after_shortening.stage, ResponsiveStage::Collapsed);
+        assert_eq!(collapsed_after_shortening.collapsed, vec![PanelId::new(1)]);
+
+        let collapsed = adapt_responsive_regions(90, &regions).expect("collapsed layout");
+        assert_eq!(collapsed.stage, ResponsiveStage::Collapsed);
+        assert_eq!(collapsed.collapsed, vec![PanelId::new(1)]);
+        assert_eq!(collapsed.visible, vec![PanelId::new(2)]);
+        assert_eq!(collapsed.minimum_required, 44);
     }
 }

@@ -29,12 +29,17 @@
           "workload": "meridian.ui-direct-performance/v1",
           "status": "Inconclusive",
           "reason": "Raw local samples have no calibrated threshold, cross-platform repetition, allocation telemetry, or visual review."
+        },
+        {
+          "workload": "meridian.ui-direct-presented-review/v1",
+          "status": "Inconclusive",
+          "reason": "A local canonical 2x capture came from a mapped Presented surface, but its caller-declared working-tree provenance is non-promoting and its human review is still pending."
         }
       ],
       "maintenance_review": "The direct path preserves Meridian-owned display, semantic, RHI, cache, and recovery authority without a second scene model or wgpu major. No new runtime dependency is introduced.",
       "decision_limits": [
         "ADR-0029 selects an architecture direction, not renderer completion or package promotion.",
-        "Linux, Windows, macOS, presented native visual, real screen-reader, and calibrated performance/memory evidence remain required."
+        "Linux, Windows, macOS, human-approved presented native visual, real screen-reader, and calibrated performance/memory evidence remain required."
       ]
     },
     {

@@ -34,11 +34,14 @@ const INDEX_STRIDE_BYTES: u64 = 4;
 const INDEX_STRIDE_BYTES_USIZE: usize = 4;
 const MAX_DIRECT_BATCHES: usize = MAX_DISPLAY_PRIMITIVES;
 const MAX_DIRECT_GEOMETRY_BYTES: u64 = MAX_GLYPH_RASTER_BYTES as u64;
+const MAX_DIRECT_IMAGE_BYTES: u64 = MAX_DIRECT_GEOMETRY_BYTES;
 const MAX_PATH_TESSELLATION_WORK: usize = MAX_PATH_COMMANDS_PER_PRIMITIVE * 16;
 // Reuse the recovery bridge's established 16,777,216-pixel full-frame service
-// guard. Layer targets are GPU-only, but they share that aggregate RGBA safety
-// envelope so this path does not invent a second uncalibrated memory limit.
-const MAX_DIRECT_LAYER_TARGET_BYTES: u64 = 16 * 1024 * 1024 * 4;
+// guard. Direct atlas uploads and layer targets share that aggregate RGBA
+// safety envelope so this path does not invent uncalibrated memory limits.
+const MAX_DIRECT_RGBA_SERVICE_BYTES: u64 = 16 * 1024 * 1024 * 4;
+const MAX_DIRECT_ATLAS_BYTES: u64 = MAX_DIRECT_RGBA_SERVICE_BYTES;
+const MAX_DIRECT_LAYER_TARGET_BYTES: u64 = MAX_DIRECT_RGBA_SERVICE_BYTES;
 const UI_DIRECT_SHADER: &str = r"
 struct VertexIn {
     @location(0) position: vec2<f32>,
@@ -258,7 +261,7 @@ impl UiDirectImage {
     /// # Errors
     ///
     /// Returns [`UiDirectRendererError::InvalidImage`] for zero dimensions or
-    /// [`UiDirectRendererError::TooManyGeometryBytes`] before allocating an
+    /// [`UiDirectRendererError::TooManyImageBytes`] before allocating an
     /// oversized pixel buffer.
     pub fn try_solid(
         handle: UiImageHandle,
@@ -282,10 +285,10 @@ impl UiDirectImage {
         if width == 0 || height == 0 {
             return Err(UiDirectRendererError::InvalidImage(handle));
         }
-        if byte_count_u64 > MAX_DIRECT_GEOMETRY_BYTES {
-            return Err(UiDirectRendererError::TooManyGeometryBytes {
+        if byte_count_u64 > MAX_DIRECT_IMAGE_BYTES {
+            return Err(UiDirectRendererError::TooManyImageBytes {
                 bytes: byte_count_u64,
-                maximum: MAX_DIRECT_GEOMETRY_BYTES,
+                maximum: MAX_DIRECT_IMAGE_BYTES,
             });
         }
         let mut pixels = Vec::with_capacity(byte_count);
@@ -676,14 +679,9 @@ impl UiDirectGpuRenderer {
             cache_key.surface_width,
             cache_key.surface_height,
         ))?;
-        let (atlas_width, atlas_height) =
-            atlas_dimensions_for(request.display_list, request.resources)?;
-        let mut builder = DirectBatchBuilder::new(
-            request.display_revision,
-            atlas_width,
-            atlas_height,
-            target_bytes_per_target,
-        )?;
+        let atlas = atlas_builder_for(request.display_list, request.resources)?;
+        let mut builder =
+            DirectBatchBuilder::new(request.display_revision, atlas, target_bytes_per_target)?;
         let context = DirectFrameContext {
             viewport: request.viewport,
             scale_factor: request.scale_factor,
@@ -846,6 +844,14 @@ pub enum UiDirectRendererError {
         bytes: u64,
         maximum: u64,
     },
+    TooManyImageBytes {
+        bytes: u64,
+        maximum: u64,
+    },
+    TooManyAtlasBytes {
+        bytes: u64,
+        maximum: u64,
+    },
     TooManyLayerTargetBytes {
         bytes: u64,
         maximum: u64,
@@ -927,10 +933,13 @@ impl Display for UiDirectRendererError {
                 )
             }
             Self::TooManyGeometryBytes { bytes, maximum } => {
-                write!(
-                    formatter,
-                    "direct UI geometry has {bytes} bytes; maximum is {maximum}"
-                )
+                fmt_direct_geometry_limit(formatter, *bytes, *maximum)
+            }
+            Self::TooManyImageBytes { bytes, maximum } => {
+                fmt_direct_image_limit(formatter, *bytes, *maximum)
+            }
+            Self::TooManyAtlasBytes { bytes, maximum } => {
+                fmt_direct_atlas_limit(formatter, *bytes, *maximum)
             }
             Self::TooManyLayerTargetBytes { bytes, maximum } => {
                 write!(
@@ -988,6 +997,41 @@ impl Display for UiDirectRendererError {
             Self::Rhi(error) => write!(formatter, "direct UI RHI failure: {error}"),
         }
     }
+}
+
+fn fmt_direct_byte_limit(
+    formatter: &mut Formatter<'_>,
+    subject: &str,
+    bytes: u64,
+    maximum: u64,
+    limit: &str,
+) -> fmt::Result {
+    write!(
+        formatter,
+        "direct UI {subject} {bytes} bytes; {limit} is {maximum}"
+    )
+}
+
+fn fmt_direct_geometry_limit(
+    formatter: &mut Formatter<'_>,
+    bytes: u64,
+    maximum: u64,
+) -> fmt::Result {
+    fmt_direct_byte_limit(formatter, "geometry has", bytes, maximum, "maximum")
+}
+
+fn fmt_direct_image_limit(formatter: &mut Formatter<'_>, bytes: u64, maximum: u64) -> fmt::Result {
+    fmt_direct_byte_limit(formatter, "image has", bytes, maximum, "per-image maximum")
+}
+
+fn fmt_direct_atlas_limit(formatter: &mut Formatter<'_>, bytes: u64, maximum: u64) -> fmt::Result {
+    fmt_direct_byte_limit(
+        formatter,
+        "atlas requires",
+        bytes,
+        maximum,
+        "aggregate maximum",
+    )
 }
 
 impl Error for UiDirectRendererError {}
@@ -1088,7 +1132,7 @@ impl UiDirectVertex {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct AtlasRegion {
     x: u32,
     y: u32,
@@ -1115,21 +1159,34 @@ enum ScissorDecision {
 
 struct AtlasBuilder {
     width: u32,
-    height: u32,
     cursor_y: u32,
-    bytes: usize,
-    rows: Vec<(AtlasRegion, Vec<u8>)>,
+    rows: Vec<AtlasRow>,
+    content_rows: BTreeMap<u64, Vec<usize>>,
+}
+
+struct AtlasRow {
+    region: AtlasRegion,
+    rgba: Vec<u8>,
+}
+
+fn atlas_content_fingerprint(width: u32, height: u32, rgba: &[u8]) -> u64 {
+    let state = fingerprint_mix(FRAME_FINGERPRINT_OFFSET, u64::from(width));
+    let state = fingerprint_mix(state, u64::from(height));
+    fingerprint_bytes(state, rgba)
 }
 
 impl AtlasBuilder {
-    fn new(width: u32, height: u32) -> Self {
+    fn new(width: u32) -> Self {
         Self {
             width,
-            height,
             cursor_y: 0,
-            bytes: 0,
             rows: Vec::new(),
+            content_rows: BTreeMap::new(),
         }
+    }
+
+    fn height(&self) -> u32 {
+        self.cursor_y.max(1)
     }
 
     fn push_rgba(
@@ -1152,6 +1209,18 @@ impl AtlasBuilder {
         if width == 0 || height == 0 || rgba.len() != expected {
             return Err(UiDirectRendererError::GeometryOverflow);
         }
+        let fingerprint = atlas_content_fingerprint(width, height, rgba);
+        if let Some(row_indexes) = self.content_rows.get(&fingerprint) {
+            for row_index in row_indexes {
+                let row = self
+                    .rows
+                    .get(*row_index)
+                    .ok_or(UiDirectRendererError::GeometryOverflow)?;
+                if row.region.width == width && row.region.height == height && row.rgba == rgba {
+                    return Ok(row.region);
+                }
+            }
+        }
         let padded_width = width
             .checked_add(2)
             .ok_or(UiDirectRendererError::GeometryOverflow)?;
@@ -1166,20 +1235,13 @@ impl AtlasBuilder {
             .checked_mul(u64::from(next_cursor))
             .and_then(|texels| texels.checked_mul(4))
             .ok_or(UiDirectRendererError::GeometryOverflow)?;
-        if padded_bytes > MAX_DIRECT_GEOMETRY_BYTES {
-            return Err(UiDirectRendererError::TooManyGeometryBytes {
+        if padded_bytes > MAX_DIRECT_ATLAS_BYTES {
+            return Err(UiDirectRendererError::TooManyAtlasBytes {
                 bytes: padded_bytes,
-                maximum: MAX_DIRECT_GEOMETRY_BYTES,
+                maximum: MAX_DIRECT_ATLAS_BYTES,
             });
         }
-        let next_bytes = self
-            .bytes
-            .checked_add(expected)
-            .ok_or(UiDirectRendererError::GeometryOverflow)?;
         if padded_width > self.width {
-            return Err(UiDirectRendererError::GeometryOverflow);
-        }
-        if next_cursor > self.height {
             return Err(UiDirectRendererError::GeometryOverflow);
         }
         let region = AtlasRegion {
@@ -1192,8 +1254,15 @@ impl AtlasBuilder {
             height,
         };
         self.cursor_y = next_cursor;
-        self.bytes = next_bytes;
-        self.rows.push((region, rgba.to_vec()));
+        let row_index = self.rows.len();
+        self.rows.push(AtlasRow {
+            region,
+            rgba: rgba.to_vec(),
+        });
+        self.content_rows
+            .entry(fingerprint)
+            .or_default()
+            .push(row_index);
         Ok(region)
     }
 
@@ -1215,11 +1284,11 @@ impl AtlasBuilder {
         let Some(rgba_len) = expected.checked_mul(4) else {
             return Err(UiDirectRendererError::GeometryOverflow);
         };
-        if u64::try_from(rgba_len).map_or(true, |bytes| bytes > MAX_DIRECT_GEOMETRY_BYTES) {
-            return Err(UiDirectRendererError::TooManyGeometryBytes {
+        if u64::try_from(rgba_len).map_or(true, |bytes| bytes > MAX_DIRECT_ATLAS_BYTES) {
+            return Err(UiDirectRendererError::TooManyAtlasBytes {
                 bytes: u64::try_from(rgba_len)
                     .map_err(|_| UiDirectRendererError::GeometryOverflow)?,
-                maximum: MAX_DIRECT_GEOMETRY_BYTES,
+                maximum: MAX_DIRECT_ATLAS_BYTES,
             });
         }
         let mut rgba = Vec::with_capacity(rgba_len);
@@ -1230,7 +1299,7 @@ impl AtlasBuilder {
     }
 
     fn finish(self) -> Result<UiDirectAtlas, UiDirectRendererError> {
-        let height = self.height.max(1);
+        let height = self.height();
         let row_bytes = usize::try_from(self.width)
             .ok()
             .and_then(|width| width.checked_mul(4))
@@ -1241,7 +1310,8 @@ impl AtlasBuilder {
             )
             .ok_or(UiDirectRendererError::GeometryOverflow)?;
         let mut rgba = vec![0; total];
-        for (region, row) in self.rows {
+        for row in self.rows {
+            let region = row.region;
             let source_width = usize::try_from(region.width)
                 .map_err(|_| UiDirectRendererError::GeometryOverflow)?;
             let source_height = usize::try_from(region.height)
@@ -1275,7 +1345,7 @@ impl AtlasBuilder {
                                 .and_then(|column| offset.checked_add(column))
                         })
                         .ok_or(UiDirectRendererError::GeometryOverflow)?;
-                    rgba[dst..dst + 4].copy_from_slice(&row[src..src + 4]);
+                    rgba[dst..dst + 4].copy_from_slice(&row.rgba[src..src + 4]);
                 }
             }
         }
@@ -1341,11 +1411,9 @@ impl ActiveLayerPass {
 impl DirectBatchBuilder {
     fn new(
         display_revision: u64,
-        atlas_width: u32,
-        atlas_height: u32,
+        mut atlas: AtlasBuilder,
         target_bytes_per_target: u64,
     ) -> Result<Self, UiDirectRendererError> {
-        let mut atlas = AtlasBuilder::new(atlas_width.max(1), atlas_height.max(1));
         let white_region = atlas.push_white()?;
         Ok(Self {
             display_revision,
@@ -1862,7 +1930,7 @@ impl DirectBatchBuilder {
             color,
             self.white_region,
             self.atlas.width,
-            self.atlas.height.max(1),
+            self.atlas.height(),
             viewport,
             scale_factor,
             antialias,
@@ -1899,7 +1967,7 @@ impl DirectBatchBuilder {
             color,
             self.white_region,
             self.atlas.width,
-            self.atlas.height.max(1),
+            self.atlas.height(),
             viewport,
         )?;
         self.push_geometry_batch(
@@ -1923,7 +1991,11 @@ impl DirectBatchBuilder {
         scale_factor: f32,
     ) -> Result<(), UiDirectRendererError> {
         self.glyph_mask_count = self.glyph_mask_count.saturating_add(raster.glyphs.len());
+        let mut emitted_glyph = false;
         for glyph in &raster.glyphs {
+            if glyph.width == 0 || glyph.height == 0 {
+                continue;
+            }
             let glyph_bounds = glyph_rect(bounds, glyph, scale_factor);
             let region = self.atlas.push_glyph(glyph)?;
             self.push_quad_batch(
@@ -1936,8 +2008,9 @@ impl DirectBatchBuilder {
                 scale_factor,
                 self.active_pass.active_stencil_depth,
             )?;
+            emitted_glyph = true;
         }
-        if raster.glyphs.is_empty() {
+        if !emitted_glyph {
             self.push_marker_batch(UiDirectBatchKind::GlyphMask, primitive)?;
         }
         Ok(())
@@ -1963,7 +2036,7 @@ impl DirectBatchBuilder {
                 fill,
                 self.white_region,
                 self.atlas.width,
-                self.atlas.height.max(1),
+                self.atlas.height(),
                 viewport,
             )?;
             self.push_geometry_batch(
@@ -1998,7 +2071,7 @@ impl DirectBatchBuilder {
             stroke,
             self.white_region,
             self.atlas.width,
-            self.atlas.height.max(1),
+            self.atlas.height(),
             viewport,
         )?;
         self.push_geometry_batch(
@@ -2126,7 +2199,7 @@ impl DirectBatchBuilder {
             color,
             region,
             self.atlas.width,
-            self.atlas.height.max(1),
+            self.atlas.height(),
             viewport,
         )?;
         self.push_geometry_batch(
@@ -2185,7 +2258,7 @@ impl DirectBatchBuilder {
             tint,
             self.white_region,
             self.atlas.width,
-            self.atlas.height.max(1),
+            self.atlas.height(),
             viewport,
         )?;
         self.push_geometry_batch(
@@ -2414,13 +2487,12 @@ fn validate_complete_text_raster(
     }
 }
 
-fn atlas_dimensions_for(
+fn atlas_builder_for(
     display_list: &DisplayList,
     resources: &UiDirectResourceSet,
-) -> Result<(u32, u32), UiDirectRendererError> {
+) -> Result<AtlasBuilder, UiDirectRendererError> {
     // Every region has a one-texel duplicated-edge gutter on all sides.
     let mut width = 3_u32;
-    let mut height = 3_u32;
     for primitive in &display_list.primitives {
         match primitive {
             DisplayPrimitive::Text { raster, .. } | DisplayPrimitive::GlyphRun { raster, .. } => {
@@ -2430,15 +2502,7 @@ fn atlas_dimensions_for(
                         .max(1)
                         .checked_add(2)
                         .ok_or(UiDirectRendererError::GeometryOverflow)?;
-                    let padded_height = glyph
-                        .height
-                        .max(1)
-                        .checked_add(2)
-                        .ok_or(UiDirectRendererError::GeometryOverflow)?;
                     width = width.max(padded_width);
-                    height = height
-                        .checked_add(padded_height)
-                        .ok_or(UiDirectRendererError::GeometryOverflow)?;
                 }
             }
             DisplayPrimitive::Image { image, .. } => {
@@ -2448,30 +2512,33 @@ fn atlas_dimensions_for(
                         .width
                         .checked_add(2)
                         .ok_or(UiDirectRendererError::GeometryOverflow)?;
-                    let padded_height = descriptor
-                        .height
-                        .checked_add(2)
-                        .ok_or(UiDirectRendererError::GeometryOverflow)?;
                     width = width.max(padded_width);
-                    height = height
-                        .checked_add(padded_height)
-                        .ok_or(UiDirectRendererError::GeometryOverflow)?;
                 }
             }
             _ => {}
         }
     }
-    let padded_bytes = u64::from(width)
-        .checked_mul(u64::from(height))
-        .and_then(|texels| texels.checked_mul(4))
-        .ok_or(UiDirectRendererError::GeometryOverflow)?;
-    if padded_bytes > MAX_DIRECT_GEOMETRY_BYTES {
-        return Err(UiDirectRendererError::TooManyGeometryBytes {
-            bytes: padded_bytes,
-            maximum: MAX_DIRECT_GEOMETRY_BYTES,
-        });
+
+    let mut atlas = AtlasBuilder::new(width);
+    atlas.push_white()?;
+    for primitive in &display_list.primitives {
+        match primitive {
+            DisplayPrimitive::Text { raster, .. } | DisplayPrimitive::GlyphRun { raster, .. } => {
+                for glyph in &raster.glyphs {
+                    if glyph.width > 0 && glyph.height > 0 {
+                        atlas.push_glyph(glyph)?;
+                    }
+                }
+            }
+            DisplayPrimitive::Image { image, .. } => {
+                if let Some(descriptor) = resources.image(*image) {
+                    atlas.push_rgba(descriptor.width, descriptor.height, &descriptor.rgba)?;
+                }
+            }
+            _ => {}
+        }
     }
-    Ok((width, height))
+    Ok(atlas)
 }
 
 fn validate_image(image: &UiDirectImage) -> Result<(), UiDirectRendererError> {
@@ -6247,7 +6314,7 @@ mod tests {
         assert!((f64::from(third_vertex_v) - expected).abs() < 0.000_001);
         assert!(third_vertex_v < 1.0);
 
-        let mut atlas = AtlasBuilder::new(3, 6);
+        let mut atlas = AtlasBuilder::new(3);
         let red = atlas
             .push_rgba(1, 1, &[255, 0, 0, 255])
             .expect("red region fits");
@@ -6264,6 +6331,21 @@ mod tests {
             &atlas.rgba[36..48],
             &[0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255]
         );
+    }
+
+    #[test]
+    fn atlas_reuses_identical_content_without_growing_the_upload() {
+        let mut atlas = AtlasBuilder::new(3);
+        let first = atlas
+            .push_rgba(1, 1, &[255, 0, 0, 255])
+            .expect("first region fits");
+        let repeated = atlas
+            .push_rgba(1, 1, &[255, 0, 0, 255])
+            .expect("identical region reuses prior content");
+        assert_eq!(repeated, first);
+        assert_eq!(atlas.rows.len(), 1);
+        assert_eq!(atlas.height(), 3);
+        assert_eq!(atlas.finish().expect("atlas finishes").rgba.len(), 36);
     }
 
     #[test]
@@ -6439,10 +6521,10 @@ mod tests {
     #[test]
     fn image_mesh_and_geometry_bounds_are_typed_before_growth() {
         let oversized_width =
-            u32::try_from(MAX_DIRECT_GEOMETRY_BYTES / 4 + 1).expect("test width fits u32");
+            u32::try_from(MAX_DIRECT_IMAGE_BYTES / 4 + 1).expect("test width fits u32");
         assert!(matches!(
             UiDirectImage::try_solid(UiImageHandle(1), oversized_width, 1, [255; 4]),
-            Err(UiDirectRendererError::TooManyGeometryBytes { .. })
+            Err(UiDirectRendererError::TooManyImageBytes { .. })
         ));
         let invalid_mesh = UiDirectMesh {
             handle: UiMeshHandle(2),
@@ -6462,9 +6544,54 @@ mod tests {
             Err(UiDirectRendererError::TooManyGeometryBytes { .. })
         ));
         assert!(matches!(
-            AtlasBuilder::new(u32::MAX, u32::MAX).push_white(),
-            Err(UiDirectRendererError::TooManyGeometryBytes { .. })
+            AtlasBuilder::new(u32::MAX).push_white(),
+            Err(UiDirectRendererError::TooManyAtlasBytes { .. })
         ));
+    }
+
+    #[test]
+    fn zero_area_whitespace_glyphs_preserve_text_without_atlas_geometry() {
+        let list = DisplayList {
+            primitives: vec![DisplayPrimitive::Text {
+                node: UiNodeId::new(1),
+                bounds: bounds(),
+                text: " ".to_owned(),
+                color: UiColor::text(),
+                layout: UiTextLayout {
+                    line_count: 1,
+                    glyph_count: 1,
+                    width: 8.0,
+                    height: 16.0,
+                    used_fallback_metrics: false,
+                    used_fallback_font: false,
+                    font_role: UiFontRole::Interface,
+                },
+                raster: UiTextRaster {
+                    glyphs: vec![UiGlyphBitmap {
+                        origin: UiPoint { x: 0.0, y: 0.0 },
+                        width: 0,
+                        height: 0,
+                        alpha: Vec::new(),
+                    }],
+                    has_unrasterized_glyphs: false,
+                },
+            }],
+        };
+        let plan = UiDirectGpuRenderer::new(identity(1, 1))
+            .prepare_frame(UiDirectPrepareRequest {
+                display_revision: 1,
+                display_list: &list,
+                viewport: UiSize::new(100.0, 100.0),
+                scale_factor: 1.0,
+                contrast: UiContrast::Standard,
+                effects: UiEffectCapabilities::default(),
+                resources: &UiDirectResourceSet::default(),
+            })
+            .expect("whitespace-only text prepares");
+        assert_eq!(plan.diagnostics.glyph_mask_count, 1);
+        assert_eq!(plan.diagnostics.batch_count, 1);
+        assert_eq!(plan.atlas.width, 3);
+        assert_eq!(plan.atlas.height, 3);
     }
 
     #[test]

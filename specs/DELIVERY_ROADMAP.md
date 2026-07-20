@@ -212,12 +212,13 @@ User-visible result: a documented Alpha profile supports real creator workflows 
 
 Required capabilities include mature editor/data/build workflows; selected Wavefront, general animation, navigation, Rust gameplay framework, first-class 2D, native modeler, shader-language, and simulation foundations; stable RHI contracts; differential rendering; device-loss recovery; benchmark parity; and a maintenance plan. Each selected profile remains independently evidence-gated. `RG-RHI-001` preregisters native-backend entry thresholds and compares abstraction cost against measured needs.
 
-Alpha work includes the selected later Alluvium packages for materials/weathering, infrastructure/structures, native visual authoring, and runtime-safe recipes when independently ready. `WP-GAM-001`, `WP-FWK-001`, `WP-ANI-001`, `WP-NAV-001`, `WP-TWO-001`, `WP-SHD-001`, and `WP-MDL-002` remain separate packages; listing them under Alpha does not make every optional capability a universal profile requirement. Advanced Cairn, DCC integration, VCS, typed agents, Torsant research, and broader Isobar/Basalt/vegetation work remain separately gated.
+Alpha work includes the selected later Alluvium packages for materials/weathering, infrastructure/structures, native visual authoring, and runtime-safe recipes when independently ready. `WP-GAM-001`, `WP-FWK-001`, `WP-ANI-001`, `WP-ANI-002`, `WP-NAV-001`, `WP-TWO-001`, `WP-SHD-001`, and `WP-MDL-002` remain separate packages; Artus supplies only its qualified rig/clip/pose and first usable humanoid foundations here. Listing them under Alpha does not make every optional capability a universal profile requirement. Advanced Cairn, DCC integration, VCS, typed agents, Torsant research, and broader Isobar/Basalt/vegetation work remain separately gated.
 
-`WP-BLD-002` continues the MS-03 local-Cargo foundation with multi-node result
-lineage, general artifact/cache policy, service-process/remote-worker
-supervision, and team profiles. It is an MS-08 package and cannot delay the
-`WP-BLD-001` prerequisite for Creator Editor Alpha.
+`WP-BLD-002` continues the MS-03 local-Cargo foundation with managed external
+development toolchains, multi-node result lineage, general artifact/cache
+policy, service-process/remote-worker supervision, and team profiles. It is an
+MS-08 package and cannot delay the `WP-BLD-001` prerequisite for Creator Editor
+Alpha.
 
 Critical packages: `WP-RHI-002` native Metal and `WP-REL-003` Alpha
 qualification. These are distinct from the current `WP-RHI-001` foundation.
@@ -226,7 +227,7 @@ qualification. These are distinct from the current `WP-RHI-001` foundation.
 
 User-visible result: Beta supports the selected desktop/platform capability matrix with mature common RHI behavior and native Vulkan and Direct3D 12 implementations where gates pass.
 
-Entry requires mature native Metal plus common-RHI differential image, benchmark, recovery, backend-divergence, staffing, and maintenance evidence. wgpu remains available. Selected Beta work may include synchronization, networking/providers, optional Collective modules, modding, XR, `WP-GAM-002` Luau, advanced animation/navigation, shader target lowering, and platform ecosystem integration; none is implied by the milestone name unless its profile is declared. Collective is provider-neutral and self-hostable; Beta does not promise a Meridian-operated cloud.
+Entry requires mature native Metal plus common-RHI differential image, benchmark, recovery, backend-divergence, staffing, and maintenance evidence. wgpu remains available. Selected Beta work may include synchronization, networking/providers, optional Collective modules, modding, XR, `WP-GAM-002` Luau, Artus pose search, interaction, motion LOD, high-level intent replication, and narrow facial foundations, advanced navigation, shader target lowering, and platform ecosystem integration; none is implied by the milestone name unless its profile is declared. Collective is provider-neutral and self-hostable; Beta does not promise a Meridian-operated cloud.
 
 Critical packages: `WP-RHI-003` native Vulkan/Direct3D 12 parity and
 `WP-REL-004` Beta qualification.

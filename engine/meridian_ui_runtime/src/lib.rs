@@ -7,16 +7,20 @@ pub use motion::*;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use meridian_ui_core::{
     sanitized_scale_factor, CommandId, MotionPreference, ThemeId, UiAlignment, UiAxis,
-    UiCollectionCursor, UiCollectionNavigation, UiColor, UiConstraints, UiContrast,
-    UiControllerControl, UiControllerEvent, UiControllerPhase, UiDensity, UiDocument,
-    UiDocumentDelta, UiDocumentError, UiDragKind, UiDragPayload, UiDropOperation,
-    UiHostAssistiveAction, UiInputDeviceId, UiInputDeviceKind, UiLayout, UiNode, UiNodeId, UiPoint,
-    UiPointerButton, UiPointerEvent, UiPointerPhase, UiRect, UiScrollEvent, UiScrollPhase,
-    UiScrollUnit, UiSemanticRelationships, UiSharedElementId, UiSize, UiStyle, UiStyleSelector,
-    UiTextValidation, UiTheme, UiVisualState, UiWidgetKind, MAX_FRAME_EVENTS, MAX_TEXT_BYTES,
+    UiCanvasContract, UiCollectionCursor, UiCollectionNavigation, UiColor, UiConstraints,
+    UiContrast, UiControlAdjustment, UiControllerControl, UiControllerEvent, UiControllerPhase,
+    UiDensity, UiDocument, UiDocumentDelta, UiDocumentError, UiDragKind, UiDragPayload,
+    UiDropOperation, UiFontRole, UiHostAssistiveAction, UiIconTokens, UiInputDeviceId,
+    UiInputDeviceKind, UiLayout, UiModifiers, UiNode, UiNodeId, UiPoint, UiPointerButton,
+    UiPointerEvent, UiPointerPhase, UiRect, UiScrollEvent, UiScrollPhase, UiScrollUnit,
+    UiSemanticRelationships, UiSharedElementId, UiSize, UiStyle, UiStyleInheritance,
+    UiStyleSelector, UiTextScale, UiTextValidation, UiTheme, UiTimelineContract,
+    UiTransientInitialState, UiTransientPresentation, UiTransientSurfaceKind, UiVirtualRange,
+    UiVisualState, UiWidgetKind, MAX_FRAME_EVENTS, MAX_TEXT_BYTES, MIN_ACCESSIBLE_CONTROL_EXTENT,
 };
 use meridian_ui_render::{
     icon_geometry, DisplayList, DisplayListError, DisplayPrimitive, UiClipId, UiCornerRadii,
@@ -28,7 +32,8 @@ use meridian_ui_semantics::{
 };
 use meridian_ui_text::{
     UiClipboardOperation, UiClipboardRequest, UiCompletionRequest, UiPreeditError,
-    UiTextCursorDirection, UiTextEngine, UiTextInputSnapshot, UiTextInputState, UiTextLayoutError,
+    UiTextCacheActivity, UiTextCursorDirection, UiTextEngine, UiTextInputSnapshot,
+    UiTextInputState, UiTextLayoutError,
 };
 
 const LEGACY_POINTER_DEVICE: UiInputDeviceId = UiInputDeviceId::new(1);
@@ -63,10 +68,16 @@ pub enum UiEvent {
     },
     PasteText(String),
     RequestCompletion,
+    /// Clears the focused search field as one undoable retained text edit.
+    /// Other text controls are rejected so Escape can remain context-owned.
+    ClearFocusedSearch,
     Pointer(UiPointerEvent),
     PointerDown(UiPoint),
     PointerUp(UiPoint),
     PointerCancel,
+    /// Cancels transient input ownership after focus loss, modal takeover,
+    /// Escape, or device removal without changing retained source authority.
+    CancelInteraction,
     /// Routes a normalized controller control through the same focus graph and
     /// command path as keyboard navigation.
     Controller(UiControllerEvent),
@@ -79,6 +90,46 @@ pub enum UiEvent {
     CompleteDrag,
     CancelDrag,
     NavigateCollection(UiCollectionNavigation),
+    /// Opens or queues one validated retained transient surface.
+    PresentTransient(UiNodeId),
+    /// Dismisses one validated retained transient surface.
+    DismissTransient(UiNodeId),
+    BeginPropertyEdit(UiNodeId),
+    CommitPropertyEdit,
+    CancelPropertyEdit,
+    ResetProperty(UiNodeId),
+    InspectPropertySource(UiNodeId),
+    BeginTimelineScrub {
+        timeline: UiNodeId,
+        value: i64,
+    },
+    UpdateTimelineScrub(i64),
+    CommitTimelineScrub,
+    CancelTimelineScrub,
+    SetTimelineRange {
+        timeline: UiNodeId,
+        start: i64,
+        end: i64,
+    },
+    ZoomTimeline {
+        timeline: UiNodeId,
+        zoom: UiTimelineZoom,
+    },
+    JumpTimeline {
+        timeline: UiNodeId,
+        jump: UiTimelineJump,
+    },
+    ManipulateCanvas {
+        canvas: UiNodeId,
+        action: UiCanvasAction,
+    },
+    /// Adjusts a focused splitter, timeline, or other explicitly bound
+    /// professional control through its retained typed command.
+    AdjustFocused(UiControlAdjustment),
+    /// Invokes an explicitly bound semantic command on the focused control.
+    /// This is the keyboard/controller path for tree expansion, combo-box
+    /// collapse, and context menus; the event carries no command string.
+    InvokeFocused(UiHostAssistiveAction),
     CollectionTypeahead(String),
     /// Requests focus for a named focusable control through a semantic adapter.
     ///
@@ -101,6 +152,24 @@ pub enum UiEvent {
 }
 
 impl UiEvent {
+    fn may_change_text_metrics(&self) -> bool {
+        matches!(
+            self,
+            Self::TextCommit(_)
+                | Self::ImePreedit { .. }
+                | Self::ImeCancel
+                | Self::DeleteTextBackward
+                | Self::DeleteTextForward
+                | Self::UndoText
+                | Self::RedoText
+                | Self::CutSelection
+                | Self::ConfirmClipboardCut { .. }
+                | Self::PasteText(_)
+                | Self::ClearFocusedSearch
+                | Self::AssistiveSetValue { .. }
+        )
+    }
+
     fn payload_bytes(&self) -> usize {
         match self {
             Self::TextCommit(text) | Self::PasteText(text) | Self::CollectionTypeahead(text) => {
@@ -122,10 +191,12 @@ impl UiEvent {
             | Self::CopySelection
             | Self::CutSelection
             | Self::RequestCompletion
+            | Self::ClearFocusedSearch
             | Self::Pointer(_)
             | Self::PointerDown(_)
             | Self::PointerUp(_)
             | Self::PointerCancel
+            | Self::CancelInteraction
             | Self::Controller(_)
             | Self::Scroll(_)
             | Self::BeginDrag(_)
@@ -133,6 +204,23 @@ impl UiEvent {
             | Self::CompleteDrag
             | Self::CancelDrag
             | Self::NavigateCollection(_)
+            | Self::PresentTransient(_)
+            | Self::DismissTransient(_)
+            | Self::BeginPropertyEdit(_)
+            | Self::CommitPropertyEdit
+            | Self::CancelPropertyEdit
+            | Self::ResetProperty(_)
+            | Self::InspectPropertySource(_)
+            | Self::BeginTimelineScrub { .. }
+            | Self::UpdateTimelineScrub(_)
+            | Self::CommitTimelineScrub
+            | Self::CancelTimelineScrub
+            | Self::SetTimelineRange { .. }
+            | Self::ZoomTimeline { .. }
+            | Self::JumpTimeline { .. }
+            | Self::ManipulateCanvas { .. }
+            | Self::AdjustFocused(_)
+            | Self::InvokeFocused(_)
             | Self::AssistiveFocus(_)
             | Self::AssistiveActivate(_)
             | Self::AssistiveRequest { .. } => 0,
@@ -213,6 +301,153 @@ pub struct UiDropRequest {
     pub payload: UiDragPayload,
 }
 
+/// Accepted virtual source/window state for one retained collection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiVirtualCollectionSnapshot {
+    pub node: UiNodeId,
+    pub item_count: usize,
+    pub realized: UiVirtualRange,
+    /// One-based semantic position awaiting realization and focus restoration.
+    pub pending_focus_position: Option<u32>,
+}
+
+/// Typed request for a source adapter to realize one currently absent row.
+///
+/// The request carries no row data or source authority. The adapter maps the
+/// one-based semantic position to its stable row ID, rebuilds the retained
+/// document, and lets the runtime restore focus by that accepted metadata.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiVirtualizationRequest {
+    pub collection: UiNodeId,
+    pub position: u32,
+    pub navigation: UiCollectionNavigation,
+}
+
+/// Runtime-owned lifecycle for menus, tooltips, notifications, and dialogs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiTransientPhase {
+    Hidden,
+    Pending,
+    Queued,
+    Visible,
+    Dismissed,
+    Expired,
+}
+
+/// Immutable transient presentation state for diagnostics and adapters.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiTransientSnapshot {
+    pub node: UiNodeId,
+    pub kind: UiTransientSurfaceKind,
+    pub phase: UiTransientPhase,
+    pub elapsed_ms: u32,
+    pub restore_focus: Option<UiNodeId>,
+}
+
+/// Typed property-grid operation proposed after retained validation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiPropertyAction {
+    Commit,
+    Reset,
+    InspectSource,
+}
+
+/// Authority-free property operation for a host transaction adapter.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UiPropertyRequest {
+    pub grid: UiNodeId,
+    pub editor: UiNodeId,
+    pub action: UiPropertyAction,
+    pub value: Option<String>,
+}
+
+/// Observable in-progress property edit without a mutable source handle.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiPropertyEditSnapshot {
+    pub grid: UiNodeId,
+    pub editor: UiNodeId,
+    pub valid: bool,
+}
+
+/// Bounded timeline zoom operation shared by pointer, keyboard, and controller adapters.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiTimelineZoom {
+    In,
+    Out,
+    Reset,
+}
+
+/// Keyboard/controller timeline jumps using the retained contract's page size.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiTimelineJump {
+    PreviousPage,
+    NextPage,
+    Start,
+    End,
+}
+
+/// Timeline proposal emitted only after contract validation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiTimelineRequest {
+    pub timeline: UiNodeId,
+    pub value: i64,
+}
+
+/// Immutable framework-owned timeline interaction state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiTimelineSnapshot {
+    pub timeline: UiNodeId,
+    pub source_value: i64,
+    pub preview_value: i64,
+    pub scrubbing: bool,
+    pub selected_range: Option<(i64, i64)>,
+    pub zoom_percent: u16,
+}
+
+/// Bounded graph/canvas manipulation shared by input adapters.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiCanvasAction {
+    Pan { delta_x: i32, delta_y: i32 },
+    ZoomIn,
+    ZoomOut,
+    ResetView,
+    BeginConnection { source: UiNodeId },
+    PreviewConnection { target: Option<UiNodeId> },
+    CompleteConnection { target: UiNodeId },
+    CancelConnection,
+    InspectSource,
+}
+
+/// Current typed graph connection preview.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiCanvasConnectionPreview {
+    pub source: UiNodeId,
+    pub target: Option<UiNodeId>,
+}
+
+/// Immutable framework-owned graph/canvas navigation state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiCanvasSnapshot {
+    pub canvas: UiNodeId,
+    pub pan_x: i32,
+    pub pan_y: i32,
+    pub zoom_percent: u16,
+    pub connection: Option<UiCanvasConnectionPreview>,
+}
+
+/// Host proposal emitted for domain-owned graph operations.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiCanvasRequest {
+    Connect {
+        canvas: UiNodeId,
+        source: UiNodeId,
+        target: UiNodeId,
+    },
+    InspectSource {
+        canvas: UiNodeId,
+    },
+}
+
 /// Validation state for a retained text draft.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct UiTextValidationSnapshot {
@@ -279,6 +514,9 @@ pub enum UiDiagnostic {
     CompletionDeniedForPassword {
         node: UiNodeId,
     },
+    SearchClearDenied {
+        node: UiNodeId,
+    },
     AssistiveFocusDenied {
         node: UiNodeId,
     },
@@ -321,6 +559,26 @@ pub enum UiDiagnostic {
         node: UiNodeId,
         operation: UiDropOperation,
     },
+    ControlAdjustmentDenied {
+        node: UiNodeId,
+        adjustment: UiControlAdjustment,
+    },
+    HostActionDenied {
+        node: UiNodeId,
+        action: UiHostAssistiveAction,
+    },
+    TransientTargetDenied {
+        node: UiNodeId,
+    },
+    PropertyEditDenied {
+        node: UiNodeId,
+    },
+    TimelineInteractionDenied {
+        node: UiNodeId,
+    },
+    CanvasInteractionDenied {
+        node: UiNodeId,
+    },
     DragUnavailable,
     CollectionQueryTooLong {
         maximum: usize,
@@ -329,6 +587,7 @@ pub enum UiDiagnostic {
         count: usize,
         maximum: usize,
     },
+    EventTimestampsRejected(UiEventTimestampError),
     InputByteLimitExceeded {
         bytes: usize,
         maximum: usize,
@@ -345,11 +604,64 @@ pub enum UiDiagnostic {
     SemanticTreeRejected(SemanticTreeError),
 }
 
+/// Source timing for one event in [`UiFrameInput::events`].
+///
+/// The platform adapter supplies timestamps from the same monotonic epoch as
+/// [`UiFrameInput::frame_boundary_monotonic_nanoseconds`]. Untimestamped events
+/// remain valid and are omitted from this bounded side table.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiEventTimestamp {
+    pub event_index: usize,
+    pub source_monotonic_nanoseconds: u64,
+}
+
+impl UiEventTimestamp {
+    #[must_use]
+    pub const fn new(event_index: usize, source_monotonic_nanoseconds: u64) -> Self {
+        Self {
+            event_index,
+            source_monotonic_nanoseconds,
+        }
+    }
+}
+
+/// Typed rejection for malformed or incomparable event timing data.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiEventTimestampError {
+    TooManyTimestamps {
+        count: usize,
+        event_count: usize,
+    },
+    MissingFrameBoundaryTimestamp,
+    EventIndexOutOfRange {
+        event_index: usize,
+        event_count: usize,
+    },
+    EventIndexesNotStrictlyIncreasing {
+        previous_event_index: usize,
+        event_index: usize,
+    },
+    SourceTimeWentBackward {
+        previous_nanoseconds: u64,
+        source_nanoseconds: u64,
+    },
+    SourceAfterFrameBoundary {
+        event_index: usize,
+        source_nanoseconds: u64,
+        frame_boundary_nanoseconds: u64,
+    },
+}
+
 /// Input captured at a stable frame boundary.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiFrameInput {
     pub viewport: UiSize,
+    /// Physical output scale supplied by the windowing adapter.
     pub scale_factor: f32,
+    /// User-selected logical text scale, independent from output DPI.
+    pub text_scale: UiTextScale,
+    /// Current platform-normalized modifier state for this frame's events.
+    pub modifiers: UiModifiers,
     pub high_contrast: bool,
     pub reduced_motion: bool,
     pub theme: UiTheme,
@@ -358,6 +670,15 @@ pub struct UiFrameInput {
     pub motion: MotionPreference,
     /// Caller-owned monotonic presentation interval for this frame.
     pub presentation_delta_ms: u32,
+    /// Reconciliation boundary in the platform adapter's monotonic epoch.
+    ///
+    /// This is only required when `event_timestamps` is non-empty. It is not
+    /// inferred from `presentation_delta_ms` because an interval is not an
+    /// event-to-frame-boundary timestamp. True presented latency remains
+    /// platform/renderer evidence because presentation occurs after reconcile.
+    pub frame_boundary_monotonic_nanoseconds: Option<u64>,
+    /// Bounded source timestamps for selected entries in `events`.
+    pub event_timestamps: Vec<UiEventTimestamp>,
     pub events: Vec<UiEvent>,
 }
 
@@ -367,6 +688,8 @@ impl UiFrameInput {
         Self {
             viewport,
             scale_factor: 1.0,
+            text_scale: UiTextScale::default(),
+            modifiers: UiModifiers::default(),
             high_contrast: false,
             reduced_motion: false,
             theme: UiTheme::meridian_dark(),
@@ -374,6 +697,8 @@ impl UiFrameInput {
             contrast: UiContrast::Standard,
             motion: MotionPreference::Full,
             presentation_delta_ms: 16,
+            frame_boundary_monotonic_nanoseconds: None,
+            event_timestamps: Vec::new(),
             events: Vec::new(),
         }
     }
@@ -385,7 +710,9 @@ struct RejectedFrameContext {
     density: UiDensity,
     contrast: UiContrast,
     motion: MotionPreference,
+    modifiers: UiModifiers,
     scale_factor: f32,
+    text_scale: UiTextScale,
     input_events: usize,
 }
 
@@ -412,15 +739,23 @@ pub enum UiMeasurementAvailability {
     Available,
 }
 
+/// Monotonic duration measured by a Meridian-owned frame phase.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum UiDurationMeasurement {
+    #[default]
+    Unavailable,
+    MeasuredNanoseconds(u64),
+}
+
 /// Explicit timing measurement contract for one reconciled frame.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct UiFrameTimingDiagnostics {
-    pub reconciliation: UiMeasurementAvailability,
-    pub layout: UiMeasurementAvailability,
-    pub text_shaping: UiMeasurementAvailability,
-    pub text_rasterization: UiMeasurementAvailability,
-    pub display_validation: UiMeasurementAvailability,
-    pub semantic_delta: UiMeasurementAvailability,
+    pub reconciliation: UiDurationMeasurement,
+    pub layout: UiDurationMeasurement,
+    pub text_shaping: UiDurationMeasurement,
+    pub text_rasterization: UiDurationMeasurement,
+    pub display_validation: UiDurationMeasurement,
+    pub semantic_delta: UiDurationMeasurement,
 }
 
 /// Renderer-independent overdraw reporting for one frame.
@@ -433,15 +768,27 @@ pub struct UiOverdrawDiagnostics {
     pub estimate: UiMeasurementAvailability,
 }
 
-/// Input-to-presentation latency reporting for one frame.
+/// Source-to-frame-boundary event latency reporting for one frame.
 ///
-/// Platform events currently do not carry source timestamps through the public
-/// Meridian event contract, so the runtime must not reinterpret the frame
-/// presentation interval as event latency.
+/// Untimestamped frames remain explicitly unavailable. Timestamped frames use
+/// only validated source and reconciliation-boundary values from the same
+/// monotonic epoch.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct UiEventLatencyDiagnostics {
     pub measurement: UiMeasurementAvailability,
+    pub boundary: UiEventLatencyBoundary,
     pub source_timestamped_events: u32,
+    pub minimum_nanoseconds: Option<u64>,
+    pub maximum_nanoseconds: Option<u64>,
+    pub mean_nanoseconds: Option<u64>,
+}
+
+/// Boundary used by [`UiEventLatencyDiagnostics`].
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum UiEventLatencyBoundary {
+    #[default]
+    Unavailable,
+    ReconciliationStart,
 }
 
 /// Capture activity observed by the retained runtime.
@@ -541,6 +888,18 @@ pub struct UiTextWorkDiagnostics {
     pub fallback_metrics: u32,
     pub font_substitutions: u32,
     pub unrasterized_primitives: u32,
+    pub shaping_cache_hits: u32,
+    pub shaping_cache_misses: u32,
+    pub shaping_cache_evictions: u32,
+    pub shaping_cache_entries: u32,
+    pub shaping_cache_key_bytes: u32,
+}
+
+/// Incremental layout work accepted for one immutable frame.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiLayoutWorkDiagnostics {
+    pub root_computations: u32,
+    pub root_reuses: u32,
 }
 
 /// Input, routing, focus, capture, virtualization, and motion coverage for a frame.
@@ -549,6 +908,7 @@ pub struct UiInteractionDiagnostics {
     pub input_events: u32,
     pub event_routes: u32,
     pub focus_entries: u32,
+    pub focus_changes: u32,
     pub pointer_captures: u32,
     pub scroll_captures: u32,
     pub active_drags: u32,
@@ -577,6 +937,7 @@ pub struct UiFrameDiagnostics {
     pub capture: UiCaptureState,
     pub primitives: UiPrimitiveDiagnostics,
     pub text: UiTextWorkDiagnostics,
+    pub layout_work: UiLayoutWorkDiagnostics,
     pub interaction: UiInteractionDiagnostics,
     pub virtualization: UiVirtualizationDiagnostics,
     pub renderer_cache: UiRendererCacheDiagnostics,
@@ -591,9 +952,14 @@ pub struct UiFrameDiagnostics {
     pub text_inputs: u32,
     pub scroll_snapshots: u32,
     pub scroll_outcomes: u32,
+    pub virtualization_requests: u32,
+    pub property_requests: u32,
+    pub timeline_requests: u32,
+    pub canvas_requests: u32,
     pub drops: u32,
     pub diagnostics: u32,
     pub scale_factor: f32,
+    pub text_scale: UiTextScale,
     pub contrast: UiContrast,
     pub motion: MotionPreference,
     pub recovered_previous_snapshot: bool,
@@ -609,6 +975,7 @@ impl Default for UiFrameDiagnostics {
             capture: UiCaptureState::default(),
             primitives: UiPrimitiveDiagnostics::default(),
             text: UiTextWorkDiagnostics::default(),
+            layout_work: UiLayoutWorkDiagnostics::default(),
             interaction: UiInteractionDiagnostics {
                 active_animation_tracks: None,
                 ..UiInteractionDiagnostics::default()
@@ -626,9 +993,14 @@ impl Default for UiFrameDiagnostics {
             text_inputs: 0,
             scroll_snapshots: 0,
             scroll_outcomes: 0,
+            virtualization_requests: 0,
+            property_requests: 0,
+            timeline_requests: 0,
+            canvas_requests: 0,
             drops: 0,
             diagnostics: 0,
             scale_factor: 1.0,
+            text_scale: UiTextScale::default(),
             contrast: UiContrast::Standard,
             motion: MotionPreference::Full,
             recovered_previous_snapshot: false,
@@ -714,7 +1086,9 @@ impl UiFrameDiagnostics {
             runtime
                 .document
                 .nodes()
-                .filter(|node| node.kind == UiWidgetKind::VirtualList)
+                .filter(|node| {
+                    node.kind == UiWidgetKind::VirtualList || node.virtual_collection.is_some()
+                })
                 .count(),
         )
     }
@@ -730,6 +1104,7 @@ impl UiFrameDiagnostics {
             input_events: Self::count(input_events),
             event_routes: Self::count(snapshot.event_routes.len()),
             focus_entries: u32::from(snapshot.focused.is_some()),
+            focus_changes: runtime.frame_focus_changes,
             pointer_captures: u32::from(runtime.pointer_capture.is_some()),
             scroll_captures: u32::from(runtime.scroll_capture.is_some()),
             active_drags: u32::from(snapshot.drag.is_some()),
@@ -744,22 +1119,29 @@ impl UiFrameDiagnostics {
         snapshot: &UiFrameSnapshot,
         recovered_previous_snapshot: bool,
         input_events: usize,
+        timing: UiFrameTimingDiagnostics,
+        event_latency: UiEventLatencyDiagnostics,
     ) -> Self {
-        let (primitives, text) = Self::primitives_and_text(snapshot);
+        let (primitives, mut text) = Self::primitives_and_text(snapshot);
+        text.shaping_cache_hits = runtime.frame_text_cache_activity.hits;
+        text.shaping_cache_misses = runtime.frame_text_cache_activity.misses;
+        text.shaping_cache_evictions = runtime.frame_text_cache_activity.evictions;
+        let text_cache = runtime.text.cache_occupancy();
+        text.shaping_cache_entries = Self::count(text_cache.entries);
+        text.shaping_cache_key_bytes = Self::count(text_cache.key_bytes);
         let virtualized_regions = Self::declared_virtualized_regions(runtime);
         Self {
             reconciliation: Self::reconciliation(runtime, snapshot),
-            timing: UiFrameTimingDiagnostics::default(),
+            timing,
             overdraw: UiOverdrawDiagnostics::default(),
-            event_latency: UiEventLatencyDiagnostics {
-                measurement: UiMeasurementAvailability::Unavailable,
-                // UiEvent intentionally carries no platform timestamp. Do not
-                // turn `presentation_delta_ms` into an invented latency.
-                source_timestamped_events: 0,
-            },
+            event_latency,
             capture: UiCaptureState::NotRequested,
             primitives,
             text,
+            layout_work: UiLayoutWorkDiagnostics {
+                root_computations: runtime.frame_layout_computations,
+                root_reuses: runtime.frame_layout_reuses,
+            },
             interaction: Self::interaction(
                 runtime,
                 snapshot,
@@ -769,9 +1151,12 @@ impl UiFrameDiagnostics {
             ),
             virtualization: UiVirtualizationDiagnostics {
                 declared_regions: virtualized_regions,
-                // The document has only currently retained children. A source
-                // collection owns its requested/realized range and cache.
-                realized_ranges: UiMeasurementAvailability::Unavailable,
+                realized_ranges: if snapshot.virtual_collections.is_empty() {
+                    UiMeasurementAvailability::Unavailable
+                } else {
+                    UiMeasurementAvailability::Available
+                },
+                // Row cache residency remains source-adapter authority.
                 cache_state: UiMeasurementAvailability::Unavailable,
             },
             renderer_cache: UiRendererCacheDiagnostics::default(),
@@ -786,9 +1171,14 @@ impl UiFrameDiagnostics {
             text_inputs: Self::count(snapshot.text_inputs.len()),
             scroll_snapshots: Self::count(snapshot.scroll.len()),
             scroll_outcomes: Self::count(snapshot.scroll_outcomes.len()),
+            virtualization_requests: Self::count(snapshot.virtualization_requests.len()),
+            property_requests: Self::count(snapshot.property_requests.len()),
+            timeline_requests: Self::count(snapshot.timeline_requests.len()),
+            canvas_requests: Self::count(snapshot.canvas_requests.len()),
             drops: Self::count(snapshot.drops.len()),
             diagnostics: Self::count(snapshot.diagnostics.len()),
             scale_factor: sanitized_scale_factor(snapshot.scale_factor),
+            text_scale: snapshot.text_scale,
             contrast: snapshot.contrast,
             motion: snapshot.motion,
             recovered_previous_snapshot,
@@ -811,7 +1201,11 @@ pub struct UiFrameSnapshot {
     pub density: UiDensity,
     pub contrast: UiContrast,
     pub motion: MotionPreference,
+    /// Accepted modifier state paired with this immutable frame.
+    pub modifiers: UiModifiers,
     pub scale_factor: f32,
+    /// Accepted logical text scale paired with this immutable frame.
+    pub text_scale: UiTextScale,
     pub display_list: DisplayList,
     pub semantic_tree: SemanticTree,
     pub semantic_delta: SemanticDelta,
@@ -824,6 +1218,15 @@ pub struct UiFrameSnapshot {
     pub text_validation: Vec<UiTextValidationSnapshot>,
     pub scroll: Vec<UiScrollSnapshot>,
     pub scroll_outcomes: Vec<UiScrollOutcome>,
+    pub virtual_collections: Vec<UiVirtualCollectionSnapshot>,
+    pub virtualization_requests: Vec<UiVirtualizationRequest>,
+    pub transients: Vec<UiTransientSnapshot>,
+    pub property_edit: Option<UiPropertyEditSnapshot>,
+    pub property_requests: Vec<UiPropertyRequest>,
+    pub timelines: Vec<UiTimelineSnapshot>,
+    pub timeline_requests: Vec<UiTimelineRequest>,
+    pub canvases: Vec<UiCanvasSnapshot>,
+    pub canvas_requests: Vec<UiCanvasRequest>,
     pub drag: Option<UiDragSnapshot>,
     pub drops: Vec<UiDropRequest>,
     pub diagnostics: Vec<UiDiagnostic>,
@@ -846,6 +1249,7 @@ pub enum UiFrameError {
         bytes: usize,
         maximum: usize,
     },
+    InvalidEventTimestamps(UiEventTimestampError),
     TooManyEffects {
         count: usize,
         maximum: usize,
@@ -908,6 +1312,44 @@ struct ActiveDrag {
     over: Option<UiNodeId>,
     payload: UiDragPayload,
     keyboard: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RetainedTransientState {
+    phase: UiTransientPhase,
+    elapsed_ms: u32,
+    restore_focus: Option<UiNodeId>,
+}
+
+struct UiDocumentTransientCheckpoint {
+    kinds: BTreeMap<UiNodeId, UiTransientSurfaceKind>,
+    states: BTreeMap<UiNodeId, RetainedTransientState>,
+    stack: Vec<UiNodeId>,
+}
+
+#[derive(Clone, Debug)]
+struct ActivePropertyEdit {
+    grid: UiNodeId,
+    editor: UiNodeId,
+    before: UiTextInputState,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RetainedTimelineState {
+    source_value: i64,
+    preview_value: i64,
+    scrub_origin: i64,
+    scrubbing: bool,
+    selected_range: Option<(i64, i64)>,
+    zoom_percent: u16,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RetainedCanvasState {
+    pan_x: i32,
+    pan_y: i32,
+    zoom_percent: u16,
+    connection: Option<UiCanvasConnectionPreview>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -981,6 +1423,22 @@ fn effective_preferences(input: &UiFrameInput) -> (UiContrast, MotionPreference)
             input.motion
         },
     )
+}
+
+fn duration_nanoseconds(duration: Duration) -> u64 {
+    u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
+}
+
+fn inherited_style(
+    mut style: UiStyle,
+    inheritance: UiStyleInheritance,
+    parent: Option<UiStyle>,
+) -> UiStyle {
+    if let (UiStyleInheritance::Text, Some(parent)) = (inheritance, parent) {
+        style.foreground = parent.foreground;
+        style.font_size = parent.font_size;
+    }
+    style
 }
 
 fn animated_color_target(style: UiStyle) -> UiAnimatedColorTarget {
@@ -1110,6 +1568,7 @@ impl UiPresentationTransform {
 fn semantic_actions(
     semantics: &meridian_ui_core::UiSemantics,
     focusable: bool,
+    timeline: bool,
 ) -> Vec<SemanticAction> {
     if semantics.state.disabled {
         return Vec::new();
@@ -1134,6 +1593,13 @@ fn semantic_actions(
             .iter()
             .map(|binding| semantic_action(binding.action)),
     );
+    if timeline {
+        for action in [SemanticAction::Decrement, SemanticAction::Increment] {
+            if !actions.contains(&action) {
+                actions.push(action);
+            }
+        }
+    }
     if focusable {
         actions.push(SemanticAction::ScrollIntoView);
     }
@@ -1404,12 +1870,60 @@ struct UiEmission<'a> {
     layout: &'a BTreeMap<UiNodeId, UiRect>,
     presentation_layout: &'a BTreeMap<UiNodeId, UiRect>,
     scale_factor: f32,
+    text_scale: UiTextScale,
     icon_tokens: meridian_ui_core::UiIconTokens,
     icon_tokens_fallback: bool,
     display: &'a mut DisplayList,
     semantic_nodes: &'a mut Vec<SemanticNode>,
     diagnostics: &'a mut Vec<UiDiagnostic>,
     next_scope: u64,
+}
+
+#[derive(Clone, Copy)]
+struct UiLayoutContext {
+    viewport: UiSize,
+    scale_factor: f32,
+    text_scale: UiTextScale,
+    icon_tokens: UiIconTokens,
+}
+
+impl UiLayoutContext {
+    fn from_input(input: &UiFrameInput, icon_tokens: UiIconTokens) -> Self {
+        Self {
+            viewport: input.viewport,
+            scale_factor: sanitized_scale_factor(input.scale_factor),
+            text_scale: input.text_scale,
+            icon_tokens,
+        }
+    }
+}
+
+/// Exact geometry-affecting state paired with `authoritative_layout`.
+///
+/// Static node constraints and layout policies are represented by
+/// `document_epoch`; dynamic private values remain inside the runtime.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct UiLayoutCacheKey {
+    document_epoch: u64,
+    viewport_width_bits: u32,
+    viewport_height_bits: u32,
+    scale_factor_bits: u32,
+    text_scale_percent: u16,
+    icon_size_bits: u32,
+    icon_text_gap_bits: u32,
+    style_geometry: Vec<(UiNodeId, u32, u32)>,
+    text_values: Vec<(UiNodeId, String)>,
+    scroll_offsets: Vec<(UiNodeId, u32)>,
+    transient_visibility: Vec<(UiNodeId, bool)>,
+}
+
+struct UiIntrinsicRequest {
+    node: UiNodeId,
+    text: Option<String>,
+    style: UiStyle,
+    font_role: UiFontRole,
+    has_icon: bool,
+    focusable: bool,
 }
 
 struct UiPreparedFrame {
@@ -1424,6 +1938,8 @@ struct UiPreparedFrame {
     semantic_delta: SemanticDelta,
     effects: UiFrameEffects,
     text_validation: Vec<UiTextValidationSnapshot>,
+    timing: UiFrameTimingDiagnostics,
+    event_latency: UiEventLatencyDiagnostics,
 }
 
 #[derive(Default)]
@@ -1434,6 +1950,10 @@ struct UiFrameEffects {
     clipboard_requests: Vec<UiClipboardRequest>,
     completion_requests: Vec<UiCompletionRequest>,
     scroll_outcomes: Vec<UiScrollOutcome>,
+    virtualization_requests: Vec<UiVirtualizationRequest>,
+    property_requests: Vec<UiPropertyRequest>,
+    timeline_requests: Vec<UiTimelineRequest>,
+    canvas_requests: Vec<UiCanvasRequest>,
     drops: Vec<UiDropRequest>,
     diagnostics: Vec<UiDiagnostic>,
 }
@@ -1447,6 +1967,10 @@ impl UiFrameEffects {
             .saturating_add(self.clipboard_requests.len())
             .saturating_add(self.completion_requests.len())
             .saturating_add(self.scroll_outcomes.len())
+            .saturating_add(self.virtualization_requests.len())
+            .saturating_add(self.property_requests.len())
+            .saturating_add(self.timeline_requests.len())
+            .saturating_add(self.canvas_requests.len())
             .saturating_add(self.drops.len())
             .saturating_add(self.diagnostics.len())
     }
@@ -1470,6 +1994,11 @@ impl UiFrameEffects {
                     .iter()
                     .map(|request| request.prefix.len()),
             )
+            .chain(
+                self.property_requests
+                    .iter()
+                    .filter_map(|request| request.value.as_ref().map(String::len)),
+            )
             .fold(0, usize::saturating_add)
     }
 }
@@ -1479,7 +2008,14 @@ struct UiInteractionCheckpoint {
     text_inputs: BTreeMap<UiNodeId, UiTextInputState>,
     focused: Option<UiNodeId>,
     hovered: Option<UiNodeId>,
-    collection_cursor: UiCollectionCursor,
+    collection_cursors: BTreeMap<UiNodeId, UiCollectionCursor>,
+    pending_virtual_focus: BTreeMap<UiNodeId, u32>,
+    transient_states: BTreeMap<UiNodeId, RetainedTransientState>,
+    transient_stack: Vec<UiNodeId>,
+    active_property_edit: Option<ActivePropertyEdit>,
+    timeline_states: BTreeMap<UiNodeId, RetainedTimelineState>,
+    canvas_states: BTreeMap<UiNodeId, RetainedCanvasState>,
+    active_collection: Option<UiNodeId>,
     focus_recovery_guard: bool,
     pointer_capture: Option<PointerCapture>,
     scroll_offsets: BTreeMap<UiNodeId, f32>,
@@ -1492,6 +2028,8 @@ struct UiInteractionCheckpoint {
     motion_system: UiMotionSystem,
     resolved_styles: BTreeMap<UiNodeId, UiStyle>,
     animated_color_targets: BTreeMap<UiNodeId, UiAnimatedColorTarget>,
+    layout_cache_key: Option<UiLayoutCacheKey>,
+    layout_cache_layout: BTreeMap<UiNodeId, UiRect>,
 }
 
 /// Retained runtime state.  All mutation is applied between immutable outputs.
@@ -1502,7 +2040,14 @@ pub struct UiRuntime {
     text_inputs: BTreeMap<UiNodeId, UiTextInputState>,
     focused: Option<UiNodeId>,
     hovered: Option<UiNodeId>,
-    collection_cursor: UiCollectionCursor,
+    collection_cursors: BTreeMap<UiNodeId, UiCollectionCursor>,
+    pending_virtual_focus: BTreeMap<UiNodeId, u32>,
+    transient_states: BTreeMap<UiNodeId, RetainedTransientState>,
+    transient_stack: Vec<UiNodeId>,
+    active_property_edit: Option<ActivePropertyEdit>,
+    timeline_states: BTreeMap<UiNodeId, RetainedTimelineState>,
+    canvas_states: BTreeMap<UiNodeId, RetainedCanvasState>,
+    active_collection: Option<UiNodeId>,
     focus_recovery_guard: bool,
     pointer_capture: Option<PointerCapture>,
     scroll_offsets: BTreeMap<UiNodeId, f32>,
@@ -1512,6 +2057,14 @@ pub struct UiRuntime {
     authoritative_layout: BTreeMap<UiNodeId, UiRect>,
     shared_element_layouts: BTreeMap<UiSharedElementId, UiRect>,
     presentation_opacity_targets: BTreeMap<UiNodeId, f32>,
+    document_epoch: u64,
+    layout_cache_key: Option<UiLayoutCacheKey>,
+    layout_cache_layout: BTreeMap<UiNodeId, UiRect>,
+    frame_layout_computations: u32,
+    frame_layout_reuses: u32,
+    frame_layout_nanoseconds: u64,
+    frame_focus_changes: u32,
+    frame_text_cache_activity: UiTextCacheActivity,
     revision: u64,
     last_document_delta: UiDocumentDelta,
     last_snapshot: Option<Arc<UiFrameSnapshot>>,
@@ -1539,13 +2092,24 @@ impl UiRuntime {
             })
             .collect();
         let scroll_offsets = Self::initial_scroll_offsets(&document);
-        Self {
+        let transient_states = Self::initial_transient_states(&document);
+        let transient_stack = Self::initial_transient_stack(&document, &transient_states);
+        let timeline_states = Self::initial_timeline_states(&document);
+        let canvas_states = Self::initial_canvas_states(&document);
+        let mut runtime = Self {
             document,
             text: UiTextEngine::default(),
             text_inputs,
             focused: None,
             hovered: None,
-            collection_cursor: UiCollectionCursor::default(),
+            collection_cursors: BTreeMap::new(),
+            pending_virtual_focus: BTreeMap::new(),
+            transient_states,
+            transient_stack,
+            active_property_edit: None,
+            timeline_states,
+            canvas_states,
+            active_collection: None,
             focus_recovery_guard: false,
             pointer_capture: None,
             scroll_offsets,
@@ -1555,13 +2119,23 @@ impl UiRuntime {
             authoritative_layout: BTreeMap::new(),
             shared_element_layouts: BTreeMap::new(),
             presentation_opacity_targets: BTreeMap::new(),
+            document_epoch: 0,
+            layout_cache_key: None,
+            layout_cache_layout: BTreeMap::new(),
+            frame_layout_computations: 0,
+            frame_layout_reuses: 0,
+            frame_layout_nanoseconds: 0,
+            frame_focus_changes: 0,
+            frame_text_cache_activity: UiTextCacheActivity::default(),
             revision: 0,
             last_document_delta: UiDocumentDelta::default(),
             last_snapshot: None,
             motion_system: UiMotionSystem::default(),
             resolved_styles: BTreeMap::new(),
             animated_color_targets: BTreeMap::new(),
-        }
+        };
+        runtime.promote_next_toast();
+        runtime
     }
 
     #[must_use]
@@ -1576,18 +2150,8 @@ impl UiRuntime {
     /// copying private text values into that source; non-password semantic
     /// values remain derived from the current accepted runtime text state.
     pub fn replace_document(&mut self, document: UiDocument) -> UiDocumentDelta {
-        let preserve_hidden_collection_selection = self
-            .collection_cursor
-            .selected
-            .and_then(|selected| self.document.route_to(selected))
-            .is_some_and(|route| {
-                route.iter().any(|node_id| {
-                    self.document
-                        .node(*node_id)
-                        .is_some_and(|node| Self::is_collection_kind(node.kind))
-                })
-            });
         let delta = self.document.delta_to(&document);
+        let transient_checkpoint = self.take_document_transient_checkpoint();
         let previous_inputs = std::mem::take(&mut self.text_inputs);
         self.text_inputs = document
             .nodes()
@@ -1622,6 +2186,25 @@ impl UiRuntime {
                 _ => None,
             })
             .collect();
+        self.collection_cursors.retain(|container, _| {
+            document
+                .node(*container)
+                .is_some_and(|node| Self::is_collection_kind(node.kind))
+        });
+        if self
+            .active_collection
+            .is_none_or(|container| !self.collection_cursors.contains_key(&container))
+        {
+            self.active_collection = document.focus_order().into_iter().find_map(|target| {
+                Self::collection_for(&document, target)
+                    .filter(|container| self.collection_cursors.contains_key(container))
+            });
+        }
+        let preserve_hidden_collection_selection = self
+            .active_collection
+            .and_then(|container| self.collection_cursors.get(&container))
+            .and_then(|cursor| cursor.selected)
+            .is_some_and(|selected| document.node(selected).is_none());
         self.restore_focus_after_document_replace(&document, preserve_hidden_collection_selection);
         if self.hovered.is_some_and(|id| {
             document
@@ -1640,10 +2223,81 @@ impl UiRuntime {
         self.pointer_capture = None;
         self.scroll_capture = None;
         self.drag = None;
+        self.active_property_edit = None;
         self.previous_semantics = None;
         self.document = document;
+        self.document_epoch = self.document_epoch.saturating_add(1);
+        self.layout_cache_key = None;
+        self.layout_cache_layout.clear();
+        self.timeline_states = Self::initial_timeline_states(&self.document);
+        self.canvas_states = Self::initial_canvas_states(&self.document);
+        self.restore_document_transients(transient_checkpoint);
+        self.reconcile_pending_virtual_focus();
+        self.recover_invisible_focus();
         self.last_document_delta.clone_from(&delta);
         delta
+    }
+
+    fn take_document_transient_checkpoint(&mut self) -> UiDocumentTransientCheckpoint {
+        UiDocumentTransientCheckpoint {
+            kinds: self
+                .document
+                .nodes()
+                .filter_map(|node| node.transient.map(|transient| (node.id, transient.kind)))
+                .collect(),
+            states: std::mem::take(&mut self.transient_states),
+            stack: std::mem::take(&mut self.transient_stack),
+        }
+    }
+
+    fn restore_document_transients(&mut self, checkpoint: UiDocumentTransientCheckpoint) {
+        self.transient_states = self
+            .document
+            .nodes()
+            .filter_map(|node| {
+                let transient = node.transient?;
+                let retained = if node.semantics.state.disabled {
+                    Self::initial_transient_state(UiTransientInitialState::Hidden)
+                } else {
+                    checkpoint
+                        .kinds
+                        .get(&node.id)
+                        .filter(|kind| **kind == transient.kind)
+                        .and_then(|_| checkpoint.states.get(&node.id))
+                        .copied()
+                        .unwrap_or_else(|| Self::initial_transient_state(transient.initial_state))
+                };
+                Some((node.id, retained))
+            })
+            .collect();
+        self.transient_stack = checkpoint
+            .stack
+            .into_iter()
+            .filter(|node| {
+                self.transient_states
+                    .get(node)
+                    .is_some_and(|state| state.phase == UiTransientPhase::Visible)
+            })
+            .collect();
+        for surface in Self::initial_transient_stack(&self.document, &self.transient_states) {
+            if !self.transient_stack.contains(&surface) {
+                self.transient_stack.push(surface);
+            }
+        }
+        self.promote_next_toast();
+    }
+
+    fn reconcile_pending_virtual_focus(&mut self) {
+        self.pending_virtual_focus.retain(|collection, position| {
+            self.document.node(*collection).is_some_and(|node| {
+                node.virtual_collection.is_some_and(|descriptor| {
+                    usize::try_from(*position)
+                        .ok()
+                        .is_some_and(|position| position > 0 && position <= descriptor.item_count)
+                })
+            })
+        });
+        self.resolve_pending_virtual_focus();
     }
 
     fn restore_focus_after_document_replace(
@@ -1659,17 +2313,23 @@ impl UiRuntime {
         if focus_needs_recovery {
             self.focused = None;
         }
-        let selected_focus = self.collection_cursor.selected.filter(|id| {
-            document
-                .node(*id)
-                .is_some_and(|node| node.focusable && !node.semantics.state.disabled)
-        });
+        let selected_focus = self
+            .active_collection
+            .and_then(|container| self.collection_cursors.get(&container))
+            .and_then(|cursor| cursor.selected)
+            .filter(|id| {
+                document
+                    .node(*id)
+                    .is_some_and(|node| node.focusable && !node.semantics.state.disabled)
+            });
         if self.focused.is_none() {
             self.focused = selected_focus;
         }
         if focus_needs_recovery && self.focused.is_none() && !preserve_hidden_collection_selection {
             self.focused = document.focus_order().into_iter().next();
-            self.collection_cursor.selected = self.focused;
+            if let Some(focused) = self.focused {
+                self.remember_collection_focus(document, focused);
+            }
         }
         self.focus_recovery_guard = focus_needs_recovery && self.focused.is_some();
     }
@@ -1710,11 +2370,9 @@ impl UiRuntime {
     /// Returns `false` without changing focus when the identity is absent,
     /// disabled, or not keyboard-focusable.
     pub fn focus_retained_node(&mut self, node: UiNodeId) -> bool {
-        if !self
-            .document
-            .node(node)
-            .is_some_and(|candidate| candidate.focusable && !candidate.semantics.state.disabled)
-        {
+        if !self.document.node(node).is_some_and(|candidate| {
+            candidate.focusable && !candidate.semantics.state.disabled && self.is_node_visible(node)
+        }) {
             return false;
         }
         self.set_focus(node);
@@ -1754,7 +2412,9 @@ impl UiRuntime {
             density: input.density,
             contrast,
             motion,
+            modifiers: input.modifiers,
             scale_factor: sanitized_scale_factor(input.scale_factor),
+            text_scale: input.text_scale,
             input_events: input.events.len(),
         };
         match self.try_reconcile(input) {
@@ -1770,6 +2430,9 @@ impl UiRuntime {
                 fallback,
                 UiDiagnostic::InputByteLimitExceeded { bytes, maximum },
             ),
+            Err(UiFrameError::InvalidEventTimestamps(error)) => {
+                self.rejected_snapshot(fallback, UiDiagnostic::EventTimestampsRejected(error))
+            }
             Err(UiFrameError::TooManyEffects { count, maximum }) => self.rejected_snapshot(
                 fallback,
                 UiDiagnostic::FrameEffectLimitExceeded { count, maximum },
@@ -1823,7 +2486,9 @@ impl UiRuntime {
                 density: context.density,
                 contrast: context.contrast,
                 motion: context.motion,
+                modifiers: context.modifiers,
                 scale_factor: context.scale_factor,
+                text_scale: context.text_scale,
                 display_list: DisplayList::default(),
                 semantic_tree: SemanticTree::default(),
                 semantic_delta: SemanticDelta::Unchanged,
@@ -1836,6 +2501,15 @@ impl UiRuntime {
                 text_validation: Vec::new(),
                 scroll: Vec::new(),
                 scroll_outcomes: Vec::new(),
+                virtual_collections: self.virtual_collection_snapshots(),
+                virtualization_requests: Vec::new(),
+                transients: self.transient_snapshots(),
+                property_edit: self.property_edit_snapshot(),
+                property_requests: Vec::new(),
+                timelines: self.timeline_snapshots(),
+                timeline_requests: Vec::new(),
+                canvases: self.canvas_snapshots(),
+                canvas_requests: Vec::new(),
                 drag: None,
                 drops: Vec::new(),
                 diagnostics: Vec::new(),
@@ -1853,14 +2527,28 @@ impl UiRuntime {
             snapshot.clipboard_requests.clear();
             snapshot.completion_requests.clear();
             snapshot.scroll_outcomes.clear();
+            snapshot.virtualization_requests.clear();
+            snapshot.transients = self.transient_snapshots();
+            snapshot.property_edit = self.property_edit_snapshot();
+            snapshot.property_requests.clear();
+            snapshot.timelines = self.timeline_snapshots();
+            snapshot.timeline_requests.clear();
+            snapshot.canvases = self.canvas_snapshots();
+            snapshot.canvas_requests.clear();
             snapshot.drops.clear();
             snapshot.diagnostics.clear();
             snapshot.diagnostics.push(diagnostic);
             snapshot.drag = self.drag.map(Self::drag_snapshot);
             snapshot.focused = self.focused;
             snapshot.preedit = self.focused_preedit();
-            snapshot.frame_diagnostics =
-                UiFrameDiagnostics::from_runtime(self, snapshot, true, context.input_events);
+            snapshot.frame_diagnostics = UiFrameDiagnostics::from_runtime(
+                self,
+                snapshot,
+                true,
+                context.input_events,
+                UiFrameTimingDiagnostics::default(),
+                UiEventLatencyDiagnostics::default(),
+            );
         }
         fallback
     }
@@ -1875,14 +2563,22 @@ impl UiRuntime {
         &mut self,
         mut input: UiFrameInput,
     ) -> Result<UiFrameOutput, UiFrameError> {
+        let reconciliation_started = Instant::now();
         Self::validate_input_bound(&input)?;
+        let event_latency = Self::event_latency_diagnostics(&input)?;
+        self.begin_frame_work_tracking();
+        let focused_before_frame = self.focused;
         let input_event_count = input.events.len();
         let checkpoint = self.interaction_checkpoint();
         let (contrast, motion) = effective_preferences(&input);
         self.motion_system.advance(input.presentation_delta_ms);
         self.motion_system.apply_preference(motion);
         self.resolve_base_styles(&input.theme, contrast);
-        let mut layout = self.resolve_layout_or_restore(input.viewport, &checkpoint)?;
+        self.advance_transients(input.presentation_delta_ms);
+        self.synchronize_tooltips();
+        let (icon_tokens, icon_tokens_fallback) = input.theme.resolved_icon_tokens();
+        let layout_context = UiLayoutContext::from_input(&input, icon_tokens);
+        let mut layout = self.resolve_layout_or_restore(layout_context, &checkpoint)?;
         let mut effects = UiFrameEffects::default();
         let (motion_tokens, motion_tokens_fallback) = input.theme.resolved_motion_tokens();
         if motion_tokens_fallback {
@@ -1894,12 +2590,15 @@ impl UiRuntime {
         let line_step = geometry_tokens.spacing_base * 4.0;
         self.process_frame_events(
             std::mem::take(&mut input.events),
-            input.viewport,
+            layout_context,
             &mut layout,
             &mut effects,
             &checkpoint,
             line_step,
         )?;
+        if self.synchronize_tooltips() {
+            layout = self.resolve_layout_or_restore(layout_context, &checkpoint)?;
+        }
         self.synchronize_presentation_motion(
             &layout,
             motion,
@@ -1912,11 +2611,11 @@ impl UiRuntime {
         let mut semantic_nodes = Vec::new();
         let visual_states =
             self.resolve_visual_styles(&input.theme, contrast, motion, &mut effects.diagnostics);
-        let (icon_tokens, icon_tokens_fallback) = input.theme.resolved_icon_tokens();
         let mut emission = UiEmission {
             layout: &layout,
             presentation_layout: &presentation_layout,
             scale_factor: sanitized_scale_factor(input.scale_factor),
+            text_scale: input.text_scale,
             icon_tokens,
             icon_tokens_fallback,
             display: &mut display_list,
@@ -1924,26 +2623,23 @@ impl UiRuntime {
             diagnostics: &mut effects.diagnostics,
             next_scope: 1,
         };
-        if let Err(error) = self.emit_node(self.document.root(), None, 1.0, &mut emission) {
-            self.restore_interaction(checkpoint);
-            return Err(match error {
-                UiEmissionError::DisplayList(error) => UiFrameError::InvalidDisplayList(error),
-                UiEmissionError::TextLayout { node, error } => {
-                    UiFrameError::TextLayoutRejected { node, error }
-                }
-            });
-        }
-        if let Err(error) = display_list.validate() {
-            self.restore_interaction(checkpoint);
-            return Err(UiFrameError::InvalidDisplayList(error));
-        }
+        self.emit_root_or_restore(&mut emission, &checkpoint)?;
+        let display_validation_nanoseconds =
+            self.validate_display_or_restore(&display_list, &checkpoint)?;
         self.ensure_effect_bound(&effects, &checkpoint)?;
         let tree = SemanticTree {
             root: Some(self.document.root()),
             focus: self.focused,
             nodes: semantic_nodes,
         };
-        let semantic_delta = self.semantic_delta_or_restore(&tree, checkpoint)?;
+        let (semantic_delta, semantic_delta_nanoseconds) =
+            self.timed_semantic_delta_or_restore(&tree, checkpoint)?;
+        let timing = self.finish_frame_work_tracking(
+            focused_before_frame,
+            reconciliation_started,
+            display_validation_nanoseconds,
+            semantic_delta_nanoseconds,
+        );
         Ok(self.commit_frame(
             &input,
             UiPreparedFrame {
@@ -1958,8 +2654,77 @@ impl UiRuntime {
                 semantic_delta,
                 effects,
                 text_validation,
+                timing,
+                event_latency,
             },
         ))
+    }
+
+    fn begin_frame_work_tracking(&mut self) {
+        self.frame_layout_computations = 0;
+        self.frame_layout_reuses = 0;
+        self.frame_layout_nanoseconds = 0;
+        self.frame_focus_changes = 0;
+        self.frame_text_cache_activity = UiTextCacheActivity::default();
+        let _ = self.text.take_cache_activity();
+    }
+
+    fn finish_frame_work_tracking(
+        &mut self,
+        focused_before_frame: Option<UiNodeId>,
+        reconciliation_started: Instant,
+        display_validation_nanoseconds: u64,
+        semantic_delta_nanoseconds: u64,
+    ) -> UiFrameTimingDiagnostics {
+        self.frame_focus_changes = u32::from(focused_before_frame != self.focused);
+        self.frame_text_cache_activity = self.text.take_cache_activity();
+        UiFrameTimingDiagnostics {
+            reconciliation: UiDurationMeasurement::MeasuredNanoseconds(duration_nanoseconds(
+                reconciliation_started.elapsed(),
+            )),
+            layout: UiDurationMeasurement::MeasuredNanoseconds(self.frame_layout_nanoseconds),
+            text_shaping: UiDurationMeasurement::MeasuredNanoseconds(
+                self.frame_text_cache_activity.shaping_nanoseconds,
+            ),
+            text_rasterization: UiDurationMeasurement::MeasuredNanoseconds(
+                self.frame_text_cache_activity.rasterization_nanoseconds,
+            ),
+            display_validation: UiDurationMeasurement::MeasuredNanoseconds(
+                display_validation_nanoseconds,
+            ),
+            semantic_delta: UiDurationMeasurement::MeasuredNanoseconds(semantic_delta_nanoseconds),
+        }
+    }
+
+    fn validate_display_or_restore(
+        &mut self,
+        display_list: &DisplayList,
+        checkpoint: &UiInteractionCheckpoint,
+    ) -> Result<u64, UiFrameError> {
+        let started = Instant::now();
+        let result = display_list.validate();
+        let elapsed = duration_nanoseconds(started.elapsed());
+        result.map(|()| elapsed).map_err(|error| {
+            self.restore_interaction(checkpoint.clone());
+            UiFrameError::InvalidDisplayList(error)
+        })
+    }
+
+    fn emit_root_or_restore(
+        &mut self,
+        emission: &mut UiEmission<'_>,
+        checkpoint: &UiInteractionCheckpoint,
+    ) -> Result<(), UiFrameError> {
+        self.emit_node(self.document.root(), None, 1.0, emission)
+            .map_err(|error| {
+                self.restore_interaction(checkpoint.clone());
+                match error {
+                    UiEmissionError::DisplayList(error) => UiFrameError::InvalidDisplayList(error),
+                    UiEmissionError::TextLayout { node, error } => {
+                        UiFrameError::TextLayoutRejected { node, error }
+                    }
+                }
+            })
     }
 
     fn commit_frame(&mut self, input: &UiFrameInput, prepared: UiPreparedFrame) -> UiFrameOutput {
@@ -1975,6 +2740,8 @@ impl UiRuntime {
             semantic_delta,
             effects,
             text_validation,
+            timing,
+            event_latency,
         } = prepared;
         self.previous_semantics = Some(tree.clone());
         self.authoritative_layout.clone_from(&layout);
@@ -2003,7 +2770,9 @@ impl UiRuntime {
             density: input.density,
             contrast,
             motion,
+            modifiers: input.modifiers,
             scale_factor: sanitized_scale_factor(input.scale_factor),
+            text_scale: input.text_scale,
             display_list,
             semantic_tree: tree,
             semantic_delta,
@@ -2020,6 +2789,15 @@ impl UiRuntime {
             text_validation,
             scroll: self.scroll_snapshots(&layout),
             scroll_outcomes: effects.scroll_outcomes,
+            virtual_collections: self.virtual_collection_snapshots(),
+            virtualization_requests: effects.virtualization_requests,
+            transients: self.transient_snapshots(),
+            property_edit: self.property_edit_snapshot(),
+            property_requests: effects.property_requests,
+            timelines: self.timeline_snapshots(),
+            timeline_requests: effects.timeline_requests,
+            canvases: self.canvas_snapshots(),
+            canvas_requests: effects.canvas_requests,
             drag: self.drag.map(Self::drag_snapshot),
             drops: effects.drops,
             diagnostics: effects.diagnostics,
@@ -2027,8 +2805,14 @@ impl UiRuntime {
             focused: self.focused,
             preedit: self.focused_preedit(),
         };
-        snapshot.frame_diagnostics =
-            UiFrameDiagnostics::from_runtime(self, &snapshot, false, input_event_count);
+        snapshot.frame_diagnostics = UiFrameDiagnostics::from_runtime(
+            self,
+            &snapshot,
+            false,
+            input_event_count,
+            timing,
+            event_latency,
+        );
         let snapshot = Arc::new(snapshot);
         self.last_snapshot = Some(Arc::clone(&snapshot));
         snapshot
@@ -2036,29 +2820,34 @@ impl UiRuntime {
 
     fn resolve_layout_or_restore(
         &mut self,
-        viewport: UiSize,
+        context: UiLayoutContext,
         checkpoint: &UiInteractionCheckpoint,
     ) -> Result<BTreeMap<UiNodeId, UiRect>, UiFrameError> {
-        self.resolved_layout(viewport).map_err(|error| {
+        let layout_started = Instant::now();
+        let result = self.resolved_layout(context);
+        self.frame_layout_nanoseconds = self
+            .frame_layout_nanoseconds
+            .saturating_add(duration_nanoseconds(layout_started.elapsed()));
+        result.inspect_err(|_error| {
             self.restore_interaction(checkpoint.clone());
-            UiFrameError::LayoutRejected(error)
         })
     }
 
     fn process_frame_events(
         &mut self,
         events: Vec<UiEvent>,
-        viewport: UiSize,
+        layout_context: UiLayoutContext,
         layout: &mut BTreeMap<UiNodeId, UiRect>,
         effects: &mut UiFrameEffects,
         checkpoint: &UiInteractionCheckpoint,
         line_step: f32,
     ) -> Result<(), UiFrameError> {
         for event in events {
+            let text_metrics_changed = event.may_change_text_metrics();
             let layout_changed = self.process_event(event, layout, effects, line_step);
             self.ensure_effect_bound(effects, checkpoint)?;
-            if layout_changed {
-                *layout = self.resolve_layout_or_restore(viewport, checkpoint)?;
+            if layout_changed || text_metrics_changed {
+                *layout = self.resolve_layout_or_restore(layout_context, checkpoint)?;
             }
         }
         Ok(())
@@ -2083,6 +2872,84 @@ impl UiRuntime {
             });
         }
         Ok(())
+    }
+
+    fn event_latency_diagnostics(
+        input: &UiFrameInput,
+    ) -> Result<UiEventLatencyDiagnostics, UiFrameError> {
+        if input.event_timestamps.is_empty() {
+            return Ok(UiEventLatencyDiagnostics::default());
+        }
+        if input.event_timestamps.len() > input.events.len() {
+            return Err(UiFrameError::InvalidEventTimestamps(
+                UiEventTimestampError::TooManyTimestamps {
+                    count: input.event_timestamps.len(),
+                    event_count: input.events.len(),
+                },
+            ));
+        }
+        let frame_boundary_nanoseconds = input.frame_boundary_monotonic_nanoseconds.ok_or(
+            UiFrameError::InvalidEventTimestamps(
+                UiEventTimestampError::MissingFrameBoundaryTimestamp,
+            ),
+        )?;
+        let mut previous: Option<UiEventTimestamp> = None;
+        let mut minimum = u64::MAX;
+        let mut maximum = 0_u64;
+        let mut sum = 0_u128;
+        for timestamp in &input.event_timestamps {
+            if timestamp.event_index >= input.events.len() {
+                return Err(UiFrameError::InvalidEventTimestamps(
+                    UiEventTimestampError::EventIndexOutOfRange {
+                        event_index: timestamp.event_index,
+                        event_count: input.events.len(),
+                    },
+                ));
+            }
+            if let Some(previous) = previous {
+                if timestamp.event_index <= previous.event_index {
+                    return Err(UiFrameError::InvalidEventTimestamps(
+                        UiEventTimestampError::EventIndexesNotStrictlyIncreasing {
+                            previous_event_index: previous.event_index,
+                            event_index: timestamp.event_index,
+                        },
+                    ));
+                }
+                if timestamp.source_monotonic_nanoseconds < previous.source_monotonic_nanoseconds {
+                    return Err(UiFrameError::InvalidEventTimestamps(
+                        UiEventTimestampError::SourceTimeWentBackward {
+                            previous_nanoseconds: previous.source_monotonic_nanoseconds,
+                            source_nanoseconds: timestamp.source_monotonic_nanoseconds,
+                        },
+                    ));
+                }
+            }
+            if timestamp.source_monotonic_nanoseconds > frame_boundary_nanoseconds {
+                return Err(UiFrameError::InvalidEventTimestamps(
+                    UiEventTimestampError::SourceAfterFrameBoundary {
+                        event_index: timestamp.event_index,
+                        source_nanoseconds: timestamp.source_monotonic_nanoseconds,
+                        frame_boundary_nanoseconds,
+                    },
+                ));
+            }
+            let latency = frame_boundary_nanoseconds - timestamp.source_monotonic_nanoseconds;
+            minimum = minimum.min(latency);
+            maximum = maximum.max(latency);
+            sum = sum.saturating_add(u128::from(latency));
+            previous = Some(*timestamp);
+        }
+        let count = u64::try_from(input.event_timestamps.len()).unwrap_or(u64::MAX);
+        let mean = u64::try_from(sum / u128::from(count)).unwrap_or(u64::MAX);
+        Ok(UiEventLatencyDiagnostics {
+            measurement: UiMeasurementAvailability::Available,
+            boundary: UiEventLatencyBoundary::ReconciliationStart,
+            source_timestamped_events: u32::try_from(input.event_timestamps.len())
+                .unwrap_or(u32::MAX),
+            minimum_nanoseconds: Some(minimum),
+            maximum_nanoseconds: Some(maximum),
+            mean_nanoseconds: Some(mean),
+        })
     }
 
     fn ensure_effect_bound(
@@ -2119,6 +2986,279 @@ impl UiRuntime {
             .collect()
     }
 
+    const fn initial_transient_state(initial: UiTransientInitialState) -> RetainedTransientState {
+        RetainedTransientState {
+            phase: match initial {
+                UiTransientInitialState::Hidden => UiTransientPhase::Hidden,
+                UiTransientInitialState::Queued => UiTransientPhase::Queued,
+                UiTransientInitialState::Visible => UiTransientPhase::Visible,
+            },
+            elapsed_ms: 0,
+            restore_focus: None,
+        }
+    }
+
+    fn initial_transient_states(
+        document: &UiDocument,
+    ) -> BTreeMap<UiNodeId, RetainedTransientState> {
+        document
+            .nodes()
+            .filter_map(|node| {
+                node.transient.map(|transient| {
+                    let initial = if node.semantics.state.disabled {
+                        UiTransientInitialState::Hidden
+                    } else {
+                        transient.initial_state
+                    };
+                    (node.id, Self::initial_transient_state(initial))
+                })
+            })
+            .collect()
+    }
+
+    const fn initial_timeline_state(contract: UiTimelineContract) -> RetainedTimelineState {
+        RetainedTimelineState {
+            source_value: contract.source_value,
+            preview_value: contract.source_value,
+            scrub_origin: contract.source_value,
+            scrubbing: false,
+            selected_range: None,
+            zoom_percent: contract.initial_zoom_percent,
+        }
+    }
+
+    fn initial_timeline_states(document: &UiDocument) -> BTreeMap<UiNodeId, RetainedTimelineState> {
+        document
+            .nodes()
+            .filter_map(|node| {
+                node.timeline
+                    .map(|timeline| (node.id, Self::initial_timeline_state(timeline)))
+            })
+            .collect()
+    }
+
+    const fn initial_canvas_state(contract: UiCanvasContract) -> RetainedCanvasState {
+        RetainedCanvasState {
+            pan_x: contract.initial_pan_x,
+            pan_y: contract.initial_pan_y,
+            zoom_percent: contract.initial_zoom_percent,
+            connection: None,
+        }
+    }
+
+    fn initial_canvas_states(document: &UiDocument) -> BTreeMap<UiNodeId, RetainedCanvasState> {
+        document
+            .nodes()
+            .filter_map(|node| {
+                node.canvas
+                    .map(|canvas| (node.id, Self::initial_canvas_state(canvas)))
+            })
+            .collect()
+    }
+
+    const fn transient_owns_focus(kind: UiTransientSurfaceKind) -> bool {
+        matches!(
+            kind,
+            UiTransientSurfaceKind::ComboBox
+                | UiTransientSurfaceKind::Menu
+                | UiTransientSurfaceKind::ContextMenu
+                | UiTransientSurfaceKind::CommandPalette
+        )
+    }
+
+    fn initial_transient_stack(
+        document: &UiDocument,
+        states: &BTreeMap<UiNodeId, RetainedTransientState>,
+    ) -> Vec<UiNodeId> {
+        document
+            .nodes()
+            .filter_map(|node| {
+                let transient = node.transient?;
+                (Self::transient_owns_focus(transient.kind)
+                    && states
+                        .get(&node.id)
+                        .is_some_and(|state| state.phase == UiTransientPhase::Visible))
+                .then_some(node.id)
+            })
+            .collect()
+    }
+
+    fn transient_snapshots(&self) -> Vec<UiTransientSnapshot> {
+        self.transient_document_order()
+            .into_iter()
+            .filter_map(|node| {
+                let kind = self.document.node(node)?.transient?.kind;
+                let state = self.transient_states.get(&node)?;
+                Some(UiTransientSnapshot {
+                    node,
+                    kind,
+                    phase: state.phase,
+                    elapsed_ms: state.elapsed_ms,
+                    restore_focus: state.restore_focus,
+                })
+            })
+            .collect()
+    }
+
+    fn property_edit_snapshot(&self) -> Option<UiPropertyEditSnapshot> {
+        let active = self.active_property_edit.as_ref()?;
+        let valid = self.document.node(active.editor).is_some_and(|node| {
+            node.text_validation.is_none_or(|rule| {
+                self.text_inputs
+                    .get(&active.editor)
+                    .is_some_and(|state| state.is_valid(rule))
+            })
+        });
+        Some(UiPropertyEditSnapshot {
+            grid: active.grid,
+            editor: active.editor,
+            valid,
+        })
+    }
+
+    fn timeline_snapshots(&self) -> Vec<UiTimelineSnapshot> {
+        self.timeline_states
+            .iter()
+            .map(|(timeline, state)| UiTimelineSnapshot {
+                timeline: *timeline,
+                source_value: state.source_value,
+                preview_value: state.preview_value,
+                scrubbing: state.scrubbing,
+                selected_range: state.selected_range,
+                zoom_percent: state.zoom_percent,
+            })
+            .collect()
+    }
+
+    fn canvas_snapshots(&self) -> Vec<UiCanvasSnapshot> {
+        self.canvas_states
+            .iter()
+            .map(|(canvas, state)| UiCanvasSnapshot {
+                canvas: *canvas,
+                pan_x: state.pan_x,
+                pan_y: state.pan_y,
+                zoom_percent: state.zoom_percent,
+                connection: state.connection,
+            })
+            .collect()
+    }
+
+    fn transient_document_order(&self) -> Vec<UiNodeId> {
+        fn visit(document: &UiDocument, node: UiNodeId, ordered: &mut Vec<UiNodeId>) {
+            let Some(node) = document.node(node) else {
+                return;
+            };
+            ordered.push(node.id);
+            for child in &node.children {
+                visit(document, *child, ordered);
+            }
+        }
+        let mut ordered = Vec::new();
+        visit(&self.document, self.document.root(), &mut ordered);
+        ordered
+    }
+
+    fn promote_next_toast(&mut self) {
+        let has_visible = self.transient_states.iter().any(|(node, state)| {
+            state.phase == UiTransientPhase::Visible
+                && self.document.node(*node).is_some_and(|node| {
+                    !node.semantics.state.disabled
+                        && node.transient.is_some_and(|transient| {
+                            transient.kind == UiTransientSurfaceKind::Toast
+                        })
+                })
+        });
+        if has_visible {
+            return;
+        }
+        let next = self.transient_document_order().into_iter().find(|node| {
+            self.transient_states.get(node).is_some_and(|state| {
+                state.phase == UiTransientPhase::Queued
+                    && self.document.node(*node).is_some_and(|node| {
+                        !node.semantics.state.disabled
+                            && node.transient.is_some_and(|transient| {
+                                transient.kind == UiTransientSurfaceKind::Toast
+                            })
+                    })
+            })
+        });
+        if let Some(next) = next.and_then(|node| self.transient_states.get_mut(&node)) {
+            next.phase = UiTransientPhase::Visible;
+            next.elapsed_ms = 0;
+        }
+    }
+
+    fn is_node_visible(&self, target: UiNodeId) -> bool {
+        let Some(route) = self.document.route_to(target) else {
+            return false;
+        };
+        for node in route {
+            let Some(transient) = self.document.node(node).and_then(|node| node.transient) else {
+                continue;
+            };
+            let visible = self
+                .transient_states
+                .get(&node)
+                .is_some_and(|state| state.phase == UiTransientPhase::Visible);
+            match transient.presentation {
+                UiTransientPresentation::NodeAndSubtree if !visible => return false,
+                UiTransientPresentation::Children if node != target && !visible => return false,
+                UiTransientPresentation::NodeAndSubtree | UiTransientPresentation::Children => {}
+            }
+        }
+        true
+    }
+
+    fn visible_focus_order(&self) -> Vec<UiNodeId> {
+        self.document
+            .focus_order()
+            .into_iter()
+            .filter(|node| self.is_node_visible(*node))
+            .collect()
+    }
+
+    fn visible_semantic_relationships(
+        &self,
+        relationships: &UiSemanticRelationships,
+        invalid: bool,
+    ) -> SemanticRelationships {
+        let mut relationships = semantic_relationships(relationships, invalid);
+        relationships
+            .labelled_by
+            .retain(|target| self.is_node_visible(*target));
+        relationships
+            .described_by
+            .retain(|target| self.is_node_visible(*target));
+        relationships
+            .controls
+            .retain(|target| self.is_node_visible(*target));
+        relationships
+            .details
+            .retain(|target| self.is_node_visible(*target));
+        relationships
+            .flow_to
+            .retain(|target| self.is_node_visible(*target));
+        relationships.error_message = relationships
+            .error_message
+            .filter(|target| self.is_node_visible(*target));
+        relationships
+    }
+
+    fn recover_invisible_focus(&mut self) {
+        if self.focused.is_some_and(|node| !self.is_node_visible(node)) {
+            self.focused = self.visible_focus_order().into_iter().next();
+            if let Some(focused) = self.focused {
+                if let Some(container) = Self::collection_for(&self.document, focused) {
+                    self.collection_cursors
+                        .entry(container)
+                        .or_default()
+                        .selected = Some(focused);
+                    self.active_collection = Some(container);
+                }
+            }
+        }
+    }
+
     const fn drag_snapshot(drag: ActiveDrag) -> UiDragSnapshot {
         UiDragSnapshot {
             source: drag.source,
@@ -2133,7 +3273,14 @@ impl UiRuntime {
             text_inputs: self.text_inputs.clone(),
             focused: self.focused,
             hovered: self.hovered,
-            collection_cursor: self.collection_cursor,
+            collection_cursors: self.collection_cursors.clone(),
+            pending_virtual_focus: self.pending_virtual_focus.clone(),
+            transient_states: self.transient_states.clone(),
+            transient_stack: self.transient_stack.clone(),
+            active_property_edit: self.active_property_edit.clone(),
+            timeline_states: self.timeline_states.clone(),
+            canvas_states: self.canvas_states.clone(),
+            active_collection: self.active_collection,
             focus_recovery_guard: self.focus_recovery_guard,
             pointer_capture: self.pointer_capture,
             scroll_offsets: self.scroll_offsets.clone(),
@@ -2146,6 +3293,8 @@ impl UiRuntime {
             motion_system: self.motion_system.clone(),
             resolved_styles: self.resolved_styles.clone(),
             animated_color_targets: self.animated_color_targets.clone(),
+            layout_cache_key: self.layout_cache_key.clone(),
+            layout_cache_layout: self.layout_cache_layout.clone(),
         }
     }
 
@@ -2153,7 +3302,14 @@ impl UiRuntime {
         self.text_inputs = checkpoint.text_inputs;
         self.focused = checkpoint.focused;
         self.hovered = checkpoint.hovered;
-        self.collection_cursor = checkpoint.collection_cursor;
+        self.collection_cursors = checkpoint.collection_cursors;
+        self.pending_virtual_focus = checkpoint.pending_virtual_focus;
+        self.transient_states = checkpoint.transient_states;
+        self.transient_stack = checkpoint.transient_stack;
+        self.active_property_edit = checkpoint.active_property_edit;
+        self.timeline_states = checkpoint.timeline_states;
+        self.canvas_states = checkpoint.canvas_states;
+        self.active_collection = checkpoint.active_collection;
         self.focus_recovery_guard = checkpoint.focus_recovery_guard;
         self.pointer_capture = checkpoint.pointer_capture;
         self.scroll_offsets = checkpoint.scroll_offsets;
@@ -2166,14 +3322,18 @@ impl UiRuntime {
         self.motion_system = checkpoint.motion_system;
         self.resolved_styles = checkpoint.resolved_styles;
         self.animated_color_targets = checkpoint.animated_color_targets;
+        self.layout_cache_key = checkpoint.layout_cache_key;
+        self.layout_cache_layout = checkpoint.layout_cache_layout;
     }
 
-    fn semantic_delta_or_restore(
+    fn timed_semantic_delta_or_restore(
         &mut self,
         tree: &SemanticTree,
         checkpoint: UiInteractionCheckpoint,
-    ) -> Result<SemanticDelta, UiFrameError> {
+    ) -> Result<(SemanticDelta, u64), UiFrameError> {
+        let started = Instant::now();
         tree.delta_from(self.previous_semantics.as_ref())
+            .map(|delta| (delta, duration_nanoseconds(started.elapsed())))
             .map_err(|error| {
                 self.restore_interaction(checkpoint);
                 UiFrameError::SemanticTreeRejected(error)
@@ -2181,23 +3341,24 @@ impl UiRuntime {
     }
 
     fn resolve_base_styles(&mut self, theme: &UiTheme, contrast: UiContrast) {
-        self.resolved_styles = self
-            .document
-            .nodes()
-            .map(|node| {
-                (
-                    node.id,
-                    (*theme)
-                        .resolve_style(
-                            node.style_reference,
-                            node.style,
-                            UiVisualState::default(),
-                            contrast,
-                        )
-                        .style,
+        let mut resolved = BTreeMap::new();
+        for (node, parent) in self.style_resolution_nodes(false) {
+            let style = (*theme)
+                .resolve_style(
+                    node.style_reference,
+                    node.style,
+                    UiVisualState::default(),
+                    contrast,
                 )
-            })
-            .collect();
+                .style;
+            let style = inherited_style(
+                style,
+                node.style_inheritance,
+                parent.and_then(|parent| resolved.get(&parent).copied()),
+            );
+            resolved.insert(node.id, style);
+        }
+        self.resolved_styles = resolved;
     }
 
     fn resolve_visual_styles(
@@ -2207,7 +3368,7 @@ impl UiRuntime {
         motion: MotionPreference,
         diagnostics: &mut Vec<UiDiagnostic>,
     ) -> Vec<UiVisualStateSnapshot> {
-        let nodes: Vec<_> = self.document.nodes().cloned().collect();
+        let nodes = self.style_resolution_nodes(true);
         let (motion_tokens, motion_tokens_fallback) = (*theme).resolved_motion_tokens();
         if motion_tokens_fallback && !diagnostics.contains(&UiDiagnostic::MotionThemeTokensFallback)
         {
@@ -2216,14 +3377,18 @@ impl UiRuntime {
         let mut retained_targets = BTreeMap::new();
         let mut resolved_styles = BTreeMap::new();
         let mut visual_states = Vec::with_capacity(nodes.len());
-        for node in nodes {
+        for (node, parent) in nodes {
             let state = self.visual_state(&node);
             let resolution =
                 (*theme).resolve_style(node.style_reference, node.style, state, contrast);
             if resolution.used_token_fallback {
                 diagnostics.push(UiDiagnostic::StyleTokenFallback { node: node.id });
             }
-            let mut style = resolution.style;
+            let mut style = inherited_style(
+                resolution.style,
+                node.style_inheritance,
+                parent.and_then(|parent| resolved_styles.get(&parent).copied()),
+            );
             let target = animated_color_target(style);
             if let Some(previous) = self.animated_color_targets.get(&node.id).copied() {
                 if previous != target {
@@ -2271,6 +3436,26 @@ impl UiRuntime {
         self.animated_color_targets = retained_targets;
         self.resolved_styles = resolved_styles;
         visual_states
+    }
+
+    fn style_resolution_nodes(&self, visible_only: bool) -> Vec<(UiNode, Option<UiNodeId>)> {
+        let mut nodes = Vec::with_capacity(self.document.nodes().count());
+        let mut pending = vec![(self.document.root(), None)];
+        while let Some((id, parent)) = pending.pop() {
+            let Some(node) = self.document.node(id) else {
+                continue;
+            };
+            pending.extend(
+                node.children
+                    .iter()
+                    .rev()
+                    .map(|child| (*child, Some(node.id))),
+            );
+            if !visible_only || self.is_node_visible(id) {
+                nodes.push((node.clone(), parent));
+            }
+        }
+        nodes
     }
 
     fn synchronize_presentation_motion(
@@ -2453,7 +3638,7 @@ impl UiRuntime {
                     .is_some_and(|capture| capture.target == node.id),
             focused: !disabled && self.focused == Some(node.id),
             disabled,
-            selected: node.semantics.state.selected,
+            selected: node.semantics.state.selected || node.semantics.state.mixed,
             invalid,
         }
     }
@@ -2465,16 +3650,134 @@ impl UiRuntime {
             .unwrap_or_else(UiStyle::transparent)
     }
 
+    fn layout_cache_key(&self, context: UiLayoutContext) -> UiLayoutCacheKey {
+        let viewport = context.viewport.sanitized();
+        UiLayoutCacheKey {
+            document_epoch: self.document_epoch,
+            viewport_width_bits: viewport.width.to_bits(),
+            viewport_height_bits: viewport.height.to_bits(),
+            scale_factor_bits: sanitized_scale_factor(context.scale_factor).to_bits(),
+            text_scale_percent: context.text_scale.percent(),
+            icon_size_bits: context.icon_tokens.size.to_bits(),
+            icon_text_gap_bits: context.icon_tokens.text_gap.to_bits(),
+            style_geometry: self
+                .resolved_styles
+                .iter()
+                .map(|(node, style)| (*node, style.padding.to_bits(), style.font_size.to_bits()))
+                .collect(),
+            text_values: self
+                .text_inputs
+                .iter()
+                .map(|(node, state)| (*node, state.rendered_text()))
+                .collect(),
+            scroll_offsets: self
+                .scroll_offsets
+                .iter()
+                .map(|(node, offset)| (*node, offset.to_bits()))
+                .collect(),
+            transient_visibility: self
+                .transient_states
+                .iter()
+                .map(|(node, state)| (*node, state.phase == UiTransientPhase::Visible))
+                .collect(),
+        }
+    }
+
     fn resolved_layout(
         &mut self,
-        viewport: UiSize,
-    ) -> Result<BTreeMap<UiNodeId, UiRect>, UiLayoutError> {
-        let root_bounds = UiRect::new(UiPoint::default(), viewport.sanitized());
-        let mut layout = UiLayoutResolver::resolve(self, root_bounds)?;
-        if self.clamp_scroll_offsets(&layout) {
-            layout = UiLayoutResolver::resolve(self, root_bounds)?;
+        context: UiLayoutContext,
+    ) -> Result<BTreeMap<UiNodeId, UiRect>, UiFrameError> {
+        let cache_key = self.layout_cache_key(context);
+        if self.layout_cache_key.as_ref() == Some(&cache_key)
+            && !self.layout_cache_layout.is_empty()
+        {
+            self.frame_layout_reuses = self.frame_layout_reuses.saturating_add(1);
+            return Ok(self.layout_cache_layout.clone());
         }
+        self.frame_layout_computations = self.frame_layout_computations.saturating_add(1);
+        let intrinsic_sizes = self.intrinsic_sizes(context)?;
+        let root_bounds = UiRect::new(UiPoint::default(), context.viewport.sanitized());
+        let mut layout = UiLayoutResolver::resolve(self, &intrinsic_sizes, root_bounds)
+            .map_err(UiFrameError::LayoutRejected)?;
+        if self.clamp_scroll_offsets(&layout) {
+            layout = UiLayoutResolver::resolve(self, &intrinsic_sizes, root_bounds)
+                .map_err(UiFrameError::LayoutRejected)?;
+        }
+        self.layout_cache_key = Some(self.layout_cache_key(context));
+        self.layout_cache_layout.clone_from(&layout);
         Ok(layout)
+    }
+
+    fn intrinsic_sizes(
+        &mut self,
+        context: UiLayoutContext,
+    ) -> Result<BTreeMap<UiNodeId, UiSize>, UiFrameError> {
+        let requests = self
+            .document
+            .nodes()
+            .filter(|node| self.is_node_visible(node.id))
+            .map(|node| UiIntrinsicRequest {
+                node: node.id,
+                text: self
+                    .text_inputs
+                    .get(&node.id)
+                    .map(UiTextInputState::rendered_text)
+                    .or_else(|| node.text.clone()),
+                style: self.resolved_style(node.id),
+                font_role: node.font_role,
+                has_icon: node.icon.is_some(),
+                focusable: node.focusable,
+            })
+            .collect::<Vec<_>>();
+        let mut sizes = BTreeMap::new();
+        for request in requests {
+            if request.text.is_none() && !request.has_icon && !request.focusable {
+                continue;
+            }
+            let scaled_font_size = request.style.font_size * context.text_scale.factor();
+            let icon_width = if request.has_icon {
+                context.icon_tokens.size
+                    + request
+                        .text
+                        .as_ref()
+                        .map_or(0.0, |_| context.icon_tokens.text_gap)
+            } else {
+                0.0
+            };
+            let horizontal_chrome = request.style.padding * 2.0 + icon_width;
+            let available_text_width =
+                (context.viewport.sanitized().width - horizontal_chrome).max(1.0);
+            let (text_width, text_height) = if let Some(text) = request.text.as_deref() {
+                let measured = self
+                    .text
+                    .measure(
+                        text,
+                        available_text_width,
+                        scaled_font_size,
+                        context.scale_factor,
+                        request.font_role,
+                    )
+                    .map_err(|error| UiFrameError::TextLayoutRejected {
+                        node: request.node,
+                        error,
+                    })?;
+                (measured.width, measured.height.max(scaled_font_size * 1.25))
+            } else {
+                (0.0, 0.0)
+            };
+            let mut width = text_width + horizontal_chrome;
+            let mut height = text_height.max(if request.has_icon {
+                context.icon_tokens.size
+            } else {
+                0.0
+            }) + request.style.padding * 2.0;
+            if request.focusable {
+                width = width.max(MIN_ACCESSIBLE_CONTROL_EXTENT);
+                height = height.max(MIN_ACCESSIBLE_CONTROL_EXTENT);
+            }
+            sizes.insert(request.node, UiSize::new(width, height));
+        }
+        Ok(sizes)
     }
 
     fn process_event(
@@ -2489,9 +3792,9 @@ impl UiRuntime {
         match event {
             UiEvent::FocusNext => self.move_focus(true, &mut effects.diagnostics),
             UiEvent::FocusPrevious => self.move_focus(false, &mut effects.diagnostics),
-            UiEvent::Activate => self.process_activation(suppress_activation, effects),
+            UiEvent::Activate => return self.process_activation(suppress_activation, effects),
             UiEvent::AssistiveFocus(target) => self.assistive_focus(target, effects),
-            UiEvent::AssistiveActivate(target) => self.assistive_activate(target, effects),
+            UiEvent::AssistiveActivate(target) => return self.assistive_activate(target, effects),
             UiEvent::AssistiveRequest { target, action } => {
                 return self.assistive_request(target, action, layout, effects);
             }
@@ -2501,84 +3804,77 @@ impl UiRuntime {
                 replace_selection,
             } => self.assistive_set_value(target, &text, replace_selection, effects),
             UiEvent::TextCommit(text) | UiEvent::PasteText(text) => {
-                self.commit_text(&text, &mut effects.routes, &mut effects.diagnostics);
+                self.commit_text_event(&text, effects);
             }
-            UiEvent::ImePreedit { text, cursor } => {
-                self.set_preedit(text, cursor, &mut effects.routes, &mut effects.diagnostics);
-            }
+            UiEvent::ImePreedit { text, cursor } => self.preedit_event(text, cursor, effects),
             UiEvent::ImeCancel => self.cancel_preedit(effects),
             UiEvent::MoveTextCursor {
                 direction,
                 extend_selection,
-            } => self.move_text_cursor(
-                direction,
-                extend_selection,
-                &mut effects.routes,
-                &mut effects.diagnostics,
-            ),
-            UiEvent::DeleteTextBackward => {
-                self.delete_text(true, &mut effects.routes, &mut effects.diagnostics);
-            }
-            UiEvent::DeleteTextForward => {
-                self.delete_text(false, &mut effects.routes, &mut effects.diagnostics);
-            }
+            } => self.move_text_cursor_event(direction, extend_selection, effects),
+            UiEvent::DeleteTextBackward => self.delete_text_event(true, effects),
+            UiEvent::DeleteTextForward => self.delete_text_event(false, effects),
             UiEvent::UndoText => self.edit_text_history(false, effects),
             UiEvent::RedoText => self.edit_text_history(true, effects),
-            UiEvent::SelectAllText => {
-                self.select_all_text(&mut effects.routes, &mut effects.diagnostics);
-            }
-            UiEvent::CopySelection => {
-                self.process_clipboard_selection(UiClipboardOperation::Copy, effects);
-            }
-            UiEvent::CutSelection => {
-                self.process_clipboard_selection(UiClipboardOperation::Cut, effects);
-            }
+            UiEvent::SelectAllText => self.select_all_text_event(effects),
+            UiEvent::CopySelection => self.clipboard_selection_event(true, effects),
+            UiEvent::CutSelection => self.clipboard_selection_event(false, effects),
             UiEvent::ConfirmClipboardCut { source, text } => {
                 self.confirm_clipboard_cut(source, &text, effects);
             }
-            UiEvent::RequestCompletion => {
-                self.request_completion(
-                    &mut effects.routes,
-                    &mut effects.completion_requests,
-                    &mut effects.diagnostics,
-                );
-            }
+            UiEvent::RequestCompletion => self.request_completion_event(effects),
+            UiEvent::ClearFocusedSearch => self.clear_focused_search(effects),
             UiEvent::Pointer(event) => {
-                return self.process_pointer(event, layout, effects, line_step);
+                return self.process_pointer(event, layout, effects, line_step)
             }
             UiEvent::PointerDown(point) => {
-                let event = Self::legacy_pointer_event(UiPointerPhase::Press, point);
-                return self.process_pointer(event, layout, effects, line_step);
+                return self.process_legacy_pointer(true, point, layout, effects, line_step);
             }
             UiEvent::PointerUp(point) => {
-                let event = Self::legacy_pointer_event(UiPointerPhase::Release, point);
-                return self.process_pointer(event, layout, effects, line_step);
+                return self.process_legacy_pointer(false, point, layout, effects, line_step);
             }
-            UiEvent::PointerCancel => {
-                let event = Self::legacy_pointer_event(UiPointerPhase::Cancel, UiPoint::default());
-                return self.process_pointer(event, layout, effects, line_step);
-            }
+            UiEvent::PointerCancel => self.cancel_pointer_interaction(),
+            UiEvent::CancelInteraction => return self.cancel_interaction(effects),
             UiEvent::Controller(event) => {
-                self.process_controller(event, suppress_activation, effects);
+                return self.process_controller(event, suppress_activation, layout, effects);
             }
             UiEvent::Scroll(event) => {
-                return self.process_scroll(event, layout, effects, line_step);
+                return self.process_scroll(event, layout, effects, line_step)
             }
             UiEvent::BeginDrag(payload) => self.begin_pointer_drag(payload, effects),
             UiEvent::BeginKeyboardDrag { source, payload } => {
-                self.begin_drag(
-                    source,
-                    payload,
-                    true,
-                    &mut effects.routes,
-                    &mut effects.diagnostics,
-                );
+                self.begin_keyboard_drag_event(source, payload, effects);
             }
             UiEvent::CompleteDrag => self.finish_active_drag(effects),
             UiEvent::CancelDrag => self.drag = None,
             UiEvent::NavigateCollection(navigation) => {
-                self.navigate_collection(navigation, layout, &mut effects.diagnostics);
+                self.navigate_collection(navigation, layout, effects);
             }
+            UiEvent::PresentTransient(node) => return self.present_transient(node, effects),
+            UiEvent::DismissTransient(node) => return self.dismiss_transient(node, effects),
+            UiEvent::BeginPropertyEdit(node) => self.begin_property_edit(node, effects),
+            UiEvent::CommitPropertyEdit => self.commit_property_edit(effects),
+            UiEvent::CancelPropertyEdit => self.cancel_property_edit(effects),
+            UiEvent::ResetProperty(node) => self.reset_property(node, effects),
+            UiEvent::InspectPropertySource(node) => self.inspect_property_source(node, effects),
+            UiEvent::BeginTimelineScrub { timeline, value } => {
+                self.begin_timeline_scrub(timeline, value, effects);
+            }
+            UiEvent::UpdateTimelineScrub(value) => self.update_timeline_scrub(value, effects),
+            UiEvent::CommitTimelineScrub => self.commit_timeline_scrub(effects),
+            UiEvent::CancelTimelineScrub => self.cancel_timeline_scrub(effects),
+            UiEvent::SetTimelineRange {
+                timeline,
+                start,
+                end,
+            } => self.set_timeline_range(timeline, start, end, effects),
+            UiEvent::ZoomTimeline { timeline, zoom } => self.zoom_timeline(timeline, zoom, effects),
+            UiEvent::JumpTimeline { timeline, jump } => self.jump_timeline(timeline, jump, effects),
+            UiEvent::ManipulateCanvas { canvas, action } => {
+                self.manipulate_canvas(canvas, action, effects);
+            }
+            UiEvent::AdjustFocused(adjustment) => self.adjust_focused_control(adjustment, effects),
+            UiEvent::InvokeFocused(action) => self.invoke_focused_action(action, effects),
             UiEvent::CollectionTypeahead(query) => {
                 self.collection_typeahead(&query, &mut effects.diagnostics);
             }
@@ -2586,14 +3882,668 @@ impl UiRuntime {
         false
     }
 
+    fn commit_text_event(&mut self, text: &str, effects: &mut UiFrameEffects) {
+        self.commit_text(text, &mut effects.routes, &mut effects.diagnostics);
+    }
+
+    fn preedit_event(
+        &mut self,
+        text: String,
+        cursor: Option<(usize, usize)>,
+        effects: &mut UiFrameEffects,
+    ) {
+        self.set_preedit(text, cursor, &mut effects.routes, &mut effects.diagnostics);
+    }
+
+    fn move_text_cursor_event(
+        &mut self,
+        direction: UiTextCursorDirection,
+        extend_selection: bool,
+        effects: &mut UiFrameEffects,
+    ) {
+        self.move_text_cursor(
+            direction,
+            extend_selection,
+            &mut effects.routes,
+            &mut effects.diagnostics,
+        );
+    }
+
+    fn delete_text_event(&mut self, backward: bool, effects: &mut UiFrameEffects) {
+        self.delete_text(backward, &mut effects.routes, &mut effects.diagnostics);
+    }
+
+    fn select_all_text_event(&mut self, effects: &mut UiFrameEffects) {
+        self.select_all_text(&mut effects.routes, &mut effects.diagnostics);
+    }
+
+    fn request_completion_event(&mut self, effects: &mut UiFrameEffects) {
+        self.request_completion(
+            &mut effects.routes,
+            &mut effects.completion_requests,
+            &mut effects.diagnostics,
+        );
+    }
+
+    fn clipboard_selection_event(&mut self, copy: bool, effects: &mut UiFrameEffects) {
+        let operation = if copy {
+            UiClipboardOperation::Copy
+        } else {
+            UiClipboardOperation::Cut
+        };
+        self.process_clipboard_selection(operation, effects);
+    }
+
+    fn begin_keyboard_drag_event(
+        &mut self,
+        source: UiNodeId,
+        payload: UiDragPayload,
+        effects: &mut UiFrameEffects,
+    ) {
+        self.begin_drag(
+            source,
+            payload,
+            true,
+            &mut effects.routes,
+            &mut effects.diagnostics,
+        );
+    }
+
+    fn property_grid_for(&self, editor: UiNodeId) -> Option<UiNodeId> {
+        self.document
+            .route_to(editor)?
+            .into_iter()
+            .rev()
+            .find(|node| {
+                self.document
+                    .node(*node)
+                    .is_some_and(|node| node.kind == UiWidgetKind::PropertyGrid)
+            })
+    }
+
+    fn property_editor_is_valid(&self, editor: UiNodeId) -> Option<UiNodeId> {
+        let node = self.document.node(editor)?;
+        if !self.is_node_visible(editor)
+            || node.semantics.state.disabled
+            || !node.focusable
+            || node.text_input.is_none_or(|options| options.password)
+            || !self.text_inputs.contains_key(&editor)
+        {
+            return None;
+        }
+        self.property_grid_for(editor)
+    }
+
+    fn begin_property_edit(&mut self, editor: UiNodeId, effects: &mut UiFrameEffects) {
+        let Some(grid) = self.property_editor_is_valid(editor) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::PropertyEditDenied { node: editor });
+            return;
+        };
+        if self
+            .active_property_edit
+            .as_ref()
+            .is_some_and(|active| active.editor != editor)
+        {
+            self.cancel_property_edit(effects);
+        }
+        if self.active_property_edit.is_none() {
+            let before = self
+                .text_inputs
+                .get(&editor)
+                .expect("validated property editor has retained text state")
+                .clone();
+            self.active_property_edit = Some(ActivePropertyEdit {
+                grid,
+                editor,
+                before,
+            });
+        }
+        self.dispatch(editor, &mut effects.routes);
+        self.set_focus(editor);
+    }
+
+    fn commit_property_edit(&mut self, effects: &mut UiFrameEffects) {
+        let Some(active) = self.active_property_edit.as_ref() else {
+            effects.diagnostics.push(UiDiagnostic::PropertyEditDenied {
+                node: self.focused.unwrap_or(self.document.root()),
+            });
+            return;
+        };
+        let editor = active.editor;
+        let grid = active.grid;
+        let valid = self.document.node(editor).is_some_and(|node| {
+            node.text_validation.is_none_or(|rule| {
+                self.text_inputs
+                    .get(&editor)
+                    .is_some_and(|state| state.is_valid(rule))
+            })
+        });
+        if !valid {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TextValidationFailed { node: editor });
+            return;
+        }
+        let value = self
+            .text_inputs
+            .get(&editor)
+            .and_then(UiTextInputState::value)
+            .map(str::to_owned);
+        self.dispatch(editor, &mut effects.routes);
+        effects.property_requests.push(UiPropertyRequest {
+            grid,
+            editor,
+            action: UiPropertyAction::Commit,
+            value,
+        });
+        self.active_property_edit = None;
+    }
+
+    fn cancel_property_edit(&mut self, effects: &mut UiFrameEffects) {
+        let Some(active) = self.active_property_edit.take() else {
+            return;
+        };
+        self.dispatch(active.editor, &mut effects.routes);
+        self.text_inputs.insert(active.editor, active.before);
+        if self.is_node_visible(active.editor) {
+            self.set_focus(active.editor);
+        }
+    }
+
+    fn reset_property(&mut self, editor: UiNodeId, effects: &mut UiFrameEffects) {
+        let Some(grid) = self.property_editor_is_valid(editor) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::PropertyEditDenied { node: editor });
+            return;
+        };
+        self.dispatch(editor, &mut effects.routes);
+        if !self.reset_text_input_from_document(editor) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::PropertyEditDenied { node: editor });
+            return;
+        }
+        if self
+            .active_property_edit
+            .as_ref()
+            .is_some_and(|active| active.editor == editor)
+        {
+            self.active_property_edit = None;
+        }
+        effects.property_requests.push(UiPropertyRequest {
+            grid,
+            editor,
+            action: UiPropertyAction::Reset,
+            value: None,
+        });
+    }
+
+    fn inspect_property_source(&self, editor: UiNodeId, effects: &mut UiFrameEffects) {
+        let Some(grid) = self.property_editor_is_valid(editor) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::PropertyEditDenied { node: editor });
+            return;
+        };
+        self.dispatch(editor, &mut effects.routes);
+        effects.property_requests.push(UiPropertyRequest {
+            grid,
+            editor,
+            action: UiPropertyAction::InspectSource,
+            value: None,
+        });
+    }
+
+    fn accepted_timeline_contract(&self, timeline: UiNodeId) -> Option<UiTimelineContract> {
+        let node = self.document.node(timeline)?;
+        (!node.semantics.state.disabled && self.is_node_visible(timeline))
+            .then_some(node.timeline)
+            .flatten()
+    }
+
+    fn begin_timeline_scrub(
+        &mut self,
+        timeline: UiNodeId,
+        value: i64,
+        effects: &mut UiFrameEffects,
+    ) {
+        let Some(contract) = self.accepted_timeline_contract(timeline) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TimelineInteractionDenied { node: timeline });
+            return;
+        };
+        if !(contract.minimum..=contract.maximum).contains(&value) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TimelineInteractionDenied { node: timeline });
+            return;
+        }
+        for state in self.timeline_states.values_mut() {
+            if state.scrubbing {
+                state.preview_value = state.scrub_origin;
+                state.scrubbing = false;
+            }
+        }
+        let state = self
+            .timeline_states
+            .get_mut(&timeline)
+            .expect("accepted timeline has retained state");
+        state.scrub_origin = state.preview_value;
+        state.preview_value = value;
+        state.scrubbing = true;
+        self.dispatch(timeline, &mut effects.routes);
+        self.set_focus(timeline);
+    }
+
+    fn update_timeline_scrub(&mut self, value: i64, effects: &mut UiFrameEffects) {
+        let active = self
+            .timeline_states
+            .iter()
+            .find_map(|(timeline, state)| state.scrubbing.then_some(*timeline));
+        let Some(timeline) = active else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TimelineInteractionDenied {
+                    node: self.focused.unwrap_or(self.document.root()),
+                });
+            return;
+        };
+        let Some(contract) = self.accepted_timeline_contract(timeline) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TimelineInteractionDenied { node: timeline });
+            return;
+        };
+        if !(contract.minimum..=contract.maximum).contains(&value) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TimelineInteractionDenied { node: timeline });
+            return;
+        }
+        self.timeline_states
+            .get_mut(&timeline)
+            .expect("active scrub has retained state")
+            .preview_value = value;
+        self.dispatch(timeline, &mut effects.routes);
+    }
+
+    fn commit_timeline_scrub(&mut self, effects: &mut UiFrameEffects) {
+        let active = self.timeline_states.iter().find_map(|(timeline, state)| {
+            state.scrubbing.then_some((*timeline, state.preview_value))
+        });
+        let Some((timeline, value)) = active else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TimelineInteractionDenied {
+                    node: self.focused.unwrap_or(self.document.root()),
+                });
+            return;
+        };
+        self.timeline_states
+            .get_mut(&timeline)
+            .expect("active scrub has retained state")
+            .scrubbing = false;
+        self.dispatch(timeline, &mut effects.routes);
+        effects
+            .timeline_requests
+            .push(UiTimelineRequest { timeline, value });
+    }
+
+    fn cancel_timeline_scrub(&mut self, effects: &mut UiFrameEffects) {
+        let active = self
+            .timeline_states
+            .iter()
+            .find_map(|(timeline, state)| state.scrubbing.then_some(*timeline));
+        let Some(timeline) = active else {
+            return;
+        };
+        let state = self
+            .timeline_states
+            .get_mut(&timeline)
+            .expect("active scrub has retained state");
+        state.preview_value = state.scrub_origin;
+        state.scrubbing = false;
+        self.dispatch(timeline, &mut effects.routes);
+    }
+
+    fn set_timeline_range(
+        &mut self,
+        timeline: UiNodeId,
+        start: i64,
+        end: i64,
+        effects: &mut UiFrameEffects,
+    ) {
+        let Some(contract) = self.accepted_timeline_contract(timeline) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TimelineInteractionDenied { node: timeline });
+            return;
+        };
+        if start > end
+            || !(contract.minimum..=contract.maximum).contains(&start)
+            || !(contract.minimum..=contract.maximum).contains(&end)
+        {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TimelineInteractionDenied { node: timeline });
+            return;
+        }
+        self.timeline_states
+            .get_mut(&timeline)
+            .expect("accepted timeline has retained state")
+            .selected_range = Some((start, end));
+        self.dispatch(timeline, &mut effects.routes);
+        self.set_focus(timeline);
+    }
+
+    fn zoom_timeline(
+        &mut self,
+        timeline: UiNodeId,
+        zoom: UiTimelineZoom,
+        effects: &mut UiFrameEffects,
+    ) {
+        let Some(contract) = self.accepted_timeline_contract(timeline) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TimelineInteractionDenied { node: timeline });
+            return;
+        };
+        let state = self
+            .timeline_states
+            .get_mut(&timeline)
+            .expect("accepted timeline has retained state");
+        state.zoom_percent = match zoom {
+            UiTimelineZoom::In => state
+                .zoom_percent
+                .saturating_add(contract.zoom_step_percent)
+                .min(contract.maximum_zoom_percent),
+            UiTimelineZoom::Out => state
+                .zoom_percent
+                .saturating_sub(contract.zoom_step_percent)
+                .max(contract.minimum_zoom_percent),
+            UiTimelineZoom::Reset => contract.initial_zoom_percent,
+        };
+        self.dispatch(timeline, &mut effects.routes);
+        self.set_focus(timeline);
+    }
+
+    fn jump_timeline(
+        &mut self,
+        timeline: UiNodeId,
+        jump: UiTimelineJump,
+        effects: &mut UiFrameEffects,
+    ) {
+        let Some(contract) = self.accepted_timeline_contract(timeline) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TimelineInteractionDenied { node: timeline });
+            return;
+        };
+        let state = self
+            .timeline_states
+            .get_mut(&timeline)
+            .expect("accepted timeline has retained state");
+        let page = i64::from(contract.page_step);
+        state.preview_value = match jump {
+            UiTimelineJump::PreviousPage => state
+                .preview_value
+                .saturating_sub(page)
+                .max(contract.minimum),
+            UiTimelineJump::NextPage => state
+                .preview_value
+                .saturating_add(page)
+                .min(contract.maximum),
+            UiTimelineJump::Start => contract.minimum,
+            UiTimelineJump::End => contract.maximum,
+        };
+        state.scrubbing = false;
+        let value = state.preview_value;
+        self.dispatch(timeline, &mut effects.routes);
+        self.set_focus(timeline);
+        effects
+            .timeline_requests
+            .push(UiTimelineRequest { timeline, value });
+    }
+
+    fn accepted_canvas_contract(&self, canvas: UiNodeId) -> Option<UiCanvasContract> {
+        let node = self.document.node(canvas)?;
+        (!node.semantics.state.disabled && self.is_node_visible(canvas))
+            .then_some(node.canvas)
+            .flatten()
+    }
+
+    fn canvas_contains(&self, canvas: UiNodeId, target: UiNodeId) -> bool {
+        target != canvas
+            && self
+                .document
+                .route_to(target)
+                .is_some_and(|route| route.contains(&canvas) && self.is_node_visible(target))
+    }
+
+    fn manipulate_canvas(
+        &mut self,
+        canvas: UiNodeId,
+        action: UiCanvasAction,
+        effects: &mut UiFrameEffects,
+    ) {
+        let Some(contract) = self.accepted_canvas_contract(canvas) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::CanvasInteractionDenied { node: canvas });
+            return;
+        };
+        let accepted = match action {
+            UiCanvasAction::Pan { delta_x, delta_y } => {
+                self.pan_canvas(canvas, contract, delta_x, delta_y);
+                true
+            }
+            UiCanvasAction::ZoomIn => {
+                self.zoom_canvas(canvas, contract, true);
+                true
+            }
+            UiCanvasAction::ZoomOut => {
+                self.zoom_canvas(canvas, contract, false);
+                true
+            }
+            UiCanvasAction::ResetView => {
+                let state = self
+                    .canvas_states
+                    .get_mut(&canvas)
+                    .expect("accepted canvas has retained state");
+                state.pan_x = contract.initial_pan_x;
+                state.pan_y = contract.initial_pan_y;
+                state.zoom_percent = contract.initial_zoom_percent;
+                true
+            }
+            UiCanvasAction::BeginConnection { source } => {
+                self.begin_canvas_connection(canvas, source, effects)
+            }
+            UiCanvasAction::PreviewConnection { target } => {
+                self.preview_canvas_connection(canvas, target, effects)
+            }
+            UiCanvasAction::CompleteConnection { target } => {
+                self.complete_canvas_connection(canvas, target, effects)
+            }
+            UiCanvasAction::CancelConnection => {
+                self.canvas_states
+                    .get_mut(&canvas)
+                    .expect("accepted canvas has retained state")
+                    .connection = None;
+                true
+            }
+            UiCanvasAction::InspectSource => {
+                effects
+                    .canvas_requests
+                    .push(UiCanvasRequest::InspectSource { canvas });
+                true
+            }
+        };
+        if accepted {
+            self.dispatch(canvas, &mut effects.routes);
+            self.set_focus(canvas);
+        }
+    }
+
+    fn pan_canvas(&mut self, canvas: UiNodeId, contract: UiCanvasContract, dx: i32, dy: i32) {
+        let state = self
+            .canvas_states
+            .get_mut(&canvas)
+            .expect("accepted canvas has retained state");
+        let limit = i64::from(contract.pan_limit);
+        let bounded = |current: i32, delta: i32| {
+            i32::try_from(
+                i64::from(current)
+                    .saturating_add(i64::from(delta))
+                    .clamp(-limit, limit),
+            )
+            .expect("bounded pan fits i32")
+        };
+        state.pan_x = bounded(state.pan_x, dx);
+        state.pan_y = bounded(state.pan_y, dy);
+    }
+
+    fn zoom_canvas(&mut self, canvas: UiNodeId, contract: UiCanvasContract, inward: bool) {
+        let state = self
+            .canvas_states
+            .get_mut(&canvas)
+            .expect("accepted canvas has retained state");
+        state.zoom_percent = if inward {
+            state
+                .zoom_percent
+                .saturating_add(contract.zoom_step_percent)
+                .min(contract.maximum_zoom_percent)
+        } else {
+            state
+                .zoom_percent
+                .saturating_sub(contract.zoom_step_percent)
+                .max(contract.minimum_zoom_percent)
+        };
+    }
+
+    fn begin_canvas_connection(
+        &mut self,
+        canvas: UiNodeId,
+        source: UiNodeId,
+        effects: &mut UiFrameEffects,
+    ) -> bool {
+        if !self.canvas_contains(canvas, source) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::CanvasInteractionDenied { node: source });
+            return false;
+        }
+        self.canvas_states
+            .get_mut(&canvas)
+            .expect("accepted canvas has retained state")
+            .connection = Some(UiCanvasConnectionPreview {
+            source,
+            target: None,
+        });
+        true
+    }
+
+    fn preview_canvas_connection(
+        &mut self,
+        canvas: UiNodeId,
+        target: Option<UiNodeId>,
+        effects: &mut UiFrameEffects,
+    ) -> bool {
+        if let Some(target) = target.filter(|target| !self.canvas_contains(canvas, *target)) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::CanvasInteractionDenied { node: target });
+            return false;
+        }
+        let state = self
+            .canvas_states
+            .get_mut(&canvas)
+            .expect("accepted canvas has retained state");
+        let Some(connection) = state.connection.as_mut() else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::CanvasInteractionDenied { node: canvas });
+            return false;
+        };
+        connection.target = target;
+        true
+    }
+
+    fn complete_canvas_connection(
+        &mut self,
+        canvas: UiNodeId,
+        target: UiNodeId,
+        effects: &mut UiFrameEffects,
+    ) -> bool {
+        if !self.canvas_contains(canvas, target) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::CanvasInteractionDenied { node: target });
+            return false;
+        }
+        let state = self
+            .canvas_states
+            .get_mut(&canvas)
+            .expect("accepted canvas has retained state");
+        let Some(connection) = state.connection.take() else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::CanvasInteractionDenied { node: canvas });
+            return false;
+        };
+        if connection.source == target {
+            state.connection = Some(connection);
+            effects
+                .diagnostics
+                .push(UiDiagnostic::CanvasInteractionDenied { node: target });
+            return false;
+        }
+        effects.canvas_requests.push(UiCanvasRequest::Connect {
+            canvas,
+            source: connection.source,
+            target,
+        });
+        true
+    }
+
+    fn clear_focused_search(&mut self, effects: &mut UiFrameEffects) {
+        let Some(target) = self.focused else {
+            effects.diagnostics.push(UiDiagnostic::NoFocusableNode);
+            return;
+        };
+        let accepted = self.document.node(target).is_some_and(|node| {
+            node.kind == UiWidgetKind::SearchInput && !node.semantics.state.disabled
+        });
+        if !accepted || !self.text_inputs.contains_key(&target) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::SearchClearDenied { node: target });
+            return;
+        }
+        self.dispatch(target, &mut effects.routes);
+        let state = self
+            .text_inputs
+            .get_mut(&target)
+            .expect("accepted search control has retained text state");
+        state.select_all();
+        let _ = state.commit("");
+    }
+
     fn process_controller(
         &mut self,
         event: UiControllerEvent,
         suppress_activation: bool,
+        layout: &BTreeMap<UiNodeId, UiRect>,
         effects: &mut UiFrameEffects,
-    ) {
+    ) -> bool {
+        if event.phase == UiControllerPhase::Cancel {
+            return self.cancel_interaction(effects);
+        }
         if event.phase != UiControllerPhase::Press {
-            return;
+            return false;
         }
         match event.control {
             UiControllerControl::FocusPrevious => {
@@ -2602,29 +4552,387 @@ impl UiRuntime {
             UiControllerControl::FocusNext => {
                 self.move_focus(true, &mut effects.diagnostics);
             }
-            UiControllerControl::Activate => {
-                self.process_activation(suppress_activation, effects);
+            UiControllerControl::NavigateCollection(navigation) => {
+                self.navigate_collection(navigation, layout, effects);
             }
-            UiControllerControl::Cancel => self.drag = None,
+            UiControllerControl::AdjustFocused(adjustment) => {
+                self.adjust_focused_control(adjustment, effects);
+            }
+            UiControllerControl::InvokeFocused(action) => {
+                self.invoke_focused_action(action, effects);
+            }
+            UiControllerControl::Activate => {
+                return self.process_activation(suppress_activation, effects);
+            }
+            UiControllerControl::Cancel => return self.cancel_interaction(effects),
+        }
+        false
+    }
+
+    fn cancel_pointer_interaction(&mut self) {
+        self.pointer_capture = None;
+        self.hovered = None;
+        self.scroll_capture = None;
+        self.drag = None;
+    }
+
+    fn cancel_device_interaction(&mut self, device: UiInputDeviceId) {
+        let owns_pointer = self
+            .pointer_capture
+            .is_some_and(|capture| capture.device == device);
+        if owns_pointer {
+            self.pointer_capture = None;
+            if self.drag.is_some_and(|drag| !drag.keyboard) {
+                self.drag = None;
+            }
+        }
+        if self
+            .scroll_capture
+            .is_some_and(|capture| capture.device == device)
+        {
+            self.scroll_capture = None;
+        }
+        self.hovered = None;
+    }
+
+    fn advance_transients(&mut self, delta_ms: u32) {
+        let timed: Vec<_> = self
+            .document
+            .nodes()
+            .filter_map(|node| node.transient.map(|transient| (node.id, transient)))
+            .collect();
+        let mut expired_toast = false;
+        for (node, transient) in timed {
+            let Some(state) = self.transient_states.get_mut(&node) else {
+                continue;
+            };
+            match (transient.kind, state.phase) {
+                (UiTransientSurfaceKind::Tooltip, UiTransientPhase::Pending) => {
+                    state.elapsed_ms = state.elapsed_ms.saturating_add(delta_ms);
+                    if state.elapsed_ms >= transient.reveal_delay_ms {
+                        state.phase = UiTransientPhase::Visible;
+                    }
+                }
+                (UiTransientSurfaceKind::Toast, UiTransientPhase::Visible) => {
+                    state.elapsed_ms = state.elapsed_ms.saturating_add(delta_ms);
+                    if transient
+                        .visible_duration_ms
+                        .is_some_and(|duration| state.elapsed_ms >= duration)
+                    {
+                        state.phase = UiTransientPhase::Expired;
+                        expired_toast = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if expired_toast {
+            self.promote_next_toast();
         }
     }
 
-    fn process_activation(&mut self, suppressed: bool, effects: &mut UiFrameEffects) {
-        if suppressed {
+    fn synchronize_tooltips(&mut self) -> bool {
+        let tooltips: Vec<_> = self
+            .document
+            .nodes()
+            .filter(|node| !node.semantics.state.disabled)
+            .filter_map(|node| {
+                node.transient
+                    .filter(|transient| transient.kind == UiTransientSurfaceKind::Tooltip)
+                    .and_then(|transient| {
+                        transient.anchor.map(|anchor| (node.id, anchor, transient))
+                    })
+            })
+            .collect();
+        let mut changed = false;
+        for (node, anchor, transient) in tooltips {
+            let active = self.is_node_visible(anchor)
+                && (self.hovered == Some(anchor) || self.focused == Some(anchor));
+            let Some(state) = self.transient_states.get_mut(&node) else {
+                continue;
+            };
+            let before = *state;
+            if active {
+                if state.phase == UiTransientPhase::Hidden {
+                    state.phase = if transient.reveal_delay_ms == 0 {
+                        UiTransientPhase::Visible
+                    } else {
+                        UiTransientPhase::Pending
+                    };
+                    state.elapsed_ms = 0;
+                }
+            } else {
+                state.phase = UiTransientPhase::Hidden;
+                state.elapsed_ms = 0;
+                state.restore_focus = None;
+            }
+            changed |= before != *state;
+        }
+        changed
+    }
+
+    fn present_transient(&mut self, node: UiNodeId, effects: &mut UiFrameEffects) -> bool {
+        let Some(transient) = self.document.node(node).and_then(|candidate| {
+            (!candidate.semantics.state.disabled)
+                .then_some(candidate.transient)
+                .flatten()
+        }) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TransientTargetDenied { node });
+            return false;
+        };
+        let restore_focus = self.focused.or(transient.anchor);
+        let Some(state) = self.transient_states.get_mut(&node) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TransientTargetDenied { node });
+            return false;
+        };
+        match transient.kind {
+            UiTransientSurfaceKind::Toast => {
+                if !matches!(
+                    state.phase,
+                    UiTransientPhase::Visible | UiTransientPhase::Queued
+                ) {
+                    state.phase = UiTransientPhase::Queued;
+                    state.elapsed_ms = 0;
+                }
+                self.promote_next_toast();
+            }
+            UiTransientSurfaceKind::Tooltip => {
+                state.phase = UiTransientPhase::Visible;
+                state.elapsed_ms = 0;
+            }
+            UiTransientSurfaceKind::ComboBox
+            | UiTransientSurfaceKind::Menu
+            | UiTransientSurfaceKind::ContextMenu
+            | UiTransientSurfaceKind::CommandPalette => {
+                state.phase = UiTransientPhase::Visible;
+                state.elapsed_ms = 0;
+                state.restore_focus = restore_focus;
+                self.transient_stack.retain(|surface| *surface != node);
+                self.transient_stack.push(node);
+                if let Some(target) = self.first_focusable_transient_child(node) {
+                    self.set_focus(target);
+                }
+            }
+        }
+        true
+    }
+
+    fn dismiss_transient(&mut self, node: UiNodeId, effects: &mut UiFrameEffects) -> bool {
+        let Some(transient) = self.document.node(node).and_then(|node| node.transient) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TransientTargetDenied { node });
+            return false;
+        };
+        let Some(state) = self.transient_states.get_mut(&node) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TransientTargetDenied { node });
+            return false;
+        };
+        let restore_focus = state.restore_focus.or(transient.anchor);
+        state.phase = match transient.kind {
+            UiTransientSurfaceKind::Tooltip | UiTransientSurfaceKind::Toast => {
+                UiTransientPhase::Dismissed
+            }
+            UiTransientSurfaceKind::ComboBox
+            | UiTransientSurfaceKind::Menu
+            | UiTransientSurfaceKind::ContextMenu
+            | UiTransientSurfaceKind::CommandPalette => UiTransientPhase::Hidden,
+        };
+        state.elapsed_ms = 0;
+        state.restore_focus = None;
+        self.transient_stack.retain(|surface| *surface != node);
+        if transient.kind == UiTransientSurfaceKind::Toast {
+            self.promote_next_toast();
+        }
+        if let Some(target) = restore_focus.filter(|target| {
+            self.document.node(*target).is_some_and(|node| {
+                node.focusable && !node.semantics.state.disabled && self.is_node_visible(*target)
+            })
+        }) {
+            self.set_focus(target);
+        } else {
+            self.recover_invisible_focus();
+        }
+        true
+    }
+
+    fn first_focusable_transient_child(&self, surface: UiNodeId) -> Option<UiNodeId> {
+        let node = self.document.node(surface)?;
+        let mut candidates = Vec::new();
+        for child in &node.children {
+            self.collect_focusable_descendants(*child, &mut candidates);
+        }
+        candidates.into_iter().next()
+    }
+
+    fn collect_focusable_descendants(&self, node: UiNodeId, candidates: &mut Vec<UiNodeId>) {
+        let Some(node) = self.document.node(node) else {
             return;
+        };
+        if !self.is_node_visible(node.id) {
+            return;
+        }
+        if node.focusable && !node.semantics.state.disabled {
+            candidates.push(node.id);
+        }
+        for child in &node.children {
+            self.collect_focusable_descendants(*child, candidates);
+        }
+    }
+
+    fn dismiss_top_transient(&mut self, effects: &mut UiFrameEffects) -> bool {
+        while let Some(surface) = self.transient_stack.pop() {
+            if self
+                .transient_states
+                .get(&surface)
+                .is_some_and(|state| state.phase == UiTransientPhase::Visible)
+            {
+                return self.dismiss_transient(surface, effects);
+            }
+        }
+        let tooltip = self.transient_document_order().into_iter().find(|node| {
+            self.document.node(*node).is_some_and(|node| {
+                node.transient.is_some_and(|transient| {
+                    transient.kind == UiTransientSurfaceKind::Tooltip
+                        || Self::transient_owns_focus(transient.kind)
+                })
+            }) && self
+                .transient_states
+                .get(node)
+                .is_some_and(|state| state.phase == UiTransientPhase::Visible)
+        });
+        tooltip.is_some_and(|tooltip| self.dismiss_transient(tooltip, effects))
+    }
+
+    fn cancel_interaction(&mut self, effects: &mut UiFrameEffects) -> bool {
+        self.cancel_pointer_interaction();
+        self.cancel_preedit_if_active(effects);
+        self.dismiss_top_transient(effects)
+    }
+
+    fn adjust_focused_control(
+        &mut self,
+        adjustment: UiControlAdjustment,
+        effects: &mut UiFrameEffects,
+    ) {
+        let Some(target) = self.focused else {
+            effects.diagnostics.push(UiDiagnostic::NoFocusableNode);
+            return;
+        };
+        if let Some(contract) = self.accepted_timeline_contract(target) {
+            let state = self
+                .timeline_states
+                .get_mut(&target)
+                .expect("accepted timeline has retained state");
+            let step = i64::from(contract.step);
+            state.preview_value = match adjustment {
+                UiControlAdjustment::Decrement => state
+                    .preview_value
+                    .saturating_sub(step)
+                    .max(contract.minimum),
+                UiControlAdjustment::Increment => state
+                    .preview_value
+                    .saturating_add(step)
+                    .min(contract.maximum),
+            };
+            state.scrubbing = false;
+            let value = state.preview_value;
+            self.dispatch(target, &mut effects.routes);
+            effects.timeline_requests.push(UiTimelineRequest {
+                timeline: target,
+                value,
+            });
+            return;
+        }
+        let host_action = match adjustment {
+            UiControlAdjustment::Decrement => UiHostAssistiveAction::Decrement,
+            UiControlAdjustment::Increment => UiHostAssistiveAction::Increment,
+        };
+        if !self.emit_bound_host_action(target, host_action, effects) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::ControlAdjustmentDenied {
+                    node: target,
+                    adjustment,
+                });
+        }
+    }
+
+    fn invoke_focused_action(&self, action: UiHostAssistiveAction, effects: &mut UiFrameEffects) {
+        let Some(target) = self.focused else {
+            effects.diagnostics.push(UiDiagnostic::NoFocusableNode);
+            return;
+        };
+        self.invoke_node_action(target, action, effects);
+    }
+
+    fn invoke_node_action(
+        &self,
+        target: UiNodeId,
+        action: UiHostAssistiveAction,
+        effects: &mut UiFrameEffects,
+    ) {
+        if !self.emit_bound_host_action(target, action, effects) {
+            effects.diagnostics.push(UiDiagnostic::HostActionDenied {
+                node: target,
+                action,
+            });
+        }
+    }
+
+    fn emit_bound_host_action(
+        &self,
+        target: UiNodeId,
+        action: UiHostAssistiveAction,
+        effects: &mut UiFrameEffects,
+    ) -> bool {
+        let Some(node) = self.document.node(target) else {
+            return false;
+        };
+        let binding = node
+            .semantics
+            .assistive_actions
+            .iter()
+            .find(|binding| binding.action == action && !node.semantics.state.disabled);
+        let Some(binding) = binding else {
+            return false;
+        };
+        let Some(command) = CommandId::from_name(&binding.command) else {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::InvalidCommandName { node: target });
+            return true;
+        };
+        self.dispatch(target, &mut effects.routes);
+        effects.commands.push(UiCommandRequest {
+            source: target,
+            command,
+            action: binding.command.clone(),
+        });
+        true
+    }
+
+    fn process_activation(&mut self, suppressed: bool, effects: &mut UiFrameEffects) -> bool {
+        if suppressed {
+            return false;
         }
         if let Some(target) = self.focused {
             self.dispatch(target, &mut effects.routes);
-            self.activate(target, &mut effects.commands, &mut effects.diagnostics);
+            return self.activate_control(target, effects);
         }
+        false
     }
 
     fn assistive_focus(&mut self, target: UiNodeId, effects: &mut UiFrameEffects) {
-        if self
-            .document
-            .node(target)
-            .is_some_and(|node| node.focusable && !node.semantics.state.disabled)
-        {
+        if self.document.node(target).is_some_and(|node| {
+            node.focusable && !node.semantics.state.disabled && self.is_node_visible(target)
+        }) {
             self.dispatch(target, &mut effects.routes);
             self.set_focus(target);
         } else {
@@ -2634,18 +4942,61 @@ impl UiRuntime {
         }
     }
 
-    fn assistive_activate(&self, target: UiNodeId, effects: &mut UiFrameEffects) {
+    fn assistive_activate(&mut self, target: UiNodeId, effects: &mut UiFrameEffects) -> bool {
         let accepted = self.document.node(target).is_some_and(|node| {
-            node.focusable && !node.semantics.state.disabled && node.semantics.action.is_some()
+            node.focusable
+                && !node.semantics.state.disabled
+                && node.semantics.action.is_some()
+                && self.is_node_visible(target)
         });
         if accepted {
             self.dispatch(target, &mut effects.routes);
-            self.activate(target, &mut effects.commands, &mut effects.diagnostics);
+            self.activate_control(target, effects)
         } else {
             effects
                 .diagnostics
                 .push(UiDiagnostic::AssistiveActivateDenied { node: target });
+            false
         }
+    }
+
+    fn activate_control(&mut self, target: UiNodeId, effects: &mut UiFrameEffects) -> bool {
+        let transient = self.document.node(target).and_then(|node| node.transient);
+        if transient.is_some_and(|transient| transient.kind == UiTransientSurfaceKind::ComboBox) {
+            let visible = self
+                .transient_states
+                .get(&target)
+                .is_some_and(|state| state.phase == UiTransientPhase::Visible);
+            return if visible {
+                self.dismiss_transient(target, effects)
+            } else {
+                self.present_transient(target, effects)
+            };
+        }
+
+        self.activate(target, &mut effects.commands, &mut effects.diagnostics);
+        let closes_surface = self.document.node(target).is_some_and(|node| {
+            matches!(
+                node.kind,
+                UiWidgetKind::ComboOption | UiWidgetKind::MenuItem
+            )
+        });
+        if !closes_surface {
+            return false;
+        }
+        let surface = self.document.route_to(target).and_then(|route| {
+            route.into_iter().rev().skip(1).find(|ancestor| {
+                self.document
+                    .node(*ancestor)
+                    .and_then(|node| node.transient)
+                    .is_some()
+                    && self
+                        .transient_states
+                        .get(ancestor)
+                        .is_some_and(|state| state.phase == UiTransientPhase::Visible)
+            })
+        });
+        surface.is_some_and(|surface| self.dismiss_transient(surface, effects))
     }
 
     fn assistive_request(
@@ -2664,7 +5015,8 @@ impl UiRuntime {
                 });
             return false;
         };
-        let supported = semantic_actions(&node.semantics, node.focusable).contains(&action);
+        let supported = semantic_actions(&node.semantics, node.focusable, node.timeline.is_some())
+            .contains(&action);
         if !supported {
             effects
                 .diagnostics
@@ -2672,6 +5024,23 @@ impl UiRuntime {
                     node: target,
                     action,
                 });
+            return false;
+        }
+        if node.timeline.is_some()
+            && matches!(
+                action,
+                SemanticAction::Increment | SemanticAction::Decrement
+            )
+        {
+            self.set_focus(target);
+            self.adjust_focused_control(
+                if action == SemanticAction::Increment {
+                    UiControlAdjustment::Increment
+                } else {
+                    UiControlAdjustment::Decrement
+                },
+                effects,
+            );
             return false;
         }
         let command_name = if action == SemanticAction::ScrollIntoView {
@@ -2848,6 +5217,20 @@ impl UiRuntime {
             .cancel_preedit();
     }
 
+    fn cancel_preedit_if_active(&mut self, effects: &mut UiFrameEffects) {
+        let Some(target) = self.focused.filter(|target| {
+            self.text_inputs
+                .get(target)
+                .is_some_and(|state| state.snapshot(*target).has_preedit)
+        }) else {
+            return;
+        };
+        self.dispatch(target, &mut effects.routes);
+        if let Some(state) = self.text_inputs.get_mut(&target) {
+            state.cancel_preedit();
+        }
+    }
+
     fn edit_text_history(&mut self, redo: bool, effects: &mut UiFrameEffects) {
         let Some(target) = self.focused_text_input(&mut effects.diagnostics) else {
             return;
@@ -2931,6 +5314,27 @@ impl UiRuntime {
         }
     }
 
+    fn process_legacy_pointer(
+        &mut self,
+        press: bool,
+        position: UiPoint,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+        effects: &mut UiFrameEffects,
+        line_step: f32,
+    ) -> bool {
+        let phase = if press {
+            UiPointerPhase::Press
+        } else {
+            UiPointerPhase::Release
+        };
+        self.process_pointer(
+            Self::legacy_pointer_event(phase, position),
+            layout,
+            effects,
+            line_step,
+        )
+    }
+
     fn process_pointer(
         &mut self,
         event: UiPointerEvent,
@@ -2939,15 +5343,18 @@ impl UiRuntime {
         line_step: f32,
     ) -> bool {
         if !Self::valid_pointer_event(event) {
-            if self
-                .pointer_capture
-                .is_some_and(|capture| capture.device == event.device)
-            {
-                self.pointer_capture = None;
-                self.drag = None;
-            }
-            self.hovered = None;
+            self.cancel_device_interaction(event.device);
             effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
+            return false;
+        }
+        if event.phase == UiPointerPhase::Cancel {
+            let pointer_owned_by_another_device = self
+                .pointer_capture
+                .is_some_and(|capture| capture.device != event.device);
+            self.cancel_device_interaction(event.device);
+            if pointer_owned_by_another_device {
+                effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
+            }
             return false;
         }
         // This runtime deliberately retains one capture at a time. While a
@@ -2964,10 +5371,10 @@ impl UiRuntime {
             event.kind,
             UiInputDeviceKind::Mouse | UiInputDeviceKind::Trackpad | UiInputDeviceKind::Pen
         );
-        self.hovered = if event.phase == UiPointerPhase::Cancel || !hover_capable {
-            None
-        } else {
+        self.hovered = if hover_capable {
             self.hit_test(event.position, layout)
+        } else {
+            None
         };
         match event.phase {
             UiPointerPhase::Press => {
@@ -3007,39 +5414,53 @@ impl UiRuntime {
                     effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
                     return false;
                 };
-                let captured = self.pointer_capture;
-                self.pointer_capture = None;
-                let released_over = self.hit_test(event.position, layout);
-                if self.drag.is_some() {
-                    if let Some(drag) = self.drag.as_mut() {
-                        drag.over = released_over;
-                    }
-                    self.complete_drag(
-                        released_over,
-                        &mut effects.routes,
-                        &mut effects.drops,
-                        &mut effects.diagnostics,
-                    );
-                } else if let Some(capture) = captured {
-                    self.dispatch(capture.target, &mut effects.routes);
-                    if capture.button == button
-                        && button == UiPointerButton::Primary
-                        && released_over == Some(capture.target)
-                    {
-                        self.activate(
-                            capture.target,
-                            &mut effects.commands,
-                            &mut effects.diagnostics,
-                        );
-                    }
-                }
+                return self.release_pointer(event.position, button, layout, effects);
             }
-            UiPointerPhase::Cancel => {
-                self.pointer_capture = None;
-                self.drag = None;
-            }
+            UiPointerPhase::Cancel => {}
         }
         false
+    }
+
+    fn release_pointer(
+        &mut self,
+        position: UiPoint,
+        button: UiPointerButton,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+        effects: &mut UiFrameEffects,
+    ) -> bool {
+        let captured = self.pointer_capture.take();
+        let released_over = self.hit_test(position, layout);
+        if self.drag.is_some() {
+            if let Some(drag) = self.drag.as_mut() {
+                drag.over = released_over;
+            }
+            self.complete_drag(
+                released_over,
+                &mut effects.routes,
+                &mut effects.drops,
+                &mut effects.diagnostics,
+            );
+            return false;
+        }
+        let Some(capture) = captured else {
+            return false;
+        };
+        self.dispatch(capture.target, &mut effects.routes);
+        if capture.button != button || released_over != Some(capture.target) {
+            return false;
+        }
+        match button {
+            UiPointerButton::Primary => self.activate_control(capture.target, effects),
+            UiPointerButton::Secondary => {
+                self.invoke_node_action(
+                    capture.target,
+                    UiHostAssistiveAction::ShowContextMenu,
+                    effects,
+                );
+                false
+            }
+            UiPointerButton::Middle | UiPointerButton::Auxiliary(_) => false,
+        }
     }
 
     fn valid_pointer_event(event: UiPointerEvent) -> bool {
@@ -3370,12 +5791,39 @@ impl UiRuntime {
         &mut self,
         navigation: UiCollectionNavigation,
         layout: &BTreeMap<UiNodeId, UiRect>,
-        diagnostics: &mut Vec<UiDiagnostic>,
+        effects: &mut UiFrameEffects,
     ) {
         let Some((container, visible)) = self.collection_context() else {
-            diagnostics.push(UiDiagnostic::NoFocusableNode);
+            effects.diagnostics.push(UiDiagnostic::NoFocusableNode);
             return;
         };
+        if self
+            .document
+            .node(container)
+            .is_some_and(|node| node.virtual_collection.is_some())
+        {
+            self.navigate_virtual_collection(container, &visible, navigation, layout, effects);
+            return;
+        }
+        if visible.is_empty() {
+            effects.diagnostics.push(UiDiagnostic::NoFocusableNode);
+            return;
+        }
+        if self
+            .document
+            .node(container)
+            .is_some_and(|node| node.kind == UiWidgetKind::Table)
+            && matches!(
+                navigation,
+                UiCollectionNavigation::PreviousRow
+                    | UiCollectionNavigation::NextRow
+                    | UiCollectionNavigation::RowStart
+                    | UiCollectionNavigation::RowEnd
+            )
+        {
+            self.navigate_table(container, navigation, &mut effects.diagnostics);
+            return;
+        }
         let visible_on_page = layout.get(&container).map_or(1, |container_bounds| {
             visible
                 .iter()
@@ -3388,14 +5836,172 @@ impl UiRuntime {
                 .max(1)
         });
         if visible.contains(&self.focused.unwrap_or(container)) {
-            self.collection_cursor.selected = self.focused;
+            self.collection_cursors
+                .entry(container)
+                .or_default()
+                .selected = self.focused;
         }
-        if let Some(target) = self
-            .collection_cursor
-            .navigate(&visible, visible_on_page, navigation)
-        {
+        self.active_collection = Some(container);
+        let target = self
+            .collection_cursors
+            .entry(container)
+            .or_default()
+            .navigate(&visible, visible_on_page, navigation);
+        if let Some(target) = target {
             self.set_focus(target);
         }
+    }
+
+    fn navigate_virtual_collection(
+        &mut self,
+        container: UiNodeId,
+        visible: &[UiNodeId],
+        navigation: UiCollectionNavigation,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+        effects: &mut UiFrameEffects,
+    ) {
+        let Some(descriptor) = self
+            .document
+            .node(container)
+            .and_then(|node| node.virtual_collection)
+        else {
+            return;
+        };
+        if descriptor.item_count == 0 {
+            self.pending_virtual_focus.remove(&container);
+            effects.diagnostics.push(UiDiagnostic::NoFocusableNode);
+            return;
+        }
+        let maximum = u32::try_from(descriptor.item_count).unwrap_or(u32::MAX);
+        let current = self
+            .focused
+            .and_then(|target| self.virtual_position_for(container, target))
+            .or_else(|| self.pending_virtual_focus.get(&container).copied())
+            .or_else(|| {
+                self.collection_cursors
+                    .get(&container)
+                    .and_then(|cursor| cursor.selected)
+                    .and_then(|target| self.virtual_position_for(container, target))
+            });
+        let visible_on_page = layout.get(&container).map_or_else(
+            || {
+                descriptor
+                    .realized
+                    .end
+                    .saturating_sub(descriptor.realized.start)
+            },
+            |container_bounds| {
+                visible
+                    .iter()
+                    .filter(|node| {
+                        layout
+                            .get(node)
+                            .is_some_and(|bounds| Self::rects_intersect(*container_bounds, *bounds))
+                    })
+                    .count()
+            },
+        );
+        let page = u32::try_from(visible_on_page.max(1)).unwrap_or(u32::MAX);
+        let position = match navigation {
+            UiCollectionNavigation::Home | UiCollectionNavigation::RowStart => 1,
+            UiCollectionNavigation::End | UiCollectionNavigation::RowEnd => maximum,
+            UiCollectionNavigation::Previous | UiCollectionNavigation::PreviousRow => {
+                current.unwrap_or(2).saturating_sub(1).max(1)
+            }
+            UiCollectionNavigation::Next | UiCollectionNavigation::NextRow => {
+                current.unwrap_or(0).saturating_add(1).min(maximum)
+            }
+            UiCollectionNavigation::PageBackward => current
+                .unwrap_or(page.saturating_add(1))
+                .saturating_sub(page)
+                .max(1),
+            UiCollectionNavigation::PageForward => {
+                current.unwrap_or(1).saturating_add(page).min(maximum)
+            }
+        };
+        self.active_collection = Some(container);
+        if let Some(target) = self.virtual_focus_target(container, position) {
+            self.pending_virtual_focus.remove(&container);
+            self.set_focus(target);
+            return;
+        }
+
+        self.pending_virtual_focus.insert(container, position);
+        self.dispatch(container, &mut effects.routes);
+        effects
+            .virtualization_requests
+            .push(UiVirtualizationRequest {
+                collection: container,
+                position,
+                navigation,
+            });
+    }
+
+    fn navigate_table(
+        &mut self,
+        table: UiNodeId,
+        navigation: UiCollectionNavigation,
+        diagnostics: &mut Vec<UiDiagnostic>,
+    ) {
+        let rows: Vec<Vec<UiNodeId>> = self
+            .document
+            .node(table)
+            .into_iter()
+            .flat_map(|table_node| table_node.children.iter())
+            .filter_map(|row| self.document.node(*row))
+            .filter(|row| row.kind == UiWidgetKind::TableRow)
+            .map(|row| {
+                row.children
+                    .iter()
+                    .copied()
+                    .filter(|cell| {
+                        self.document
+                            .node(*cell)
+                            .is_some_and(|cell| cell.focusable && !cell.semantics.state.disabled)
+                    })
+                    .collect()
+            })
+            .filter(|row: &Vec<_>| !row.is_empty())
+            .collect();
+        if rows.is_empty() {
+            diagnostics.push(UiDiagnostic::NoFocusableNode);
+            return;
+        }
+        let selected = self.focused.or_else(|| {
+            self.collection_cursors
+                .get(&table)
+                .and_then(|cursor| cursor.selected)
+        });
+        let current = selected.and_then(|selected| {
+            rows.iter().enumerate().find_map(|(row_index, row)| {
+                row.iter()
+                    .position(|cell| *cell == selected)
+                    .map(|column_index| (row_index, column_index))
+            })
+        });
+        let (row_index, column_index) = current.unwrap_or((0, 0));
+        let target = match navigation {
+            UiCollectionNavigation::PreviousRow => {
+                let row = row_index.saturating_sub(1);
+                rows[row][column_index.min(rows[row].len() - 1)]
+            }
+            UiCollectionNavigation::NextRow => {
+                let row = row_index.saturating_add(1).min(rows.len() - 1);
+                rows[row][column_index.min(rows[row].len() - 1)]
+            }
+            UiCollectionNavigation::RowStart => rows[row_index][0],
+            UiCollectionNavigation::RowEnd => *rows[row_index]
+                .last()
+                .expect("empty table rows were filtered"),
+            UiCollectionNavigation::Previous
+            | UiCollectionNavigation::Next
+            | UiCollectionNavigation::Home
+            | UiCollectionNavigation::End
+            | UiCollectionNavigation::PageBackward
+            | UiCollectionNavigation::PageForward => return,
+        };
+        self.active_collection = Some(table);
+        self.set_focus(target);
     }
 
     fn collection_typeahead(&mut self, query: &str, diagnostics: &mut Vec<UiDiagnostic>) {
@@ -3434,23 +6040,33 @@ impl UiRuntime {
     }
 
     fn collection_context(&self) -> Option<(UiNodeId, Vec<UiNodeId>)> {
-        let anchor = self
+        let focused_collection = self
             .focused
-            .or(self.collection_cursor.selected)
-            .unwrap_or(self.document.root());
-        let container = self
+            .and_then(|focused| Self::collection_for(&self.document, focused));
+        let active_collection = self.active_collection.filter(|container| {
+            self.document
+                .node(*container)
+                .is_some_and(|node| Self::is_collection_kind(node.kind))
+        });
+        let root_collection = self
             .document
-            .route_to(anchor)?
-            .into_iter()
-            .rev()
-            .find(|node| {
-                self.document
-                    .node(*node)
-                    .is_some_and(|node| Self::is_collection_kind(node.kind))
-            })?;
+            .node(self.document.root())
+            .filter(|node| Self::is_collection_kind(node.kind))
+            .map(|node| node.id);
+        let container = focused_collection
+            .or(active_collection)
+            .or(root_collection)?;
         let mut visible = Vec::new();
         self.collect_collection_members(container, container, &mut visible);
         Some((container, visible))
+    }
+
+    fn collection_for(document: &UiDocument, target: UiNodeId) -> Option<UiNodeId> {
+        document.route_to(target)?.into_iter().rev().find(|node| {
+            document
+                .node(*node)
+                .is_some_and(|node| Self::is_collection_kind(node.kind))
+        })
     }
 
     fn collect_collection_members(
@@ -3462,6 +6078,9 @@ impl UiRuntime {
         let Some(node) = self.document.node(current) else {
             return;
         };
+        if !self.is_node_visible(current) {
+            return;
+        }
         if current != container && node.focusable && !node.semantics.state.disabled {
             visible.push(current);
         }
@@ -3482,6 +6101,10 @@ impl UiRuntime {
                 | UiWidgetKind::Table
                 | UiWidgetKind::PropertyGrid
                 | UiWidgetKind::VirtualList
+                | UiWidgetKind::Timeline
+                | UiWidgetKind::CommandPalette
+                | UiWidgetKind::Graph
+                | UiWidgetKind::Canvas
         )
     }
 
@@ -3685,7 +6308,7 @@ impl UiRuntime {
     }
 
     fn move_focus(&mut self, forward: bool, diagnostics: &mut Vec<UiDiagnostic>) {
-        let order = self.document.focus_order();
+        let order = self.visible_focus_order();
         if order.is_empty() {
             diagnostics.push(UiDiagnostic::NoFocusableNode);
             return;
@@ -3704,9 +6327,25 @@ impl UiRuntime {
 
     fn set_focus(&mut self, target: UiNodeId) {
         self.focused = Some(target);
-        self.collection_cursor.selected = Some(target);
+        if let Some(container) = Self::collection_for(&self.document, target) {
+            self.collection_cursors
+                .entry(container)
+                .or_default()
+                .selected = Some(target);
+            self.active_collection = Some(container);
+        }
         if let Some(drag) = self.drag.as_mut().filter(|drag| drag.keyboard) {
             drag.over = Some(target);
+        }
+    }
+
+    fn remember_collection_focus(&mut self, document: &UiDocument, target: UiNodeId) {
+        if let Some(container) = Self::collection_for(document, target) {
+            self.collection_cursors
+                .entry(container)
+                .or_default()
+                .selected = Some(target);
+            self.active_collection = Some(container);
         }
     }
 
@@ -3877,6 +6516,61 @@ impl UiRuntime {
             .collect()
     }
 
+    fn virtual_collection_snapshots(&self) -> Vec<UiVirtualCollectionSnapshot> {
+        self.document
+            .nodes()
+            .filter_map(|node| {
+                node.virtual_collection
+                    .map(|collection| UiVirtualCollectionSnapshot {
+                        node: node.id,
+                        item_count: collection.item_count,
+                        realized: collection.realized,
+                        pending_focus_position: self.pending_virtual_focus.get(&node.id).copied(),
+                    })
+            })
+            .collect()
+    }
+
+    fn resolve_pending_virtual_focus(&mut self) {
+        let pending: Vec<_> = self
+            .pending_virtual_focus
+            .iter()
+            .map(|(collection, position)| (*collection, *position))
+            .collect();
+        for (collection, position) in pending {
+            let Some(target) = self.virtual_focus_target(collection, position) else {
+                continue;
+            };
+            self.pending_virtual_focus.remove(&collection);
+            self.set_focus(target);
+        }
+    }
+
+    fn virtual_focus_target(&self, collection: UiNodeId, position: u32) -> Option<UiNodeId> {
+        let mut members = Vec::new();
+        self.collect_collection_members(collection, collection, &mut members);
+        members
+            .into_iter()
+            .find(|member| self.virtual_position_for(collection, *member) == Some(position))
+    }
+
+    fn virtual_position_for(&self, collection: UiNodeId, target: UiNodeId) -> Option<u32> {
+        let route = self.document.route_to(target)?;
+        if !route.contains(&collection) {
+            return None;
+        }
+        route
+            .into_iter()
+            .rev()
+            .take_while(|node| *node != collection)
+            .find_map(|node| {
+                self.document
+                    .node(node)
+                    .and_then(|node| node.semantics.collection_item)
+                    .map(|item| item.position)
+            })
+    }
+
     fn emit_node(
         &mut self,
         id: UiNodeId,
@@ -3925,9 +6619,24 @@ impl UiRuntime {
                 .get(&id)
                 .is_none_or(|state| !state.is_valid(rule));
         }
+        if node
+            .transient
+            .is_some_and(|transient| transient.kind == UiTransientSurfaceKind::ComboBox)
+        {
+            semantics.state.expanded = self
+                .transient_states
+                .get(&id)
+                .is_some_and(|state| state.phase == UiTransientPhase::Visible);
+        }
+        if node.timeline.is_some() {
+            semantics.value = self
+                .timeline_states
+                .get(&id)
+                .map(|state| state.preview_value.to_string());
+        }
         let children = node.children.clone();
         let focusable = node.focusable;
-        let actions = semantic_actions(&semantics, focusable);
+        let actions = semantic_actions(&semantics, focusable, node.timeline.is_some());
         let clip_id = if clip {
             let id = UiClipId(emission.next_scope);
             emission.next_scope = emission.next_scope.saturating_add(1);
@@ -3951,10 +6660,8 @@ impl UiRuntime {
             command: semantics.action,
             value: semantics.value,
             state: semantics.state,
-            relationships: semantic_relationships(
-                &semantics.relationships,
-                semantics.state.invalid,
-            ),
+            relationships: self
+                .visible_semantic_relationships(&semantics.relationships, semantics.state.invalid),
             live: match semantics.role {
                 meridian_ui_core::SemanticRole::LiveRegion
                 | meridian_ui_core::SemanticRole::Status => SemanticLive::Polite,
@@ -4040,6 +6747,7 @@ impl UiRuntime {
 /// a defensive guard for corrupted or future incremental document sources.
 struct UiLayoutResolver<'a> {
     runtime: &'a UiRuntime,
+    intrinsic_sizes: &'a BTreeMap<UiNodeId, UiSize>,
     layout: BTreeMap<UiNodeId, UiRect>,
     visiting: BTreeSet<UiNodeId>,
     chain: Vec<UiNodeId>,
@@ -4048,10 +6756,12 @@ struct UiLayoutResolver<'a> {
 impl<'a> UiLayoutResolver<'a> {
     fn resolve(
         runtime: &'a UiRuntime,
+        intrinsic_sizes: &'a BTreeMap<UiNodeId, UiSize>,
         root_bounds: UiRect,
     ) -> Result<BTreeMap<UiNodeId, UiRect>, UiLayoutError> {
         let mut resolver = Self {
             runtime,
+            intrinsic_sizes,
             layout: BTreeMap::new(),
             visiting: BTreeSet::new(),
             chain: Vec::new(),
@@ -4075,6 +6785,9 @@ impl<'a> UiLayoutResolver<'a> {
     }
 
     fn layout_node_inner(&mut self, id: UiNodeId, bounds: UiRect) -> Result<UiRect, UiLayoutError> {
+        if !self.runtime.is_node_visible(id) {
+            return Ok(bounds);
+        }
         let Some(node) = self.runtime.document.node(id).cloned() else {
             // A validated document never reaches this branch. Keeping this
             // bounded fallback avoids an impossible child reference causing a
@@ -4083,37 +6796,38 @@ impl<'a> UiLayoutResolver<'a> {
         };
         let bounds = resolve_constraints(id, bounds, node.constraints)?;
         self.layout.insert(id, bounds);
-        if node.children.is_empty() {
+        let children: Vec<_> = node
+            .children
+            .iter()
+            .copied()
+            .filter(|child| self.runtime.is_node_visible(*child))
+            .collect();
+        if children.is_empty() {
             return Ok(bounds);
         }
 
         let content_bounds = inset_bounds(bounds, self.runtime.resolved_style(id).padding);
         match node.layout {
             UiLayout::Overlay => {
-                for child in &node.children {
+                for child in &children {
                     let child_bounds = self.preferred_bounds(*child, content_bounds)?;
                     self.layout_node(*child, child_bounds)?;
                 }
             }
             UiLayout::Grid { columns, gap } => {
-                self.layout_grid(&node.children, content_bounds, columns, gap)?;
+                self.layout_grid(&children, content_bounds, columns, gap)?;
             }
             UiLayout::VerticalStack { gap } => {
-                self.layout_stack(&node.children, content_bounds, gap, true)?;
+                self.layout_stack(&children, content_bounds, gap, true)?;
             }
             UiLayout::HorizontalStack { gap } => {
-                self.layout_stack(&node.children, content_bounds, gap, false)?;
+                self.layout_stack(&children, content_bounds, gap, false)?;
             }
             UiLayout::Flex { axis, gap } => {
-                self.layout_stack(
-                    &node.children,
-                    content_bounds,
-                    gap,
-                    axis == UiAxis::Vertical,
-                )?;
+                self.layout_stack(&children, content_bounds, gap, axis == UiAxis::Vertical)?;
             }
             UiLayout::Absolute => {
-                for child in &node.children {
+                for child in &children {
                     self.layout_node(*child, self.absolute_bounds(*child, content_bounds)?)?;
                 }
             }
@@ -4124,7 +6838,7 @@ impl<'a> UiLayoutResolver<'a> {
                     .get(&id)
                     .copied()
                     .unwrap_or(offset);
-                self.layout_scroll(&node.children, content_bounds, axis, offset)?;
+                self.layout_scroll(&children, content_bounds, axis, offset)?;
             }
         }
         Ok(bounds)
@@ -4134,13 +6848,26 @@ impl<'a> UiLayoutResolver<'a> {
         let Some(node) = self.runtime.document.node(child) else {
             return Ok(slot);
         };
+        let intrinsic = self.intrinsic_sizes.get(&child).copied();
         let size = UiSize::new(
             node.layout_hints
                 .preferred_width
-                .map_or(slot.size.width, finite_nonnegative),
+                .map(finite_nonnegative)
+                .or_else(|| {
+                    (node.constraints.horizontal_alignment != UiAlignment::Stretch)
+                        .then(|| intrinsic.map(|size| size.width))
+                        .flatten()
+                })
+                .unwrap_or(slot.size.width),
             node.layout_hints
                 .preferred_height
-                .map_or(slot.size.height, finite_nonnegative),
+                .map(finite_nonnegative)
+                .or_else(|| {
+                    (node.constraints.vertical_alignment != UiAlignment::Stretch)
+                        .then(|| intrinsic.map(|size| size.height))
+                        .flatten()
+                })
+                .unwrap_or(slot.size.height),
         );
         aligned_preferred_bounds(child, slot, size, node.constraints)
     }
@@ -4155,16 +6882,29 @@ impl<'a> UiLayoutResolver<'a> {
             return Ok(slot);
         };
         let mut size = slot.size;
+        let intrinsic = self.intrinsic_sizes.get(&child).copied();
         if vertical {
             size.width = node
                 .layout_hints
                 .preferred_width
-                .map_or(size.width, finite_nonnegative);
+                .map(finite_nonnegative)
+                .or_else(|| {
+                    (node.constraints.horizontal_alignment != UiAlignment::Stretch)
+                        .then(|| intrinsic.map(|size| size.width))
+                        .flatten()
+                })
+                .unwrap_or(size.width);
         } else {
             size.height = node
                 .layout_hints
                 .preferred_height
-                .map_or(size.height, finite_nonnegative);
+                .map(finite_nonnegative)
+                .or_else(|| {
+                    (node.constraints.vertical_alignment != UiAlignment::Stretch)
+                        .then(|| intrinsic.map(|size| size.height))
+                        .flatten()
+                })
+                .unwrap_or(size.height);
         }
         aligned_preferred_bounds(child, slot, size, node.constraints)
     }
@@ -4242,12 +6982,22 @@ impl<'a> UiLayoutResolver<'a> {
             let Some(node) = self.runtime.document.node(*child) else {
                 continue;
             };
-            let minimum = self.constrained_axis_extent(*child, 0.0, cross_extent, vertical)?;
-            let preference = if vertical {
+            let intrinsic = self
+                .intrinsic_sizes
+                .get(child)
+                .map(|size| axis_extent(*size, vertical));
+            let minimum = self.constrained_axis_extent(
+                *child,
+                intrinsic.unwrap_or(0.0),
+                cross_extent,
+                vertical,
+            )?;
+            let explicit_preference = if vertical {
                 node.layout_hints.preferred_height
             } else {
                 node.layout_hints.preferred_width
             };
+            let preference = explicit_preference.or(intrinsic);
             has_preferred_extent |= preference.is_some();
             let preferred = preference
                 .map(finite_nonnegative)
@@ -4305,22 +7055,33 @@ impl<'a> UiLayoutResolver<'a> {
             let Some(node) = self.runtime.document.node(*child) else {
                 continue;
             };
-            let minimum_width =
-                self.constrained_axis_extent(*child, 0.0, bounds.size.height, false)?;
+            let intrinsic = self.intrinsic_sizes.get(child).copied();
+            let minimum_width = self.constrained_axis_extent(
+                *child,
+                intrinsic.map_or(0.0, |size| size.width),
+                bounds.size.height,
+                false,
+            )?;
             let preferred_width = node
                 .layout_hints
                 .preferred_width
+                .or_else(|| intrinsic.map(|size| size.width))
                 .map(finite_nonnegative)
                 .map(|extent| {
                     self.constrained_axis_extent(*child, extent, bounds.size.height, false)
                 })
                 .transpose()?
                 .unwrap_or(minimum_width);
-            let minimum_height =
-                self.constrained_axis_extent(*child, 0.0, bounds.size.width, true)?;
+            let minimum_height = self.constrained_axis_extent(
+                *child,
+                intrinsic.map_or(0.0, |size| size.height),
+                bounds.size.width,
+                true,
+            )?;
             let preferred_height = node
                 .layout_hints
                 .preferred_height
+                .or_else(|| intrinsic.map(|size| size.height))
                 .map(finite_nonnegative)
                 .map(|extent| self.constrained_axis_extent(*child, extent, bounds.size.width, true))
                 .transpose()?
@@ -4496,7 +7257,7 @@ fn emit_node_text(
         .layout(
             &params.text,
             text_bounds.size.width,
-            params.style.font_size,
+            params.style.font_size * emission.text_scale.factor(),
             emission.scale_factor,
             params.node.font_role,
         )
@@ -4649,9 +7410,10 @@ pub fn runtime_overlay_document() -> Result<UiDocument, UiDocumentError> {
 mod tests {
     use super::*;
     use meridian_ui_core::{
-        UiAbsolutePosition, UiControlState, UiDragItemId, UiLayoutHints, UiScrollDelta,
-        UiSemanticCollectionItem, UiSemanticRelationships, UiSharedElementId, UiStyle,
-        UiTextInputOptions,
+        UiAbsolutePosition, UiCanvasContract, UiControlState, UiDragItemId, UiLayoutHints,
+        UiModifierKey, UiScrollDelta, UiSemanticCollectionItem, UiSemanticRelationships,
+        UiSharedElementId, UiStyle, UiTextInputOptions, UiTimelineContract,
+        UiTransientInitialState, UiVirtualCollection,
     };
     use meridian_ui_text::UiTextSelection;
 
@@ -4711,6 +7473,54 @@ mod tests {
         );
         assert!((output.frame_diagnostics.scale_factor - 1.0).abs() < f32::EPSILON);
         assert!(!output.frame_diagnostics.recovered_previous_snapshot);
+    }
+
+    #[test]
+    fn unchanged_frames_reuse_layout_and_changed_text_shaping() {
+        let document = recovery_panel_document().expect("recovery fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let first = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(first.frame_diagnostics.layout_work.root_computations, 1);
+        assert_eq!(first.frame_diagnostics.layout_work.root_reuses, 0);
+        assert!(first.frame_diagnostics.text.shaping_cache_misses > 0);
+
+        let second = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(second.frame_diagnostics.layout_work.root_computations, 0);
+        assert_eq!(second.frame_diagnostics.layout_work.root_reuses, 1);
+        assert!(second.frame_diagnostics.text.shaping_cache_hits > 0);
+        assert_eq!(second.frame_diagnostics.text.shaping_cache_misses, 0);
+        assert!(second.frame_diagnostics.text.shaping_cache_entries > 0);
+        assert!(second.frame_diagnostics.text.shaping_cache_key_bytes > 0);
+        assert_eq!(first.layout, second.layout);
+    }
+
+    #[test]
+    fn layout_cache_invalidates_for_every_external_geometry_input() {
+        let document = recovery_panel_document().expect("recovery fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        runtime.reconcile(frame(Vec::new()));
+
+        let mut viewport = frame(Vec::new());
+        viewport.viewport = UiSize::new(700.0, 600.0);
+        let resized = runtime.reconcile(viewport.clone());
+        assert_eq!(resized.frame_diagnostics.layout_work.root_computations, 1);
+
+        viewport.theme.icons.size += 1.0;
+        let rethemed = runtime.reconcile(viewport.clone());
+        assert_eq!(rethemed.frame_diagnostics.layout_work.root_computations, 1);
+
+        viewport.scale_factor = 2.0;
+        let hidpi = runtime.reconcile(viewport.clone());
+        assert_eq!(hidpi.frame_diagnostics.layout_work.root_computations, 1);
+        assert_eq!(rethemed.layout, hidpi.layout);
+
+        viewport.text_scale = UiTextScale::MAXIMUM;
+        let enlarged = runtime.reconcile(viewport.clone());
+        assert_eq!(enlarged.frame_diagnostics.layout_work.root_computations, 1);
+
+        let unchanged = runtime.reconcile(viewport);
+        assert_eq!(unchanged.frame_diagnostics.layout_work.root_computations, 0);
+        assert_eq!(unchanged.frame_diagnostics.layout_work.root_reuses, 1);
     }
 
     #[test]
@@ -4792,6 +7602,734 @@ mod tests {
                 set_size: 12,
             })
         );
+    }
+
+    #[test]
+    fn virtual_navigation_requests_unrealized_rows_and_restores_stable_focus() {
+        let list = UiNodeId::new(0x2c0);
+        let row_51 = UiNodeId::new(0x2c1);
+        let row_52 = UiNodeId::new(0x2c2);
+        let virtual_document = |realized: UiVirtualRange, rows: &[(UiNodeId, u32)]| {
+            let descriptor = UiVirtualCollection::new(100, realized).expect("bounded descriptor");
+            let mut nodes = Vec::with_capacity(rows.len() + 1);
+            nodes.push(
+                UiNode::virtual_list(
+                    list,
+                    "Search results",
+                    rows.iter().map(|(id, _)| *id).collect(),
+                )
+                .with_virtual_collection(descriptor),
+            );
+            nodes.extend(rows.iter().map(|(id, position)| {
+                UiNode::list_item(*id, format!("Result {position}"), "result.open", false)
+                    .with_layout_hints(UiLayoutHints::fixed_height(44.0))
+                    .with_semantic_collection_item(UiSemanticCollectionItem {
+                        position: *position,
+                        set_size: 100,
+                    })
+            }));
+            UiDocument::new(list, nodes).expect("virtual retained window is valid")
+        };
+
+        let mut runtime = UiRuntime::new(virtual_document(
+            UiVirtualRange { start: 50, end: 52 },
+            &[(row_51, 51), (row_52, 52)],
+        ));
+        let initial = runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        assert_eq!(initial.focused, Some(row_51));
+        assert_eq!(initial.semantic_tree.nodes.len(), 3);
+
+        let requested = runtime.reconcile(frame(vec![UiEvent::NavigateCollection(
+            UiCollectionNavigation::End,
+        )]));
+        assert_eq!(requested.focused, Some(row_51));
+        assert_eq!(
+            requested.virtualization_requests,
+            vec![UiVirtualizationRequest {
+                collection: list,
+                position: 100,
+                navigation: UiCollectionNavigation::End,
+            }]
+        );
+        assert_eq!(
+            requested.virtual_collections,
+            vec![UiVirtualCollectionSnapshot {
+                node: list,
+                item_count: 100,
+                realized: UiVirtualRange { start: 50, end: 52 },
+                pending_focus_position: Some(100),
+            }]
+        );
+        assert_eq!(
+            requested.frame_diagnostics.virtualization.realized_ranges,
+            UiMeasurementAvailability::Available
+        );
+        assert_eq!(requested.frame_diagnostics.virtualization_requests, 1);
+
+        let row_99 = UiNodeId::new(0x2c3);
+        let row_100 = UiNodeId::new(0x2c4);
+        runtime.replace_document(virtual_document(
+            UiVirtualRange {
+                start: 98,
+                end: 100,
+            },
+            &[(row_99, 99), (row_100, 100)],
+        ));
+        let realized = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(realized.focused, Some(row_100));
+        assert!(realized.virtualization_requests.is_empty());
+        assert_eq!(realized.virtual_collections[0].pending_focus_position, None);
+    }
+
+    #[test]
+    fn combo_transient_opens_on_activation_accepts_and_restores_focus() {
+        let root = UiNodeId::new(0x2d0);
+        let combo = UiNodeId::new(0x2d1);
+        let option = UiNodeId::new(0x2d2);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Controls", UiLayout::Overlay, vec![combo]),
+                UiNode::transient_combo_box(
+                    combo,
+                    "Density",
+                    "density.open",
+                    "Compact",
+                    vec![option],
+                    UiTransientInitialState::Hidden,
+                ),
+                UiNode::combo_option(option, "Comfortable", "density.comfortable", false),
+            ],
+        )
+        .expect("transient combo document");
+        let mut runtime = UiRuntime::new(document);
+
+        let closed = runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        assert_eq!(closed.focused, Some(combo));
+        assert!(closed.layout.iter().all(|entry| entry.node != option));
+        assert!(closed
+            .semantic_tree
+            .nodes
+            .iter()
+            .all(|node| node.id != option));
+        assert_eq!(closed.transients[0].phase, UiTransientPhase::Hidden);
+        assert!(
+            !closed
+                .semantic_tree
+                .nodes
+                .iter()
+                .find(|node| node.id == combo)
+                .expect("combo semantics")
+                .state
+                .expanded
+        );
+
+        let open = runtime.reconcile(frame(vec![UiEvent::Activate]));
+        assert_eq!(open.focused, Some(option));
+        assert!(open.layout.iter().any(|entry| entry.node == option));
+        assert_eq!(open.transients[0].phase, UiTransientPhase::Visible);
+        assert_eq!(open.transients[0].restore_focus, Some(combo));
+        assert!(
+            open.semantic_tree
+                .nodes
+                .iter()
+                .find(|node| node.id == combo)
+                .expect("combo semantics")
+                .state
+                .expanded
+        );
+        assert!(open.commands.is_empty());
+
+        let accepted = runtime.reconcile(frame(vec![UiEvent::Activate]));
+        assert_eq!(accepted.focused, Some(combo));
+        assert_eq!(accepted.commands.len(), 1);
+        assert_eq!(accepted.commands[0].action, "density.comfortable");
+        assert_eq!(accepted.transients[0].phase, UiTransientPhase::Hidden);
+        assert!(accepted.layout.iter().all(|entry| entry.node != option));
+    }
+
+    #[test]
+    fn tooltip_delay_escape_and_hidden_relationships_preserve_anchor_focus() {
+        let root = UiNodeId::new(0x2e0);
+        let anchor = UiNodeId::new(0x2e1);
+        let tooltip = UiNodeId::new(0x2e2);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Tooltip fixture",
+                    UiLayout::Overlay,
+                    vec![anchor, tooltip],
+                ),
+                UiNode::button(anchor, "Build", "build.start", "Build")
+                    .with_semantic_relationships(UiSemanticRelationships {
+                        described_by: vec![tooltip],
+                        ..UiSemanticRelationships::default()
+                    }),
+                UiNode::transient_tooltip(
+                    tooltip,
+                    "Build help",
+                    "Build the current project",
+                    anchor,
+                    250,
+                ),
+            ],
+        )
+        .expect("transient tooltip document");
+        let mut runtime = UiRuntime::new(document);
+
+        let pending = runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        assert_eq!(pending.focused, Some(anchor));
+        assert_eq!(pending.transients[0].phase, UiTransientPhase::Pending);
+        assert!(pending
+            .semantic_tree
+            .nodes
+            .iter()
+            .all(|node| node.id != tooltip));
+        assert!(pending
+            .semantic_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == anchor)
+            .expect("anchor semantics")
+            .relationships
+            .described_by
+            .is_empty());
+
+        let mut delayed_frame = frame(Vec::new());
+        delayed_frame.presentation_delta_ms = 250;
+        let visible = runtime.reconcile(delayed_frame);
+        assert_eq!(visible.transients[0].phase, UiTransientPhase::Visible);
+        assert_eq!(visible.frame_diagnostics.layout_work.root_computations, 1);
+        assert!(visible
+            .semantic_tree
+            .nodes
+            .iter()
+            .any(|node| node.id == tooltip));
+        assert_eq!(
+            visible
+                .semantic_tree
+                .nodes
+                .iter()
+                .find(|node| node.id == anchor)
+                .expect("anchor semantics")
+                .relationships
+                .described_by,
+            vec![tooltip]
+        );
+
+        let dismissed = runtime.reconcile(frame(vec![UiEvent::CancelInteraction]));
+        assert_eq!(dismissed.focused, Some(anchor));
+        assert_eq!(dismissed.transients[0].phase, UiTransientPhase::Dismissed);
+        assert_eq!(dismissed.frame_diagnostics.layout_work.root_computations, 1);
+        assert_eq!(dismissed.frame_diagnostics.layout_work.root_reuses, 1);
+        assert!(dismissed
+            .semantic_tree
+            .nodes
+            .iter()
+            .all(|node| node.id != tooltip));
+        assert!(!dismissed
+            .diagnostics
+            .contains(&UiDiagnostic::TextInputNotFocused));
+    }
+
+    #[test]
+    fn toast_queue_expires_in_document_order_without_stealing_focus() {
+        let root = UiNodeId::new(0x2f0);
+        let action = UiNodeId::new(0x2f1);
+        let first = UiNodeId::new(0x2f2);
+        let second = UiNodeId::new(0x2f3);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Notifications",
+                    UiLayout::Overlay,
+                    vec![action, first, second],
+                ),
+                UiNode::button(action, "Save", "project.save", "Save"),
+                UiNode::transient_toast(first, "Saved", "Project saved", 100),
+                UiNode::transient_toast(second, "Built", "Build complete", 100),
+            ],
+        )
+        .expect("toast queue document");
+        let mut runtime = UiRuntime::new(document);
+        let initial = runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        assert_eq!(initial.focused, Some(action));
+        assert_eq!(initial.transients[0].phase, UiTransientPhase::Visible);
+        assert_eq!(initial.transients[1].phase, UiTransientPhase::Queued);
+        assert!(initial
+            .semantic_tree
+            .nodes
+            .iter()
+            .any(|node| node.id == first));
+        assert!(initial
+            .semantic_tree
+            .nodes
+            .iter()
+            .all(|node| node.id != second));
+
+        let mut expiry = frame(Vec::new());
+        expiry.presentation_delta_ms = 100;
+        let promoted = runtime.reconcile(expiry);
+        assert_eq!(promoted.focused, Some(action));
+        assert_eq!(promoted.transients[0].phase, UiTransientPhase::Expired);
+        assert_eq!(promoted.transients[1].phase, UiTransientPhase::Visible);
+        assert!(promoted
+            .semantic_tree
+            .nodes
+            .iter()
+            .all(|node| node.id != first));
+        assert!(promoted
+            .semantic_tree
+            .nodes
+            .iter()
+            .any(|node| node.id == second));
+    }
+
+    #[test]
+    fn property_grid_edits_validate_commit_cancel_reset_and_inspect_as_typed_requests() {
+        let grid = UiNodeId::new(0x300);
+        let field = UiNodeId::new(0x301);
+        let document = UiDocument::new(
+            grid,
+            vec![
+                UiNode::property_grid(grid, "Transform", vec![field]),
+                UiNode::text_input(field, "Position X", "10", UiTextInputOptions::default())
+                    .with_text_validation(UiTextValidation::Integer),
+            ],
+        )
+        .expect("property grid document");
+        let mut runtime = UiRuntime::new(document);
+
+        let invalid = runtime.reconcile(frame(vec![
+            UiEvent::BeginPropertyEdit(field),
+            UiEvent::SelectAllText,
+            UiEvent::TextCommit("invalid".to_owned()),
+            UiEvent::CommitPropertyEdit,
+        ]));
+        assert_eq!(
+            invalid.property_edit,
+            Some(UiPropertyEditSnapshot {
+                grid,
+                editor: field,
+                valid: false,
+            })
+        );
+        assert!(invalid.property_requests.is_empty());
+        assert!(invalid
+            .diagnostics
+            .contains(&UiDiagnostic::TextValidationFailed { node: field }));
+
+        let cancelled = runtime.reconcile(frame(vec![UiEvent::CancelPropertyEdit]));
+        assert_eq!(cancelled.property_edit, None);
+        assert_eq!(runtime.text_input_value(field), Some("10"));
+
+        let committed = runtime.reconcile(frame(vec![
+            UiEvent::BeginPropertyEdit(field),
+            UiEvent::SelectAllText,
+            UiEvent::TextCommit("20".to_owned()),
+            UiEvent::CommitPropertyEdit,
+        ]));
+        assert_eq!(committed.property_edit, None);
+        assert_eq!(
+            committed.property_requests,
+            vec![UiPropertyRequest {
+                grid,
+                editor: field,
+                action: UiPropertyAction::Commit,
+                value: Some("20".to_owned()),
+            }]
+        );
+        assert_eq!(runtime.text_input_value(field), Some("20"));
+        assert_eq!(committed.frame_diagnostics.property_requests, 1);
+
+        let reset_and_inspect = runtime.reconcile(frame(vec![
+            UiEvent::ResetProperty(field),
+            UiEvent::InspectPropertySource(field),
+        ]));
+        assert_eq!(runtime.text_input_value(field), Some("10"));
+        assert_eq!(reset_and_inspect.property_requests.len(), 2);
+        assert_eq!(
+            reset_and_inspect.property_requests[0].action,
+            UiPropertyAction::Reset
+        );
+        assert_eq!(
+            reset_and_inspect.property_requests[1].action,
+            UiPropertyAction::InspectSource
+        );
+    }
+
+    #[test]
+    fn property_grid_rejects_secret_or_out_of_grid_editors() {
+        let root = UiNodeId::new(0x310);
+        let password = UiNodeId::new(0x311);
+        let ordinary = UiNodeId::new(0x312);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Invalid property targets",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![password, ordinary],
+                ),
+                UiNode::text_input(
+                    password,
+                    "Secret",
+                    "",
+                    UiTextInputOptions { password: true },
+                ),
+                UiNode::text_input(
+                    ordinary,
+                    "Outside grid",
+                    "value",
+                    UiTextInputOptions::default(),
+                ),
+            ],
+        )
+        .expect("non-property text document");
+        let mut runtime = UiRuntime::new(document);
+        let rejected = runtime.reconcile(frame(vec![
+            UiEvent::BeginPropertyEdit(password),
+            UiEvent::BeginPropertyEdit(ordinary),
+        ]));
+        assert_eq!(rejected.property_edit, None);
+        assert!(rejected.property_requests.is_empty());
+        assert!(rejected
+            .diagnostics
+            .contains(&UiDiagnostic::PropertyEditDenied { node: password }));
+        assert!(rejected
+            .diagnostics
+            .contains(&UiDiagnostic::PropertyEditDenied { node: ordinary }));
+    }
+
+    #[test]
+    fn timeline_scrub_range_zoom_cancel_and_accessible_step_are_bounded() {
+        let root = UiNodeId::new(0x320);
+        let timeline = UiNodeId::new(0x321);
+        let contract = UiTimelineContract {
+            minimum: 0,
+            maximum: 100,
+            source_value: 10,
+            step: 5,
+            page_step: 20,
+            minimum_zoom_percent: 50,
+            maximum_zoom_percent: 200,
+            initial_zoom_percent: 100,
+            zoom_step_percent: 25,
+        };
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Timeline fixture", UiLayout::Overlay, vec![timeline]),
+                UiNode::interactive_timeline(timeline, "Animation timeline", Vec::new(), contract),
+            ],
+        )
+        .expect("interactive timeline document");
+        let mut runtime = UiRuntime::new(document);
+
+        let preview = runtime.reconcile(frame(vec![
+            UiEvent::BeginTimelineScrub {
+                timeline,
+                value: 20,
+            },
+            UiEvent::UpdateTimelineScrub(30),
+            UiEvent::SetTimelineRange {
+                timeline,
+                start: 20,
+                end: 40,
+            },
+            UiEvent::ZoomTimeline {
+                timeline,
+                zoom: UiTimelineZoom::In,
+            },
+        ]));
+        assert_eq!(
+            preview.timelines,
+            vec![UiTimelineSnapshot {
+                timeline,
+                source_value: 10,
+                preview_value: 30,
+                scrubbing: true,
+                selected_range: Some((20, 40)),
+                zoom_percent: 125,
+            }]
+        );
+        assert!(preview.timeline_requests.is_empty());
+        let semantics = preview
+            .semantic_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == timeline)
+            .expect("timeline semantics");
+        assert_eq!(semantics.value.as_deref(), Some("30"));
+        assert!(semantics.actions.contains(&SemanticAction::Increment));
+        assert!(semantics.actions.contains(&SemanticAction::Decrement));
+
+        let rejected = runtime.reconcile(frame(vec![UiEvent::UpdateTimelineScrub(101)]));
+        assert_eq!(rejected.timelines[0].preview_value, 30);
+        assert!(rejected
+            .diagnostics
+            .contains(&UiDiagnostic::TimelineInteractionDenied { node: timeline }));
+
+        let committed = runtime.reconcile(frame(vec![UiEvent::CommitTimelineScrub]));
+        assert_eq!(
+            committed.timeline_requests,
+            vec![UiTimelineRequest {
+                timeline,
+                value: 30,
+            }]
+        );
+        assert_eq!(committed.timelines[0].source_value, 10);
+        assert!(!committed.timelines[0].scrubbing);
+
+        let stepped = runtime.reconcile(frame(vec![UiEvent::AdjustFocused(
+            UiControlAdjustment::Increment,
+        )]));
+        assert_eq!(stepped.timelines[0].preview_value, 35);
+        assert_eq!(stepped.timeline_requests[0].value, 35);
+
+        let assistive = runtime.reconcile(frame(vec![UiEvent::AssistiveRequest {
+            target: timeline,
+            action: SemanticAction::Decrement,
+        }]));
+        assert_eq!(assistive.timelines[0].preview_value, 30);
+        assert_eq!(assistive.timeline_requests[0].value, 30);
+
+        let jumped = runtime.reconcile(frame(vec![UiEvent::JumpTimeline {
+            timeline,
+            jump: UiTimelineJump::NextPage,
+        }]));
+        assert_eq!(jumped.timelines[0].preview_value, 50);
+        assert_eq!(jumped.timeline_requests[0].value, 50);
+
+        let cancelled = runtime.reconcile(frame(vec![
+            UiEvent::BeginTimelineScrub {
+                timeline,
+                value: 75,
+            },
+            UiEvent::CancelTimelineScrub,
+        ]));
+        assert_eq!(cancelled.timelines[0].preview_value, 50);
+        assert!(!cancelled.timelines[0].scrubbing);
+    }
+
+    fn graph_canvas_fixture() -> (UiRuntime, [UiNodeId; 4]) {
+        let root = UiNodeId::new(0x330);
+        let graph = UiNodeId::new(0x331);
+        let source = UiNodeId::new(0x332);
+        let target = UiNodeId::new(0x333);
+        let outside = UiNodeId::new(0x334);
+        let contract = UiCanvasContract {
+            pan_limit: 1_000,
+            initial_pan_x: 10,
+            initial_pan_y: -10,
+            minimum_zoom_percent: 50,
+            maximum_zoom_percent: 200,
+            initial_zoom_percent: 100,
+            zoom_step_percent: 25,
+        };
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Graph fixture",
+                    UiLayout::Overlay,
+                    vec![graph, outside],
+                ),
+                UiNode::interactive_graph(graph, "Recipe graph", vec![source, target], contract),
+                UiNode::button(source, "Source node", "graph.source", "Source"),
+                UiNode::button(target, "Target node", "graph.target", "Target"),
+                UiNode::button(outside, "Outside", "outside.activate", "Outside"),
+            ],
+        )
+        .expect("interactive graph document");
+        (UiRuntime::new(document), [graph, source, target, outside])
+    }
+
+    #[test]
+    fn graph_canvas_pan_zoom_connection_preview_and_source_inspection_are_typed() {
+        let (mut runtime, [graph, source, target, outside]) = graph_canvas_fixture();
+
+        let preview = runtime.reconcile(frame(vec![
+            UiEvent::ManipulateCanvas {
+                canvas: graph,
+                action: UiCanvasAction::Pan {
+                    delta_x: i32::MAX,
+                    delta_y: i32::MIN,
+                },
+            },
+            UiEvent::ManipulateCanvas {
+                canvas: graph,
+                action: UiCanvasAction::ZoomIn,
+            },
+            UiEvent::ManipulateCanvas {
+                canvas: graph,
+                action: UiCanvasAction::BeginConnection { source },
+            },
+            UiEvent::ManipulateCanvas {
+                canvas: graph,
+                action: UiCanvasAction::PreviewConnection {
+                    target: Some(target),
+                },
+            },
+        ]));
+        assert_eq!(
+            preview.canvases,
+            vec![UiCanvasSnapshot {
+                canvas: graph,
+                pan_x: 1_000,
+                pan_y: -1_000,
+                zoom_percent: 125,
+                connection: Some(UiCanvasConnectionPreview {
+                    source,
+                    target: Some(target),
+                }),
+            }]
+        );
+        assert_eq!(preview.focused, Some(graph));
+        assert!(preview.canvas_requests.is_empty());
+
+        let connected = runtime.reconcile(frame(vec![UiEvent::ManipulateCanvas {
+            canvas: graph,
+            action: UiCanvasAction::CompleteConnection { target },
+        }]));
+        assert_eq!(connected.canvases[0].connection, None);
+        assert_eq!(
+            connected.canvas_requests,
+            vec![UiCanvasRequest::Connect {
+                canvas: graph,
+                source,
+                target,
+            }]
+        );
+        assert_eq!(connected.frame_diagnostics.canvas_requests, 1);
+
+        let rejected = runtime.reconcile(frame(vec![
+            UiEvent::ManipulateCanvas {
+                canvas: graph,
+                action: UiCanvasAction::BeginConnection { source: outside },
+            },
+            UiEvent::ManipulateCanvas {
+                canvas: graph,
+                action: UiCanvasAction::InspectSource,
+            },
+        ]));
+        assert_eq!(rejected.canvases[0].connection, None);
+        assert!(rejected
+            .diagnostics
+            .contains(&UiDiagnostic::CanvasInteractionDenied { node: outside }));
+        assert_eq!(
+            rejected.canvas_requests,
+            vec![UiCanvasRequest::InspectSource { canvas: graph }]
+        );
+
+        let reset = runtime.reconcile(frame(vec![UiEvent::ManipulateCanvas {
+            canvas: graph,
+            action: UiCanvasAction::ResetView,
+        }]));
+        assert_eq!(reset.canvases[0].pan_x, 10);
+        assert_eq!(reset.canvases[0].pan_y, -10);
+        assert_eq!(reset.canvases[0].zoom_percent, 100);
+    }
+
+    #[test]
+    fn disabled_professional_controls_reject_transient_timeline_and_canvas_interaction() {
+        let root = UiNodeId::new(0x340);
+        let combo = UiNodeId::new(0x341);
+        let option = UiNodeId::new(0x342);
+        let timeline = UiNodeId::new(0x343);
+        let canvas = UiNodeId::new(0x344);
+        let disabled = UiControlState {
+            disabled: true,
+            ..UiControlState::default()
+        };
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Disabled controls",
+                    UiLayout::Overlay,
+                    vec![combo, timeline, canvas],
+                ),
+                UiNode::transient_combo_box(
+                    combo,
+                    "Disabled combo",
+                    "combo.open",
+                    "One",
+                    vec![option],
+                    UiTransientInitialState::Visible,
+                )
+                .with_control_state(disabled),
+                UiNode::combo_option(option, "One", "combo.one", true),
+                UiNode::interactive_timeline(
+                    timeline,
+                    "Disabled timeline",
+                    Vec::new(),
+                    UiTimelineContract {
+                        minimum: 0,
+                        maximum: 100,
+                        source_value: 25,
+                        step: 5,
+                        page_step: 20,
+                        minimum_zoom_percent: 50,
+                        maximum_zoom_percent: 200,
+                        initial_zoom_percent: 100,
+                        zoom_step_percent: 25,
+                    },
+                )
+                .with_control_state(disabled),
+                UiNode::interactive_canvas(
+                    canvas,
+                    "Disabled canvas",
+                    Vec::new(),
+                    UiCanvasContract {
+                        pan_limit: 100,
+                        initial_pan_x: 0,
+                        initial_pan_y: 0,
+                        minimum_zoom_percent: 50,
+                        maximum_zoom_percent: 200,
+                        initial_zoom_percent: 100,
+                        zoom_step_percent: 25,
+                    },
+                )
+                .with_control_state(disabled),
+            ],
+        )
+        .expect("disabled professional controls remain representable");
+        let mut runtime = UiRuntime::new(document);
+
+        let rejected = runtime.reconcile(frame(vec![
+            UiEvent::PresentTransient(combo),
+            UiEvent::BeginTimelineScrub {
+                timeline,
+                value: 50,
+            },
+            UiEvent::ManipulateCanvas {
+                canvas,
+                action: UiCanvasAction::ZoomIn,
+            },
+        ]));
+
+        assert_eq!(rejected.transients[0].phase, UiTransientPhase::Hidden);
+        assert_eq!(rejected.timelines[0].preview_value, 25);
+        assert_eq!(rejected.canvases[0].zoom_percent, 100);
+        assert!(rejected.timeline_requests.is_empty());
+        assert!(rejected.canvas_requests.is_empty());
+        assert!(rejected
+            .diagnostics
+            .contains(&UiDiagnostic::TransientTargetDenied { node: combo }));
+        assert!(rejected
+            .diagnostics
+            .contains(&UiDiagnostic::TimelineInteractionDenied { node: timeline }));
+        assert!(rejected
+            .diagnostics
+            .contains(&UiDiagnostic::CanvasInteractionDenied { node: canvas }));
     }
 
     #[test]
@@ -4892,17 +8430,19 @@ mod tests {
         assert!(diagnostics.primitives.paths >= 1);
         assert!(diagnostics.text.primitives >= 1);
         assert!(diagnostics.text.glyphs >= 1);
-        assert_eq!(
-            diagnostics.timing,
-            UiFrameTimingDiagnostics {
-                reconciliation: UiMeasurementAvailability::Unavailable,
-                layout: UiMeasurementAvailability::Unavailable,
-                text_shaping: UiMeasurementAvailability::Unavailable,
-                text_rasterization: UiMeasurementAvailability::Unavailable,
-                display_validation: UiMeasurementAvailability::Unavailable,
-                semantic_delta: UiMeasurementAvailability::Unavailable,
-            }
-        );
+        for measurement in [
+            diagnostics.timing.reconciliation,
+            diagnostics.timing.layout,
+            diagnostics.timing.text_shaping,
+            diagnostics.timing.text_rasterization,
+            diagnostics.timing.display_validation,
+            diagnostics.timing.semantic_delta,
+        ] {
+            assert!(matches!(
+                measurement,
+                UiDurationMeasurement::MeasuredNanoseconds(_)
+            ));
+        }
         assert_eq!(
             diagnostics.renderer_cache,
             UiRendererCacheDiagnostics::default()
@@ -4917,7 +8457,11 @@ mod tests {
             diagnostics.event_latency,
             UiEventLatencyDiagnostics {
                 measurement: UiMeasurementAvailability::Unavailable,
+                boundary: UiEventLatencyBoundary::Unavailable,
                 source_timestamped_events: 0,
+                minimum_nanoseconds: None,
+                maximum_nanoseconds: None,
+                mean_nanoseconds: None,
             }
         );
         assert_eq!(diagnostics.capture, UiCaptureState::NotRequested);
@@ -5019,6 +8563,7 @@ mod tests {
             output.commands[0].command,
             CommandId::from_name("project.retry_open").expect("valid command")
         );
+        assert_eq!(output.frame_diagnostics.interaction.focus_changes, 1);
         assert!(output
             .event_routes
             .iter()
@@ -5075,6 +8620,235 @@ mod tests {
         assert_eq!(output.focused, None);
         assert!(output.commands.is_empty());
         assert!(output.event_routes.is_empty());
+    }
+
+    #[test]
+    fn table_navigation_focuses_read_only_cells_in_declared_row_major_order() {
+        let table = UiNodeId::new(0x1_100);
+        let first_row = UiNodeId::new(0x1_101);
+        let second_row = UiNodeId::new(0x1_102);
+        let first = UiNodeId::new(0x1_103);
+        let second = UiNodeId::new(0x1_104);
+        let third = UiNodeId::new(0x1_105);
+        let fourth = UiNodeId::new(0x1_106);
+        let document = UiDocument::new(
+            table,
+            vec![
+                UiNode::table(table, "Build artifacts", vec![first_row, second_row]),
+                UiNode::table_row(first_row, "Artifact row one", vec![first, second]),
+                UiNode::table_row(second_row, "Artifact row two", vec![third, fourth]),
+                UiNode::table_cell(first, "Artifact name one", "Meridian.app"),
+                UiNode::table_cell(second, "Artifact size one", "18 MiB"),
+                UiNode::table_cell(third, "Artifact name two", "meridian-build"),
+                UiNode::table_cell(fourth, "Artifact size two", "4 MiB"),
+            ],
+        )
+        .expect("table fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        let first_output = runtime.reconcile(frame(vec![UiEvent::NavigateCollection(
+            UiCollectionNavigation::Next,
+        )]));
+        assert_eq!(first_output.focused, Some(first));
+        assert!(first_output
+            .semantic_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == first)
+            .expect("first cell has semantics")
+            .actions
+            .contains(&SemanticAction::Focus));
+
+        let second_output = runtime.reconcile(frame(vec![UiEvent::NavigateCollection(
+            UiCollectionNavigation::Next,
+        )]));
+        assert_eq!(second_output.focused, Some(second));
+
+        let end_output = runtime.reconcile(frame(vec![UiEvent::NavigateCollection(
+            UiCollectionNavigation::End,
+        )]));
+        assert_eq!(end_output.focused, Some(fourth));
+        assert!(end_output.commands.is_empty());
+
+        let previous_row = runtime.reconcile(frame(vec![UiEvent::NavigateCollection(
+            UiCollectionNavigation::PreviousRow,
+        )]));
+        assert_eq!(previous_row.focused, Some(second));
+        let row_start = runtime.reconcile(frame(vec![UiEvent::NavigateCollection(
+            UiCollectionNavigation::RowStart,
+        )]));
+        assert_eq!(row_start.focused, Some(first));
+        let next_row = runtime.reconcile(frame(vec![UiEvent::NavigateCollection(
+            UiCollectionNavigation::NextRow,
+        )]));
+        assert_eq!(next_row.focused, Some(third));
+        let row_end = runtime.reconcile(frame(vec![UiEvent::NavigateCollection(
+            UiCollectionNavigation::RowEnd,
+        )]));
+        assert_eq!(row_end.focused, Some(fourth));
+    }
+
+    #[test]
+    fn command_palette_and_controller_share_collection_navigation() {
+        let palette = UiNodeId::new(0x1_200);
+        let filter = UiNodeId::new(0x1_201);
+        let results = UiNodeId::new(0x1_202);
+        let first = UiNodeId::new(0x1_203);
+        let second = UiNodeId::new(0x1_204);
+        let document = UiDocument::new(
+            palette,
+            vec![
+                UiNode::command_palette(palette, "Command palette", vec![filter, results]),
+                UiNode::search_input(filter, "Filter commands", ""),
+                UiNode::virtual_list(results, "Command results", vec![first, second]),
+                UiNode::list_item(first, "Build project", "build.start", false),
+                UiNode::list_item(second, "Open settings", "settings.open", false),
+            ],
+        )
+        .expect("command palette fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let controller = UiInputDeviceId::new(8);
+
+        let keyboard = runtime.reconcile(frame(vec![
+            UiEvent::AssistiveFocus(filter),
+            UiEvent::NavigateCollection(UiCollectionNavigation::Next),
+        ]));
+        assert_eq!(keyboard.focused, Some(first));
+
+        let controller_output =
+            runtime.reconcile(frame(vec![UiEvent::Controller(UiControllerEvent {
+                device: controller,
+                phase: UiControllerPhase::Press,
+                control: UiControllerControl::NavigateCollection(UiCollectionNavigation::Next),
+            })]));
+        assert_eq!(controller_output.focused, Some(second));
+        assert!(controller_output.commands.is_empty());
+    }
+
+    #[test]
+    fn adjustable_controls_share_explicit_commands_across_input_sources() {
+        let root = UiNodeId::new(0x1_300);
+        let splitter = UiNodeId::new(0x1_301);
+        let timeline = UiNodeId::new(0x1_302);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Adjustable controls",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![splitter, timeline],
+                ),
+                UiNode::splitter(
+                    splitter,
+                    "Resize inspector",
+                    "inspector.reset-width",
+                    UiAxis::Horizontal,
+                )
+                .with_assistive_action(UiHostAssistiveAction::Decrement, "inspector.shrink")
+                .with_assistive_action(UiHostAssistiveAction::Increment, "inspector.grow"),
+                UiNode::timeline(timeline, "Animation timeline", Vec::new())
+                    .with_assistive_action(
+                        UiHostAssistiveAction::Decrement,
+                        "timeline.step-backward",
+                    )
+                    .with_assistive_action(
+                        UiHostAssistiveAction::Increment,
+                        "timeline.step-forward",
+                    ),
+            ],
+        )
+        .expect("adjustable control fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        let keyboard = runtime.reconcile(frame(vec![
+            UiEvent::AssistiveFocus(splitter),
+            UiEvent::AdjustFocused(UiControlAdjustment::Increment),
+        ]));
+        assert_eq!(keyboard.commands.len(), 1);
+        assert_eq!(keyboard.commands[0].action, "inspector.grow");
+
+        let controller = runtime.reconcile(frame(vec![UiEvent::Controller(UiControllerEvent {
+            device: UiInputDeviceId::new(9),
+            phase: UiControllerPhase::Press,
+            control: UiControllerControl::AdjustFocused(UiControlAdjustment::Decrement),
+        })]));
+        assert_eq!(controller.commands.len(), 1);
+        assert_eq!(controller.commands[0].action, "inspector.shrink");
+
+        let assistive = runtime.reconcile(frame(vec![UiEvent::AssistiveRequest {
+            target: splitter,
+            action: SemanticAction::Increment,
+        }]));
+        assert_eq!(assistive.assistive_requests.len(), 1);
+        assert_eq!(
+            assistive.assistive_requests[0].command,
+            keyboard.commands[0].command
+        );
+
+        let timeline_output = runtime.reconcile(frame(vec![
+            UiEvent::AssistiveFocus(timeline),
+            UiEvent::AdjustFocused(UiControlAdjustment::Decrement),
+        ]));
+        assert_eq!(timeline_output.commands.len(), 1);
+        assert_eq!(timeline_output.commands[0].action, "timeline.step-backward");
+    }
+
+    #[test]
+    fn focused_host_actions_share_explicit_commands_across_input_sources() {
+        let root = UiNodeId::new(0x1_400);
+        let hierarchy = UiNodeId::new(0x1_401);
+        let item = UiNodeId::new(0x1_402);
+        let viewport = UiNodeId::new(0x1_403);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "World tools",
+                    UiLayout::HorizontalStack { gap: 4.0 },
+                    vec![hierarchy, viewport],
+                ),
+                UiNode::tree(hierarchy, "Hierarchy", vec![item]),
+                UiNode::tree_item(item, "Camera", "world.select-camera", false, false)
+                    .with_assistive_action(UiHostAssistiveAction::Expand, "world.expand-camera"),
+                UiNode::canvas(viewport, "Viewport", Vec::new()).with_assistive_action(
+                    UiHostAssistiveAction::ShowContextMenu,
+                    "viewport.open-context-menu",
+                ),
+            ],
+        )
+        .expect("focused-action fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        let keyboard = runtime.reconcile(frame(vec![
+            UiEvent::AssistiveFocus(item),
+            UiEvent::InvokeFocused(UiHostAssistiveAction::Expand),
+        ]));
+        assert_eq!(keyboard.commands.len(), 1);
+        assert_eq!(keyboard.commands[0].action, "world.expand-camera");
+
+        let controller = runtime.reconcile(frame(vec![
+            UiEvent::AssistiveFocus(viewport),
+            UiEvent::Controller(UiControllerEvent {
+                device: UiInputDeviceId::new(10),
+                phase: UiControllerPhase::Press,
+                control: UiControllerControl::InvokeFocused(UiHostAssistiveAction::ShowContextMenu),
+            }),
+        ]));
+        assert_eq!(controller.commands.len(), 1);
+        assert_eq!(controller.commands[0].action, "viewport.open-context-menu");
+
+        let denied = runtime.reconcile(frame(vec![UiEvent::InvokeFocused(
+            UiHostAssistiveAction::Collapse,
+        )]));
+        assert!(denied.commands.is_empty());
+        assert!(denied
+            .diagnostics
+            .contains(&UiDiagnostic::HostActionDenied {
+                node: viewport,
+                action: UiHostAssistiveAction::Collapse,
+            }));
     }
 
     #[test]
@@ -5270,6 +9044,123 @@ mod tests {
             UiEvent::PointerUp(UiPoint { x: 100.0, y: 40.0 }),
         ]));
         assert!(cancelled.commands.is_empty());
+    }
+
+    #[test]
+    fn secondary_pointer_release_routes_an_explicit_context_command() {
+        let viewport = UiNodeId::new(0x1_500);
+        let document = UiDocument::new(
+            viewport,
+            vec![
+                UiNode::canvas(viewport, "Viewport", Vec::new()).with_assistive_action(
+                    UiHostAssistiveAction::ShowContextMenu,
+                    "viewport.open-context-menu",
+                ),
+            ],
+        )
+        .expect("context-command fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let device = UiInputDeviceId::new(0x1_501);
+        let point = UiPoint { x: 100.0, y: 40.0 };
+        let pointer = |phase, position| {
+            UiEvent::Pointer(UiPointerEvent {
+                device,
+                kind: UiInputDeviceKind::Mouse,
+                phase,
+                position,
+                button: Some(UiPointerButton::Secondary),
+            })
+        };
+
+        let opened = runtime.reconcile(frame(vec![
+            pointer(UiPointerPhase::Press, point),
+            pointer(UiPointerPhase::Release, point),
+        ]));
+        assert_eq!(opened.commands.len(), 1);
+        assert_eq!(opened.commands[0].source, viewport);
+        assert_eq!(opened.commands[0].action, "viewport.open-context-menu");
+
+        let cancelled = runtime.reconcile(frame(vec![
+            pointer(UiPointerPhase::Press, point),
+            pointer(UiPointerPhase::Release, UiPoint { x: -10.0, y: -10.0 }),
+        ]));
+        assert!(cancelled.commands.is_empty());
+    }
+
+    #[test]
+    fn global_pointer_cancel_releases_a_normalized_device_capture() {
+        let document = recovery_panel_document().expect("recovery fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        let retry = UiNodeId::new(0x102);
+        let initial = runtime.reconcile(frame(Vec::new()));
+        let bounds = initial
+            .layout
+            .iter()
+            .find(|entry| entry.node == retry)
+            .expect("retry geometry exists")
+            .bounds;
+        let point = UiPoint {
+            x: bounds.origin.x + bounds.size.width / 2.0,
+            y: bounds.origin.y + bounds.size.height / 2.0,
+        };
+        let device = UiInputDeviceId::new(0x55);
+        let pointer = |phase| {
+            UiEvent::Pointer(UiPointerEvent {
+                device,
+                kind: UiInputDeviceKind::Mouse,
+                phase,
+                position: point,
+                button: matches!(phase, UiPointerPhase::Press | UiPointerPhase::Release)
+                    .then_some(UiPointerButton::Primary),
+            })
+        };
+
+        runtime.reconcile(frame(vec![pointer(UiPointerPhase::Press)]));
+        assert_eq!(
+            runtime.pointer_capture.map(|capture| capture.device),
+            Some(device)
+        );
+        runtime.reconcile(frame(vec![UiEvent::PointerCancel]));
+        assert!(runtime.pointer_capture.is_none());
+
+        let released = runtime.reconcile(frame(vec![pointer(UiPointerPhase::Release)]));
+        assert!(released.commands.is_empty());
+    }
+
+    #[test]
+    fn unified_cancellation_clears_preedit_and_controller_drag_state() {
+        let (text_document, _) = text_input_document("draft", false);
+        let mut text_runtime = UiRuntime::new(text_document);
+        let composing = text_runtime.reconcile(frame(vec![
+            UiEvent::FocusNext,
+            UiEvent::ImePreedit {
+                text: "候補".to_owned(),
+                cursor: Some((0, 3)),
+            },
+        ]));
+        assert_eq!(composing.preedit.as_deref(), Some("候補"));
+        let cancelled = text_runtime.reconcile(frame(vec![UiEvent::CancelInteraction]));
+        assert!(cancelled.preedit.is_none());
+
+        let payload = UiDragPayload {
+            kind: UiDragKind::Asset,
+            item: UiDragItemId::new(0x56),
+            operation: UiDropOperation::Move,
+        };
+        let (drag_document, source, _) = drag_document();
+        let mut drag_runtime = UiRuntime::new(drag_document);
+        drag_runtime.reconcile(frame(vec![UiEvent::BeginKeyboardDrag { source, payload }]));
+        assert!(drag_runtime.drag.is_some());
+        let controller_cancelled =
+            drag_runtime.reconcile(frame(vec![UiEvent::Controller(UiControllerEvent {
+                device: UiInputDeviceId::new(0x57),
+                phase: UiControllerPhase::Cancel,
+                control: UiControllerControl::Activate,
+            })]));
+        assert!(controller_cancelled.drag.is_none());
+        assert!(!controller_cancelled
+            .diagnostics
+            .contains(&UiDiagnostic::TextInputNotFocused));
     }
 
     #[test]
@@ -5923,12 +9814,131 @@ mod tests {
         let two_x_b = reconcile_at(2.0);
         let four_x_a = reconcile_at(4.0);
         let four_x_b = reconcile_at(4.0);
-        assert_eq!(one_x_a, one_x_b);
-        assert_eq!(two_x_a, two_x_b);
-        assert_eq!(four_x_a, four_x_b);
+        let deterministic_snapshot = |snapshot: &UiFrameOutput| {
+            let mut snapshot = snapshot.as_ref().clone();
+            snapshot.frame_diagnostics.timing = UiFrameTimingDiagnostics::default();
+            snapshot
+        };
+        assert_eq!(
+            deterministic_snapshot(&one_x_a),
+            deterministic_snapshot(&one_x_b)
+        );
+        assert_eq!(
+            deterministic_snapshot(&two_x_a),
+            deterministic_snapshot(&two_x_b)
+        );
+        assert_eq!(
+            deterministic_snapshot(&four_x_a),
+            deterministic_snapshot(&four_x_b)
+        );
         assert_eq!(one_x_a.layout, two_x_a.layout);
         assert_eq!(one_x_a.layout, four_x_a.layout);
         assert!((four_x_a.scale_factor - 4.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn text_scale_reflows_intrinsic_layout_independently_from_physical_dpi() {
+        let root = UiNodeId::new(0x6a0);
+        let label = UiNodeId::new(0x6a1);
+        let action = UiNodeId::new(0x6a2);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Text scale fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![label, action],
+                )
+                .with_style(UiStyle::transparent()),
+                UiNode::label(label, "Scaled label", "Meridian framework text"),
+                UiNode::button(action, "Scaled action", "scale.activate", "Activate"),
+            ],
+        )
+        .expect("text scale fixture");
+        let reconcile = |physical_scale, text_scale| {
+            let mut runtime = UiRuntime::new(document.clone());
+            let mut input = UiFrameInput::new(UiSize::new(240.0, 140.0));
+            input.scale_factor = physical_scale;
+            input.text_scale = text_scale;
+            runtime.reconcile(input)
+        };
+        let standard = reconcile(1.0, UiTextScale::MINIMUM);
+        let hidpi = reconcile(2.0, UiTextScale::MINIMUM);
+        let enlarged = reconcile(1.0, UiTextScale::MAXIMUM);
+        assert_eq!(standard.layout, hidpi.layout);
+        let bounds = |snapshot: &UiFrameSnapshot, node| {
+            snapshot
+                .layout
+                .iter()
+                .find(|entry| entry.node == node)
+                .expect("node has layout")
+                .bounds
+        };
+        assert!(bounds(&enlarged, label).size.height > bounds(&standard, label).size.height);
+        assert!(bounds(&enlarged, action).size.height > bounds(&standard, action).size.height);
+        assert_eq!(enlarged.text_scale, UiTextScale::MAXIMUM);
+        assert_eq!(enlarged.frame_diagnostics.text_scale, UiTextScale::MAXIMUM);
+    }
+
+    #[test]
+    fn accepted_text_edit_remeasures_layout_before_the_same_frame_is_emitted() {
+        let root = UiNodeId::new(0x6b0);
+        let input = UiNodeId::new(0x6b1);
+        let sibling = UiNodeId::new(0x6b2);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Text edit reflow fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![input, sibling],
+                )
+                .with_style(UiStyle::transparent()),
+                UiNode::text_input(
+                    input,
+                    "Project description",
+                    "short",
+                    UiTextInputOptions { password: false },
+                ),
+                UiNode::label(sibling, "Sibling", "Visible sibling"),
+            ],
+        )
+        .expect("text edit reflow fixture");
+        let mut runtime = UiRuntime::new(document);
+        let mut initial_input = UiFrameInput::new(UiSize::new(180.0, 120.0));
+        let initial = runtime.reconcile(initial_input.clone());
+        let initial_height = initial
+            .layout
+            .iter()
+            .find(|entry| entry.node == input)
+            .expect("input layout")
+            .bounds
+            .size
+            .height;
+        initial_input.events = vec![
+            UiEvent::FocusNext,
+            UiEvent::SelectAllText,
+            UiEvent::TextCommit("Meridian ".repeat(20)),
+        ];
+        let edited = runtime.reconcile(initial_input);
+        let edited_height = edited
+            .layout
+            .iter()
+            .find(|entry| entry.node == input)
+            .expect("edited input layout")
+            .bounds
+            .size
+            .height;
+        assert!(edited_height > initial_height);
+        assert_eq!(
+            runtime.text_input_value(input),
+            Some("Meridian ".repeat(20).as_str())
+        );
+        assert_eq!(edited.frame_diagnostics.layout_work.root_reuses, 1);
+        assert_eq!(edited.frame_diagnostics.layout_work.root_computations, 1);
+        assert!(edited.frame_diagnostics.text.shaping_cache_misses > 0);
     }
 
     #[test]
@@ -6118,6 +10128,9 @@ mod tests {
         let (replacement, _) = text_input_document("Ignored initial value", false);
         runtime.replace_document(replacement);
         assert_eq!(runtime.text_input_value(input), Some("Creator Sample"));
+        let replaced = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(replaced.frame_diagnostics.layout_work.root_computations, 1);
+        assert_eq!(replaced.frame_diagnostics.layout_work.root_reuses, 0);
     }
 
     #[test]
@@ -6851,8 +10864,10 @@ mod tests {
             vec![UiDiagnostic::LayoutConstraintsUnsatisfiable { node: child }]
         );
 
+        let intrinsic_sizes = BTreeMap::new();
         let mut resolver = UiLayoutResolver {
             runtime: &runtime,
+            intrinsic_sizes: &intrinsic_sizes,
             layout: BTreeMap::new(),
             visiting: BTreeSet::from([root]),
             chain: vec![root],
@@ -7023,6 +11038,41 @@ mod tests {
     }
 
     #[test]
+    fn explicit_text_style_inheritance_resolves_in_tree_order_without_inheriting_chrome() {
+        let root = UiNodeId::new(0x521);
+        let inherited = UiNodeId::new(0x522);
+        let independent = UiNodeId::new(0x523);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Inherited style fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![inherited, independent],
+                )
+                .with_style(UiStyle {
+                    foreground: UiColor::amber(),
+                    font_size: 28.0,
+                    ..UiStyle::panel()
+                }),
+                UiNode::label(inherited, "Inherited", "Inherited").with_inherited_text_style(),
+                UiNode::label(independent, "Independent", "Independent"),
+            ],
+        )
+        .expect("style inheritance fixture");
+        let mut runtime = UiRuntime::new(document);
+        runtime.reconcile(frame(Vec::new()));
+        let root_style = runtime.resolved_style(root);
+        let inherited_style = runtime.resolved_style(inherited);
+        let independent_style = runtime.resolved_style(independent);
+        assert_eq!(inherited_style.foreground, root_style.foreground);
+        assert!((inherited_style.font_size - root_style.font_size).abs() < f32::EPSILON);
+        assert!((inherited_style.padding - root_style.padding).abs() > f32::EPSILON);
+        assert!((independent_style.font_size - root_style.font_size).abs() > f32::EPSILON);
+    }
+
+    #[test]
     fn aggregate_event_rejection_preserves_private_state_and_revision() {
         let (document, input) = text_input_document("safe", false);
         let mut runtime = UiRuntime::new(document);
@@ -7043,6 +11093,160 @@ mod tests {
         assert_eq!(runtime.text_input_value(input), Some("accepted"));
         assert_eq!(runtime.revision, accepted.revision);
         assert_eq!(runtime.focused, Some(input));
+    }
+
+    #[test]
+    fn partially_timestamped_events_report_bounded_source_to_frame_latency() {
+        let root = UiNodeId::new(0x67a);
+        let document = UiDocument::new(
+            root,
+            vec![UiNode::button(
+                root,
+                "Timed action",
+                "timed.activate",
+                "Run",
+            )],
+        )
+        .expect("timing fixture");
+        let mut runtime = UiRuntime::new(document);
+        let mut input = frame(vec![
+            UiEvent::FocusNext,
+            UiEvent::Activate,
+            UiEvent::FocusPrevious,
+        ]);
+        input.frame_boundary_monotonic_nanoseconds = Some(1_000_000);
+        input.event_timestamps = vec![
+            UiEventTimestamp::new(0, 100_000),
+            UiEventTimestamp::new(2, 800_000),
+        ];
+
+        let output = runtime
+            .try_reconcile(input)
+            .expect("comparable monotonic timestamps");
+
+        assert_eq!(
+            output.frame_diagnostics.event_latency,
+            UiEventLatencyDiagnostics {
+                measurement: UiMeasurementAvailability::Available,
+                boundary: UiEventLatencyBoundary::ReconciliationStart,
+                source_timestamped_events: 2,
+                minimum_nanoseconds: Some(200_000),
+                maximum_nanoseconds: Some(900_000),
+                mean_nanoseconds: Some(550_000),
+            }
+        );
+    }
+
+    #[test]
+    fn malformed_event_timestamps_are_typed_and_preserve_durable_frame_state() {
+        let (document, text_input) = text_input_document("safe", false);
+        let mut runtime = UiRuntime::new(document);
+        let accepted = runtime.reconcile(frame(vec![
+            UiEvent::FocusNext,
+            UiEvent::SelectAllText,
+            UiEvent::TextCommit("accepted".to_owned()),
+        ]));
+
+        let mut missing_boundary = frame(vec![UiEvent::TextCommit("bad".to_owned())]);
+        missing_boundary.event_timestamps = vec![UiEventTimestamp::new(0, 10)];
+        let mut out_of_range = frame(vec![UiEvent::TextCommit("bad".to_owned())]);
+        out_of_range.frame_boundary_monotonic_nanoseconds = Some(20);
+        out_of_range.event_timestamps = vec![UiEventTimestamp::new(1, 10)];
+        let mut duplicate_indexes = frame(vec![UiEvent::FocusNext, UiEvent::Activate]);
+        duplicate_indexes.frame_boundary_monotonic_nanoseconds = Some(20);
+        duplicate_indexes.event_timestamps =
+            vec![UiEventTimestamp::new(0, 10), UiEventTimestamp::new(0, 11)];
+        let mut backwards_source = frame(vec![UiEvent::FocusNext, UiEvent::Activate]);
+        backwards_source.frame_boundary_monotonic_nanoseconds = Some(20);
+        backwards_source.event_timestamps =
+            vec![UiEventTimestamp::new(0, 11), UiEventTimestamp::new(1, 10)];
+        let mut after_boundary = frame(vec![UiEvent::TextCommit("bad".to_owned())]);
+        after_boundary.frame_boundary_monotonic_nanoseconds = Some(20);
+        after_boundary.event_timestamps = vec![UiEventTimestamp::new(0, 21)];
+        let mut too_many = frame(vec![UiEvent::TextCommit("bad".to_owned())]);
+        too_many.frame_boundary_monotonic_nanoseconds = Some(20);
+        too_many.event_timestamps =
+            vec![UiEventTimestamp::new(0, 10), UiEventTimestamp::new(0, 11)];
+
+        let cases = [
+            (
+                missing_boundary,
+                UiEventTimestampError::MissingFrameBoundaryTimestamp,
+            ),
+            (
+                out_of_range,
+                UiEventTimestampError::EventIndexOutOfRange {
+                    event_index: 1,
+                    event_count: 1,
+                },
+            ),
+            (
+                duplicate_indexes,
+                UiEventTimestampError::EventIndexesNotStrictlyIncreasing {
+                    previous_event_index: 0,
+                    event_index: 0,
+                },
+            ),
+            (
+                backwards_source,
+                UiEventTimestampError::SourceTimeWentBackward {
+                    previous_nanoseconds: 11,
+                    source_nanoseconds: 10,
+                },
+            ),
+            (
+                after_boundary,
+                UiEventTimestampError::SourceAfterFrameBoundary {
+                    event_index: 0,
+                    source_nanoseconds: 21,
+                    frame_boundary_nanoseconds: 20,
+                },
+            ),
+            (
+                too_many,
+                UiEventTimestampError::TooManyTimestamps {
+                    count: 2,
+                    event_count: 1,
+                },
+            ),
+        ];
+
+        for (input, error) in cases {
+            assert_eq!(
+                runtime.try_reconcile(input),
+                Err(UiFrameError::InvalidEventTimestamps(error))
+            );
+            assert_eq!(runtime.text_input_value(text_input), Some("accepted"));
+            assert_eq!(runtime.revision, accepted.revision);
+            assert_eq!(runtime.focused, accepted.focused);
+            assert_eq!(
+                runtime
+                    .last_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.revision),
+                Some(accepted.revision)
+            );
+        }
+    }
+
+    #[test]
+    fn frame_modifiers_are_immutable_and_rejection_preserves_the_accepted_state() {
+        let document = runtime_overlay_document().expect("runtime overlay document");
+        let mut runtime = UiRuntime::new(document);
+        let mut accepted_input = frame(Vec::new());
+        accepted_input.modifiers = UiModifiers::from_keys([UiModifierKey::Command]);
+        accepted_input.text_scale = UiTextScale::from_percent(200).expect("valid scale");
+        let accepted = runtime.reconcile(accepted_input);
+        assert!(accepted.modifiers.command());
+        assert!(accepted.modifiers.primary_command());
+
+        let mut rejected_input = frame(vec![UiEvent::FocusNext; MAX_FRAME_EVENTS + 1]);
+        rejected_input.modifiers = UiModifiers::from_keys([UiModifierKey::Shift]);
+        rejected_input.text_scale = UiTextScale::MAXIMUM;
+        let rejected = runtime.reconcile(rejected_input);
+        assert_eq!(rejected.modifiers, accepted.modifiers);
+        assert_eq!(rejected.text_scale, accepted.text_scale);
+        assert!(rejected.frame_diagnostics.recovered_previous_snapshot);
     }
 
     #[test]
@@ -7377,6 +11581,51 @@ mod tests {
         assert!(output.scroll_outcomes[0].remaining.y.abs() < 0.01);
         assert!((output.scroll_outcomes[1].consumed.y - 10.5).abs() < 0.01);
         assert_eq!(output.scroll_outcomes[2].phase, UiScrollPhase::End);
+        assert!(output.frame_diagnostics.layout_work.root_computations >= 2);
+    }
+
+    #[test]
+    fn pointer_device_cancel_releases_its_scroll_gesture_target() {
+        let (document, _, inner) = nested_scroll_document();
+        let mut runtime = UiRuntime::new(document);
+        let device = UiInputDeviceId::new(0x5c);
+        let mut begin = frame(vec![scroll_event(
+            device,
+            UiScrollPhase::Begin,
+            UiScrollUnit::Pixels,
+            10.0,
+        )]);
+        begin.viewport = UiSize::new(200.0, 100.0);
+        let started = runtime.reconcile(begin);
+        assert_eq!(started.scroll_outcomes[0].target, Some(inner));
+        assert_eq!(
+            runtime.scroll_capture.map(|capture| capture.device),
+            Some(device)
+        );
+
+        let mut cancel = frame(vec![UiEvent::Pointer(UiPointerEvent {
+            device,
+            kind: UiInputDeviceKind::Trackpad,
+            phase: UiPointerPhase::Cancel,
+            position: UiPoint { x: 10.0, y: 10.0 },
+            button: None,
+        })]);
+        cancel.viewport = UiSize::new(200.0, 100.0);
+        runtime.reconcile(cancel);
+        assert!(runtime.scroll_capture.is_none());
+
+        let mut momentum = frame(vec![scroll_event(
+            device,
+            UiScrollPhase::Momentum,
+            UiScrollUnit::Pixels,
+            10.0,
+        )]);
+        momentum.viewport = UiSize::new(200.0, 100.0);
+        let rejected = runtime.reconcile(momentum);
+        assert_eq!(rejected.scroll_outcomes[0].target, None);
+        assert!(rejected
+            .diagnostics
+            .contains(&UiDiagnostic::ScrollTargetUnavailable));
     }
 
     #[test]
@@ -7614,6 +11863,37 @@ mod tests {
     }
 
     #[test]
+    fn focused_search_clear_is_contextual_routed_and_undoable() {
+        let search = UiNodeId::new(0x1_600);
+        let document = UiDocument::new(
+            search,
+            vec![UiNode::search_input(search, "Search project", "Camera")],
+        )
+        .expect("search fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        let cleared =
+            runtime.reconcile(frame(vec![UiEvent::FocusNext, UiEvent::ClearFocusedSearch]));
+        assert_eq!(runtime.text_input_value(search), Some(""));
+        assert_eq!(
+            cleared.event_routes.last().map(|route| route.node),
+            Some(search)
+        );
+
+        runtime.reconcile(frame(vec![UiEvent::UndoText]));
+        assert_eq!(runtime.text_input_value(search), Some("Camera"));
+
+        let (plain_document, plain) = text_input_document("Camera", false);
+        let mut plain_runtime = UiRuntime::new(plain_document);
+        let denied =
+            plain_runtime.reconcile(frame(vec![UiEvent::FocusNext, UiEvent::ClearFocusedSearch]));
+        assert_eq!(plain_runtime.text_input_value(plain), Some("Camera"));
+        assert!(denied
+            .diagnostics
+            .contains(&UiDiagnostic::SearchClearDenied { node: plain }));
+    }
+
+    #[test]
     fn text_undo_and_redo_follow_the_focused_private_editor() {
         let (document, input) = text_input_document("one", false);
         let mut runtime = UiRuntime::new(document);
@@ -7659,6 +11939,7 @@ mod tests {
     #[test]
     fn collection_navigation_typeahead_and_filtering_preserve_stable_identity() {
         let (document, alpha, _, gamma) = collection_document(true);
+        let tree = document.root();
         let mut runtime = UiRuntime::new(document);
         let output = runtime.reconcile(frame(vec![
             UiEvent::AssistiveFocus(alpha),
@@ -7670,10 +11951,215 @@ mod tests {
         let (filtered, _, _, _) = collection_document(false);
         runtime.replace_document(filtered);
         assert_eq!(runtime.focused, None);
-        assert_eq!(runtime.collection_cursor.selected, Some(gamma));
+        assert_eq!(
+            runtime
+                .active_collection
+                .and_then(|container| runtime.collection_cursors.get(&container))
+                .and_then(|cursor| cursor.selected),
+            Some(gamma)
+        );
+
+        let empty = UiDocument::new(tree, vec![UiNode::tree(tree, "Items", Vec::new())])
+            .expect("empty collection document");
+        runtime.replace_document(empty);
+        let unavailable = runtime.reconcile(frame(vec![UiEvent::NavigateCollection(
+            UiCollectionNavigation::Next,
+        )]));
+        assert_eq!(unavailable.focused, None);
+        assert!(unavailable
+            .diagnostics
+            .contains(&UiDiagnostic::NoFocusableNode));
+        assert_eq!(runtime.collection_cursors[&tree].selected, Some(gamma));
 
         let (restored, _, _, _) = collection_document(true);
         runtime.replace_document(restored);
         assert_eq!(runtime.focused, Some(gamma));
+    }
+
+    #[test]
+    fn collection_selection_is_retained_independently_per_container() {
+        let root = UiNodeId::new(0x650);
+        let tree = UiNodeId::new(0x651);
+        let alpha = UiNodeId::new(0x652);
+        let beta = UiNodeId::new(0x653);
+        let tabs = UiNodeId::new(0x654);
+        let world = UiNodeId::new(0x655);
+        let code = UiNodeId::new(0x656);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Collections",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![tree, tabs],
+                ),
+                UiNode::tree(tree, "Hierarchy", vec![alpha, beta]),
+                UiNode::tree_item(alpha, "Alpha", "world.select-alpha", false, false),
+                UiNode::tree_item(beta, "Beta", "world.select-beta", false, false),
+                UiNode::tabs(tabs, "Workspaces", vec![world, code]),
+                UiNode::tab(world, "World", "workspace.world", true),
+                UiNode::tab(code, "Code", "workspace.code", false),
+            ],
+        )
+        .expect("multi-collection fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        runtime.reconcile(frame(vec![
+            UiEvent::AssistiveFocus(alpha),
+            UiEvent::NavigateCollection(UiCollectionNavigation::End),
+            UiEvent::AssistiveFocus(world),
+            UiEvent::NavigateCollection(UiCollectionNavigation::End),
+        ]));
+        assert_eq!(runtime.focused, Some(code));
+        assert_eq!(runtime.collection_cursors.len(), 2);
+        assert_eq!(runtime.collection_cursors[&tree].selected, Some(beta));
+        assert_eq!(runtime.collection_cursors[&tabs].selected, Some(code));
+
+        let without_tabs = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Collections",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![tree],
+                ),
+                UiNode::tree(tree, "Hierarchy", vec![alpha, beta]),
+                UiNode::tree_item(alpha, "Alpha", "world.select-alpha", false, false),
+                UiNode::tree_item(beta, "Beta", "world.select-beta", false, false),
+            ],
+        )
+        .expect("filtered multi-collection fixture is valid");
+        runtime.replace_document(without_tabs);
+
+        assert_eq!(runtime.focused, Some(beta));
+        assert_eq!(runtime.active_collection, Some(tree));
+        assert_eq!(runtime.collection_cursors.len(), 1);
+        assert_eq!(runtime.collection_cursors[&tree].selected, Some(beta));
+    }
+
+    #[test]
+    fn collection_recovery_uses_declared_order_instead_of_numeric_identity() {
+        let root = UiNodeId::new(0x700);
+        let tree = UiNodeId::new(0x790);
+        let alpha = UiNodeId::new(0x791);
+        let beta = UiNodeId::new(0x792);
+        let tabs = UiNodeId::new(0x710);
+        let world = UiNodeId::new(0x711);
+        let code = UiNodeId::new(0x712);
+        let list = UiNodeId::new(0x750);
+        let first = UiNodeId::new(0x751);
+        let second = UiNodeId::new(0x752);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Collections",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![tree, tabs, list],
+                ),
+                UiNode::tree(tree, "Hierarchy", vec![alpha, beta]),
+                UiNode::tree_item(alpha, "Alpha", "world.alpha", false, false),
+                UiNode::tree_item(beta, "Beta", "world.beta", false, false),
+                UiNode::tabs(tabs, "Workspaces", vec![world, code]),
+                UiNode::tab(world, "World", "workspace.world", true),
+                UiNode::tab(code, "Code", "workspace.code", false),
+                UiNode::virtual_list(list, "Assets", vec![first, second]),
+                UiNode::list_item(first, "First asset", "asset.first", false),
+                UiNode::list_item(second, "Second asset", "asset.second", false),
+            ],
+        )
+        .expect("ordered collection fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        runtime.reconcile(frame(vec![
+            UiEvent::AssistiveFocus(alpha),
+            UiEvent::NavigateCollection(UiCollectionNavigation::End),
+            UiEvent::AssistiveFocus(world),
+            UiEvent::NavigateCollection(UiCollectionNavigation::End),
+            UiEvent::AssistiveFocus(first),
+            UiEvent::NavigateCollection(UiCollectionNavigation::End),
+        ]));
+
+        let without_active_list = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Collections",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![tree, tabs],
+                ),
+                UiNode::tree(tree, "Hierarchy", vec![alpha]),
+                UiNode::tree_item(alpha, "Alpha", "world.alpha", false, false),
+                UiNode::tabs(tabs, "Workspaces", vec![world, code]),
+                UiNode::tab(world, "World", "workspace.world", true),
+                UiNode::tab(code, "Code", "workspace.code", false),
+            ],
+        )
+        .expect("ordered recovery fixture is valid");
+        runtime.replace_document(without_active_list);
+
+        assert_eq!(runtime.active_collection, Some(tree));
+        assert_eq!(runtime.focused, None);
+        assert_eq!(runtime.collection_cursors[&tree].selected, Some(beta));
+        assert!(
+            tabs < tree,
+            "fixture must oppose numeric and declared order"
+        );
+
+        let restored_tree = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Collections",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![tree, tabs],
+                ),
+                UiNode::tree(tree, "Hierarchy", vec![alpha, beta]),
+                UiNode::tree_item(alpha, "Alpha", "world.alpha", false, false),
+                UiNode::tree_item(beta, "Beta", "world.beta", false, false),
+                UiNode::tabs(tabs, "Workspaces", vec![world, code]),
+                UiNode::tab(world, "World", "workspace.world", true),
+                UiNode::tab(code, "Code", "workspace.code", false),
+            ],
+        )
+        .expect("restored ordered collection fixture is valid");
+        runtime.replace_document(restored_tree);
+        assert_eq!(runtime.focused, Some(beta));
+    }
+
+    #[test]
+    fn removing_the_active_collection_recovers_to_a_valid_non_collection_control() {
+        let list = UiNodeId::new(0x800);
+        let item = UiNodeId::new(0x801);
+        let button = UiNodeId::new(0x802);
+        let document = UiDocument::new(
+            list,
+            vec![
+                UiNode::virtual_list(list, "Assets", vec![item]),
+                UiNode::list_item(item, "Camera", "asset.camera", false),
+            ],
+        )
+        .expect("collection removal fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        runtime.reconcile(frame(vec![UiEvent::AssistiveFocus(item)]));
+
+        let replacement = UiDocument::new(
+            button,
+            vec![UiNode::button(
+                button,
+                "Open project",
+                "project.open",
+                "Open",
+            )],
+        )
+        .expect("non-collection replacement is valid");
+        runtime.replace_document(replacement);
+
+        assert_eq!(runtime.active_collection, None);
+        assert!(runtime.collection_cursors.is_empty());
+        assert_eq!(runtime.focused, Some(button));
     }
 }

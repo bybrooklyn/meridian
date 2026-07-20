@@ -2,7 +2,7 @@
 
 [Master](MERIDIAN_MASTER_SPEC.md) · [Roadmap](DELIVERY_ROADMAP.md) · [Competitive quality](COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md) · [Registries](registry/) · [Examples](API_AND_FILE_FORMAT_EXAMPLES.md)
 
-version 0.5 · 2026-07-15 · Normative evidence authority
+version 0.5 · 2026-07-18 · Normative evidence authority
 
 Documentation maturity: `ImplementationReady`. Implementation maturity:
 `Partial`. Governing IDs: `REQ-REL-001` through `REQ-REL-004`, `REQ-GOV-002`,
@@ -138,6 +138,39 @@ latency, infer allocator/VRAM/residency, establish a calibrated result, or
 replace presented visual, real screen-reader, accessibility, or cross-platform
 review.
 
+Direct-atlas regressions cover exact-content reuse with collision-safe fallback,
+typed separation of image, atlas, and vertex/index bounds, repeated glyphs,
+zero-area whitespace masks, and preparation of the retained 2x framework
+component gallery without platform-specific state. A mapped presented surface
+is still required for visual review; successful headless preparation or an
+occluded window cannot provide it.
+
+The presented-review path is separately visible and uses the canonical 2x
+direct-UI corpus. It may write review artifacts only from a mapped presented
+surface; `SkippedOccluded` and other unavailable outcomes remain durable
+`Inconclusive` failures. Its machine result is `AwaitingHumanReview` even when
+capture succeeds. The artifact and its human review are distinct evidence;
+neither establishes screen-reader, calibrated-performance, or cross-platform
+qualification.
+
+Retained-runtime diagnostics tests require measured monotonic durations for
+each Meridian-owned successful-frame phase while excluding those durations from
+deterministic snapshot equality. Input-latency fixtures provide source and
+reconciliation-boundary timestamps from one synthetic monotonic epoch and
+verify exact minimum, maximum, mean, timestamped-event count, and boundary
+identity. Missing boundary time, out-of-range or duplicate event indexes,
+backward source time, source time after the boundary, and timestamp-count
+overflow are typed rejections that preserve the last accepted revision, focus,
+and private text state. Untimestamped frames must remain explicitly unavailable
+rather than deriving latency from frame intervals. These tests do not claim
+input-to-presented-surface latency.
+
+Real assistive-client review uses the bounded `ui_accessibility_review` runner,
+not the four-redraw structural adapter smoke. It records actual native-adapter
+actions, redacts action payload contents, and lists the spoken-output and focus
+checks that remain reviewer-owned. No observed action before its deadline is
+`NotRun`; adapter projection alone is not screen-reader qualification.
+
 ## 4. Test portfolio
 
 - compile/static: format, clippy, type/API/schema, forbidden edges, unsafe,
@@ -151,6 +184,9 @@ review.
   versions, CPU/reference;
 - fuzz/adversarial: untrusted projects/imports/shaders/packages/saves/scripts,
   network/VCS/build/provider/agent inputs;
+- managed-toolchain: exact-pin resolution, component hash/license verification,
+  atomic activation, interrupted update/recovery, rollback, side-by-side
+  compatibility, and cleanup retention when `WP-BLD-002` activates;
 - end-to-end: creator journeys, prototype/slice, build/package/install/launch,
   server/mod/agent profiles when activated;
 - soak/recovery: cancellation, crash, device/surface/audio/provider loss,
@@ -266,7 +302,7 @@ silence/NaN/clipping/loudness/underrun; semantic captions/cues; optional voice p
 
 Gameplay/frameworks: Rust API schema and reflection; module lifecycle; isolated Play rebuild/restart and rollback; save/headless/replay; typed event/command ordering; framework removal/forking; local-player contexts; dedicated-server and multi-project evidence. Optional Luau adds generated binding parity, sandbox, budgets, migration, mixed-project, and stripped-build tests without blocking Rust evidence.
 
-Animation/navigation: skeleton/clip/graph/event identity, import/migration, retargeting, streaming, root motion, rollback and CPU/GPU deformation differential; navigation artifact build, profiles, streamed seams, bounded queries, dynamic obstacles, partial results, replay, and game-authority separation.
+Artus/navigation: semantic rig/clip/profile/graph/contact/intent identity; import/migration; malformed-rig and hostile-input validation; retargeting; graph fallback; motion/Cairn reconciliation; streaming; root motion; rollback; contact and interaction recovery; motion LOD; accessible diagnostic workflows; and CPU/GPU deformation differential where implemented. Navigation validation covers artifact build, profiles, streamed seams, bounded queries, dynamic obstacles, partial results, replay, and game-authority separation.
 
 First-class 2D: atlas determinism/bleeding, pixel/DPI policy, stable layer order, tile migration/streaming, dedicated Cairn 2D contacts/queries/joints, mixed-view composition, 2D-only stripped builds, batching, overdraw, memory, and accessibility.
 

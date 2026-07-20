@@ -5,8 +5,8 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
 use accesskit::{
-    Action, ActionData, ActionRequest, Invalid, Live, Node, NodeId, Rect, Role, Tree, TreeId,
-    TreeUpdate,
+    Action, ActionData, ActionRequest, Invalid, Live, Node, NodeId, Rect, Role, Toggled, Tree,
+    TreeId, TreeUpdate,
 };
 use meridian_ui_core::{SemanticRole, UiNodeId, MAX_RETAINED_NODES, MAX_TEXT_BYTES};
 use meridian_ui_semantics::{
@@ -310,7 +310,11 @@ fn project_state(
         // Meridian represents the logical on/off state as `selected`; the
         // private adapter must express it as a native switch toggle rather
         // than a list/tab selection state.
-        SemanticRole::ToggleButton => node.set_toggled(semantic_node.state.selected.into()),
+        SemanticRole::ToggleButton => node.set_toggled(if semantic_node.state.mixed {
+            Toggled::Mixed
+        } else {
+            semantic_node.state.selected.into()
+        }),
         SemanticRole::Tab | SemanticRole::Option | SemanticRole::TreeItem
             if semantic_node.state.selected =>
         {
@@ -760,6 +764,7 @@ mod tests {
         let root = UiNodeId::new(0x60);
         let toggle = UiNodeId::new(0x61);
         let tab = UiNodeId::new(0x62);
+        let mixed = UiNodeId::new(0x63);
         let mut toggle_node = semantic_node(
             toggle,
             Some(root),
@@ -778,6 +783,14 @@ mod tests {
             UiRect::new(UiPoint { x: 128.0, y: 0.0 }, UiSize::new(80.0, 32.0)),
         );
         tab_node.state.selected = true;
+        let mut mixed_node = semantic_node(
+            mixed,
+            Some(root),
+            SemanticRole::ToggleButton,
+            "Inherited visibility",
+            UiRect::new(UiPoint { x: 216.0, y: 0.0 }, UiSize::new(160.0, 32.0)),
+        );
+        mixed_node.state.mixed = true;
         let semantic = SemanticTree {
             root: Some(root),
             focus: Some(toggle),
@@ -791,6 +804,7 @@ mod tests {
                 ),
                 toggle_node,
                 tab_node,
+                mixed_node,
             ],
         };
 
@@ -798,11 +812,15 @@ mod tests {
         let update = bridge.project(&semantic).expect("switch tree projects");
         let toggle = &update.nodes[1].1;
         let tab = &update.nodes[2].1;
+        let mixed = &update.nodes[3].1;
         assert_eq!(toggle.role(), Role::Switch);
         assert_eq!(toggle.toggled(), Some(accesskit::Toggled::True));
         assert_eq!(toggle.is_selected(), None);
         assert_eq!(tab.role(), Role::Tab);
         assert_eq!(tab.is_selected(), Some(true));
+        assert_eq!(mixed.role(), Role::Switch);
+        assert_eq!(mixed.toggled(), Some(accesskit::Toggled::Mixed));
+        assert_eq!(mixed.is_selected(), None);
     }
 
     #[test]

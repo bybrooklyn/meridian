@@ -167,7 +167,7 @@ compatible package work, but these responsibilities may not be omitted:
 ~~~rust
 pub struct UiNodeId(pub StableId);
 pub struct UiDocument { /* schema, root, nodes, styles */ }
-pub struct UiFrameInput { /* viewport, device events, presentation time */ }
+pub struct UiFrameInput { /* viewport, device events, frame-boundary timing */ }
 pub struct UiFrameSnapshot { /* immutable layout, display, semantics */ }
 pub struct ThemeId(pub StableId);
 pub struct TokenId(pub StableId);
@@ -202,8 +202,10 @@ immutable frame rather than discarding source or allocating inside an adapter.
 
 Input also has typed pointer IDs, positions, buttons, modifiers, capture,
 scroll momentum, text/composition events, drag payload descriptors, and device
-classes. Editor interfaces include panel sizing, preview/pinned tabs, focus
-layouts, companion-window identity, and versioned workspace-state persistence.
+classes. Optional event source timestamps are indexed, bounded, and comparable
+only against a declared reconciliation boundary in the same monotonic epoch.
+Editor interfaces include panel sizing, preview/pinned tabs, focus layouts,
+companion-window identity, and versioned workspace-state persistence.
 
 ## 6. Retained document and frame pipeline
 
@@ -256,6 +258,14 @@ target. A direct adapter that cannot obtain a compatible sRGB target rejects
 that path explicitly instead of presenting misencoded color. Direct image
 resources are bounded straight-alpha RGBA8 sRGB inputs; premultiplication occurs
 exactly once at the shader/blend boundary.
+
+Direct atlas preparation reuses byte-identical glyph and image payloads only
+after collision-safe content comparison. Vertex/index geometry, individual
+image sources, and the aggregate RGBA atlas have distinct typed bounds; the
+atlas shares the registered full-frame RGBA service guard rather than borrowing
+the geometry budget. Valid zero-area glyph masks, such as whitespace, allocate
+no atlas region or draw geometry while retaining their text primitive and
+semantic identity.
 
 Axis-aligned control, image, glyph, clip, and focus geometry snaps to physical
 pixel edges before NDC conversion. Rounded content uses adaptive physical-radius
@@ -465,12 +475,25 @@ changes, semantic nodes, virtualized ranges, animation count, and recovery
 events. Thresholds are calibrated on the registered UI corpus; no global number
 is invented in this specification.
 
+Every accepted retained frame reports saturated monotonic nanosecond durations
+for the Meridian-owned reconciliation, layout, text-shaping, text-rasterization,
+display-validation, and semantic-delta phases. Layout includes intrinsic text
+measurement, so phase values may overlap and must not be summed into a total.
+Source-to-reconciliation-boundary event latency is available only when the
+platform adapter supplies a bounded event-index side table and one frame-boundary
+timestamp from the same monotonic epoch. Index order, source-time order, bounds,
+and source times after that boundary are rejected before retained state changes.
+Partial timestamp coverage is reported explicitly by count; untimestamped frames
+remain `Unavailable`. The presentation interval is never reinterpreted as
+latency, and true input-to-presented-surface latency remains platform/renderer
+evidence because presentation occurs after retained reconciliation.
+
 The framework supports deterministic 1× and 2× snapshots, logical/physical
 scale separation, device loss, font substitution, corrupt-state recovery, and
 display-list replay. Visual evidence must be presented; headless or occluded
 submission cannot claim visual quality.
 
-`WP-UI-005` has three separate, non-promoting native evidence runners for the
+`WP-UI-005` has four separate, non-promoting native evidence runners for the
 direct display-list path. The hidden qualification runner captures only an
 opt-in copy-source offscreen target, emits raw RGBA8 plus PNG/metadata, and
 compares all current corpus cases exactly against a versioned fixture. A fixture
@@ -499,9 +522,26 @@ submission/readback-wait observations, typed RHI timing outcomes, capture
 diagnostics, and exact payload accounting. It records unavailable backend
 allocation, VRAM, driver-residency, and unsupported/inconclusive timing as
 such. It sets no numeric threshold, does not convert readback wait into GPU or
-interactive latency, and is not calibrated performance evidence. None of these
-offscreen runners is a presented native visual review, real screen-reader
-evidence, accessibility qualification, or cross-platform qualification.
+interactive latency, and is not calibrated performance evidence.
+
+The visible presented-review runner maps a native window at the canonical 2x
+corpus size, requests advisory platform focus without assuming it succeeds,
+and writes PNG, raw RGBA, metadata, hashes, and a profile-bound report only
+after `Presented` or `PresentedSuboptimal` surface readback succeeds. Occluded
+or unavailable presentation remains a durable `Inconclusive` failure. Runner
+success leaves `review_status` as `AwaitingHumanReview`; it cannot manufacture
+a visual-quality verdict. None of the four runners replaces real screen-reader,
+accessibility, calibrated-performance, or cross-platform qualification.
+
+The separate `ui_accessibility_review` runner keeps a bounded native AccessKit
+fixture alive for an explicit review interval and records only actions delivered
+through the private platform adapter. Its semantic tree covers reading order,
+an editable value, relationships, expandable state, typed activation, progress,
+focus, and a live region. Action payload text is redacted from evidence. A
+timeout without a real assistive-client action is `NotRun`; an observed action
+remains `Inconclusive` until the reviewer confirms spoken names, values, states,
+ordering, live updates, and focus recovery. Synthetic adapter calls cannot
+satisfy this contract.
 
 ## 20. Delivery packages and completion
 

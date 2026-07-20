@@ -271,7 +271,10 @@ pub struct UiRenderCacheKey {
     pub content_revision: u64,
     pub theme: ThemeId,
     pub density: UiDensity,
+    /// Physical display scale rounded to thousandths.
     pub scale_milli: u16,
+    /// Independent user-selected logical text scale in whole percent.
+    pub text_scale_percent: u16,
     pub contrast: UiContrast,
     pub motion: MotionPreference,
     pub font_revision: u64,
@@ -855,6 +858,7 @@ mod tests {
             theme: ThemeId::new(2),
             density: UiDensity::Standard,
             scale_milli: 1_000,
+            text_scale_percent: 100,
             contrast: UiContrast::Standard,
             motion: MotionPreference::Full,
             font_revision: 3,
@@ -876,6 +880,10 @@ mod tests {
             },
             UiRenderCacheKey {
                 scale_milli: 2_000,
+                ..base
+            },
+            UiRenderCacheKey {
+                text_scale_percent: 200,
                 ..base
             },
             UiRenderCacheKey {

@@ -1,8 +1,8 @@
 # Security, Signing, Updates, and Supply Chain
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [Packages](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [Collective](COLLECTIVE_ONLINE_SERVICES_SPEC.md) · [Distributed worlds](DISTRIBUTED_WORLDS_AND_MMO_SPEC.md) · [Integrity](INTEGRITY_ANTI_CHEAT_AND_MODERATION_SPEC.md) · [Agents](AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [Build and IDE](CARGO_IDE_BUILD_AND_TEAM_WORKFLOWS.md) · [Packages](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [Collective](COLLECTIVE_ONLINE_SERVICES_SPEC.md) · [Distributed worlds](DISTRIBUTED_WORLDS_AND_MMO_SPEC.md) · [Integrity](INTEGRITY_ANTI_CHEAT_AND_MODERATION_SPEC.md) · [Agents](AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md)
 
-version 0.5 · 2026-07-15 · Normative
+version 0.5 · 2026-07-18 · Normative
 
 Documentation maturity: `ResearchReady`. Implementation maturity: `Planned`.
 Governing IDs: `REQ-SEC-001`, `WP-SEC-001`, `RG-SEC-001`.
@@ -99,6 +99,18 @@ Policies cover generation, backup, quorum/threshold, access logging, expiry, rot
 
 Offline package install follows equivalent verification and trust prompts.
 
+The same pipeline governs externally managed development-toolchain components:
+`rustc`, Cargo, rust-analyzer, platform SDKs, debuggers, and external shader
+compilers. Their functional ownership, project pins, compatible-component
+resolution, and editor/CLI workflow are defined by the [Build and IDE
+specification](CARGO_IDE_BUILD_AND_TEAM_WORKFLOWS.md#31-managed-development-toolchains).
+Security policy requires each component's exact artifact hash, declared length,
+signature/provenance result, license/notice record, compatibility metadata, and
+activation generation to be verified before atomic side-by-side activation.
+Project pins remain immutable during global/default updates, repairs, rollback,
+and cleanup; no recovery path may silently upgrade, downgrade, or substitute a
+pinned component.
+
 ## 8. Package, mod, and plugin trust
 
 Trust levels are explicit: local-unsigned, locally trusted, developer signed, provider/community signed, game-approved, release signed, revoked. A valid signature establishes key provenance, not safety.
@@ -164,6 +176,9 @@ Interrupted update preserves active version and quarantined resumable chunks. Fa
 - Alluvium provenance propagation, target-policy cooker rejection, private
   corpus redaction, runtime budget exhaustion, and hostile recipe limits;
 - update activate/health/rollback and full key-compromise drill;
+- managed-toolchain quarantine, hash/signature/license/compatibility rejection,
+  atomic activation, interrupted update, exact repair, rollback, and pinned
+  component retention tests;
 - external review before 1.0 for selected shipping threat surfaces.
 
 ## 15. Delivery mapping

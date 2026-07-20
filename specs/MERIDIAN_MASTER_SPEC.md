@@ -1,6 +1,6 @@
 # Meridian Master Specification
 
-version 0.5 · 2026-07-15 · Normative suite index
+version 0.5 · 2026-07-18 · Normative suite index
 
 Meridian is a general-purpose engine for games and interactive applications. Penumbra is its Meridian-owned renderer. The Alluvium Engine is its adopted procedural world-authoring and asset-generation architecture. Marquee is its adopted post-1.0 promotional-material authoring and local-export architecture. `PRG-REL-001` is its deferred post-1.0 program for seeking and proving workload-specific performance and quality leadership without making a permanent superiority promise. Project Meridian is the first proving game, maintained in the separate private `bybrooklyn/project-meridian` repository and never a dependency of this engine repository.
 
@@ -60,6 +60,9 @@ Full prose remains in Markdown. Registries provide typed identity, ownership, st
 - `REQ-CORE-002`: expert workflows MUST remain available through typed Rust APIs, CLI commands, schemas, build events, and diagnostics.
 - `REQ-CORE-003`: disabled optional packs MUST add no tasks, threads, listeners, GPU resources, allocations, panels, dependencies, or package chunks.
 - `REQ-CORE-004`: engine crates MUST NOT depend on Project Meridian code or content.
+- `REQ-BLD-002`: projects MUST pin exact compatible, separately managed
+  development-toolchain components; component updates MUST be verified,
+  recoverable, license-tracked, and unable to silently change a project pin.
 - `REQ-DAT-001`: authoritative editable data MUST be schema-defined, versioned, inspectable, recoverable, mergeable, and distinct from derived caches.
 - `REQ-AGT-001`: editor UI, CLI, Rust tools, MCP, and agents MUST share typed command/query semantics; AI has no privileged backdoor.
 - `REQ-REL-001`: performance, quality, compatibility, and competitor claims MUST be reproducible, scoped, and calibrated.
@@ -98,7 +101,7 @@ Full prose remains in Markdown. Registries provide typed identity, ownership, st
 | Wavefront audio, music, acoustics, and voice-device boundary | [AUDIO_MUSIC_AND_ACOUSTICS_SPEC.md](AUDIO_MUSIC_AND_ACOUSTICS_SPEC.md) |
 | Gameplay, Rust-first APIs, optional Luau | [GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md](GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md) |
 | Official gameplay frameworks | [OFFICIAL_GAMEPLAY_FRAMEWORKS_SPEC.md](OFFICIAL_GAMEPLAY_FRAMEWORKS_SPEC.md) |
-| Animation, cinematics, and facial systems | [ANIMATION_CINEMATICS_AND_FACIAL_SYSTEMS_SPEC.md](ANIMATION_CINEMATICS_AND_FACIAL_SYSTEMS_SPEC.md) |
+| Artus body motion, cinematics, and facial systems | [ANIMATION_CINEMATICS_AND_FACIAL_SYSTEMS_SPEC.md](ANIMATION_CINEMATICS_AND_FACIAL_SYSTEMS_SPEC.md) |
 | Navigation and game-AI infrastructure boundary | [NAVIGATION_AND_AI_INFRASTRUCTURE_SPEC.md](NAVIGATION_AND_AI_INFRASTRUCTURE_SPEC.md) |
 | First-class 2D | [TWO_DIMENSIONAL_ENGINE_SPEC.md](TWO_DIMENSIONAL_ENGINE_SPEC.md) |
 | Meridian Shader Language and ShaderIr | [MERIDIAN_SHADER_LANGUAGE_SPEC.md](MERIDIAN_SHADER_LANGUAGE_SPEC.md) |

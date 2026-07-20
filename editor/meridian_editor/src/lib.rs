@@ -51,8 +51,8 @@ use meridian_package::{MountedPackage, PackageBuilder, PackageChunk, PackageLimi
 use meridian_platform::{
     run as run_platform, EventLoopMode, PlatformAccessibilityActionData,
     PlatformAccessibilityActionRequest, PlatformApplication, PlatformConfig, PlatformContext,
-    PlatformError, PlatformEvent, PlatformEventEnvelope, PlatformModifiers, PlatformWindow,
-    RuntimeLifecycle, SurfaceSignal, WindowSize,
+    PlatformError, PlatformEvent, PlatformEventEnvelope, PlatformImeCursorArea, PlatformModifiers,
+    PlatformWindow, RuntimeLifecycle, SurfaceSignal, WindowSize,
 };
 use meridian_renderer::{
     FoundationMeshDescriptor, MaterialHandle, MeshHandle, PenumbraFoundationRenderer,
@@ -73,17 +73,17 @@ use meridian_streaming::{
 };
 use meridian_tasks::{TaskClass, TaskContext};
 use meridian_ui::{
-    recovery_panel_document, runtime_overlay_document, SemanticAction, SemanticDelta, SemanticTree,
-    UiCollectionNavigation, UiCommandRequest, UiDiagnostic, UiEvent, UiFrameInput, UiFrameOutput,
-    UiInputDeviceId, UiInputDeviceKind, UiNodeId, UiPoint, UiPointerButton, UiPointerEvent,
-    UiPointerPhase, UiRuntime, UiScrollDelta, UiScrollEvent, UiScrollPhase, UiScrollUnit, UiSize,
-    UiTextCursorDirection, UiWidgetKind,
+    recovery_panel_document, runtime_overlay_document, CommandId, SemanticAction, SemanticDelta,
+    SemanticTree, UiAssistiveRequest, UiCollectionNavigation, UiCommandRequest, UiDiagnostic,
+    UiEvent, UiFrameInput, UiFrameOutput, UiInputDeviceId, UiInputDeviceKind, UiNodeId, UiPoint,
+    UiPointerButton, UiPointerEvent, UiPointerPhase, UiRuntime, UiScrollDelta, UiScrollEvent,
+    UiScrollPhase, UiScrollUnit, UiSize, UiTextCursorDirection, UiWidgetKind,
 };
 use meridian_ui_editor::{
     creator_hub_document, creator_workspace_document, creator_workspace_document_with_view,
-    model_inspector_document, recipe_inspector_document, CreatorWorkspaceView, RecentProjectView,
-    CREATOR_HUB_PROJECT_NAME, CREATOR_INSPECTOR_X_MM, CREATOR_INSPECTOR_Y_MM,
-    CREATOR_INSPECTOR_Z_MM,
+    decorate_world_viewport, model_inspector_document, recipe_inspector_document,
+    CreatorWorkspaceView, RecentProjectView, CREATOR_HUB_PROJECT_NAME, CREATOR_INSPECTOR_X_MM,
+    CREATOR_INSPECTOR_Y_MM, CREATOR_INSPECTOR_Z_MM,
 };
 use meridian_world::{CompiledWorldCell, SpatialDatabase};
 use meridian_world_tools::compile_world_source;
@@ -930,6 +930,12 @@ impl CreatorWorkspace {
             "Ready for a bounded local build.".to_owned()
         };
         CreatorWorkspaceView {
+            project: self
+                .root
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("Meridian Project")
+                .to_owned(),
             activity: self.status.clone(),
             recovery: format!(
                 "Recovery: {:?} · {} checkpoint(s).",
@@ -1091,11 +1097,57 @@ impl CreatorWorkspace {
     }
 }
 
+/// A rejected typed UI command that did not preserve its canonical identity.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UiEffectCommandError {
+    CommandIdentityMismatch,
+}
+
+impl Display for UiEffectCommandError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CommandIdentityMismatch => formatter.write_str(
+                "Creator UI ignored a malformed command effect; no project action was applied.",
+            ),
+        }
+    }
+}
+
+impl Error for UiEffectCommandError {}
+
+/// Collects only the canonical commands accepted at a completed UI frame.
+///
+/// A host-bound assistive operation deliberately carries its own command
+/// rather than borrowing the target node's ordinary activation command. That
+/// keeps Expand/Collapse and similar requests from degrading into clicks. A
+/// malformed frame effect rejects the complete batch rather than silently
+/// dropping one command or granting its text ambient authority.
+fn ui_effect_action_names(
+    commands: &[UiCommandRequest],
+    assistive_requests: &[UiAssistiveRequest],
+) -> Result<Vec<String>, UiEffectCommandError> {
+    let mut actions = Vec::with_capacity(commands.len().saturating_add(assistive_requests.len()));
+    for command in commands {
+        if CommandId::from_name(&command.action) != Some(command.command) {
+            return Err(UiEffectCommandError::CommandIdentityMismatch);
+        }
+        actions.push(command.action.clone());
+    }
+    for request in assistive_requests {
+        if CommandId::from_name(&request.command_name) != Some(request.command) {
+            return Err(UiEffectCommandError::CommandIdentityMismatch);
+        }
+        actions.push(request.command_name.clone());
+    }
+    Ok(actions)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CreatorUiAction {
     CreateProject,
     OpenProject,
     OpenRecent(usize),
+    LocateRecent(usize),
     RemoveRecent(usize),
     Recover,
     ReturnHub,
@@ -1129,6 +1181,14 @@ enum CreatorUiAction {
     ModelRecover,
     FocusSelection,
     ShowDiagnostics,
+    WorldWorkspace,
+    UnavailableWorkspace(&'static str),
+    ShellSearch,
+    ShellSettings,
+    ShellFavorites,
+    ShellPanels,
+    ShellPlayUnavailable,
+    ShellBuildUnavailable,
 }
 
 impl CreatorUiAction {
@@ -1168,12 +1228,29 @@ impl CreatorUiAction {
             "model.recover" => Self::ModelRecover,
             "editor.focus-selection" => Self::FocusSelection,
             "editor.show-diagnostic" => Self::ShowDiagnostics,
+            "workspace.world" => Self::WorldWorkspace,
+            "workspace.modeler" => Self::UnavailableWorkspace("Modeler"),
+            "workspace.ui" => Self::UnavailableWorkspace("UI"),
+            "workspace.code" => Self::UnavailableWorkspace("Code"),
+            "workspace.materials" => Self::UnavailableWorkspace("Materials"),
+            "workspace.alluvium" => Self::UnavailableWorkspace("Alluvium"),
+            "workspace.build" => Self::UnavailableWorkspace("Build"),
+            "workspace.profile" => Self::UnavailableWorkspace("Profile"),
+            "shell.search" => Self::ShellSearch,
+            "shell.settings" => Self::ShellSettings,
+            "shell.favorites" => Self::ShellFavorites,
+            "shell.panels" => Self::ShellPanels,
+            "shell.play-unavailable" => Self::ShellPlayUnavailable,
+            "shell.build-unavailable" => Self::ShellBuildUnavailable,
             _ => {
                 if let Some(index) = action.strip_prefix("hub.open-recent:") {
                     return Ok(Self::OpenRecent(index.parse()?));
                 }
                 if let Some(index) = action.strip_prefix("hub.remove-recent:") {
                     return Ok(Self::RemoveRecent(index.parse()?));
+                }
+                if let Some(index) = action.strip_prefix("hub.locate-recent:") {
+                    return Ok(Self::LocateRecent(index.parse()?));
                 }
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -1361,11 +1438,18 @@ impl CreatorApplication {
         Ok(())
     }
 
-    fn refresh_ui_without_events(&mut self) {
+    fn refresh_ui_without_events(&mut self) -> AppResult<()> {
         let mut input = UiFrameInput::new(self.logical_viewport);
         input.scale_factor = self.scale_factor;
         input.high_contrast = false;
-        self.frame = self.ui.reconcile(input);
+        let frame = self.ui.reconcile(input);
+        self.frame = match &self.screen {
+            CreatorScreen::Hub => frame,
+            CreatorScreen::Workspace(workspace) => {
+                decorate_world_viewport(&workspace.session, &frame)?
+            }
+        };
+        Ok(())
     }
 
     fn refresh_document_and_ui(&mut self) -> AppResult<()> {
@@ -1385,8 +1469,7 @@ impl CreatorApplication {
                 .ui
                 .reset_text_input_from_document(CREATOR_INSPECTOR_Z_MM);
         }
-        self.refresh_ui_without_events();
-        Ok(())
+        self.refresh_ui_without_events()
     }
 
     fn reconcile_ui(&mut self, context: &mut PlatformContext<'_>) -> AppResult<()> {
@@ -1399,6 +1482,7 @@ impl CreatorApplication {
         let had_pending_events = !pending_events.is_empty();
         let had_pending_actions = !self.pending_actions.is_empty();
         if !build_changed && !had_pending_events && !had_pending_actions {
+            self.sync_ime_cursor_area(context.window());
             return Ok(());
         }
         let mut input = UiFrameInput::new(self.logical_viewport);
@@ -1408,7 +1492,10 @@ impl CreatorApplication {
         let output = self.ui.reconcile(input);
         let clipboard_requested = !output.clipboard_requests.is_empty();
         let mut commands = self.pending_actions.drain(..).collect::<Vec<_>>();
-        commands.extend(output.commands.iter().map(|command| command.action.clone()));
+        match ui_effect_action_names(&output.commands, &output.assistive_requests) {
+            Ok(frame_actions) => commands.extend(frame_actions),
+            Err(error) => self.set_status(error.to_string()),
+        }
         self.dispatch_ui_actions(commands, context.window());
         if clipboard_requested {
             self.set_status(
@@ -1417,8 +1504,45 @@ impl CreatorApplication {
             );
         }
         self.refresh_document_and_ui()?;
+        self.sync_ime_cursor_area(context.window());
         self.rebuild_renderer_for_display()?;
+        self.schedule_bootstrap_renderer_refresh();
         Ok(())
+    }
+
+    fn sync_ime_cursor_area(&self, window: Option<&PlatformWindow>) {
+        let Some(window) = window else {
+            return;
+        };
+        let area = self
+            .frame
+            .focused
+            .filter(|focused| {
+                self.ui.document().node(*focused).is_some_and(|node| {
+                    matches!(
+                        node.kind,
+                        UiWidgetKind::TextInput | UiWidgetKind::SearchInput
+                    )
+                })
+            })
+            .and_then(|focused| {
+                self.frame
+                    .layout
+                    .iter()
+                    .find(|snapshot| snapshot.node == focused)
+                    .and_then(|snapshot| {
+                        PlatformImeCursorArea::new(
+                            snapshot.bounds.origin.x,
+                            snapshot.bounds.origin.y,
+                            snapshot.bounds.size.width,
+                            snapshot.bounds.size.height,
+                        )
+                    })
+            });
+        window.set_ime_allowed(area.is_some());
+        if let Some(area) = area {
+            window.set_ime_cursor_area(area);
+        }
     }
 
     fn dispatch_ui_actions(
@@ -1454,12 +1578,15 @@ impl CreatorApplication {
         let output = self.ui.reconcile(input);
         let clipboard_requested = !output.clipboard_requests.is_empty();
         let commands = output.commands.clone();
-        for command in &commands {
+        let actions = ui_effect_action_names(&commands, &output.assistive_requests)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+        for action in &actions {
             if matches!(
-                CreatorUiAction::parse(&command.action)?,
+                CreatorUiAction::parse(action)?,
                 CreatorUiAction::CreateProject
                     | CreatorUiAction::OpenProject
                     | CreatorUiAction::OpenRecent(_)
+                    | CreatorUiAction::LocateRecent(_)
                     | CreatorUiAction::RemoveRecent(_)
             ) {
                 return Err(io::Error::new(
@@ -1469,7 +1596,7 @@ impl CreatorApplication {
                 .into());
             }
         }
-        self.dispatch_ui_actions(commands.iter().map(|command| command.action.clone()), None);
+        self.dispatch_ui_actions(actions, None);
         if clipboard_requested {
             self.set_status(
                 "Clipboard access is unavailable until Meridian's platform adapter is active."
@@ -1534,7 +1661,12 @@ impl CreatorApplication {
     }
 
     fn open_project(&mut self, requested: &Path) -> AppResult<()> {
-        let mut workspace = CreatorWorkspace::open(requested)?;
+        let workspace = CreatorWorkspace::open(requested)?;
+        self.activate_workspace(workspace);
+        Ok(())
+    }
+
+    fn activate_workspace(&mut self, mut workspace: CreatorWorkspace) {
         self.hub.remember(&workspace.root);
         if self.hub_store.save(&self.hub).is_err() {
             workspace.status.push_str(
@@ -1543,6 +1675,41 @@ impl CreatorApplication {
         }
         self.inspector_field_sync = InspectorFieldSync::ResetFromAuthoritativeSource;
         self.screen = CreatorScreen::Workspace(Box::new(workspace));
+    }
+
+    fn locate_recent_project(
+        &mut self,
+        index: usize,
+        picker: &dyn CreatorProjectPicker,
+        window: Option<&PlatformWindow>,
+    ) -> AppResult<()> {
+        if !matches!(self.screen, CreatorScreen::Hub) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "recent-project remediation is available only from the project hub",
+            )
+            .into());
+        }
+        if index >= self.hub.recents.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "recent project index is unavailable",
+            )
+            .into());
+        }
+        let Some(root) = picker.pick_directory(window) else {
+            "Recent-project location was not changed.".clone_into(&mut self.hub_status);
+            return Ok(());
+        };
+        match CreatorWorkspace::open(&root) {
+            Ok(workspace) => {
+                self.hub.recents.remove(index);
+                self.activate_workspace(workspace);
+            }
+            Err(error) => {
+                self.hub_status = format!("The selected replacement is not openable: {error}");
+            }
+        }
         Ok(())
     }
 
@@ -1641,6 +1808,13 @@ impl CreatorApplication {
                     .clone();
                 self.open_project(Path::new(&path))?;
             }
+            CreatorUiAction::LocateRecent(index) => {
+                self.locate_recent_project(
+                    index,
+                    &NativeCreatorProjectPicker,
+                    wake_window.as_ref(),
+                )?;
+            }
             CreatorUiAction::RemoveRecent(index) => {
                 if index >= self.hub.recents.len() {
                     return Err(io::Error::new(
@@ -1656,6 +1830,42 @@ impl CreatorApplication {
             CreatorUiAction::ReturnHub => {
                 self.screen = CreatorScreen::Hub;
                 self.hub_status = "Project remains saved; choose a project to open.".to_owned();
+            }
+            CreatorUiAction::WorldWorkspace => {
+                self.set_status("World workspace is active.".to_owned());
+            }
+            CreatorUiAction::UnavailableWorkspace(workspace) => {
+                self.set_status(format!(
+                    "{workspace} has a defined Meridian layout but is not active in this bounded World package."
+                ));
+            }
+            CreatorUiAction::ShellSearch => {
+                let target = if matches!(self.screen, CreatorScreen::Workspace(_)) {
+                    meridian_ui_editor::CREATOR_WORLD_SEARCH
+                } else {
+                    CREATOR_HUB_PROJECT_NAME
+                };
+                if !self.ui.focus_retained_node(target) {
+                    self.set_status("Search is unavailable in the current surface.".to_owned());
+                }
+            }
+            CreatorUiAction::ShellSettings => {
+                self.set_status(
+                    "Settings has a defined Meridian surface and remains outside this World package."
+                        .to_owned(),
+                );
+            }
+            CreatorUiAction::ShellFavorites => {
+                self.set_status("World favorites are ready for a later source package.".to_owned());
+            }
+            CreatorUiAction::ShellPanels => {
+                self.set_status("The current World layout is the active named layout.".to_owned());
+            }
+            CreatorUiAction::ShellPlayUnavailable => {
+                self.hub_status = "Open a project before starting Play.".to_owned();
+            }
+            CreatorUiAction::ShellBuildUnavailable => {
+                self.hub_status = "Open a project before building.".to_owned();
             }
             action => self.execute_workspace_action_with_wake(action, wake_window)?,
         }
@@ -2022,8 +2232,19 @@ impl CreatorApplication {
             CreatorUiAction::CreateProject
             | CreatorUiAction::OpenProject
             | CreatorUiAction::OpenRecent(_)
+            | CreatorUiAction::LocateRecent(_)
             | CreatorUiAction::RemoveRecent(_)
-            | CreatorUiAction::ReturnHub => unreachable!("handled before workspace dispatch"),
+            | CreatorUiAction::ReturnHub
+            | CreatorUiAction::WorldWorkspace
+            | CreatorUiAction::UnavailableWorkspace(_)
+            | CreatorUiAction::ShellSearch
+            | CreatorUiAction::ShellSettings
+            | CreatorUiAction::ShellFavorites
+            | CreatorUiAction::ShellPanels
+            | CreatorUiAction::ShellPlayUnavailable
+            | CreatorUiAction::ShellBuildUnavailable => {
+                unreachable!("handled before workspace dispatch")
+            }
         }
         if reset_inspector_fields {
             self.inspector_field_sync = InspectorFieldSync::ResetFromAuthoritativeSource;
@@ -2215,7 +2436,7 @@ impl CreatorApplication {
             } else {
                 UiEvent::FocusNext
             }),
-            ButtonControl::Key(KeyCode::Enter) => self.pending_events.push(UiEvent::Activate),
+            ButtonControl::Key(KeyCode::Enter | KeyCode::Space) => self.queue_activation(),
             ButtonControl::Key(KeyCode::Backspace) => {
                 self.pending_events.push(UiEvent::DeleteTextBackward);
             }
@@ -2289,6 +2510,10 @@ impl CreatorApplication {
             }
             _ => {}
         }
+    }
+
+    fn queue_activation(&mut self) {
+        self.pending_events.push(UiEvent::Activate);
     }
 
     fn route_home_end(
@@ -2386,6 +2611,18 @@ impl CreatorApplication {
                     replace_selection: false,
                 });
             }
+            (
+                SemanticAction::Expand
+                | SemanticAction::Collapse
+                | SemanticAction::Increment
+                | SemanticAction::Decrement
+                | SemanticAction::ScrollIntoView
+                | SemanticAction::ShowContextMenu,
+                None,
+            ) => self.pending_events.push(UiEvent::AssistiveRequest {
+                target: request.target,
+                action: request.action,
+            }),
             _ => {
                 "Accessibility action was rejected because the control did not authorize it"
                     .clone_into(&mut self.hub_status);
@@ -5659,6 +5896,40 @@ mod tests {
     }
 
     #[test]
+    fn host_bound_assistive_actions_keep_their_explicit_command() {
+        let target = UiNodeId::new(0xA11);
+        let ordinary = UiCommandRequest {
+            source: target,
+            command: CommandId::from_name("world.select-camera").expect("valid command"),
+            action: "world.select-camera".to_owned(),
+        };
+        let expand = UiAssistiveRequest {
+            target,
+            action: SemanticAction::Expand,
+            command: CommandId::from_name("world.expand-camera").expect("valid command"),
+            command_name: "world.expand-camera".to_owned(),
+        };
+        assert_eq!(
+            ui_effect_action_names(&[ordinary], &[expand]),
+            Ok(vec![
+                "world.select-camera".to_owned(),
+                "world.expand-camera".to_owned(),
+            ])
+        );
+
+        let malformed = UiAssistiveRequest {
+            target,
+            action: SemanticAction::Expand,
+            command: CommandId::from_name("world.expand-camera").expect("valid command"),
+            command_name: "world.select-camera".to_owned(),
+        };
+        assert_eq!(
+            ui_effect_action_names(&[], &[malformed]),
+            Err(UiEffectCommandError::CommandIdentityMismatch)
+        );
+    }
+
+    #[test]
     #[allow(clippy::too_many_lines)] // Covers the complete typed Inspector transaction boundary.
     fn typed_inspector_ui_edits_persist_and_reject_invalid_or_noop_source_changes() {
         let nonce = SystemTime::now()
@@ -5841,6 +6112,113 @@ mod tests {
     }
 
     #[test]
+    fn missing_recent_location_is_explicit_transactional_and_cancellable() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let parent = std::env::temp_dir().join(format!("meridian-locate-recent-{nonce}"));
+        fs::create_dir(&parent).expect("temporary parent");
+        let replacement = create_public_creator_project(&parent, "Located Creator Project")
+            .expect("replacement project creates");
+        let missing = parent.join("moved-project");
+        let mut application = CreatorApplication::new(None, true).expect("Creator hub initializes");
+        application.hub.recents = vec![CreatorRecentProject {
+            label: "Moved project".to_owned(),
+            path: missing.display().to_string(),
+        }];
+        application.hub_store = CreatorHubStore {
+            path: parent.join("launch-hub.json"),
+        };
+
+        let cancelled = FakeCreatorProjectPicker {
+            selection: None,
+            invocations: Cell::new(0),
+        };
+        application
+            .locate_recent_project(0, &cancelled, None)
+            .expect("cancellation is nonfatal");
+        assert_eq!(cancelled.invocations.get(), 1);
+        assert_eq!(
+            application.hub.recents[0].path,
+            missing.display().to_string()
+        );
+        assert_eq!(
+            application.hub_status,
+            "Recent-project location was not changed."
+        );
+
+        let invalid = FakeCreatorProjectPicker {
+            selection: Some(parent.clone()),
+            invocations: Cell::new(0),
+        };
+        application
+            .locate_recent_project(0, &invalid, None)
+            .expect("invalid replacement remains hub remediation");
+        assert_eq!(invalid.invocations.get(), 1);
+        assert!(matches!(application.screen, CreatorScreen::Hub));
+        assert_eq!(
+            application.hub.recents[0].path,
+            missing.display().to_string()
+        );
+        assert!(application
+            .hub_status
+            .starts_with("The selected replacement is not openable:"));
+
+        let located = FakeCreatorProjectPicker {
+            selection: Some(replacement.clone()),
+            invocations: Cell::new(0),
+        };
+        application
+            .locate_recent_project(0, &located, None)
+            .expect("valid replacement opens transactionally");
+        assert_eq!(located.invocations.get(), 1);
+        assert!(matches!(application.screen, CreatorScreen::Workspace(_)));
+        let canonical_replacement = fs::canonicalize(&replacement)
+            .expect("replacement canonicalizes")
+            .display()
+            .to_string();
+        assert_eq!(application.hub.recents[0].path, canonical_replacement);
+        assert!(application
+            .hub
+            .recents
+            .iter()
+            .all(|recent| recent.path != missing.display().to_string()));
+        fs::remove_dir_all(parent).expect("temporary project removes");
+    }
+
+    #[test]
+    fn shell_search_restores_focus_to_the_current_surface_search_control() {
+        let mut hub =
+            CreatorApplication::new(None, true).expect("Creator hub initializes for search");
+        hub.execute_action_with_window("shell.search", None)
+            .expect("hub search action is typed");
+        hub.refresh_ui_without_events()
+            .expect("hub search focus reconciles");
+        assert_eq!(hub.frame.focused, Some(CREATOR_HUB_PROJECT_NAME));
+
+        let mut workspace = CreatorApplication::new(
+            Some(
+                &workspace_root()
+                    .expect("workspace root")
+                    .join("examples/creator-alpha"),
+            ),
+            true,
+        )
+        .expect("Creator workspace initializes for search");
+        workspace
+            .execute_action_with_window("shell.search", None)
+            .expect("World search action is typed");
+        workspace
+            .refresh_ui_without_events()
+            .expect("World search focus reconciles");
+        assert_eq!(
+            workspace.frame.focused,
+            Some(meridian_ui_editor::CREATOR_WORLD_SEARCH)
+        );
+    }
+
+    #[test]
     fn interactive_creator_lifetime_is_persistent_while_ui_smoke_is_bounded() {
         assert_eq!(MeridianOptions::default().mode, RunMode::Interactive);
         assert_eq!(creator_event_loop_mode(false), EventLoopMode::Wait);
@@ -5914,6 +6292,23 @@ mod tests {
                 })
             ]
         );
+    }
+
+    #[test]
+    fn creator_keyboard_space_activates_on_press() {
+        let mut application = CreatorApplication::new(None, true)
+            .expect("Creator hub initializes for keyboard input");
+
+        application.route_input(NativeInputEvent::Button {
+            control: ButtonControl::Key(KeyCode::Space),
+            down: true,
+        });
+        application.route_input(NativeInputEvent::Button {
+            control: ButtonControl::Key(KeyCode::Space),
+            down: false,
+        });
+
+        assert_eq!(application.pending_events, vec![UiEvent::Activate]);
     }
 
     #[test]

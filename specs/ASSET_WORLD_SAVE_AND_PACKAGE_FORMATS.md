@@ -87,7 +87,7 @@ package, not a monolithic compressed blob and not the editable source of truth.
 | CLI/MCP command registry | Scriptable inspect, validate, diff, repair, export, mount commands | Private AI-only mutation path |
 | The Alluvium Engine | Recipe source, generation dependencies, seeds, generated identity, override reconciliation, provenance, and cook requests | Asset/package identity authority, live subsystem state, or hidden artifact-only source |
 | Meridian native modeler | Editable model documents, stable mesh-element lineage, modeling operations and source facets | Asset-family identity, world-instance authority, runtime render/collision resources |
-| Animation and navigation | Versioned source/derived facets and stable handoff IDs | Asset catalog, source-world authority, or private importer state |
+| Artus and navigation | Versioned source/derived facets, rig/profile provenance, and stable handoff IDs | Asset catalog, source-world authority, or private importer state |
 | Marquee | Campaign references, deterministic promotion recipes, approvals, and export manifests | Original-media identity, rights/provenance authority, BuildId qualification, or project branding |
 
 ### 5.2 Invalid Dependencies

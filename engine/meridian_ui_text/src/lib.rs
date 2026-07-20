@@ -1,9 +1,11 @@
 //! Meridian-owned text contracts and the private Cosmic Text adapter.
 
 use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 use cosmic_text::{
-    fontdb, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, SwashContent,
+    fontdb, Attrs, Buffer, Family, FontSystem, Metrics, PhysicalGlyph, Shaping, SwashCache,
+    SwashContent,
 };
 use meridian_ui_core::{
     sanitized_scale_factor, UiFontRole, UiNodeId, UiPoint, UiTextValidation, MAX_RETAINED_NODES,
@@ -535,11 +537,108 @@ pub struct UiTextRaster {
     pub has_unrasterized_glyphs: bool,
 }
 
+/// Bounded shaping-cache activity since the preceding activity drain.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiTextCacheActivity {
+    pub hits: u32,
+    pub misses: u32,
+    pub evictions: u32,
+    /// Aggregate wall time spent resolving bounded shaping requests.
+    pub shaping_nanoseconds: u64,
+    /// Aggregate wall time spent rasterizing shaped glyphs.
+    pub rasterization_nanoseconds: u64,
+}
+
+/// Current bounded shaping-cache occupancy.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UiTextCacheOccupancy {
+    pub entries: usize,
+    pub key_bytes: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct UiTextCacheKey {
+    text: String,
+    width_bits: u32,
+    font_size_bits: u32,
+    scale_factor_bits: u32,
+    font_role: UiFontRole,
+}
+
+#[derive(Debug, Default)]
+struct UiTextShapeCache {
+    entries: VecDeque<(UiTextCacheKey, UiShapedText)>,
+    key_bytes: usize,
+    activity: UiTextCacheActivity,
+}
+
+impl UiTextShapeCache {
+    fn find(&mut self, key: &UiTextCacheKey) -> Option<UiShapedText> {
+        let shaped = self
+            .entries
+            .iter()
+            .find_map(|(candidate, shaped)| (candidate == key).then(|| shaped.clone()));
+        if shaped.is_some() {
+            self.activity.hits = self.activity.hits.saturating_add(1);
+        } else {
+            self.activity.misses = self.activity.misses.saturating_add(1);
+        }
+        shaped
+    }
+
+    fn insert(&mut self, key: UiTextCacheKey, shaped: UiShapedText) {
+        let key_bytes = key.text.len();
+        while self.entries.len() >= MAX_RETAINED_NODES
+            || self.key_bytes.saturating_add(key_bytes) > MAX_TEXT_BYTES
+        {
+            let Some((removed, _)) = self.entries.pop_front() else {
+                break;
+            };
+            self.key_bytes = self.key_bytes.saturating_sub(removed.text.len());
+            self.activity.evictions = self.activity.evictions.saturating_add(1);
+        }
+        self.key_bytes = self.key_bytes.saturating_add(key_bytes);
+        self.entries.push_back((key, shaped));
+    }
+
+    fn occupancy(&self) -> UiTextCacheOccupancy {
+        UiTextCacheOccupancy {
+            entries: self.entries.len(),
+            key_bytes: self.key_bytes,
+        }
+    }
+
+    fn take_activity(&mut self) -> UiTextCacheActivity {
+        std::mem::take(&mut self.activity)
+    }
+
+    fn record_shaping(&mut self, duration: Duration) {
+        self.activity.shaping_nanoseconds = self
+            .activity
+            .shaping_nanoseconds
+            .saturating_add(duration_nanoseconds(duration));
+    }
+
+    fn record_rasterization(&mut self, duration: Duration) {
+        self.activity.rasterization_nanoseconds = self
+            .activity
+            .rasterization_nanoseconds
+            .saturating_add(duration_nanoseconds(duration));
+    }
+}
+
 /// Private text adapter.  The public result is [`UiTextLayout`].
 #[derive(Debug)]
 pub struct UiTextEngine {
     fonts: FontSystem,
     swash: SwashCache,
+    shape_cache: UiTextShapeCache,
+}
+
+#[derive(Clone, Debug)]
+struct UiShapedText {
+    layout: UiTextLayout,
+    physical_glyphs: Vec<PhysicalGlyph>,
 }
 
 impl Default for UiTextEngine {
@@ -554,11 +653,45 @@ impl Default for UiTextEngine {
         Self {
             fonts,
             swash: SwashCache::new(),
+            shape_cache: UiTextShapeCache::default(),
         }
     }
 }
 
 impl UiTextEngine {
+    /// Shapes and measures bounded text without constructing glyph bitmaps.
+    ///
+    /// Layout calls this before geometry resolution so intrinsic size can
+    /// participate in reflow without paying a duplicate rasterization cost.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UiTextLayoutError::TextTooLarge`] before invoking Cosmic Text
+    /// when `text` exceeds [`MAX_TEXT_BYTES`].
+    pub fn measure(
+        &mut self,
+        text: &str,
+        width: f32,
+        font_size: f32,
+        scale_factor: f32,
+        font_role: UiFontRole,
+    ) -> Result<UiTextLayout, UiTextLayoutError> {
+        self.prepare(text, width, font_size, scale_factor, font_role)
+            .map(|shaped| shaped.layout)
+    }
+
+    /// Returns and clears shaping-cache activity accumulated since the previous
+    /// call. Occupancy remains available separately and the cache is retained.
+    pub fn take_cache_activity(&mut self) -> UiTextCacheActivity {
+        self.shape_cache.take_activity()
+    }
+
+    /// Reports current shaping-cache occupancy without exposing adapter types.
+    #[must_use]
+    pub fn cache_occupancy(&self) -> UiTextCacheOccupancy {
+        self.shape_cache.occupancy()
+    }
+
     /// Shapes and rasterizes one bounded text value.
     ///
     /// The retained-document boundary already enforces this limit for normal
@@ -577,12 +710,95 @@ impl UiTextEngine {
         scale_factor: f32,
         font_role: UiFontRole,
     ) -> Result<UiTextOutput, UiTextLayoutError> {
+        let shaped = self.prepare(text, width, font_size, scale_factor, font_role)?;
+        let rasterization_started = Instant::now();
+        let mut raster = UiTextRaster::default();
+        let mut raster_bytes = 0_usize;
+        for glyph in shaped.physical_glyphs {
+            let Some(image) = self.swash.get_image(&mut self.fonts, glyph.cache_key) else {
+                raster.has_unrasterized_glyphs = true;
+                continue;
+            };
+            if image.content != SwashContent::Mask {
+                raster.has_unrasterized_glyphs = true;
+                continue;
+            }
+            let width = image.placement.width;
+            let height = image.placement.height;
+            let Some(byte_count) = usize::try_from(width).ok().and_then(|width| {
+                usize::try_from(height)
+                    .ok()
+                    .and_then(|height| width.checked_mul(height))
+            }) else {
+                raster.has_unrasterized_glyphs = true;
+                continue;
+            };
+            if image.data.len() != byte_count
+                || raster_bytes.saturating_add(byte_count) > MAX_GLYPH_RASTER_BYTES
+            {
+                raster.has_unrasterized_glyphs = true;
+                break;
+            }
+            raster_bytes += byte_count;
+            raster.glyphs.push(UiGlyphBitmap {
+                origin: UiPoint {
+                    x: i32_to_f32(glyph.x.saturating_add(image.placement.left)),
+                    y: i32_to_f32(glyph.y.saturating_sub(image.placement.top)),
+                },
+                width,
+                height,
+                alpha: image.data.clone(),
+            });
+        }
+        self.shape_cache
+            .record_rasterization(rasterization_started.elapsed());
+        Ok(UiTextOutput {
+            layout: shaped.layout,
+            raster,
+        })
+    }
+
+    fn prepare(
+        &mut self,
+        text: &str,
+        width: f32,
+        font_size: f32,
+        scale_factor: f32,
+        font_role: UiFontRole,
+    ) -> Result<UiShapedText, UiTextLayoutError> {
         if text.len() > MAX_TEXT_BYTES {
             return Err(UiTextLayoutError::TextTooLarge {
                 bytes: text.len(),
                 maximum: MAX_TEXT_BYTES,
             });
         }
+        let shaping_started = Instant::now();
+        let scale_factor = sanitized_scale_factor(scale_factor);
+        let key = UiTextCacheKey {
+            text: text.to_owned(),
+            width_bits: width.to_bits(),
+            font_size_bits: font_size.to_bits(),
+            scale_factor_bits: scale_factor.to_bits(),
+            font_role,
+        };
+        if let Some(shaped) = self.shape_cache.find(&key) {
+            self.shape_cache.record_shaping(shaping_started.elapsed());
+            return Ok(shaped);
+        }
+        let shaped = self.shape(text, width, font_size, scale_factor, font_role);
+        self.shape_cache.insert(key, shaped.clone());
+        self.shape_cache.record_shaping(shaping_started.elapsed());
+        Ok(shaped)
+    }
+
+    fn shape(
+        &mut self,
+        text: &str,
+        width: f32,
+        font_size: f32,
+        scale_factor: f32,
+        font_role: UiFontRole,
+    ) -> UiShapedText {
         let scale_factor = sanitized_scale_factor(scale_factor);
         let family = Family::Name(bundled_family(font_role));
         let expected_font = self.fonts.db().query(&fontdb::Query {
@@ -636,45 +852,10 @@ impl UiTextEngine {
             used_fallback_font,
             font_role,
         };
-        let mut raster = UiTextRaster::default();
-        let mut raster_bytes = 0_usize;
-        for glyph in physical_glyphs {
-            let Some(image) = self.swash.get_image(&mut self.fonts, glyph.cache_key) else {
-                raster.has_unrasterized_glyphs = true;
-                continue;
-            };
-            if image.content != SwashContent::Mask {
-                raster.has_unrasterized_glyphs = true;
-                continue;
-            }
-            let width = image.placement.width;
-            let height = image.placement.height;
-            let Some(byte_count) = usize::try_from(width).ok().and_then(|width| {
-                usize::try_from(height)
-                    .ok()
-                    .and_then(|height| width.checked_mul(height))
-            }) else {
-                raster.has_unrasterized_glyphs = true;
-                continue;
-            };
-            if image.data.len() != byte_count
-                || raster_bytes.saturating_add(byte_count) > MAX_GLYPH_RASTER_BYTES
-            {
-                raster.has_unrasterized_glyphs = true;
-                break;
-            }
-            raster_bytes += byte_count;
-            raster.glyphs.push(UiGlyphBitmap {
-                origin: UiPoint {
-                    x: i32_to_f32(glyph.x.saturating_add(image.placement.left)),
-                    y: i32_to_f32(glyph.y.saturating_sub(image.placement.top)),
-                },
-                width,
-                height,
-                alpha: image.data.clone(),
-            });
+        UiShapedText {
+            layout,
+            physical_glyphs,
         }
-        Ok(UiTextOutput { layout, raster })
     }
 }
 
@@ -685,6 +866,10 @@ pub struct UiTextOutput {
 
 fn bounded_count_as_f32(value: usize) -> f32 {
     f32::from(u16::try_from(value).unwrap_or(u16::MAX))
+}
+
+fn duration_nanoseconds(duration: Duration) -> u64 {
+    u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
 }
 
 #[allow(clippy::cast_precision_loss)]
@@ -730,6 +915,140 @@ mod tests {
                 maximum: MAX_TEXT_BYTES,
             }) if observed == bytes
         ));
+    }
+
+    #[test]
+    fn measurement_matches_layout_without_constructing_a_second_raster() {
+        let mut engine = UiTextEngine::default();
+        let measured = engine
+            .measure(
+                "Intrinsic Meridian text",
+                180.0,
+                28.0,
+                2.0,
+                UiFontRole::Interface,
+            )
+            .expect("bounded fixture measures");
+        let output = engine
+            .layout(
+                "Intrinsic Meridian text",
+                180.0,
+                28.0,
+                2.0,
+                UiFontRole::Interface,
+            )
+            .expect("bounded fixture lays out");
+        assert_eq!(measured, output.layout);
+        assert!(!output.raster.glyphs.is_empty());
+        let activity = engine.take_cache_activity();
+        assert_eq!(
+            (activity.hits, activity.misses, activity.evictions),
+            (1, 1, 0)
+        );
+        assert_eq!(
+            engine.cache_occupancy(),
+            UiTextCacheOccupancy {
+                entries: 1,
+                key_bytes: "Intrinsic Meridian text".len(),
+            }
+        );
+    }
+
+    #[test]
+    fn shaping_cache_keys_every_geometry_and_font_input() {
+        let mut engine = UiTextEngine::default();
+        let base = ("Meridian", 180.0, 28.0, 1.0, UiFontRole::Interface);
+        engine
+            .measure(base.0, base.1, base.2, base.3, base.4)
+            .expect("base fixture shapes");
+        let _ = engine.take_cache_activity();
+        for (text, width, font_size, scale, role) in [
+            ("Changed", base.1, base.2, base.3, base.4),
+            (base.0, 181.0, base.2, base.3, base.4),
+            (base.0, base.1, 29.0, base.3, base.4),
+            (base.0, base.1, base.2, 2.0, base.4),
+            (base.0, base.1, base.2, base.3, UiFontRole::Display),
+        ] {
+            engine
+                .measure(text, width, font_size, scale, role)
+                .expect("changed fixture shapes");
+        }
+        let activity = engine.take_cache_activity();
+        assert_eq!(
+            (activity.hits, activity.misses, activity.evictions),
+            (0, 5, 0)
+        );
+        assert_eq!(activity.rasterization_nanoseconds, 0);
+    }
+
+    #[test]
+    fn cache_activity_accumulates_saturating_phase_durations() {
+        let mut cache = UiTextShapeCache::default();
+        cache.record_shaping(Duration::from_nanos(7));
+        cache.record_shaping(Duration::from_nanos(11));
+        cache.record_rasterization(Duration::from_nanos(13));
+
+        assert_eq!(
+            cache.take_activity(),
+            UiTextCacheActivity {
+                hits: 0,
+                misses: 0,
+                evictions: 0,
+                shaping_nanoseconds: 18,
+                rasterization_nanoseconds: 13,
+            }
+        );
+        assert_eq!(cache.take_activity(), UiTextCacheActivity::default());
+    }
+
+    #[test]
+    fn shaping_cache_evicts_fifo_within_shared_count_and_byte_bounds() {
+        let mut cache = UiTextShapeCache::default();
+        let shaped = UiShapedText {
+            layout: UiTextLayout::default(),
+            physical_glyphs: Vec::new(),
+        };
+        let key = |text: String, width: f32| UiTextCacheKey {
+            text,
+            width_bits: width.to_bits(),
+            font_size_bits: 14.0_f32.to_bits(),
+            scale_factor_bits: 1.0_f32.to_bits(),
+            font_role: UiFontRole::Interface,
+        };
+        let first_bytes = MAX_TEXT_BYTES / 2 + 1;
+        cache.insert(key("a".repeat(first_bytes), 100.0), shaped.clone());
+        cache.insert(key("b".repeat(first_bytes), 100.0), shaped.clone());
+        assert_eq!(cache.entries.len(), 1);
+        assert_eq!(cache.key_bytes, first_bytes);
+        assert_eq!(cache.activity.evictions, 1);
+
+        cache.entries.clear();
+        cache.key_bytes = 0;
+        cache.activity = UiTextCacheActivity::default();
+        for index in 0..=MAX_RETAINED_NODES {
+            let width = f32::from(u16::try_from(index).expect("retained-node bound fits u16"));
+            cache.insert(key(String::new(), width), shaped.clone());
+        }
+        assert_eq!(cache.entries.len(), MAX_RETAINED_NODES);
+        assert_eq!(cache.key_bytes, 0);
+        assert_eq!(cache.activity.evictions, 1);
+    }
+
+    #[test]
+    fn oversized_text_rejection_preserves_shaping_cache_state() {
+        let mut engine = UiTextEngine::default();
+        engine
+            .measure("accepted", 180.0, 28.0, 1.0, UiFontRole::Interface)
+            .expect("bounded fixture shapes");
+        let _ = engine.take_cache_activity();
+        let occupancy = engine.cache_occupancy();
+        let text = "x".repeat(MAX_TEXT_BYTES + 1);
+        assert!(matches!(
+            engine.measure(&text, 180.0, 28.0, 1.0, UiFontRole::Interface),
+            Err(UiTextLayoutError::TextTooLarge { .. })
+        ));
+        assert_eq!(engine.cache_occupancy(), occupancy);
+        assert_eq!(engine.take_cache_activity(), UiTextCacheActivity::default());
     }
 
     #[test]

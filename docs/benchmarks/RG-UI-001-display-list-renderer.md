@@ -3,7 +3,8 @@
 Date: 2026-07-17
 Package: `WP-UI-005`
 Evidence class: local structural corpus, non-promoting offscreen runner output,
-and dependency/maintenance review
+presented review input awaiting a human verdict, and dependency/maintenance
+review
 Qualification limit: dirty/local output is `Inconclusive`; no visual-quality,
 calibrated latency, screen-reader, cross-platform, or package-promotion claim
 
@@ -86,6 +87,11 @@ the production renderer.
   capture diagnostics, and payload accounting; backend allocation, VRAM, and
   driver residency remain explicitly unavailable. Its data are uncalibrated and
   do not set a latency, FPS, memory, or visual-quality claim.
+- The visible presented-review runner requests platform focus, presents the
+  canonical 2x corpus, and writes PNG/raw RGBA/profile metadata only after a
+  presented-surface readback succeeds. Occlusion is an explicit inconclusive
+  failure. Successful capture remains `AwaitingHumanReview`; the runner cannot
+  approve its own visual output.
 - High contrast and unsupported effect profiles resolve bounded backdrops to
   their required opaque color. Focus geometry is rectangular; no decorative
   ring is part of the contract.
@@ -109,6 +115,7 @@ cargo run -p meridian-renderer --features ui-direct --example ui_direct_smoke
 MERIDIAN_SOURCE_STATE=working-tree MERIDIAN_SOURCE_CHECKPOINT=<path-free-source-id> cargo run -p meridian-benchmark --example ui_direct_qualification --features ui-direct-qualification -- --evidence target/meridian-evidence/ui-direct-qualification/<unique>
 MERIDIAN_SOURCE_STATE=working-tree MERIDIAN_SOURCE_CHECKPOINT=<path-free-source-id> cargo run -p meridian-benchmark --example ui_direct_device_loss_replay --features ui-direct-device-loss -- --evidence target/meridian-evidence/ui-direct-device-loss-replay/<unique>
 MERIDIAN_SOURCE_STATE=working-tree MERIDIAN_SOURCE_CHECKPOINT=<path-free-source-id> cargo run -p meridian-benchmark --example ui_direct_performance --features ui-direct-qualification -- --evidence target/meridian-evidence/ui-direct-performance/<unique>
+MERIDIAN_SOURCE_STATE=working-tree MERIDIAN_SOURCE_CHECKPOINT=<path-free-source-id> cargo run -p meridian-benchmark --example ui_direct_presented_review --features ui-direct-qualification -- --evidence target/meridian-evidence/ui-direct-presented-review/<unique>
 ~~~
 
 The source variables are caller-declared local provenance labels, not trusted

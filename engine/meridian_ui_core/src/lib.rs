@@ -33,6 +33,8 @@ pub const MAX_DROP_OPERATIONS: usize = 3;
 /// each operation needs an explicit, validated host command before it can be
 /// exposed to an assistive adapter.
 pub const MAX_ASSISTIVE_ACTION_BINDINGS: usize = 5;
+/// Minimum logical extent of a focusable control at every supported text scale.
+pub const MIN_ACCESSIBLE_CONTROL_EXTENT: f32 = 44.0;
 
 /// Sanitizes untrusted platform scale input to the supported 50-400% interval.
 #[must_use]
@@ -41,6 +43,44 @@ pub fn sanitized_scale_factor(value: f32) -> f32 {
         value.clamp(MIN_SUPPORTED_SCALE_FACTOR, MAX_SUPPORTED_SCALE_FACTOR)
     } else {
         1.0
+    }
+}
+
+/// User-selected logical text scale, independent from physical display DPI.
+///
+/// Values are restricted to the specification's 100-400 percent interval at
+/// construction, so downstream layout and text adapters never receive an
+/// unbounded accessibility multiplier.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct UiTextScale(u16);
+
+impl UiTextScale {
+    pub const MINIMUM: Self = Self(100);
+    pub const MAXIMUM: Self = Self(400);
+
+    #[must_use]
+    pub const fn from_percent(percent: u16) -> Option<Self> {
+        if percent >= Self::MINIMUM.0 && percent <= Self::MAXIMUM.0 {
+            Some(Self(percent))
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub const fn percent(self) -> u16 {
+        self.0
+    }
+
+    #[must_use]
+    pub fn factor(self) -> f32 {
+        f32::from(self.0) / 100.0
+    }
+}
+
+impl Default for UiTextScale {
+    fn default() -> Self {
+        Self::MINIMUM
     }
 }
 
@@ -99,6 +139,76 @@ stable_ui_id!(
     UiSharedElementId,
     "Stable identity pairing source and destination presentations across retained nodes."
 );
+
+/// Platform-neutral modifier state accepted at one immutable UI frame boundary.
+///
+/// The private bit representation prevents platform key types from entering
+/// Meridian UI while keeping independent modifier combinations compact and
+/// deterministic.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct UiModifiers(u8);
+
+/// One Meridian-owned modifier key used to construct [`UiModifiers`].
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum UiModifierKey {
+    Shift,
+    Control,
+    Alt,
+    Command,
+}
+
+impl UiModifiers {
+    const SHIFT_BIT: u8 = 1 << 0;
+    const CONTROL_BIT: u8 = 1 << 1;
+    const ALT_BIT: u8 = 1 << 2;
+    const COMMAND_BIT: u8 = 1 << 3;
+
+    #[must_use]
+    pub fn from_keys(keys: impl IntoIterator<Item = UiModifierKey>) -> Self {
+        let mut modifiers = Self::default();
+        for key in keys {
+            modifiers = modifiers.with(key);
+        }
+        modifiers
+    }
+
+    #[must_use]
+    pub const fn with(self, key: UiModifierKey) -> Self {
+        let bit = match key {
+            UiModifierKey::Shift => Self::SHIFT_BIT,
+            UiModifierKey::Control => Self::CONTROL_BIT,
+            UiModifierKey::Alt => Self::ALT_BIT,
+            UiModifierKey::Command => Self::COMMAND_BIT,
+        };
+        Self(self.0 | bit)
+    }
+
+    #[must_use]
+    pub const fn shift(self) -> bool {
+        self.0 & Self::SHIFT_BIT != 0
+    }
+
+    #[must_use]
+    pub const fn control(self) -> bool {
+        self.0 & Self::CONTROL_BIT != 0
+    }
+
+    #[must_use]
+    pub const fn alt(self) -> bool {
+        self.0 & Self::ALT_BIT != 0
+    }
+
+    #[must_use]
+    pub const fn command(self) -> bool {
+        self.0 & Self::COMMAND_BIT != 0
+    }
+
+    /// Returns whether the platform's primary command modifier is held.
+    #[must_use]
+    pub const fn primary_command(self) -> bool {
+        self.control() || self.command()
+    }
+}
 
 /// Maximum UTF-8 bytes accepted by one canonical command name.
 pub const MAX_COMMAND_NAME_BYTES: usize = 256;
@@ -160,6 +270,9 @@ pub enum UiInputDeviceKind {
 pub enum UiControllerControl {
     FocusPrevious,
     FocusNext,
+    NavigateCollection(UiCollectionNavigation),
+    AdjustFocused(UiControlAdjustment),
+    InvokeFocused(UiHostAssistiveAction),
     Activate,
     Cancel,
 }
@@ -284,14 +397,28 @@ pub enum UiTextValidation {
 }
 
 /// Stable collection-navigation actions shared by trees, tables, and lists.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum UiCollectionNavigation {
     Previous,
     Next,
+    PreviousRow,
+    NextRow,
+    RowStart,
+    RowEnd,
     Home,
     End,
     PageBackward,
     PageForward,
+}
+
+/// Direction of one bounded adjustment for a focused professional control.
+///
+/// The retained node supplies the canonical command bound to this semantic
+/// direction; the input event never carries an arbitrary command string.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum UiControlAdjustment {
+    Decrement,
+    Increment,
 }
 
 /// Selection cursor that preserves identity when filtering hides the row.
@@ -317,10 +444,14 @@ impl UiCollectionCursor {
         let last = visible.len() - 1;
         let page_size = page_size.max(1);
         let index = match navigation {
-            UiCollectionNavigation::Home => 0,
-            UiCollectionNavigation::End => last,
-            UiCollectionNavigation::Previous => current.unwrap_or(1).saturating_sub(1),
-            UiCollectionNavigation::Next => current.map_or(0, |index| (index + 1).min(last)),
+            UiCollectionNavigation::Home | UiCollectionNavigation::RowStart => 0,
+            UiCollectionNavigation::End | UiCollectionNavigation::RowEnd => last,
+            UiCollectionNavigation::Previous | UiCollectionNavigation::PreviousRow => {
+                current.unwrap_or(1).saturating_sub(1)
+            }
+            UiCollectionNavigation::Next | UiCollectionNavigation::NextRow => {
+                current.map_or(0, |index| (index + 1).min(last))
+            }
             UiCollectionNavigation::PageBackward => {
                 current.unwrap_or(page_size).saturating_sub(page_size)
             }
@@ -340,13 +471,74 @@ pub struct UiVirtualRange {
     pub end: usize,
 }
 
+/// Bounded source/realization contract for one virtualized retained collection.
+///
+/// `item_count` describes the source collection without allocating it. The
+/// half-open `realized` range names only the rows currently represented by
+/// retained children. Runtime navigation may request another range, but the
+/// source adapter remains responsible for mapping an index to a stable node ID.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiVirtualCollection {
+    pub item_count: usize,
+    pub realized: UiVirtualRange,
+}
+
+impl UiVirtualCollection {
+    /// Validates a virtual source descriptor without allocating source rows.
+    ///
+    /// # Errors
+    ///
+    /// Rejects a source above the structural collection bound, an inverted or
+    /// out-of-bounds range, or a realized window larger than one retained tree.
+    pub fn new(item_count: usize, realized: UiVirtualRange) -> Result<Self, UiVirtualRangeError> {
+        if item_count > MAX_VIRTUAL_ITEMS {
+            return Err(UiVirtualRangeError::TooManyItems {
+                count: item_count,
+                maximum: MAX_VIRTUAL_ITEMS,
+            });
+        }
+        if realized.start > realized.end || realized.end > item_count {
+            return Err(UiVirtualRangeError::InvalidRealizedRange {
+                start: realized.start,
+                end: realized.end,
+                item_count,
+            });
+        }
+        let count = realized.end.saturating_sub(realized.start);
+        if count > MAX_RETAINED_NODES {
+            return Err(UiVirtualRangeError::RealizedRangeTooLarge {
+                count,
+                maximum: MAX_RETAINED_NODES,
+            });
+        }
+        Ok(Self {
+            item_count,
+            realized,
+        })
+    }
+}
+
 /// Rejected virtualization request before row realization or allocation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UiVirtualRangeError {
-    TooManyItems { count: usize, maximum: usize },
+    TooManyItems {
+        count: usize,
+        maximum: usize,
+    },
     InvalidGeometry,
-    OverscanTooLarge { count: usize, maximum: usize },
-    RealizedRangeTooLarge { count: usize, maximum: usize },
+    InvalidRealizedRange {
+        start: usize,
+        end: usize,
+        item_count: usize,
+    },
+    OverscanTooLarge {
+        count: usize,
+        maximum: usize,
+    },
+    RealizedRangeTooLarge {
+        count: usize,
+        maximum: usize,
+    },
 }
 
 /// Calculates only the visible row range; it never allocates the full collection.
@@ -866,6 +1058,150 @@ pub enum UiWidgetKind {
     Canvas,
 }
 
+/// Framework-owned transient presentation family.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiTransientSurfaceKind {
+    ComboBox,
+    Menu,
+    ContextMenu,
+    Tooltip,
+    Toast,
+    CommandPalette,
+}
+
+/// Whether transient state gates a node itself or only its option subtree.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiTransientPresentation {
+    NodeAndSubtree,
+    Children,
+}
+
+/// Accepted starting state for one transient presentation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiTransientInitialState {
+    Hidden,
+    Queued,
+    Visible,
+}
+
+/// Bounded retained configuration for runtime-owned transient state.
+///
+/// Timings are caller-selected presentation policy. They never delay source
+/// transactions, allocate rows, or grant host authority. The runtime advances
+/// them only from the caller's monotonic frame interval.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiTransientSurface {
+    pub kind: UiTransientSurfaceKind,
+    pub presentation: UiTransientPresentation,
+    pub initial_state: UiTransientInitialState,
+    pub anchor: Option<UiNodeId>,
+    pub reveal_delay_ms: u32,
+    pub visible_duration_ms: Option<u32>,
+}
+
+/// Integer-tick interaction bounds for a retained timeline.
+///
+/// Domain time conversion remains outside Meridian UI. The framework owns only
+/// bounded preview, scrubbing, range selection, and zoom state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiTimelineContract {
+    pub minimum: i64,
+    pub maximum: i64,
+    pub source_value: i64,
+    pub step: u32,
+    pub page_step: u32,
+    pub minimum_zoom_percent: u16,
+    pub maximum_zoom_percent: u16,
+    pub initial_zoom_percent: u16,
+    pub zoom_step_percent: u16,
+}
+
+/// Bounded pan/zoom contract for graph and direct-manipulation canvases.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiCanvasContract {
+    pub pan_limit: i32,
+    pub initial_pan_x: i32,
+    pub initial_pan_y: i32,
+    pub minimum_zoom_percent: u16,
+    pub maximum_zoom_percent: u16,
+    pub initial_zoom_percent: u16,
+    pub zoom_step_percent: u16,
+}
+
+impl UiTransientSurface {
+    #[must_use]
+    pub const fn combo_box(initial_state: UiTransientInitialState) -> Self {
+        Self {
+            kind: UiTransientSurfaceKind::ComboBox,
+            presentation: UiTransientPresentation::Children,
+            initial_state,
+            anchor: None,
+            reveal_delay_ms: 0,
+            visible_duration_ms: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn menu(initial_state: UiTransientInitialState) -> Self {
+        Self {
+            kind: UiTransientSurfaceKind::Menu,
+            presentation: UiTransientPresentation::NodeAndSubtree,
+            initial_state,
+            anchor: None,
+            reveal_delay_ms: 0,
+            visible_duration_ms: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn context_menu(anchor: Option<UiNodeId>) -> Self {
+        Self {
+            kind: UiTransientSurfaceKind::ContextMenu,
+            presentation: UiTransientPresentation::NodeAndSubtree,
+            initial_state: UiTransientInitialState::Hidden,
+            anchor,
+            reveal_delay_ms: 0,
+            visible_duration_ms: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn tooltip(anchor: UiNodeId, reveal_delay_ms: u32) -> Self {
+        Self {
+            kind: UiTransientSurfaceKind::Tooltip,
+            presentation: UiTransientPresentation::NodeAndSubtree,
+            initial_state: UiTransientInitialState::Hidden,
+            anchor: Some(anchor),
+            reveal_delay_ms,
+            visible_duration_ms: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn toast(visible_duration_ms: u32) -> Self {
+        Self {
+            kind: UiTransientSurfaceKind::Toast,
+            presentation: UiTransientPresentation::NodeAndSubtree,
+            initial_state: UiTransientInitialState::Queued,
+            anchor: None,
+            reveal_delay_ms: 0,
+            visible_duration_ms: Some(visible_duration_ms),
+        }
+    }
+
+    #[must_use]
+    pub const fn command_palette(initial_state: UiTransientInitialState) -> Self {
+        Self {
+            kind: UiTransientSurfaceKind::CommandPalette,
+            presentation: UiTransientPresentation::NodeAndSubtree,
+            initial_state,
+            anchor: None,
+            reveal_delay_ms: 0,
+            visible_duration_ms: None,
+        }
+    }
+}
+
 /// Primary direction for Flex and Scroll layout.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UiAxis {
@@ -1052,11 +1388,44 @@ pub enum SemanticRole {
 }
 
 /// Interaction state projected to semantics without platform-native values.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum UiToggleValue {
+    #[default]
+    Off,
+    On,
+    Mixed,
+}
+
+impl From<bool> for UiToggleValue {
+    fn from(value: bool) -> Self {
+        if value {
+            Self::On
+        } else {
+            Self::Off
+        }
+    }
+}
+
+impl UiToggleValue {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::On => "on",
+            Self::Mixed => "mixed",
+        }
+    }
+}
+
+/// Interaction state projected to semantics without platform-native values.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct UiControlState {
     pub disabled: bool,
     pub selected: bool,
+    /// Indeterminate state for a tri-state toggle. It is mutually exclusive
+    /// with `selected` and invalid on every other semantic role.
+    pub mixed: bool,
     pub expanded: bool,
     pub invalid: bool,
 }
@@ -1230,15 +1599,25 @@ impl UiSemantics {
 
     #[must_use]
     pub fn toggle(name: impl Into<String>, action: impl Into<String>, value: bool) -> Self {
+        Self::toggle_value(name, action, value.into())
+    }
+
+    #[must_use]
+    pub fn toggle_value(
+        name: impl Into<String>,
+        action: impl Into<String>,
+        value: UiToggleValue,
+    ) -> Self {
         Self {
             role: SemanticRole::ToggleButton,
             name: name.into(),
             description: None,
             action: Some(action.into()),
             assistive_actions: Vec::new(),
-            value: Some(if value { "on" } else { "off" }.to_owned()),
+            value: Some(value.label().to_owned()),
             state: UiControlState {
-                selected: value,
+                selected: value == UiToggleValue::On,
+                mixed: value == UiToggleValue::Mixed,
                 ..UiControlState::default()
             },
             relationships: UiSemanticRelationships::default(),
@@ -1322,6 +1701,18 @@ pub enum UiStyleVariant {
 pub enum UiStyleReference {
     Variant(UiStyleVariant),
     LegacyTokenResolved,
+}
+
+/// Explicit inherited-style contract for a retained node.
+///
+/// Background, border, radius, and padding never inherit implicitly. Text
+/// inheritance carries only the resolved foreground and font size from the
+/// nearest retained parent, keeping layout and rendering deterministic.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum UiStyleInheritance {
+    #[default]
+    None,
+    Text,
 }
 
 /// Retained interaction flags used by deterministic state-selector resolution.
@@ -2251,6 +2642,8 @@ pub struct UiNode {
     pub style_reference: UiStyleReference,
     /// Compatibility request retained for `LegacyTokenResolved` callers.
     pub style: UiStyle,
+    /// Explicit, bounded inheritance applied after token/variant resolution.
+    pub style_inheritance: UiStyleInheritance,
     pub layout_hints: UiLayoutHints,
     pub constraints: UiConstraints,
     pub absolute_position: Option<UiAbsolutePosition>,
@@ -2262,6 +2655,14 @@ pub struct UiNode {
     pub text: Option<String>,
     pub text_input: Option<UiTextInputOptions>,
     pub text_validation: Option<UiTextValidation>,
+    /// Optional source/realization contract for a virtualized collection.
+    pub virtual_collection: Option<UiVirtualCollection>,
+    /// Optional framework-owned transient presentation contract.
+    pub transient: Option<UiTransientSurface>,
+    /// Optional bounded timeline interaction contract.
+    pub timeline: Option<UiTimelineContract>,
+    /// Optional bounded graph/canvas navigation contract.
+    pub canvas: Option<UiCanvasContract>,
     pub drag_source: Option<UiDragKind>,
     pub drop_accepts: Vec<UiDragKind>,
     pub drop_operations: Vec<UiDropOperation>,
@@ -2283,6 +2684,7 @@ impl UiNode {
             layout,
             style_reference: UiStyleReference::Variant(UiStyleVariant::Panel),
             style: UiStyle::panel(),
+            style_inheritance: UiStyleInheritance::None,
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
@@ -2293,6 +2695,10 @@ impl UiNode {
             text: None,
             text_input: None,
             text_validation: None,
+            virtual_collection: None,
+            transient: None,
+            timeline: None,
+            canvas: None,
             drag_source: None,
             drop_accepts: Vec::new(),
             drop_operations: Vec::new(),
@@ -2309,6 +2715,7 @@ impl UiNode {
             layout: UiLayout::Overlay,
             style_reference: UiStyleReference::Variant(UiStyleVariant::Text),
             style: UiStyle::text(),
+            style_inheritance: UiStyleInheritance::None,
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
@@ -2319,6 +2726,10 @@ impl UiNode {
             text: Some(text.into()),
             text_input: None,
             text_validation: None,
+            virtual_collection: None,
+            transient: None,
+            timeline: None,
+            canvas: None,
             drag_source: None,
             drop_accepts: Vec::new(),
             drop_operations: Vec::new(),
@@ -2340,6 +2751,7 @@ impl UiNode {
             layout: UiLayout::Overlay,
             style_reference: UiStyleReference::Variant(UiStyleVariant::SecondaryAction),
             style: UiStyle::secondary_action(),
+            style_inheritance: UiStyleInheritance::None,
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
@@ -2350,6 +2762,10 @@ impl UiNode {
             text: Some(text.into()),
             text_input: None,
             text_validation: None,
+            virtual_collection: None,
+            transient: None,
+            timeline: None,
+            canvas: None,
             drag_source: None,
             drop_accepts: Vec::new(),
             drop_operations: Vec::new(),
@@ -2376,6 +2792,7 @@ impl UiNode {
             layout: UiLayout::Overlay,
             style_reference: UiStyleReference::Variant(UiStyleVariant::TextField),
             style: UiStyle::text_field(),
+            style_inheritance: UiStyleInheritance::None,
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
@@ -2390,6 +2807,10 @@ impl UiNode {
             }),
             text_input: Some(options),
             text_validation: None,
+            virtual_collection: None,
+            transient: None,
+            timeline: None,
+            canvas: None,
             drag_source: None,
             drop_accepts: Vec::new(),
             drop_operations: Vec::new(),
@@ -2424,6 +2845,13 @@ impl UiNode {
     pub const fn with_style_variant(mut self, variant: UiStyleVariant) -> Self {
         self.style_reference = UiStyleReference::Variant(variant);
         self.style = variant.compatibility_style();
+        self
+    }
+
+    /// Inherits only resolved text foreground and font size from the retained parent.
+    #[must_use]
+    pub const fn with_inherited_text_style(mut self) -> Self {
+        self.style_inheritance = UiStyleInheritance::Text;
         self
     }
 
@@ -2488,6 +2916,37 @@ impl UiNode {
     #[must_use]
     pub const fn with_text_validation(mut self, validation: UiTextValidation) -> Self {
         self.text_validation = Some(validation);
+        self
+    }
+
+    /// Attaches a validated virtual source/window contract to this collection.
+    #[must_use]
+    pub const fn with_virtual_collection(mut self, collection: UiVirtualCollection) -> Self {
+        self.virtual_collection = Some(collection);
+        self
+    }
+
+    /// Attaches framework-owned open/close/reveal/expiry behavior.
+    #[must_use]
+    pub const fn with_transient_surface(mut self, transient: UiTransientSurface) -> Self {
+        self.semantics.state.expanded =
+            matches!(transient.initial_state, UiTransientInitialState::Visible)
+                && matches!(transient.kind, UiTransientSurfaceKind::ComboBox);
+        self.transient = Some(transient);
+        self
+    }
+
+    /// Attaches bounded scrubbing, range, and zoom behavior to a timeline.
+    #[must_use]
+    pub const fn with_timeline_contract(mut self, timeline: UiTimelineContract) -> Self {
+        self.timeline = Some(timeline);
+        self
+    }
+
+    /// Attaches bounded pan, zoom, and connection-preview behavior.
+    #[must_use]
+    pub const fn with_canvas_contract(mut self, canvas: UiCanvasContract) -> Self {
+        self.canvas = Some(canvas);
         self
     }
 
@@ -2592,7 +3051,7 @@ impl UiNode {
         node
     }
 
-    /// Creates a typed two-state control. Interaction behavior arrives in WP-UI-003.
+    /// Creates a typed two-state control.
     #[must_use]
     pub fn toggle(
         id: UiNodeId,
@@ -2600,22 +3059,46 @@ impl UiNode {
         action: impl Into<String>,
         value: bool,
     ) -> Self {
+        Self::toggle_value(id, name, action, value.into())
+    }
+
+    /// Creates a typed two- or three-state control without collapsing an
+    /// indeterminate value into an ordinary on/off selection.
+    #[must_use]
+    pub fn toggle_value(
+        id: UiNodeId,
+        name: impl Into<String>,
+        action: impl Into<String>,
+        value: UiToggleValue,
+    ) -> Self {
         Self {
             id,
             kind: UiWidgetKind::Toggle,
             layout: UiLayout::Overlay,
             style_reference: UiStyleReference::Variant(UiStyleVariant::SecondaryAction),
             style: UiStyle::secondary_action(),
+            style_inheritance: UiStyleInheritance::None,
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
             presentation: UiPresentationOptions::default(),
-            semantics: UiSemantics::toggle(name, action, value),
-            text: Some(if value { "On" } else { "Off" }.to_owned()),
+            semantics: UiSemantics::toggle_value(name, action, value),
+            text: Some(
+                match value {
+                    UiToggleValue::Off => "Off",
+                    UiToggleValue::On => "On",
+                    UiToggleValue::Mixed => "Mixed",
+                }
+                .to_owned(),
+            ),
             text_input: None,
             text_validation: None,
+            virtual_collection: None,
+            transient: None,
+            timeline: None,
+            canvas: None,
             drag_source: None,
             drop_accepts: Vec::new(),
             drop_operations: Vec::new(),
@@ -2634,6 +3117,7 @@ impl UiNode {
             layout: UiLayout::Overlay,
             style_reference: UiStyleReference::Variant(UiStyleVariant::Surface),
             style: UiStyle::surface(),
+            style_inheritance: UiStyleInheritance::None,
             layout_hints: UiLayoutHints::default(),
             constraints: UiConstraints::default(),
             absolute_position: None,
@@ -2644,6 +3128,10 @@ impl UiNode {
             text: Some(format!("{value}%")),
             text_input: None,
             text_validation: None,
+            virtual_collection: None,
+            transient: None,
+            timeline: None,
+            canvas: None,
             drag_source: None,
             drop_accepts: Vec::new(),
             drop_operations: Vec::new(),
@@ -2667,7 +3155,11 @@ impl UiNode {
         node
     }
 
-    /// Creates a keyboard-operable combo box with retained option children.
+    /// Creates a keyboard-operable combo box.
+    ///
+    /// A non-empty retained option subtree is the open presentation and is
+    /// therefore exposed as expanded to assistive adapters. Closed callers
+    /// omit the option subtree until their typed open command is accepted.
     #[must_use]
     pub fn combo_box(
         id: UiNodeId,
@@ -2677,13 +3169,30 @@ impl UiNode {
         children: Vec<UiNodeId>,
     ) -> Self {
         let name = name.into();
+        let expanded = !children.is_empty();
         let mut node = Self::button(id, name.clone(), action, value)
             .with_style_variant(UiStyleVariant::TextField);
         node.kind = UiWidgetKind::ComboBox;
         node.layout = UiLayout::VerticalStack { gap: 0.0 };
         node.semantics.role = SemanticRole::ComboBox;
+        node.semantics.state.expanded = expanded;
         node.children = children;
         node
+    }
+
+    /// Creates a combo box whose retained option subtree is gated by runtime
+    /// open/close state instead of requiring the host to add and remove rows.
+    #[must_use]
+    pub fn transient_combo_box(
+        id: UiNodeId,
+        name: impl Into<String>,
+        action: impl Into<String>,
+        value: impl Into<String>,
+        children: Vec<UiNodeId>,
+        initial_state: UiTransientInitialState,
+    ) -> Self {
+        Self::combo_box(id, name, action, value, children)
+            .with_transient_surface(UiTransientSurface::combo_box(initial_state))
     }
 
     /// Creates one typed, keyboard-operable combo-box option.
@@ -2728,6 +3237,18 @@ impl UiNode {
         )
     }
 
+    /// Creates a runtime-controlled menu surface with focus restoration.
+    #[must_use]
+    pub fn transient_menu(
+        id: UiNodeId,
+        name: impl Into<String>,
+        children: Vec<UiNodeId>,
+        initial_state: UiTransientInitialState,
+    ) -> Self {
+        Self::menu(id, name, children)
+            .with_transient_surface(UiTransientSurface::menu(initial_state))
+    }
+
     /// Creates a focus-preserving contextual menu surface.
     #[must_use]
     pub fn context_menu(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
@@ -2739,6 +3260,18 @@ impl UiNode {
             UiLayout::VerticalStack { gap: 0.0 },
             children,
         )
+    }
+
+    /// Creates a hidden contextual surface opened only through a typed runtime event.
+    #[must_use]
+    pub fn transient_context_menu(
+        id: UiNodeId,
+        name: impl Into<String>,
+        children: Vec<UiNodeId>,
+        anchor: Option<UiNodeId>,
+    ) -> Self {
+        Self::context_menu(id, name, children)
+            .with_transient_surface(UiTransientSurface::context_menu(anchor))
     }
 
     /// Creates a named menu item with release-based typed activation.
@@ -2764,6 +3297,19 @@ impl UiNode {
         node
     }
 
+    /// Creates a hover/focus-revealed tooltip that never steals focus.
+    #[must_use]
+    pub fn transient_tooltip(
+        id: UiNodeId,
+        name: impl Into<String>,
+        text: impl Into<String>,
+        anchor: UiNodeId,
+        reveal_delay_ms: u32,
+    ) -> Self {
+        Self::tooltip(id, name, text)
+            .with_transient_surface(UiTransientSurface::tooltip(anchor, reveal_delay_ms))
+    }
+
     /// Creates a bounded semantic live-region notification.
     #[must_use]
     pub fn toast(id: UiNodeId, name: impl Into<String>, text: impl Into<String>) -> Self {
@@ -2771,6 +3317,18 @@ impl UiNode {
         node.kind = UiWidgetKind::Toast;
         node.semantics.role = SemanticRole::LiveRegion;
         node
+    }
+
+    /// Creates one queued, expiring live-region notification.
+    #[must_use]
+    pub fn transient_toast(
+        id: UiNodeId,
+        name: impl Into<String>,
+        text: impl Into<String>,
+        visible_duration_ms: u32,
+    ) -> Self {
+        Self::toast(id, name, text)
+            .with_transient_surface(UiTransientSurface::toast(visible_duration_ms))
     }
 
     /// Creates a tab-list container.
@@ -2876,6 +3434,7 @@ impl UiNode {
         let mut node = Self::label(id, name, text);
         node.kind = UiWidgetKind::TableCell;
         node.semantics.role = SemanticRole::Cell;
+        node.focusable = true;
         node
     }
 
@@ -2932,6 +3491,18 @@ impl UiNode {
             UiLayout::Overlay,
             children,
         )
+        .with_focusable(true)
+    }
+
+    /// Creates a timeline with framework-owned bounded preview interaction.
+    #[must_use]
+    pub fn interactive_timeline(
+        id: UiNodeId,
+        name: impl Into<String>,
+        children: Vec<UiNodeId>,
+        contract: UiTimelineContract,
+    ) -> Self {
+        Self::timeline(id, name, children).with_timeline_contract(contract)
     }
 
     /// Creates a keyboard-operable splitter that proposes a typed resize command.
@@ -2963,6 +3534,18 @@ impl UiNode {
         )
     }
 
+    /// Creates a runtime-controlled command-palette dialog with focus restoration.
+    #[must_use]
+    pub fn transient_command_palette(
+        id: UiNodeId,
+        name: impl Into<String>,
+        children: Vec<UiNodeId>,
+        initial_state: UiTransientInitialState,
+    ) -> Self {
+        Self::command_palette(id, name, children)
+            .with_transient_surface(UiTransientSurface::command_palette(initial_state))
+    }
+
     /// Creates a renderer-neutral graph interaction region.
     #[must_use]
     pub fn graph(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
@@ -2977,6 +3560,17 @@ impl UiNode {
         .with_focusable(true)
     }
 
+    /// Creates a graph region with bounded framework-owned navigation state.
+    #[must_use]
+    pub fn interactive_graph(
+        id: UiNodeId,
+        name: impl Into<String>,
+        children: Vec<UiNodeId>,
+        contract: UiCanvasContract,
+    ) -> Self {
+        Self::graph(id, name, children).with_canvas_contract(contract)
+    }
+
     /// Creates a renderer-neutral direct-manipulation canvas region.
     #[must_use]
     pub fn canvas(id: UiNodeId, name: impl Into<String>, children: Vec<UiNodeId>) -> Self {
@@ -2989,6 +3583,17 @@ impl UiNode {
             children,
         )
         .with_focusable(true)
+    }
+
+    /// Creates a direct-manipulation canvas with bounded framework navigation.
+    #[must_use]
+    pub fn interactive_canvas(
+        id: UiNodeId,
+        name: impl Into<String>,
+        children: Vec<UiNodeId>,
+        contract: UiCanvasContract,
+    ) -> Self {
+        Self::canvas(id, name, children).with_canvas_contract(contract)
     }
 }
 
@@ -3098,6 +3703,34 @@ pub enum UiDocumentError {
         maximum: usize,
     },
     InvalidSemanticCollectionItem(UiNodeId),
+    InvalidVirtualCollection(UiNodeId),
+    VirtualCollectionOnUnsupportedNode(UiNodeId),
+    VirtualCollectionSetSizeMismatch {
+        collection: UiNodeId,
+        item: UiNodeId,
+    },
+    VirtualCollectionItemOutsideRealizedRange {
+        collection: UiNodeId,
+        item: UiNodeId,
+    },
+    DuplicateVirtualCollectionPosition {
+        collection: UiNodeId,
+        first: UiNodeId,
+        second: UiNodeId,
+        position: u32,
+    },
+    InvalidTransientSurface(UiNodeId),
+    TransientSurfaceCannotOwnRoot(UiNodeId),
+    TransientAnchorMissing {
+        surface: UiNodeId,
+        anchor: UiNodeId,
+    },
+    TransientAnchorSelfReference(UiNodeId),
+    InvalidTimelineContract(UiNodeId),
+    TimelineContractOnUnsupportedNode(UiNodeId),
+    InvalidCanvasContract(UiNodeId),
+    CanvasContractOnUnsupportedNode(UiNodeId),
+    InvalidMixedState(UiNodeId),
 }
 
 /// Bounded semantic string field reported by document validation.
@@ -3152,6 +3785,10 @@ impl UiDocument {
         for (id, node) in &by_id {
             Self::validate_semantic_relationships(*id, node, &by_id)?;
         }
+        Self::validate_virtual_collections(&by_id, &parents)?;
+        Self::validate_transient_surfaces(root, &by_id)?;
+        Self::validate_timeline_contracts(&by_id)?;
+        Self::validate_canvas_contracts(&by_id)?;
 
         let mut visited = BTreeSet::new();
         let mut visiting = BTreeSet::new();
@@ -3269,6 +3906,11 @@ impl UiDocument {
     }
 
     fn validate_semantics(id: UiNodeId, node: &UiNode) -> Result<(), UiDocumentError> {
+        if node.semantics.state.mixed
+            && (node.semantics.role != SemanticRole::ToggleButton || node.semantics.state.selected)
+        {
+            return Err(UiDocumentError::InvalidMixedState(id));
+        }
         for (field, value) in [
             (UiSemanticField::Name, Some(node.semantics.name.as_str())),
             (
@@ -3416,6 +4058,194 @@ impl UiDocument {
                 || item.set_size > maximum
             {
                 return Err(UiDocumentError::InvalidSemanticCollectionItem(id));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_virtual_collections(
+        nodes: &BTreeMap<UiNodeId, UiNode>,
+        parents: &BTreeMap<UiNodeId, UiNodeId>,
+    ) -> Result<(), UiDocumentError> {
+        for (id, node) in nodes {
+            let Some(collection) = node.virtual_collection else {
+                continue;
+            };
+            if !matches!(
+                node.kind,
+                UiWidgetKind::Tree
+                    | UiWidgetKind::Table
+                    | UiWidgetKind::PropertyGrid
+                    | UiWidgetKind::VirtualList
+                    | UiWidgetKind::Timeline
+                    | UiWidgetKind::CommandPalette
+                    | UiWidgetKind::Graph
+            ) {
+                return Err(UiDocumentError::VirtualCollectionOnUnsupportedNode(*id));
+            }
+            if UiVirtualCollection::new(collection.item_count, collection.realized).is_err() {
+                return Err(UiDocumentError::InvalidVirtualCollection(*id));
+            }
+        }
+
+        let mut realized_positions = BTreeMap::new();
+        for (item_id, item_node) in nodes {
+            let Some(item) = item_node.semantics.collection_item else {
+                continue;
+            };
+            let mut ancestor = parents.get(item_id).copied();
+            let mut virtual_parent = None;
+            while let Some(id) = ancestor {
+                let Some(node) = nodes.get(&id) else {
+                    break;
+                };
+                if let Some(collection) = node.virtual_collection {
+                    virtual_parent = Some((id, collection));
+                    break;
+                }
+                ancestor = parents.get(&id).copied();
+            }
+            let Some((collection_id, collection)) = virtual_parent else {
+                continue;
+            };
+            if usize::try_from(item.set_size).ok() != Some(collection.item_count) {
+                return Err(UiDocumentError::VirtualCollectionSetSizeMismatch {
+                    collection: collection_id,
+                    item: *item_id,
+                });
+            }
+            let zero_based = usize::try_from(item.position.saturating_sub(1)).unwrap_or(usize::MAX);
+            if zero_based < collection.realized.start || zero_based >= collection.realized.end {
+                return Err(UiDocumentError::VirtualCollectionItemOutsideRealizedRange {
+                    collection: collection_id,
+                    item: *item_id,
+                });
+            }
+            if let Some(first) = realized_positions.insert((collection_id, item.position), *item_id)
+            {
+                return Err(UiDocumentError::DuplicateVirtualCollectionPosition {
+                    collection: collection_id,
+                    first,
+                    second: *item_id,
+                    position: item.position,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_transient_surfaces(
+        root: UiNodeId,
+        nodes: &BTreeMap<UiNodeId, UiNode>,
+    ) -> Result<(), UiDocumentError> {
+        for (id, node) in nodes {
+            let Some(transient) = node.transient else {
+                continue;
+            };
+            let expected = match node.kind {
+                UiWidgetKind::ComboBox => Some((
+                    UiTransientSurfaceKind::ComboBox,
+                    UiTransientPresentation::Children,
+                )),
+                UiWidgetKind::Menu => Some((
+                    UiTransientSurfaceKind::Menu,
+                    UiTransientPresentation::NodeAndSubtree,
+                )),
+                UiWidgetKind::ContextMenu => Some((
+                    UiTransientSurfaceKind::ContextMenu,
+                    UiTransientPresentation::NodeAndSubtree,
+                )),
+                UiWidgetKind::Tooltip => Some((
+                    UiTransientSurfaceKind::Tooltip,
+                    UiTransientPresentation::NodeAndSubtree,
+                )),
+                UiWidgetKind::Toast => Some((
+                    UiTransientSurfaceKind::Toast,
+                    UiTransientPresentation::NodeAndSubtree,
+                )),
+                UiWidgetKind::CommandPalette => Some((
+                    UiTransientSurfaceKind::CommandPalette,
+                    UiTransientPresentation::NodeAndSubtree,
+                )),
+                _ => None,
+            };
+            if expected != Some((transient.kind, transient.presentation))
+                || (transient.kind != UiTransientSurfaceKind::Tooltip
+                    && transient.reveal_delay_ms != 0)
+                || (transient.kind == UiTransientSurfaceKind::Tooltip && transient.anchor.is_none())
+                || (transient.kind != UiTransientSurfaceKind::Toast
+                    && transient.visible_duration_ms.is_some())
+                || (transient.kind == UiTransientSurfaceKind::Toast
+                    && transient.visible_duration_ms == Some(0))
+                || (transient.initial_state == UiTransientInitialState::Queued
+                    && transient.kind != UiTransientSurfaceKind::Toast)
+            {
+                return Err(UiDocumentError::InvalidTransientSurface(*id));
+            }
+            if *id == root && transient.presentation == UiTransientPresentation::NodeAndSubtree {
+                return Err(UiDocumentError::TransientSurfaceCannotOwnRoot(*id));
+            }
+            if let Some(anchor) = transient.anchor {
+                if anchor == *id {
+                    return Err(UiDocumentError::TransientAnchorSelfReference(*id));
+                }
+                if !nodes.contains_key(&anchor) {
+                    return Err(UiDocumentError::TransientAnchorMissing {
+                        surface: *id,
+                        anchor,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_timeline_contracts(
+        nodes: &BTreeMap<UiNodeId, UiNode>,
+    ) -> Result<(), UiDocumentError> {
+        for (id, node) in nodes {
+            let Some(contract) = node.timeline else {
+                continue;
+            };
+            if node.kind != UiWidgetKind::Timeline {
+                return Err(UiDocumentError::TimelineContractOnUnsupportedNode(*id));
+            }
+            if contract.minimum > contract.maximum
+                || !(contract.minimum..=contract.maximum).contains(&contract.source_value)
+                || contract.step == 0
+                || contract.page_step == 0
+                || contract.minimum_zoom_percent == 0
+                || contract.minimum_zoom_percent > contract.maximum_zoom_percent
+                || !(contract.minimum_zoom_percent..=contract.maximum_zoom_percent)
+                    .contains(&contract.initial_zoom_percent)
+                || contract.zoom_step_percent == 0
+            {
+                return Err(UiDocumentError::InvalidTimelineContract(*id));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_canvas_contracts(
+        nodes: &BTreeMap<UiNodeId, UiNode>,
+    ) -> Result<(), UiDocumentError> {
+        for (id, node) in nodes {
+            let Some(contract) = node.canvas else {
+                continue;
+            };
+            if !matches!(node.kind, UiWidgetKind::Graph | UiWidgetKind::Canvas) {
+                return Err(UiDocumentError::CanvasContractOnUnsupportedNode(*id));
+            }
+            if contract.pan_limit < 0
+                || contract.initial_pan_x.unsigned_abs() > contract.pan_limit.unsigned_abs()
+                || contract.initial_pan_y.unsigned_abs() > contract.pan_limit.unsigned_abs()
+                || contract.minimum_zoom_percent == 0
+                || contract.minimum_zoom_percent > contract.maximum_zoom_percent
+                || !(contract.minimum_zoom_percent..=contract.maximum_zoom_percent)
+                    .contains(&contract.initial_zoom_percent)
+                || contract.zoom_step_percent == 0
+            {
+                return Err(UiDocumentError::InvalidCanvasContract(*id));
             }
         }
         Ok(())
@@ -3963,13 +4793,73 @@ mod tests {
     fn basic_controls_have_named_typed_semantics() {
         let icon = UiNode::icon_button(UiNodeId::new(1), "Build", "build.start", IconId::Build);
         let toggle = UiNode::toggle(UiNodeId::new(2), "Snap", "model.snap", true);
+        let mixed = UiNode::toggle_value(
+            UiNodeId::new(4),
+            "Inherited visibility",
+            "world.visibility",
+            UiToggleValue::Mixed,
+        );
         let progress = UiNode::progress(UiNodeId::new(3), "Build progress", 120);
         assert_eq!(icon.kind, UiWidgetKind::IconButton);
         assert_eq!(icon.icon, Some(IconId::Build));
         assert_eq!(icon.text, None);
         assert_eq!(icon.semantics.action.as_deref(), Some("build.start"));
         assert_eq!(toggle.semantics.value.as_deref(), Some("on"));
+        assert_eq!(mixed.semantics.value.as_deref(), Some("mixed"));
+        assert!(!mixed.semantics.state.selected);
+        assert!(mixed.semantics.state.mixed);
+        assert_eq!(mixed.text.as_deref(), Some("Mixed"));
         assert_eq!(progress.semantics.value.as_deref(), Some("100%"));
+    }
+
+    #[test]
+    fn mixed_state_is_reserved_for_unselected_toggle_controls() {
+        let root = UiNodeId::new(80);
+        let mixed = UiNodeId::new(81);
+        UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Root", UiLayout::Overlay, vec![mixed]),
+                UiNode::toggle_value(
+                    mixed,
+                    "Inherited visibility",
+                    "world.visibility",
+                    UiToggleValue::Mixed,
+                ),
+            ],
+        )
+        .expect("a mixed toggle is a valid retained control");
+
+        let mut invalid_role = UiNode::label(mixed, "Status", "Mixed");
+        invalid_role.semantics.state.mixed = true;
+        assert_eq!(
+            UiDocument::new(
+                root,
+                vec![
+                    UiNode::container(root, "Root", UiLayout::Overlay, vec![mixed]),
+                    invalid_role,
+                ],
+            ),
+            Err(UiDocumentError::InvalidMixedState(mixed))
+        );
+
+        let mut conflicting = UiNode::toggle_value(
+            mixed,
+            "Inherited visibility",
+            "world.visibility",
+            UiToggleValue::Mixed,
+        );
+        conflicting.semantics.state.selected = true;
+        assert_eq!(
+            UiDocument::new(
+                root,
+                vec![
+                    UiNode::container(root, "Root", UiLayout::Overlay, vec![mixed]),
+                    conflicting,
+                ],
+            ),
+            Err(UiDocumentError::InvalidMixedState(mixed))
+        );
     }
 
     #[test]
@@ -4159,6 +5049,265 @@ mod tests {
                 maximum: MAX_RETAINED_NODES,
             })
         );
+        assert_eq!(
+            UiVirtualCollection::new(10, UiVirtualRange { start: 7, end: 3 }),
+            Err(UiVirtualRangeError::InvalidRealizedRange {
+                start: 7,
+                end: 3,
+                item_count: 10,
+            })
+        );
+    }
+
+    #[test]
+    fn virtual_collection_contract_validates_only_realized_source_rows() {
+        let list = UiNodeId::new(90);
+        let first = UiNodeId::new(91);
+        let second = UiNodeId::new(92);
+        let descriptor = UiVirtualCollection::new(100, UiVirtualRange { start: 50, end: 52 })
+            .expect("bounded descriptor");
+        let row = |id, position| {
+            UiNode::list_item(id, format!("Row {position}"), "row.open", false)
+                .with_semantic_collection_item(UiSemanticCollectionItem {
+                    position,
+                    set_size: 100,
+                })
+        };
+        UiDocument::new(
+            list,
+            vec![
+                UiNode::virtual_list(list, "Results", vec![first, second])
+                    .with_virtual_collection(descriptor),
+                row(first, 51),
+                row(second, 52),
+            ],
+        )
+        .expect("only the realized source window enters the retained tree");
+
+        let outside = UiNodeId::new(93);
+        assert_eq!(
+            UiDocument::new(
+                list,
+                vec![
+                    UiNode::virtual_list(list, "Results", vec![outside])
+                        .with_virtual_collection(descriptor),
+                    row(outside, 50),
+                ],
+            ),
+            Err(UiDocumentError::VirtualCollectionItemOutsideRealizedRange {
+                collection: list,
+                item: outside,
+            })
+        );
+
+        let mismatched = UiNode::list_item(first, "Row 51", "row.open", false)
+            .with_semantic_collection_item(UiSemanticCollectionItem {
+                position: 51,
+                set_size: 99,
+            });
+        assert_eq!(
+            UiDocument::new(
+                list,
+                vec![
+                    UiNode::virtual_list(list, "Results", vec![first])
+                        .with_virtual_collection(descriptor),
+                    mismatched,
+                ],
+            ),
+            Err(UiDocumentError::VirtualCollectionSetSizeMismatch {
+                collection: list,
+                item: first,
+            })
+        );
+
+        let unsupported = UiNodeId::new(94);
+        assert_eq!(
+            UiDocument::new(
+                unsupported,
+                vec![UiNode::label(unsupported, "Status", "Idle")
+                    .with_virtual_collection(descriptor)],
+            ),
+            Err(UiDocumentError::VirtualCollectionOnUnsupportedNode(
+                unsupported
+            ))
+        );
+    }
+
+    #[test]
+    fn transient_surface_contracts_are_typed_anchored_and_root_safe() {
+        let root = UiNodeId::new(100);
+        let anchor = UiNodeId::new(101);
+        let menu = UiNodeId::new(102);
+        let item = UiNodeId::new(103);
+        let tooltip = UiNodeId::new(104);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Transient fixture",
+                    UiLayout::Overlay,
+                    vec![anchor, menu, tooltip],
+                ),
+                UiNode::button(anchor, "Entity", "entity.select", "Entity"),
+                UiNode::transient_context_menu(menu, "Entity actions", vec![item], Some(anchor)),
+                UiNode::menu_item(item, "Rename", "entity.rename", "Rename"),
+                UiNode::transient_tooltip(
+                    tooltip,
+                    "Entity help",
+                    "Select this entity",
+                    anchor,
+                    250,
+                ),
+            ],
+        )
+        .expect("typed transient surfaces validate");
+        assert_eq!(
+            document.node(menu).and_then(|node| node.transient),
+            Some(UiTransientSurface::context_menu(Some(anchor)))
+        );
+
+        assert_eq!(
+            UiDocument::new(
+                menu,
+                vec![UiNode::transient_menu(
+                    menu,
+                    "Root menu",
+                    Vec::new(),
+                    UiTransientInitialState::Hidden,
+                )],
+            ),
+            Err(UiDocumentError::TransientSurfaceCannotOwnRoot(menu))
+        );
+
+        let missing = UiNodeId::new(199);
+        assert_eq!(
+            UiDocument::new(
+                root,
+                vec![
+                    UiNode::container(root, "Root", UiLayout::Overlay, vec![tooltip]),
+                    UiNode::transient_tooltip(
+                        tooltip,
+                        "Missing help",
+                        "Missing anchor",
+                        missing,
+                        100,
+                    ),
+                ],
+            ),
+            Err(UiDocumentError::TransientAnchorMissing {
+                surface: tooltip,
+                anchor: missing,
+            })
+        );
+
+        let invalid_toast = UiTransientSurface::toast(0);
+        assert_eq!(
+            UiDocument::new(
+                root,
+                vec![
+                    UiNode::container(root, "Root", UiLayout::Overlay, vec![tooltip]),
+                    UiNode::toast(tooltip, "Saved", "Saved").with_transient_surface(invalid_toast),
+                ],
+            ),
+            Err(UiDocumentError::InvalidTransientSurface(tooltip))
+        );
+    }
+
+    #[test]
+    fn timeline_contract_rejects_unbounded_or_misowned_interaction_state() {
+        let timeline = UiNodeId::new(110);
+        let contract = UiTimelineContract {
+            minimum: 0,
+            maximum: 1_000,
+            source_value: 120,
+            step: 1,
+            page_step: 10,
+            minimum_zoom_percent: 25,
+            maximum_zoom_percent: 400,
+            initial_zoom_percent: 100,
+            zoom_step_percent: 25,
+        };
+        UiDocument::new(
+            timeline,
+            vec![UiNode::interactive_timeline(
+                timeline,
+                "Animation timeline",
+                Vec::new(),
+                contract,
+            )],
+        )
+        .expect("bounded timeline contract validates");
+
+        let mut invalid = contract;
+        invalid.step = 0;
+        assert_eq!(
+            UiDocument::new(
+                timeline,
+                vec![UiNode::interactive_timeline(
+                    timeline,
+                    "Invalid timeline",
+                    Vec::new(),
+                    invalid,
+                )],
+            ),
+            Err(UiDocumentError::InvalidTimelineContract(timeline))
+        );
+
+        assert_eq!(
+            UiDocument::new(
+                timeline,
+                vec![UiNode::canvas(timeline, "Viewport", Vec::new())
+                    .with_timeline_contract(contract)],
+            ),
+            Err(UiDocumentError::TimelineContractOnUnsupportedNode(timeline))
+        );
+    }
+
+    #[test]
+    fn canvas_contract_bounds_navigation_and_stays_on_graph_or_canvas_nodes() {
+        let graph = UiNodeId::new(120);
+        let contract = UiCanvasContract {
+            pan_limit: 10_000,
+            initial_pan_x: 0,
+            initial_pan_y: 0,
+            minimum_zoom_percent: 25,
+            maximum_zoom_percent: 400,
+            initial_zoom_percent: 100,
+            zoom_step_percent: 25,
+        };
+        UiDocument::new(
+            graph,
+            vec![UiNode::interactive_graph(
+                graph,
+                "Recipe graph",
+                Vec::new(),
+                contract,
+            )],
+        )
+        .expect("bounded graph contract validates");
+
+        let mut invalid = contract;
+        invalid.initial_pan_x = 10_001;
+        assert_eq!(
+            UiDocument::new(
+                graph,
+                vec![UiNode::interactive_canvas(
+                    graph,
+                    "Invalid canvas",
+                    Vec::new(),
+                    invalid,
+                )],
+            ),
+            Err(UiDocumentError::InvalidCanvasContract(graph))
+        );
+        assert_eq!(
+            UiDocument::new(
+                graph,
+                vec![UiNode::timeline(graph, "Timeline", Vec::new()).with_canvas_contract(contract)],
+            ),
+            Err(UiDocumentError::CanvasContractOnUnsupportedNode(graph))
+        );
     }
 
     #[test]
@@ -4213,6 +5362,20 @@ mod tests {
                 "world.camera-context",
             );
         assert!(UiDocument::new(node, vec![valid]).is_ok());
+
+        let closed_combo =
+            UiNode::combo_box(node, "Density", "density.open", "Compact", Vec::new())
+                .with_assistive_action(UiHostAssistiveAction::Expand, "density.open");
+        let closed_combo =
+            UiDocument::new(node, vec![closed_combo]).expect("closed combo binding is valid");
+        assert!(
+            !closed_combo
+                .node(node)
+                .expect("closed combo exists")
+                .semantics
+                .state
+                .expanded
+        );
 
         let context_only = UiNode::container(node, "Camera", UiLayout::Overlay, Vec::new())
             .with_focusable(true)
@@ -4339,6 +5502,14 @@ mod tests {
             let node = document.node(id).expect("professional node exists");
             assert_eq!((node.kind, node.semantics.role), (kind, role));
         }
+        assert!(
+            document
+                .node(combo)
+                .expect("combo exists")
+                .semantics
+                .state
+                .expanded
+        );
         assert!(document.focus_order().contains(&graph));
         assert!(document.focus_order().contains(&canvas));
     }
@@ -4407,6 +5578,34 @@ mod tests {
         assert!(CommandId::from_name("workspace world").is_none());
         assert!(CommandId::from_name("workspace.world!").is_none());
         assert!(CommandId::from_name(&"a".repeat(MAX_COMMAND_NAME_BYTES + 1)).is_none());
+    }
+
+    #[test]
+    fn modifier_state_is_platform_neutral_and_preserves_independent_keys() {
+        let modifiers = UiModifiers::from_keys([
+            UiModifierKey::Shift,
+            UiModifierKey::Alt,
+            UiModifierKey::Command,
+        ]);
+        assert!(modifiers.shift());
+        assert!(!modifiers.control());
+        assert!(modifiers.alt());
+        assert!(modifiers.command());
+        assert!(modifiers.primary_command());
+        assert_eq!(UiModifiers::default(), UiModifiers::from_keys([]));
+    }
+
+    #[test]
+    fn text_scale_is_typed_and_bounded_to_the_accessibility_contract() {
+        assert_eq!(UiTextScale::default().percent(), 100);
+        assert!((UiTextScale::MINIMUM.factor() - 1.0).abs() < f32::EPSILON);
+        assert!((UiTextScale::MAXIMUM.factor() - 4.0).abs() < f32::EPSILON);
+        assert_eq!(
+            UiTextScale::from_percent(250).map(UiTextScale::percent),
+            Some(250)
+        );
+        assert_eq!(UiTextScale::from_percent(99), None);
+        assert_eq!(UiTextScale::from_percent(401), None);
     }
 
     #[test]

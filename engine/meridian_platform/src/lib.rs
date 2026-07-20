@@ -160,6 +160,15 @@ impl PlatformWindow {
         self.inner.set_visible(visible);
     }
 
+    /// Asks the native window system to focus this already-visible window.
+    ///
+    /// The request is advisory: platform policy may refuse it. Callers must
+    /// still handle an unfocused or occluded surface without treating either
+    /// condition as a renderer failure.
+    pub fn request_focus(&self) {
+        self.inner.focus_window();
+    }
+
     /// Enables or disables native text composition for the current window.
     pub fn set_ime_allowed(&self, allowed: bool) {
         self.inner.set_ime_allowed(allowed);

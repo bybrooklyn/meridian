@@ -71,14 +71,15 @@ non-production fallback role. It is authoritative for the architecture
 selection boundary; evidence records remain authoritative for qualification.
 
 The direct path now has local profile-bound raw-RGBA golden comparison,
-controlled device-destruction replay, and uncalibrated raw performance samples.
+controlled device-destruction replay, uncalibrated raw performance samples, and
+a local canonical 2x capture copied from a mapped `Presented` surface.
 Those runners emit typed `NotRun`, `Fail`, or unavailable states rather than
 manufacturing a green result. Current local/dirty reports are `Inconclusive`
 qualification evidence because their source provenance is caller-declared, not
 trusted source attestation; they do not change this architecture decision into
 renderer completion. It still needs qualified Linux/Windows/macOS evidence,
-calibrated latency/memory/cache evidence, real screen-reader evidence, and
-presented native visual review.
+calibrated latency/memory/cache evidence, real screen-reader evidence, and a
+human verdict on presented native review artifacts.
 
 ## Intended v0.5 Links
 

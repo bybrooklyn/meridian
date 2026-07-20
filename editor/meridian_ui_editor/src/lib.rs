@@ -8,12 +8,15 @@ mod workspace;
 
 pub use workspace::*;
 
+use std::sync::Arc;
+
 use meridian_alluvium::ProceduralRecipe;
-use meridian_editor_core::EditorSession;
+use meridian_editor_core::{EditorSession, WorldPlacement};
 use meridian_modeler::{ModelDocument, ModelSelection, PenumbraPreview};
 use meridian_ui::{
-    UiBorder, UiColor, UiDocument, UiDocumentError, UiLayout, UiLayoutHints, UiNode, UiNodeId,
-    UiStyle, UiTextInputOptions,
+    DisplayList, DisplayListError, DisplayPrimitive, UiAbsolutePosition, UiBorder, UiColor,
+    UiConstraints, UiDocument, UiDocumentError, UiFrameOutput, UiLayout, UiLayoutHints, UiNode,
+    UiNodeId, UiPathCommand, UiPoint, UiRect, UiSize, UiStroke, UiStyle, UiTextInputOptions,
 };
 
 /// Stable node for the Creator hub's project-name field.
@@ -25,6 +28,10 @@ pub const CREATOR_INSPECTOR_X_MM: UiNodeId = UiNodeId::new(91_001);
 pub const CREATOR_INSPECTOR_Y_MM: UiNodeId = UiNodeId::new(91_002);
 /// Stable editable Z-coordinate field for the selected Creator placement.
 pub const CREATOR_INSPECTOR_Z_MM: UiNodeId = UiNodeId::new(91_003);
+/// Stable source-derived canvas hosted by the World viewport panel.
+pub const CREATOR_WORLD_VIEWPORT_CANVAS: UiNodeId = UiNodeId::new(162);
+/// Stable browser search field for the World workspace.
+pub const CREATOR_WORLD_SEARCH: UiNodeId = UiNodeId::new(92_050);
 
 const MAX_CREATOR_HUB_RECENT_ROWS: usize = 5;
 
@@ -46,6 +53,7 @@ pub struct RecentProjectView {
 /// It carries presentation text only and cannot mutate project source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreatorWorkspaceView {
+    pub project: String,
     pub activity: String,
     pub recovery: String,
     pub build: String,
@@ -58,6 +66,7 @@ impl CreatorWorkspaceView {
     #[must_use]
     pub fn foundation(session: &EditorSession, activity: impl Into<String>) -> Self {
         Self {
+            project: "Meridian Project".to_owned(),
             activity: activity.into(),
             recovery: format!(
                 "Source generation {} is open; no recovery detail was supplied.",
@@ -287,18 +296,126 @@ fn fixed_height(node: UiNode, height: f32) -> UiNode {
     node.with_layout_hints(UiLayoutHints::fixed_height(height))
 }
 
-fn workspace_canvas_style() -> UiStyle {
+fn fixed_width(node: UiNode, width: f32) -> UiNode {
+    node.with_layout_hints(UiLayoutHints::fixed_width(width))
+}
+
+fn fixed_size(node: UiNode, width: f32, height: f32) -> UiNode {
+    node.with_layout_hints(UiLayoutHints::fixed_size(width, height))
+}
+
+fn shell_row_style(background: UiColor, padding: f32) -> UiStyle {
     UiStyle {
-        background: Some(UiColor::background()),
-        border: None,
+        background: Some(background),
+        border: Some(UiBorder {
+            color: UiColor::border(),
+            width: 1,
+        }),
         corner_radius: 0.0,
         foreground: UiColor::foreground(),
-        padding: 14.0,
-        font_size: 16.0,
+        padding,
+        font_size: 14.0,
     }
 }
 
-fn creator_header_style() -> UiStyle {
+fn shell_brand_style() -> UiStyle {
+    UiStyle {
+        background: None,
+        border: None,
+        corner_radius: 0.0,
+        foreground: UiColor::text(),
+        padding: 4.0,
+        font_size: 15.0,
+    }
+}
+
+fn shell_utility_style(strong: bool, active: bool) -> UiStyle {
+    UiStyle {
+        background: active.then_some(UiColor::surface()),
+        border: Some(UiBorder {
+            color: if strong || active {
+                UiColor::amber()
+            } else {
+                UiColor::border()
+            },
+            width: 1,
+        }),
+        corner_radius: 6.0,
+        foreground: if strong || active {
+            UiColor::text()
+        } else {
+            UiColor::secondary_text()
+        },
+        padding: 5.0,
+        font_size: 12.0,
+    }
+}
+
+fn workspace_tab_style(selected: bool) -> UiStyle {
+    UiStyle {
+        background: selected.then_some(UiColor::surface()),
+        border: Some(UiBorder {
+            color: if selected {
+                UiColor::amber()
+            } else {
+                UiColor::border()
+            },
+            width: 1,
+        }),
+        corner_radius: 6.0,
+        foreground: if selected {
+            UiColor::text()
+        } else {
+            UiColor::secondary_text()
+        },
+        padding: 4.0,
+        font_size: 12.0,
+    }
+}
+
+fn world_panel_style(radius: f32) -> UiStyle {
+    UiStyle {
+        background: Some(UiColor::surface()),
+        border: Some(UiBorder {
+            color: UiColor::border(),
+            width: 1,
+        }),
+        corner_radius: radius,
+        foreground: UiColor::foreground(),
+        padding: 10.0,
+        font_size: 14.0,
+    }
+}
+
+fn world_canvas_style() -> UiStyle {
+    UiStyle {
+        background: Some(UiColor::background()),
+        border: Some(UiBorder {
+            color: UiColor::border(),
+            width: 1,
+        }),
+        corner_radius: 6.0,
+        foreground: UiColor::secondary_text(),
+        padding: 0.0,
+        font_size: 12.0,
+    }
+}
+
+fn world_section_style(accent: UiColor) -> UiStyle {
+    UiStyle {
+        background: Some(UiColor::background()),
+        border: Some(UiBorder {
+            color: accent,
+            width: 1,
+        }),
+        corner_radius: 6.0,
+        foreground: UiColor::foreground(),
+        padding: 8.0,
+        font_size: 12.0,
+    }
+}
+
+fn status_row_style() -> UiStyle {
     UiStyle {
         background: Some(UiColor::surface()),
         border: Some(UiBorder {
@@ -306,8 +423,202 @@ fn creator_header_style() -> UiStyle {
             width: 1,
         }),
         corner_radius: 0.0,
+        foreground: UiColor::secondary_text(),
+        padding: 0.0,
+        font_size: 11.0,
+    }
+}
+
+fn canvas_overlay_style(accent: UiColor) -> UiStyle {
+    UiStyle {
+        background: Some(UiColor::rgba(0.035, 0.043, 0.043, 0.92)),
+        border: Some(UiBorder {
+            color: accent,
+            width: 1,
+        }),
+        corner_radius: 6.0,
+        foreground: UiColor::secondary_text(),
+        padding: 6.0,
+        font_size: 11.0,
+    }
+}
+
+const SHELL_APPLICATION_ROW: UiNodeId = UiNodeId::new(92_000);
+const SHELL_WORKSPACE_ROW: UiNodeId = UiNodeId::new(92_020);
+const SHELL_STATUS_ROW: UiNodeId = UiNodeId::new(92_040);
+
+fn push_application_row(
+    nodes: &mut Vec<UiNode>,
+    project_label: &str,
+    project_open: bool,
+    play_active: bool,
+) -> UiNodeId {
+    let brand = UiNodeId::new(92_001);
+    let spacer = UiNodeId::new(92_002);
+    let play = UiNodeId::new(if play_active { 92_007 } else { 92_003 });
+    let build = UiNodeId::new(92_004);
+    let search = UiNodeId::new(92_005);
+    let settings = UiNodeId::new(92_006);
+    nodes.push(fixed_width(
+        UiNode::button(
+            brand,
+            "Return to Meridian projects",
+            "editor.return-hub",
+            format!("Meridian · {project_label}"),
+        )
+        .with_style(shell_brand_style()),
+        320.0,
+    ));
+    nodes.push(transparent_group(
+        spacer,
+        "Application command spacer",
+        UiLayout::Overlay,
+        Vec::new(),
+    ));
+    nodes.push(fixed_width(
+        UiNode::button(
+            play,
+            if play_active {
+                "Stop Play"
+            } else {
+                "Start Play"
+            },
+            if project_open {
+                if play_active {
+                    "editor.play-discard"
+                } else {
+                    "editor.play-start"
+                }
+            } else {
+                "shell.play-unavailable"
+            },
+            if play_active { "Stop" } else { "Play" },
+        )
+        .with_style(shell_utility_style(true, play_active)),
+        72.0,
+    ));
+    nodes.push(fixed_width(
+        UiNode::button(
+            build,
+            "Build project",
+            if project_open {
+                "build.submit"
+            } else {
+                "shell.build-unavailable"
+            },
+            "Build",
+        )
+        .with_style(shell_utility_style(false, false)),
+        72.0,
+    ));
+    nodes.push(fixed_width(
+        UiNode::button(search, "Search Meridian", "shell.search", "Search")
+            .with_style(shell_utility_style(false, false)),
+        84.0,
+    ));
+    nodes.push(fixed_width(
+        UiNode::button(
+            settings,
+            "Open Meridian settings",
+            "shell.settings",
+            "Settings",
+        )
+        .with_style(shell_utility_style(false, false)),
+        88.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::container(
+            SHELL_APPLICATION_ROW,
+            "Meridian application commands",
+            UiLayout::HorizontalStack { gap: 8.0 },
+            vec![brand, spacer, play, build, search, settings],
+        )
+        .with_style(shell_row_style(UiColor::background(), 6.0)),
+        44.0,
+    ));
+    SHELL_APPLICATION_ROW
+}
+
+fn push_workspace_row(nodes: &mut Vec<UiNode>, selected_world: bool) -> UiNodeId {
+    let workspaces = [
+        (92_021, "World", "workspace.world", 76.0),
+        (92_022, "Modeler", "workspace.modeler", 88.0),
+        (92_023, "UI", "workspace.ui", 54.0),
+        (92_024, "Code", "workspace.code", 66.0),
+        (92_025, "Materials", "workspace.materials", 92.0),
+        (92_026, "Alluvium", "workspace.alluvium", 94.0),
+        (92_027, "Build", "workspace.build", 66.0),
+        (92_028, "Profile", "workspace.profile", 76.0),
+    ];
+    let mut tabs = Vec::new();
+    for (id, label, action, width) in workspaces {
+        let id = UiNodeId::new(id);
+        let selected = selected_world && label == "World";
+        nodes.push(fixed_width(
+            UiNode::tab(id, format!("{label} workspace"), action, selected)
+                .with_style(workspace_tab_style(selected)),
+            width,
+        ));
+        tabs.push(id);
+    }
+    nodes.push(fixed_height(
+        UiNode::tabs(SHELL_WORKSPACE_ROW, "Meridian workspaces", tabs)
+            .with_style(shell_row_style(UiColor::surface(), 4.0)),
+        36.0,
+    ));
+    SHELL_WORKSPACE_ROW
+}
+
+fn push_status_row(
+    nodes: &mut Vec<UiNode>,
+    source: impl Into<String>,
+    activity: impl Into<String>,
+    play_active: bool,
+) -> UiNodeId {
+    let source_id = UiNodeId::new(92_041);
+    let activity_id = UiNodeId::new(92_042);
+    let play_id = UiNodeId::new(92_043);
+    nodes.push(fixed_width(
+        UiNode::label(source_id, "Source status", source).with_style(creator_meta_style()),
+        220.0,
+    ));
+    nodes.push(
+        UiNode::label(activity_id, "Creator activity", activity).with_style(creator_meta_style()),
+    );
+    let mut children = vec![source_id, activity_id];
+    if play_active {
+        nodes.push(fixed_width(
+            UiNode::button(
+                play_id,
+                "Apply Play session changes",
+                "editor.play-apply",
+                "Apply Play changes",
+            )
+            .with_style(shell_utility_style(true, true)),
+            144.0,
+        ));
+        children.push(play_id);
+    }
+    nodes.push(fixed_height(
+        UiNode::container(
+            SHELL_STATUS_ROW,
+            "Meridian status",
+            UiLayout::HorizontalStack { gap: 8.0 },
+            children,
+        )
+        .with_style(status_row_style()),
+        24.0,
+    ));
+    SHELL_STATUS_ROW
+}
+
+fn workspace_canvas_style() -> UiStyle {
+    UiStyle {
+        background: Some(UiColor::background()),
+        border: None,
+        corner_radius: 0.0,
         foreground: UiColor::foreground(),
-        padding: 12.0,
+        padding: 0.0,
         font_size: 16.0,
     }
 }
@@ -334,25 +645,6 @@ fn creator_meta_style() -> UiStyle {
     }
 }
 
-fn creator_mode_style(play_active: bool) -> UiStyle {
-    let (background, border, foreground) = if play_active {
-        (UiColor::surface(), UiColor::amber(), UiColor::amber())
-    } else {
-        (UiColor::surface(), UiColor::grass(), UiColor::grass())
-    };
-    UiStyle {
-        background: Some(background),
-        border: Some(UiBorder {
-            color: border,
-            width: 1,
-        }),
-        corner_radius: 0.0,
-        foreground,
-        padding: 6.0,
-        font_size: 11.0,
-    }
-}
-
 fn creator_panel_accent(panel: EditorPanelId) -> UiColor {
     match panel {
         EditorPanelId::ProjectRecovery | EditorPanelId::Recipe => UiColor::amber(),
@@ -365,71 +657,6 @@ fn creator_panel_accent(panel: EditorPanelId) -> UiColor {
     }
 }
 
-fn creator_panel_style(panel: EditorPanelId) -> UiStyle {
-    let background = match panel {
-        EditorPanelId::Viewport => UiColor::background(),
-        _ => UiColor::surface(),
-    };
-    UiStyle {
-        background: Some(background),
-        border: Some(UiBorder {
-            color: creator_panel_accent(panel),
-            width: if panel == EditorPanelId::Viewport {
-                2
-            } else {
-                1
-            },
-        }),
-        corner_radius: 0.0,
-        foreground: UiColor::foreground(),
-        padding: if panel == EditorPanelId::Viewport {
-            14.0
-        } else {
-            12.0
-        },
-        font_size: 16.0,
-    }
-}
-
-fn creator_panel_heading_style(panel: EditorPanelId) -> UiStyle {
-    UiStyle {
-        background: None,
-        border: None,
-        corner_radius: 0.0,
-        foreground: creator_panel_accent(panel),
-        padding: 0.0,
-        font_size: 15.0,
-    }
-}
-
-fn creator_preview_style() -> UiStyle {
-    UiStyle {
-        background: Some(UiColor::background()),
-        border: Some(UiBorder {
-            color: UiColor::border(),
-            width: 1,
-        }),
-        corner_radius: 0.0,
-        foreground: UiColor::text(),
-        padding: 18.0,
-        font_size: 16.0,
-    }
-}
-
-fn creator_hub_card_style() -> UiStyle {
-    UiStyle {
-        background: Some(UiColor::surface()),
-        border: Some(UiBorder {
-            color: UiColor::border(),
-            width: 1,
-        }),
-        corner_radius: 0.0,
-        foreground: UiColor::foreground(),
-        padding: 20.0,
-        font_size: 16.0,
-    }
-}
-
 fn creator_hub_status_style() -> UiStyle {
     UiStyle {
         background: Some(UiColor::background()),
@@ -437,7 +664,7 @@ fn creator_hub_status_style() -> UiStyle {
             color: UiColor::border(),
             width: 1,
         }),
-        corner_radius: 0.0,
+        corner_radius: 6.0,
         foreground: UiColor::secondary_text(),
         padding: 8.0,
         font_size: 12.0,
@@ -470,7 +697,7 @@ fn creator_recent_row_style(available: bool) -> UiStyle {
             },
             width: 1,
         }),
-        corner_radius: 0.0,
+        corner_radius: 10.0,
         foreground: UiColor::foreground(),
         padding: 10.0,
         font_size: 16.0,
@@ -500,7 +727,7 @@ fn creator_compact_action_style(panel: EditorPanelId, command: &str) -> UiStyle 
             color: if primary { accent } else { UiColor::border() },
             width: 1,
         }),
-        corner_radius: 0.0,
+        corner_radius: 4.0,
         foreground: if primary {
             UiColor::text()
         } else {
@@ -565,6 +792,45 @@ fn creator_command_is_available(command: &str, session: &EditorSession) -> bool 
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn push_creator_action_grid(
+    nodes: &mut Vec<UiNode>,
+    group: UiNodeId,
+    first_action_id: u128,
+    name: &str,
+    panel: EditorPanelId,
+    session: &EditorSession,
+    commands: &[&str],
+    columns: u8,
+    height: f32,
+) -> UiNodeId {
+    let mut actions = Vec::new();
+    for (index, command) in commands
+        .iter()
+        .copied()
+        .filter(|command| creator_command_is_available(command, session))
+        .enumerate()
+    {
+        let id = UiNodeId::new(first_action_id.saturating_add(index as u128));
+        let label = creator_action_label(command);
+        nodes.push(
+            UiNode::button(id, format!("{name}: {label}"), command, label)
+                .with_style(creator_compact_action_style(panel, command)),
+        );
+        actions.push(id);
+    }
+    nodes.push(fixed_height(
+        transparent_group(
+            group,
+            format!("{name} actions"),
+            UiLayout::Grid { columns, gap: 4.0 },
+            actions,
+        ),
+        height,
+    ));
+    group
+}
+
 fn selected_placement_summary(session: &EditorSession) -> Option<String> {
     let placement = session
         .selection()
@@ -598,73 +864,6 @@ fn inspected_translation_values(session: &EditorSession) -> (String, String, Str
     (x_mm.to_string(), y_mm.to_string(), z_mm.to_string())
 }
 
-fn panel_status(
-    panel: EditorPanelId,
-    session: &EditorSession,
-    view: &CreatorWorkspaceView,
-) -> String {
-    match panel {
-        EditorPanelId::ProjectRecovery if session.play_active() => format!(
-            "Play · {} pending change(s)",
-            session.pending_play_change_count()
-        ),
-        EditorPanelId::ProjectRecovery => bounded_text(&view.recovery, 34),
-        EditorPanelId::Viewport => selected_placement_summary(session).map_or_else(
-            || "No source placement".to_owned(),
-            |_| "Derived source preview".to_owned(),
-        ),
-        EditorPanelId::Hierarchy => {
-            format!(
-                "{} source placement(s)",
-                session.document().placements.len()
-            )
-        }
-        EditorPanelId::Inspector => {
-            let selected = session.selection().ids.len();
-            format!(
-                "{selected} selected · source r{}",
-                session.document().generation
-            )
-        }
-        EditorPanelId::History => format!(
-            "{} undo · {} redo{}",
-            session.undo_depth(),
-            session.redo_depth(),
-            if session.play_active() {
-                " · Play"
-            } else {
-                ""
-            }
-        ),
-        EditorPanelId::Assets => session.document().sources.values().next().map_or_else(
-            || "No imported source".to_owned(),
-            |source| {
-                format!(
-                    "{} imported · {}",
-                    session.document().sources.len(),
-                    bounded_text(&source.label, 30)
-                )
-            },
-        ),
-        EditorPanelId::Build => bounded_text(&view.build, 34),
-        EditorPanelId::Recipe => bounded_text(&view.recipe, 42),
-        EditorPanelId::Modeler => bounded_text(&view.model, 42),
-        EditorPanelId::Diagnostics => bounded_text(&view.activity, 34),
-    }
-}
-
-fn viewport_preview_text(session: &EditorSession) -> String {
-    selected_placement_summary(session).map_or_else(
-        || "No placement is selected. Use Hierarchy to choose the first public source placement."
-            .to_owned(),
-        |placement| {
-            format!(
-                "DERIVED SOURCE PREVIEW\n\n{placement}\n\nAuthoritative project source · use Focus Selection to reframe."
-            )
-        },
-    )
-}
-
 /// Builds the persistent Creator hub. Project paths are non-authoritative
 /// local state: every open action is revalidated by editor-core before use.
 ///
@@ -677,82 +876,131 @@ pub fn creator_hub_document(
     status: &str,
 ) -> Result<UiDocument, UiDocumentError> {
     let root = UiNodeId::new(90_000);
-    let status_id = UiNodeId::new(90_001);
-    let top_spacer = UiNodeId::new(90_005);
-    let center_row = UiNodeId::new(90_006);
-    let bottom_spacer = UiNodeId::new(90_007);
-    let left_spacer = UiNodeId::new(90_008);
-    let card = UiNodeId::new(90_009);
-    let right_spacer = UiNodeId::new(90_010);
-    let title = UiNodeId::new(90_011);
-    let description = UiNodeId::new(90_012);
-    let action_row = UiNodeId::new(90_013);
-    let recents_title = UiNodeId::new(90_014);
-    let recents_list = UiNodeId::new(90_015);
-    let project_name_label = UiNodeId::new(90_017);
+    let main = UiNodeId::new(90_020);
+    let top_spacer = UiNodeId::new(90_021);
+    let center_row = UiNodeId::new(90_022);
+    let bottom_spacer = UiNodeId::new(90_023);
+    let left_spacer = UiNodeId::new(90_024);
+    let content = UiNodeId::new(90_025);
+    let right_spacer = UiNodeId::new(90_026);
+    let hero = UiNodeId::new(90_027);
+    let description = UiNodeId::new(90_028);
+    let action_row = UiNodeId::new(90_029);
     let create = UiNodeId::new(90_003);
     let open = UiNodeId::new(90_004);
-    let displayed_recent_count = recents.len().min(MAX_CREATOR_HUB_RECENT_ROWS);
-    // Keep every bounded recent row at its declared 54 px height plus the
-    // list gap. The old estimate squeezed rows as recents accumulated.
-    let recent_count = f32::from(u8::try_from(displayed_recent_count).unwrap_or(u8::MAX));
-    let recent_gap_count =
-        f32::from(u8::try_from(displayed_recent_count.saturating_sub(1)).unwrap_or(u8::MAX));
-    let recent_list_height = if displayed_recent_count == 0 {
-        40.0
-    } else {
-        recent_count * 54.0 + recent_gap_count * 8.0
-    };
-    let hub_height = 366.0 + recent_list_height;
-    let mut nodes = vec![
-        fixed_height(
-            UiNode::label(title, "Meridian Creator", "Meridian Creator")
-                .with_style(UiStyle::heading()),
-            40.0,
-        ),
-        fixed_height(
-            UiNode::label(
-                description,
-                "Creator Alpha introduction",
-                "Create a public project or open a validated project directory. Your project source remains authoritative.",
-            )
-            .with_style(UiStyle::muted_text()),
-            44.0,
-        ),
-        fixed_height(
-            UiNode::label(
-                status_id,
-                "Meridian Creator status",
-                bounded_text(status, 220),
-            )
-            .with_style(creator_hub_status_style()),
-            34.0,
-        ),
-        fixed_height(
-            UiNode::label(project_name_label, "New project name label", "NEW PROJECT NAME")
-                .with_style(creator_hub_field_label_style()),
-            18.0,
-        ),
-        fixed_height(
-            UiNode::text_input(
-                CREATOR_HUB_PROJECT_NAME,
-                "New project name",
-                "Meridian Project",
-                UiTextInputOptions::default(),
-            )
-            .with_style(UiStyle::text_field()),
-            48.0,
-        ),
+    let project_name_label = UiNodeId::new(90_017);
+    let status_id = UiNodeId::new(90_001);
+    let recents_title = UiNodeId::new(90_014);
+    let recents_list = UiNodeId::new(90_015);
+    let mut nodes = Vec::new();
+
+    let application_row = push_application_row(&mut nodes, "Projects", false, false);
+    let workspace_row = push_workspace_row(&mut nodes, false);
+
+    nodes.push(fixed_height(
+        UiNode::label(
+            hero,
+            "Meridian project hub",
+            "Create something worth keeping.",
+        )
+        .with_style(UiStyle::heading()),
+        44.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::label(
+            description,
+            "Meridian project model",
+            "Projects are local, source-authoritative, and recoverable.",
+        )
+        .with_style(creator_meta_style()),
+        24.0,
+    ));
+    nodes.push(fixed_size(
         UiNode::button(
             create,
-            "Create project",
+            "Create a Meridian project",
             "hub.create-project",
-            "Create project",
+            "Create · Start a new Meridian project",
         )
-        .with_style(UiStyle::primary_action()),
-        UiNode::button(open, "Open project", "hub.open-project", "Open project")
-            .with_style(UiStyle::secondary_action()),
-    ];
+        .with_style(UiStyle {
+            background: Some(UiColor::surface()),
+            border: Some(UiBorder {
+                color: UiColor::grass(),
+                width: 1,
+            }),
+            corner_radius: 14.0,
+            foreground: UiColor::text(),
+            padding: 16.0,
+            font_size: 16.0,
+        }),
+        380.0,
+        68.0,
+    ));
+    nodes.push(fixed_size(
+        UiNode::button(
+            open,
+            "Open a Meridian project",
+            "hub.open-project",
+            "Open · Choose an existing project",
+        )
+        .with_style(UiStyle {
+            background: Some(UiColor::surface()),
+            border: Some(UiBorder {
+                color: UiColor::amber(),
+                width: 1,
+            }),
+            corner_radius: 14.0,
+            foreground: UiColor::text(),
+            padding: 16.0,
+            font_size: 16.0,
+        }),
+        380.0,
+        68.0,
+    ));
+    nodes.push(fixed_height(
+        transparent_group(
+            action_row,
+            "Project creation and open actions",
+            UiLayout::HorizontalStack { gap: 12.0 },
+            vec![create, open],
+        ),
+        68.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::label(
+            project_name_label,
+            "New project name label",
+            "NEW PROJECT NAME",
+        )
+        .with_style(creator_hub_field_label_style()),
+        18.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::text_input(
+            CREATOR_HUB_PROJECT_NAME,
+            "New project name",
+            "Meridian Project",
+            UiTextInputOptions::default(),
+        )
+        .with_style(UiStyle::text_field()),
+        44.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::toast(
+            status_id,
+            "Meridian project status",
+            bounded_text(status, 220),
+        )
+        .with_style(creator_hub_status_style()),
+        34.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::label(recents_title, "Recent projects", "Recent projects")
+            .with_style(UiStyle::section_heading()),
+        24.0,
+    ));
+
+    let displayed_recent_count = recents.len().min(MAX_CREATOR_HUB_RECENT_ROWS);
     let mut recent_rows = Vec::new();
     for (index, recent) in recents.iter().take(MAX_CREATOR_HUB_RECENT_ROWS).enumerate() {
         let base = 90_100_u128.saturating_add((index as u128).saturating_mul(4));
@@ -760,43 +1008,57 @@ pub fn creator_hub_document(
         let open = UiNodeId::new(base + 1);
         let remove = UiNodeId::new(base + 2);
         let row = UiNodeId::new(base + 3);
-        let availability = if recent.available {
-            "available"
-        } else {
-            "unavailable"
-        };
         nodes.push(
             UiNode::label(
                 label,
                 format!("Recent project {}", index + 1),
                 format!(
-                    "{} — {} ({availability})",
+                    "{}\n{}",
                     bounded_text(&recent.label, 56),
-                    bounded_text(&recent.path, 96)
+                    if recent.available {
+                        bounded_text(&recent.path, 92)
+                    } else {
+                        "Location unavailable".to_owned()
+                    }
                 ),
             )
-            .with_style(UiStyle::muted_text()),
+            .with_style(if recent.available {
+                creator_meta_style()
+            } else {
+                UiStyle {
+                    foreground: UiColor::red_hover(),
+                    ..creator_meta_style()
+                }
+            }),
         );
-        nodes.push(
+        nodes.push(fixed_width(
             UiNode::button(
                 open,
-                format!("Open recent project {}", index + 1),
-                format!("hub.open-recent:{index}"),
-                "Open recent",
+                if recent.available {
+                    format!("Open recent project {}", index + 1)
+                } else {
+                    format!("Locate missing recent project {}", index + 1)
+                },
+                if recent.available {
+                    format!("hub.open-recent:{index}")
+                } else {
+                    format!("hub.locate-recent:{index}")
+                },
+                if recent.available { "Open" } else { "Locate" },
             )
-            .with_style(UiStyle::secondary_action())
-            .with_layout_hints(UiLayoutHints::fixed_width(108.0)),
-        );
-        nodes.push(
+            .with_style(shell_utility_style(false, !recent.available)),
+            88.0,
+        ));
+        nodes.push(fixed_width(
             UiNode::button(
                 remove,
                 format!("Remove recent project {}", index + 1),
                 format!("hub.remove-recent:{index}"),
-                "Remove recent",
+                "Remove",
             )
-            .with_style(UiStyle::secondary_action())
-            .with_layout_hints(UiLayoutHints::fixed_width(108.0)),
-        );
+            .with_style(shell_utility_style(false, false)),
+            88.0,
+        ));
         nodes.push(fixed_height(
             UiNode::container(
                 row,
@@ -810,95 +1072,102 @@ pub fn creator_hub_document(
         recent_rows.push(row);
     }
     if recent_rows.is_empty() {
-        let empty_recent = UiNodeId::new(90_016);
-        nodes.push(
+        let empty = UiNodeId::new(90_016);
+        nodes.push(fixed_height(
             UiNode::label(
-                empty_recent,
+                empty,
                 "No recent projects",
-                "No recent projects yet. Recent paths stay local and are never opened implicitly.",
+                "No recent projects yet. Meridian never opens a saved path implicitly.",
             )
-            .with_style(UiStyle::muted_text()),
-        );
-        recent_rows.push(empty_recent);
+            .with_style(creator_meta_style()),
+            40.0,
+        ));
+        recent_rows.push(empty);
     }
+    let recent_count = f32::from(u8::try_from(displayed_recent_count.max(1)).unwrap_or(u8::MAX));
+    let recent_gap_count =
+        f32::from(u8::try_from(displayed_recent_count.saturating_sub(1)).unwrap_or(u8::MAX));
+    let recent_height = recent_count * 54.0 + recent_gap_count * 8.0;
     nodes.push(fixed_height(
-        UiNode::label(recents_title, "Recent projects", "Recent projects")
-            .with_style(UiStyle::section_heading()),
-        24.0,
+        UiNode::virtual_list(recents_list, "Recent projects list", recent_rows)
+            .with_style(UiStyle::transparent()),
+        recent_height,
     ));
-    nodes.push(transparent_group(
-        recents_list,
-        "Recent projects list",
-        UiLayout::VerticalStack { gap: 8.0 },
-        recent_rows,
-    ));
-    nodes.push(fixed_height(
-        transparent_group(
-            action_row,
-            "Project actions",
-            UiLayout::HorizontalStack { gap: 10.0 },
-            vec![create, open],
-        ),
-        48.0,
-    ));
+
     nodes.push(
         UiNode::container(
-            card,
-            "Meridian Creator hub",
+            content,
+            "Meridian project hub content",
             UiLayout::VerticalStack { gap: 10.0 },
             vec![
-                title,
+                hero,
                 description,
-                status_id,
+                action_row,
                 project_name_label,
                 CREATOR_HUB_PROJECT_NAME,
-                action_row,
+                status_id,
                 recents_title,
                 recents_list,
             ],
         )
-        .with_style(creator_hub_card_style())
-        .with_layout_hints(UiLayoutHints::fixed_width(760.0)),
+        .with_style(UiStyle::transparent())
+        .with_layout_hints(UiLayoutHints::fixed_width(780.0)),
     );
     nodes.push(transparent_group(
         left_spacer,
-        "Creator hub left margin",
+        "Project hub left margin",
         UiLayout::Overlay,
         Vec::new(),
     ));
     nodes.push(transparent_group(
         right_spacer,
-        "Creator hub right margin",
+        "Project hub right margin",
         UiLayout::Overlay,
         Vec::new(),
     ));
+    let center_height = 286.0 + recent_height;
     nodes.push(fixed_height(
         transparent_group(
             center_row,
-            "Creator hub content",
+            "Project hub centered content",
             UiLayout::HorizontalStack { gap: 0.0 },
-            vec![left_spacer, card, right_spacer],
+            vec![left_spacer, content, right_spacer],
         ),
-        hub_height,
+        center_height,
     ));
     nodes.push(transparent_group(
         top_spacer,
-        "Creator hub top margin",
+        "Project hub top margin",
         UiLayout::Overlay,
         Vec::new(),
     ));
     nodes.push(transparent_group(
         bottom_spacer,
-        "Creator hub bottom margin",
+        "Project hub bottom margin",
         UiLayout::Overlay,
         Vec::new(),
     ));
     nodes.push(
         UiNode::container(
-            root,
-            "Meridian Creator hub",
+            main,
+            "Meridian project hub",
             UiLayout::VerticalStack { gap: 0.0 },
             vec![top_spacer, center_row, bottom_spacer],
+        )
+        .with_style(UiStyle::canvas()),
+    );
+    let status_row = push_status_row(
+        &mut nodes,
+        "No project open",
+        bounded_text(status, 120),
+        false,
+    );
+    nodes.push(
+        UiNode::container(
+            root,
+            "Meridian application hub",
+            UiLayout::VerticalStack { gap: 0.0 },
+            vec![application_row, workspace_row, main, status_row],
         )
         .with_style(workspace_canvas_style()),
     );
@@ -947,266 +1216,808 @@ pub fn creator_workspace_document_with_view(
     view: &CreatorWorkspaceView,
 ) -> Result<UiDocument, UiDocumentError> {
     let root = UiNodeId::new(1);
-    let header = UiNodeId::new(2);
-    let content = UiNodeId::new(3);
-    let footer = UiNodeId::new(4);
-    let left_column = UiNodeId::new(5);
-    let center_column = UiNodeId::new(6);
-    let right_column = UiNodeId::new(7);
-    let header_title = UiNodeId::new(8);
-    let header_summary = UiNodeId::new(9);
-    let header_mode = UiNodeId::new(10);
+    let main = UiNodeId::new(4);
+    let activity_rail = UiNodeId::new(92_060);
+    let browser = UiNodeId::new(164);
+    let viewport = UiNodeId::new(132);
+    let inspector = UiNodeId::new(196);
+    let bottom_shelf = UiNodeId::new(5);
     let mut nodes = Vec::new();
-    let selected = session.selection().ids.len();
-    let project_status = format!(
-        "Source r{} · {} source(s) · {} placement(s) · {selected} selected",
-        session.document().generation,
-        session.document().sources.len(),
-        session.document().placements.len(),
-    );
-    nodes.push(
-        UiNode::label(
-            header_title,
-            "Meridian Creator workspace",
-            "Meridian Creator",
-        )
-        .with_style(creator_title_style())
-        .with_layout_hints(UiLayoutHints::fixed_width(220.0)),
-    );
-    nodes.push(
-        UiNode::label(
-            header_summary,
-            "Creator project summary",
-            bounded_text(&project_status, 220),
-        )
-        .with_style(creator_meta_style()),
-    );
-    nodes.push(
-        UiNode::label(
-            header_mode,
-            "Creator interaction mode",
-            if session.play_active() {
-                "PLAY MODE"
-            } else {
-                "EDIT MODE"
-            },
-        )
-        .with_style(creator_mode_style(session.play_active()))
-        .with_layout_hints(UiLayoutHints::fixed_width(94.0)),
-    );
-    nodes.push(fixed_height(
-        UiNode::container(
-            header,
-            "Creator project status bar",
-            UiLayout::HorizontalStack { gap: 12.0 },
-            vec![header_title, header_summary, header_mode],
-        )
-        .with_style(creator_header_style()),
-        56.0,
-    ));
 
-    let mut panel_ids = Vec::new();
-    for (index, panel) in creator_alpha_panels().iter().enumerate() {
-        let base = 100_u128 + (index as u128 * 32);
-        let panel_id = UiNodeId::new(base);
-        let status_id = UiNodeId::new(base + 1);
-        let heading_id = UiNodeId::new(base + 28);
-        let action_group_id = UiNodeId::new(base + 29);
-        let preview_id = UiNodeId::new(base + 30);
-        let inspector_fields_id = UiNodeId::new(base + 27);
-        let mut children = vec![heading_id, status_id];
+    let application_row = push_application_row(
+        &mut nodes,
+        &bounded_text(&view.project, 34),
+        true,
+        session.play_active(),
+    );
+    let workspace_row = push_workspace_row(&mut nodes, true);
+
+    let rail_items = [
+        (92_061, "W", "World workspace", "workspace.world", true),
+        (92_062, "+", "Import source", "asset.reimport", false),
+        (92_063, "⌕", "Search World", "shell.search", false),
+        (92_064, "★", "World favorites", "shell.favorites", false),
+        (92_065, "▥", "World panels", "shell.panels", false),
+    ];
+    let mut rail_children = Vec::new();
+    for (id, label, name, action, selected) in rail_items {
+        let id = UiNodeId::new(id);
         nodes.push(fixed_height(
-            UiNode::label(heading_id, panel.title, panel.title)
-                .with_style(creator_panel_heading_style(panel.id)),
-            20.0,
+            UiNode::button(id, name, action, label).with_style(workspace_tab_style(selected)),
+            34.0,
         ));
-        nodes.push(fixed_height(
-            UiNode::label(
-                status_id,
-                format!("{} current state", panel.title),
-                panel_status(panel.id, session, view),
-            )
-            .with_style(creator_meta_style()),
-            20.0,
-        ));
-        if panel.id == EditorPanelId::Viewport {
-            children.push(preview_id);
-            nodes.push(
-                UiNode::label(
-                    preview_id,
-                    "Derived source placement preview",
-                    viewport_preview_text(session),
-                )
-                .with_style(creator_preview_style()),
-            );
-        }
-        if panel.id == EditorPanelId::Inspector {
-            let (x_mm, y_mm, z_mm) = inspected_translation_values(session);
-            children.push(inspector_fields_id);
-            let axis_fields = [
-                (
-                    UiNodeId::new(base + 21),
-                    UiNodeId::new(base + 24),
-                    CREATOR_INSPECTOR_X_MM,
-                    "X",
-                    x_mm,
-                ),
-                (
-                    UiNodeId::new(base + 22),
-                    UiNodeId::new(base + 25),
-                    CREATOR_INSPECTOR_Y_MM,
-                    "Y",
-                    y_mm,
-                ),
-                (
-                    UiNodeId::new(base + 23),
-                    UiNodeId::new(base + 26),
-                    CREATOR_INSPECTOR_Z_MM,
-                    "Z",
-                    z_mm,
-                ),
-            ];
-            let mut axis_groups = Vec::new();
-            for (group, label, field, axis, value) in axis_fields {
-                nodes.push(fixed_height(
-                    UiNode::label(
-                        label,
-                        format!("{axis} axis millimetres"),
-                        format!("{axis} (mm)"),
-                    )
-                    .with_style(creator_meta_style()),
-                    14.0,
-                ));
-                nodes.push(fixed_height(
-                    UiNode::text_input(
-                        field,
-                        format!("Selected placement {axis} coordinate in millimetres"),
-                        value,
-                        UiTextInputOptions::default(),
-                    )
-                    .with_style(UiStyle::compact_text_field()),
-                    28.0,
-                ));
-                nodes.push(fixed_height(
-                    transparent_group(
-                        group,
-                        format!("Selected placement {axis} coordinate"),
-                        UiLayout::VerticalStack { gap: 2.0 },
-                        vec![label, field],
-                    ),
-                    44.0,
-                ));
-                axis_groups.push(group);
-            }
-            nodes.push(fixed_height(
-                transparent_group(
-                    inspector_fields_id,
-                    "Selected placement X Y Z millimetre fields",
-                    UiLayout::HorizontalStack { gap: 6.0 },
-                    axis_groups,
-                ),
-                44.0,
-            ));
-        }
-        let mut action_ids = Vec::new();
-        for (command_index, command) in panel
-            .commands
-            .iter()
-            .copied()
-            .enumerate()
-            .filter(|(_, command)| creator_command_is_available(command, session))
-        {
-            let command_node_id = UiNodeId::new(base + 2 + command_index as u128);
-            action_ids.push(command_node_id);
-            let action_label = creator_action_label(command);
-            nodes.push(
-                UiNode::button(
-                    command_node_id,
-                    format!("{}: {action_label}", panel.title),
-                    command,
-                    action_label,
-                )
-                .with_style(creator_compact_action_style(panel.id, command)),
-            );
-        }
-        let action_grid = transparent_group(
-            action_group_id,
-            format!("{} actions", panel.title),
-            UiLayout::Grid {
-                columns: 3,
-                gap: 6.0,
-            },
-            action_ids,
-        );
-        nodes.push(match panel.id {
-            EditorPanelId::Viewport => fixed_height(action_grid, 26.0),
-            EditorPanelId::Inspector => fixed_height(action_grid, 24.0),
-            _ => action_grid,
-        });
-        children.push(action_group_id);
-        let panel_node = UiNode::container(
-            panel_id,
-            panel.title,
-            UiLayout::VerticalStack { gap: 6.0 },
-            children,
-        )
-        .with_style(creator_panel_style(panel.id));
-        nodes.push(match panel.id {
-            EditorPanelId::ProjectRecovery => fixed_height(panel_node, 176.0),
-            EditorPanelId::Inspector => fixed_height(panel_node, 178.0),
-            _ => panel_node,
-        });
-        panel_ids.push(panel_id);
+        rail_children.push(id);
     }
     nodes.push(
-        transparent_group(
-            left_column,
-            "Creator project hierarchy and assets",
+        UiNode::container(
+            activity_rail,
+            "World activity rail",
             UiLayout::VerticalStack { gap: 8.0 },
-            vec![panel_ids[0], panel_ids[2], panel_ids[5]],
+            rail_children,
         )
-        .with_layout_hints(UiLayoutHints::fixed_width(230.0)),
+        .with_style(world_panel_style(10.0))
+        .with_layout_hints(UiLayoutHints::fixed_width(44.0)),
     );
-    nodes.push(transparent_group(
-        center_column,
-        "Creator source placement preview",
-        UiLayout::VerticalStack { gap: 8.0 },
-        vec![panel_ids[1]],
+
+    let browser_header = UiNodeId::new(92_051);
+    let browser_title = UiNodeId::new(92_052);
+    let browser_kind = UiNodeId::new(92_053);
+    let browser_tree = UiNodeId::new(92_054);
+    let placement_item = UiNodeId::new(92_055);
+    let source_item = UiNodeId::new(92_056);
+    let generated_item = UiNodeId::new(92_057);
+    let browser_actions = UiNodeId::new(92_058);
+    let reimport = UiNodeId::new(262);
+    let inspect_source = UiNodeId::new(263);
+    nodes.push(fixed_width(
+        UiNode::label(browser_title, "World browser title", "World")
+            .with_style(creator_title_style()),
+        104.0,
     ));
     nodes.push(
-        transparent_group(
-            right_column,
-            "Creator inspector and tools",
-            UiLayout::VerticalStack { gap: 8.0 },
-            vec![panel_ids[3], panel_ids[7], panel_ids[8]],
-        )
-        .with_layout_hints(UiLayoutHints::fixed_width(280.0)),
+        UiNode::label(browser_kind, "World browser source mode", "SOURCE")
+            .with_style(creator_hub_field_label_style()),
     );
-    nodes.push(transparent_group(
-        content,
-        "Creator main workspace",
-        UiLayout::HorizontalStack { gap: 8.0 },
-        vec![left_column, center_column, right_column],
-    ));
     nodes.push(fixed_height(
         transparent_group(
-            footer,
-            "Creator history build and diagnostics",
-            UiLayout::HorizontalStack { gap: 10.0 },
-            vec![panel_ids[4], panel_ids[6], panel_ids[9]],
+            browser_header,
+            "World browser header",
+            UiLayout::HorizontalStack { gap: 8.0 },
+            vec![browser_title, browser_kind],
         ),
+        28.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::search_input(CREATOR_WORLD_SEARCH, "Search World sources", "")
+            .with_style(UiStyle::text_field()),
+        36.0,
+    ));
+    let selected_label =
+        selected_placement_summary(session).unwrap_or_else(|| "No source placement".to_owned());
+    nodes.push(fixed_height(
+        UiNode::tree_item(
+            placement_item,
+            bounded_text(&selected_label, 48),
+            "editor.select-placement",
+            !session.selection().ids.is_empty(),
+            true,
+        )
+        .with_style(if session.selection().ids.is_empty() {
+            UiStyle::secondary_action()
+        } else {
+            workspace_tab_style(true)
+        }),
+        34.0,
+    ));
+    let source_label = session.document().sources.values().next().map_or_else(
+        || "Imported · none".to_owned(),
+        |source| format!("Imported · {}", bounded_text(&source.label, 34)),
+    );
+    nodes.push(fixed_height(
+        UiNode::tree_item(
+            source_item,
+            source_label,
+            "asset.inspect-source",
+            false,
+            true,
+        )
+        .with_style(UiStyle::secondary_action()),
+        34.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::tree_item(
+            generated_item,
+            "Generated · Alluvium",
+            "procedural.inspect",
+            false,
+            false,
+        )
+        .with_style(UiStyle::secondary_action()),
+        34.0,
+    ));
+    nodes.push(
+        UiNode::tree(
+            browser_tree,
+            "World source hierarchy",
+            vec![placement_item, source_item, generated_item],
+        )
+        .with_style(UiStyle::transparent()),
+    );
+    nodes.push(fixed_width(
+        UiNode::button(
+            reimport,
+            "Reimport selected source",
+            "asset.reimport",
+            "Reimport",
+        )
+        .with_style(creator_compact_action_style(
+            EditorPanelId::Assets,
+            "asset.reimport",
+        )),
+        96.0,
+    ));
+    nodes.push(
+        UiNode::button(
+            inspect_source,
+            "Inspect authoritative source",
+            "asset.inspect-source",
+            "Open source",
+        )
+        .with_style(creator_compact_action_style(
+            EditorPanelId::Assets,
+            "asset.inspect-source",
+        )),
+    );
+    nodes.push(fixed_height(
+        transparent_group(
+            browser_actions,
+            "World source actions",
+            UiLayout::HorizontalStack { gap: 6.0 },
+            vec![reimport, inspect_source],
+        ),
+        30.0,
+    ));
+    nodes.push(
+        UiNode::container(
+            browser,
+            "World browser",
+            UiLayout::VerticalStack { gap: 8.0 },
+            vec![
+                browser_header,
+                CREATOR_WORLD_SEARCH,
+                browser_tree,
+                browser_actions,
+            ],
+        )
+        .with_style(world_panel_style(10.0))
+        .with_layout_hints(UiLayoutHints::fixed_width(264.0)),
+    );
+
+    let viewport_header = UiNodeId::new(92_070);
+    let viewport_title = UiNodeId::new(92_071);
+    let viewport_meta = UiNodeId::new(92_072);
+    let focus_selection = UiNodeId::new(134);
+    let canvas_mode = UiNodeId::new(92_080);
+    let canvas_status = UiNodeId::new(92_081);
+    nodes.push(fixed_width(
+        UiNode::label(viewport_title, "Live World viewport title", "LIVE WORLD")
+            .with_style(creator_hub_field_label_style()),
         112.0,
     ));
     nodes.push(
+        UiNode::label(
+            viewport_meta,
+            "Live World viewport mode",
+            format!(
+                "Perspective · Lit · source r{}",
+                session.document().generation
+            ),
+        )
+        .with_style(creator_meta_style()),
+    );
+    nodes.push(fixed_width(
+        UiNode::button(
+            focus_selection,
+            "Focus selected World source",
+            "editor.focus-selection",
+            "Focus selection",
+        )
+        .with_style(shell_utility_style(false, false)),
+        112.0,
+    ));
+    nodes.push(fixed_height(
+        transparent_group(
+            viewport_header,
+            "Live World viewport header",
+            UiLayout::HorizontalStack { gap: 8.0 },
+            vec![viewport_title, viewport_meta, focus_selection],
+        ),
+        28.0,
+    ));
+    nodes.push(
+        UiNode::label(canvas_mode, "World view projection", "SOURCE VIEW")
+            .with_style(canvas_overlay_style(UiColor::grass()))
+            .with_absolute_position(UiAbsolutePosition {
+                left: 14.0,
+                top: 14.0,
+                width: Some(104.0),
+                height: Some(28.0),
+            }),
+    );
+    nodes.push(
+        UiNode::label(
+            canvas_status,
+            "Selected source in World viewport",
+            selected_placement_summary(session).map_or_else(
+                || "Select a source placement in World.".to_owned(),
+                |summary| bounded_text(&summary, 72),
+            ),
+        )
+        .with_style(canvas_overlay_style(UiColor::border()))
+        .with_absolute_position(UiAbsolutePosition {
+            left: 14.0,
+            top: 50.0,
+            width: Some(330.0),
+            height: Some(34.0),
+        }),
+    );
+    nodes.push(
+        UiNode::canvas(
+            CREATOR_WORLD_VIEWPORT_CANVAS,
+            "Live source-derived World viewport",
+            vec![canvas_mode, canvas_status],
+        )
+        .with_style(world_canvas_style())
+        .with_constraints(UiConstraints {
+            minimum: UiSize::new(320.0, 240.0),
+            clip: true,
+            ..UiConstraints::default()
+        }),
+    );
+    nodes.push(
+        UiNode::container(
+            viewport,
+            "World viewport",
+            UiLayout::VerticalStack { gap: 8.0 },
+            vec![viewport_header, CREATOR_WORLD_VIEWPORT_CANVAS],
+        )
+        .with_style(world_panel_style(10.0)),
+    );
+
+    let inspector_header = UiNodeId::new(93_000);
+    let inspector_title = UiNodeId::new(93_001);
+    let inspector_context = UiNodeId::new(93_002);
+    let selection_summary = UiNodeId::new(93_003);
+    let transform_title = UiNodeId::new(93_004);
+    let transform_fields = UiNodeId::new(93_005);
+    nodes.push(fixed_width(
+        UiNode::label(inspector_title, "World Inspector title", "Inspector")
+            .with_style(creator_title_style()),
+        118.0,
+    ));
+    nodes.push(
+        UiNode::label(
+            inspector_context,
+            "World Inspector context",
+            "WORLD PLACEMENT",
+        )
+        .with_style(creator_hub_field_label_style()),
+    );
+    nodes.push(fixed_height(
+        transparent_group(
+            inspector_header,
+            "World Inspector header",
+            UiLayout::HorizontalStack { gap: 8.0 },
+            vec![inspector_title, inspector_context],
+        ),
+        28.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::label(
+            selection_summary,
+            "World Inspector selection",
+            selected_placement_summary(session).map_or_else(
+                || "Select a source placement to edit it.".to_owned(),
+                |summary| bounded_text(&summary, 88),
+            ),
+        )
+        .with_style(creator_meta_style()),
+        34.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::label(
+            transform_title,
+            "Transform properties",
+            "TRANSFORM · MILLIMETRES",
+        )
+        .with_style(creator_hub_field_label_style()),
+        18.0,
+    ));
+    let (x_mm, y_mm, z_mm) = inspected_translation_values(session);
+    let axes = [
+        (93_010, 93_011, CREATOR_INSPECTOR_X_MM, "X", x_mm),
+        (93_012, 93_013, CREATOR_INSPECTOR_Y_MM, "Y", y_mm),
+        (93_014, 93_015, CREATOR_INSPECTOR_Z_MM, "Z", z_mm),
+    ];
+    let mut axis_groups = Vec::new();
+    for (group, label, field, axis, value) in axes {
+        let group = UiNodeId::new(group);
+        let label = UiNodeId::new(label);
+        nodes.push(fixed_height(
+            UiNode::label(label, format!("{axis} coordinate"), axis)
+                .with_style(creator_hub_field_label_style()),
+            14.0,
+        ));
+        nodes.push(fixed_height(
+            UiNode::text_input(
+                field,
+                format!("Selected placement {axis} coordinate in millimetres"),
+                value,
+                UiTextInputOptions::default(),
+            )
+            .with_style(UiStyle::compact_text_field()),
+            28.0,
+        ));
+        nodes.push(fixed_height(
+            transparent_group(
+                group,
+                format!("{axis} coordinate field"),
+                UiLayout::VerticalStack { gap: 2.0 },
+                vec![label, field],
+            ),
+            44.0,
+        ));
+        axis_groups.push(group);
+    }
+    nodes.push(fixed_height(
+        transparent_group(
+            transform_fields,
+            "Selected placement transform",
+            UiLayout::HorizontalStack { gap: 6.0 },
+            axis_groups,
+        ),
+        44.0,
+    ));
+    let placement_actions = push_creator_action_grid(
+        &mut nodes,
+        UiNodeId::new(93_020),
+        93_021,
+        "World placement",
+        EditorPanelId::Inspector,
+        session,
+        &[
+            "editor.preview-command",
+            "editor.edit-placement",
+            "editor.focus-selection",
+        ],
+        3,
+        30.0,
+    );
+
+    let recipe_section = UiNodeId::new(93_040);
+    let recipe_title = UiNodeId::new(93_041);
+    let recipe_status = UiNodeId::new(93_042);
+    nodes.push(fixed_height(
+        UiNode::label(recipe_title, "Alluvium section", "ALLUVIUM")
+            .with_style(creator_hub_field_label_style()),
+        18.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::label(
+            recipe_status,
+            "Alluvium World status",
+            bounded_text(&view.recipe, 66),
+        )
+        .with_style(creator_meta_style()),
+        20.0,
+    ));
+    let recipe_actions = push_creator_action_grid(
+        &mut nodes,
+        UiNodeId::new(93_043),
+        93_044,
+        "Alluvium",
+        EditorPanelId::Recipe,
+        session,
+        &[
+            "procedural.inspect",
+            "procedural.validate",
+            "procedural.migrate",
+            "procedural.preview",
+            "procedural.bake",
+            "procedural.dirty",
+            "procedural.explain",
+            "procedural.provenance",
+            "procedural.license-audit",
+        ],
+        3,
+        84.0,
+    );
+    nodes.push(fixed_height(
+        UiNode::container(
+            recipe_section,
+            "Alluvium World tools",
+            UiLayout::VerticalStack { gap: 4.0 },
+            vec![recipe_title, recipe_status, recipe_actions],
+        )
+        .with_style(world_section_style(UiColor::amber())),
+        146.0,
+    ));
+
+    let model_section = UiNodeId::new(93_080);
+    let model_title = UiNodeId::new(93_081);
+    let model_status = UiNodeId::new(93_082);
+    nodes.push(fixed_height(
+        UiNode::label(model_title, "Model source section", "EDITABLE MODEL")
+            .with_style(creator_hub_field_label_style()),
+        18.0,
+    ));
+    nodes.push(fixed_height(
+        UiNode::label(
+            model_status,
+            "Editable model status",
+            bounded_text(&view.model, 66),
+        )
+        .with_style(creator_meta_style()),
+        20.0,
+    ));
+    let model_actions = push_creator_action_grid(
+        &mut nodes,
+        UiNodeId::new(93_083),
+        93_084,
+        "Editable model",
+        EditorPanelId::Modeler,
+        session,
+        &[
+            "model.inspect-source",
+            "model.create-primitive",
+            "model.transform",
+            "model.split-edge",
+            "model.undo",
+            "model.redo",
+            "model.recover",
+        ],
+        3,
+        84.0,
+    );
+    nodes.push(fixed_height(
+        UiNode::container(
+            model_section,
+            "Editable model World tools",
+            UiLayout::VerticalStack { gap: 4.0 },
+            vec![model_title, model_status, model_actions],
+        )
+        .with_style(world_section_style(UiColor::grass())),
+        146.0,
+    ));
+    nodes.push(
+        UiNode::container(
+            inspector,
+            "World Inspector",
+            UiLayout::VerticalStack { gap: 8.0 },
+            vec![
+                inspector_header,
+                selection_summary,
+                transform_title,
+                transform_fields,
+                placement_actions,
+                recipe_section,
+                model_section,
+            ],
+        )
+        .with_style(world_panel_style(10.0))
+        .with_layout_hints(UiLayoutHints::fixed_width(344.0)),
+    );
+
+    nodes.push(
+        UiNode::container(
+            main,
+            "World workspace",
+            UiLayout::HorizontalStack { gap: 8.0 },
+            vec![activity_rail, browser, viewport, inspector],
+        )
+        .with_style(UiStyle::canvas()),
+    );
+
+    let shelf_items = [
+        (93_200, "Undo", "editor.undo", 72.0),
+        (93_201, "Redo", "editor.redo", 72.0),
+        (93_202, "Build details", "build.inspect", 104.0),
+        (93_203, "Diagnostics", "editor.show-diagnostic", 96.0),
+        (93_204, "Recover", "editor.recover", 84.0),
+    ];
+    let mut shelf_children = Vec::new();
+    for (id, label, action, width) in shelf_items {
+        let id = UiNodeId::new(id);
+        nodes.push(fixed_width(
+            UiNode::button(id, label, action, label)
+                .with_style(creator_compact_action_style(EditorPanelId::History, action)),
+            width,
+        ));
+        shelf_children.push(id);
+    }
+    let shelf_spacer = UiNodeId::new(93_205);
+    let shelf_activity = UiNodeId::new(93_206);
+    nodes.push(transparent_group(
+        shelf_spacer,
+        "Bottom shelf spacer",
+        UiLayout::Overlay,
+        Vec::new(),
+    ));
+    nodes.push(fixed_width(
+        UiNode::label(
+            shelf_activity,
+            "Build and recovery summary",
+            format!(
+                "{} · {}",
+                bounded_text(&view.build, 46),
+                bounded_text(&view.recovery, 46)
+            ),
+        )
+        .with_style(creator_meta_style()),
+        420.0,
+    ));
+    shelf_children.push(shelf_spacer);
+    shelf_children.push(shelf_activity);
+    nodes.push(fixed_height(
+        UiNode::container(
+            bottom_shelf,
+            "World bottom shelf",
+            UiLayout::HorizontalStack { gap: 6.0 },
+            shelf_children,
+        )
+        .with_style(shell_row_style(UiColor::surface(), 3.0)),
+        32.0,
+    ));
+
+    let status_row = push_status_row(
+        &mut nodes,
+        if session.play_active() {
+            "Source saved · Play fork isolated"
+        } else {
+            "Source saved"
+        },
+        bounded_text(&view.activity, 100),
+        session.play_active(),
+    );
+    nodes.push(
         UiNode::container(
             root,
-            "Creator Editor Alpha workspace",
-            UiLayout::VerticalStack { gap: 10.0 },
-            vec![header, content, footer],
+            "Meridian World workspace",
+            UiLayout::VerticalStack { gap: 0.0 },
+            vec![
+                application_row,
+                workspace_row,
+                main,
+                bottom_shelf,
+                status_row,
+            ],
         )
         .with_style(workspace_canvas_style()),
     );
     UiDocument::new(root, nodes)
+}
+
+#[derive(Clone, Copy)]
+struct WorldViewportGeometry {
+    canvas: UiRect,
+    left: f32,
+    right: f32,
+    horizon: f32,
+    bottom: f32,
+}
+
+impl WorldViewportGeometry {
+    fn from_canvas(canvas: UiRect) -> Option<Self> {
+        let left = canvas.origin.x + 18.0;
+        let right = canvas.origin.x + canvas.size.width - 18.0;
+        let top = canvas.origin.y + 96.0;
+        let bottom = canvas.origin.y + canvas.size.height - 18.0;
+        (right > left && bottom > top).then_some(Self {
+            canvas,
+            left,
+            right,
+            horizon: top + (bottom - top) * 0.42,
+            bottom,
+        })
+    }
+}
+
+fn push_world_path(
+    display: &mut DisplayList,
+    commands: Vec<UiPathCommand>,
+    color: UiColor,
+) -> Result<(), DisplayListError> {
+    display.try_push(DisplayPrimitive::Path {
+        node: CREATOR_WORLD_VIEWPORT_CANVAS,
+        commands,
+        fill: None,
+        stroke: Some(UiStroke::new(color, 1.0)),
+    })
+}
+
+fn push_world_filled_path(
+    display: &mut DisplayList,
+    commands: Vec<UiPathCommand>,
+    color: UiColor,
+) -> Result<(), DisplayListError> {
+    display.try_push(DisplayPrimitive::Path {
+        node: CREATOR_WORLD_VIEWPORT_CANVAS,
+        commands,
+        fill: Some(color),
+        stroke: Some(UiStroke::new(color, 1.0)),
+    })
+}
+
+fn decorate_world_grid(
+    display: &mut DisplayList,
+    geometry: WorldViewportGeometry,
+) -> Result<(), DisplayListError> {
+    let grid = UiColor::rgba(0.161, 0.176, 0.173, 0.42);
+    let vanishing = UiPoint {
+        x: geometry.left + (geometry.right - geometry.left) * 0.56,
+        y: geometry.horizon,
+    };
+    for column in 0_u8..=8 {
+        let progress = f32::from(column) / 8.0;
+        push_world_path(
+            display,
+            vec![
+                UiPathCommand::MoveTo(UiPoint {
+                    x: geometry.left + (geometry.right - geometry.left) * progress,
+                    y: geometry.bottom,
+                }),
+                UiPathCommand::LineTo(vanishing),
+            ],
+            grid,
+        )?;
+    }
+    for row in 0_u8..=5 {
+        let progress = f32::from(row) / 5.0;
+        let y = geometry.horizon + (geometry.bottom - geometry.horizon) * progress * progress;
+        push_world_path(
+            display,
+            vec![
+                UiPathCommand::MoveTo(UiPoint {
+                    x: geometry.left,
+                    y,
+                }),
+                UiPathCommand::LineTo(UiPoint {
+                    x: geometry.right,
+                    y,
+                }),
+            ],
+            grid,
+        )?;
+    }
+    Ok(())
+}
+
+#[allow(clippy::cast_precision_loss)] // Source millimetres clamp to a small display-only range.
+fn decorate_world_placement(
+    display: &mut DisplayList,
+    geometry: WorldViewportGeometry,
+    placement: &WorldPlacement,
+) -> Result<(), DisplayListError> {
+    let source_x = placement.translation.x_mm.clamp(-5_000, 5_000) as f32 / 5_000.0;
+    let source_z = placement.translation.z_mm.clamp(-5_000, 5_000) as f32 / 5_000.0;
+    let center = UiPoint {
+        x: geometry.left + (geometry.right - geometry.left) * (0.56 + source_x * 0.18),
+        y: geometry.horizon + (geometry.bottom - geometry.horizon) * (0.52 - source_z * 0.16),
+    };
+    let size = geometry
+        .canvas
+        .size
+        .width
+        .min(geometry.canvas.size.height)
+        .mul_add(0.11, 0.0)
+        .clamp(28.0, 84.0);
+    let triangle = [
+        UiPoint {
+            x: center.x,
+            y: center.y - size,
+        },
+        UiPoint {
+            x: center.x - size * 0.86,
+            y: center.y + size * 0.52,
+        },
+        UiPoint {
+            x: center.x + size * 0.86,
+            y: center.y + size * 0.52,
+        },
+    ];
+    push_world_filled_path(
+        display,
+        vec![
+            UiPathCommand::MoveTo(triangle[0]),
+            UiPathCommand::LineTo(triangle[1]),
+            UiPathCommand::LineTo(triangle[2]),
+            UiPathCommand::Close,
+        ],
+        UiColor::rgba(0.553, 0.537, 0.38, 0.82),
+    )?;
+    let radius = size + 12.0;
+    push_world_path(
+        display,
+        vec![
+            UiPathCommand::MoveTo(UiPoint {
+                x: center.x - radius,
+                y: center.y - radius,
+            }),
+            UiPathCommand::LineTo(UiPoint {
+                x: center.x + radius,
+                y: center.y - radius,
+            }),
+            UiPathCommand::LineTo(UiPoint {
+                x: center.x + radius,
+                y: center.y + radius,
+            }),
+            UiPathCommand::LineTo(UiPoint {
+                x: center.x - radius,
+                y: center.y + radius,
+            }),
+            UiPathCommand::Close,
+        ],
+        UiColor::amber(),
+    )?;
+    for (end, color) in [
+        (
+            UiPoint {
+                x: center.x + size * 1.35,
+                y: center.y,
+            },
+            UiColor::red_hover(),
+        ),
+        (
+            UiPoint {
+                x: center.x,
+                y: center.y - size * 1.35,
+            },
+            UiColor::grass(),
+        ),
+    ] {
+        push_world_path(
+            display,
+            vec![UiPathCommand::MoveTo(center), UiPathCommand::LineTo(end)],
+            color,
+        )?;
+    }
+    Ok(())
+}
+
+/// Adds a bounded source-derived World presentation to the retained canvas.
+///
+/// The immutable editor source remains authoritative. This decoration uses
+/// only renderer-neutral paths and the accepted canvas bounds; it carries no
+/// renderer handles and cannot mutate the project.
+///
+/// # Errors
+///
+/// Returns a typed display-list error without changing the accepted frame.
+pub fn decorate_world_viewport(
+    session: &EditorSession,
+    frame: &UiFrameOutput,
+) -> Result<UiFrameOutput, DisplayListError> {
+    let geometry = frame
+        .layout
+        .iter()
+        .find(|entry| entry.node == CREATOR_WORLD_VIEWPORT_CANVAS)
+        .and_then(|entry| WorldViewportGeometry::from_canvas(entry.bounds));
+    let Some(geometry) = geometry else {
+        return Ok(Arc::clone(frame));
+    };
+    let mut decorated = (**frame).clone();
+    decorate_world_grid(&mut decorated.display_list, geometry)?;
+    if let Some(placement) = session
+        .selection()
+        .ids
+        .iter()
+        .find_map(|id| session.document().placements.get(id))
+        .or_else(|| session.document().placements.values().next())
+    {
+        decorate_world_placement(&mut decorated.display_list, geometry, placement)?;
+    }
+    decorated.display_list.validate()?;
+    Ok(Arc::new(decorated))
 }
 
 /// Builds the keyboard-accessible, text-first Alluvium inspector. It exposes
@@ -1341,10 +2152,12 @@ pub fn model_inspector_document(
 #[cfg(test)]
 mod tests {
     use meridian_core::StableId;
-    use meridian_editor_core::ProjectDocument;
+    use meridian_editor_core::{
+        CommandMetadata, EditorCommand, EditorTransaction, ProjectDocument, Translation,
+    };
     use meridian_ui::{
-        DisplayPrimitive, SemanticDelta, SemanticRole, UiEvent, UiFrameInput, UiPoint, UiRuntime,
-        UiSize, UiWidgetKind,
+        DisplayPrimitive, SemanticAction, SemanticDelta, SemanticRole, UiEvent, UiFrameInput,
+        UiPoint, UiRuntime, UiSize, UiWidgetKind,
     };
 
     use super::*;
@@ -1365,11 +2178,19 @@ mod tests {
     fn inspector_and_history_actions_are_focusable_semantic_buttons() {
         let session = EditorSession::open(ProjectDocument::new(StableId::new(1))).expect("session");
         let document = creator_alpha_document(&session).expect("valid UI document");
-        for id in [UiNodeId::new(198), UiNodeId::new(230), UiNodeId::new(231)] {
-            let node = document.node(id).expect("declared action");
+        for action in ["editor.edit-placement", "editor.undo", "editor.redo"] {
+            let node = document
+                .focus_order()
+                .into_iter()
+                .find_map(|id| {
+                    document
+                        .node(id)
+                        .filter(|node| node.semantics.action.as_deref() == Some(action))
+                })
+                .expect("declared action");
             assert_eq!(node.kind, UiWidgetKind::Button);
             assert!(node.focusable);
-            assert!(node.semantics.action.is_some());
+            assert_eq!(node.semantics.action.as_deref(), Some(action));
         }
     }
 
@@ -1442,6 +2263,11 @@ mod tests {
             assert!(node.focusable);
             assert!(node.semantics.action.is_some());
         }
+        assert_eq!(
+            hub.node(UiNodeId::new(90_101))
+                .and_then(|node| node.semantics.action.as_deref()),
+            Some("hub.locate-recent:0")
+        );
     }
 
     fn public_creator_session() -> EditorSession {
@@ -1469,7 +2295,7 @@ mod tests {
         let visible_focusable = tree
             .nodes
             .iter()
-            .filter(|node| matches!(node.role, SemanticRole::Button | SemanticRole::TextInput))
+            .filter(|node| node.actions.contains(&SemanticAction::Focus))
             .collect::<Vec<_>>();
         assert_eq!(visible_focusable.len(), expected_focus_order.len());
         for node in visible_focusable {
@@ -1481,45 +2307,16 @@ mod tests {
             assert!(bounds.origin.x + bounds.size.width <= viewport.width + 0.1);
             assert!(bounds.origin.y + bounds.size.height <= viewport.height + 0.1);
             match node.role {
-                SemanticRole::Button => assert!(
-                    bounds.size.height >= 20.0,
-                    "{} button height fell below the compact-action minimum",
-                    node.name
-                ),
-                SemanticRole::TextInput => assert!(
+                SemanticRole::TextInput | SemanticRole::SearchBox => assert!(
                     bounds.size.height >= 28.0,
                     "{} text field height fell below its declared size",
                     node.name
                 ),
-                SemanticRole::Group
-                | SemanticRole::Status
-                | SemanticRole::ToggleButton
-                | SemanticRole::ProgressIndicator
-                | SemanticRole::SearchBox
-                | SemanticRole::ComboBox
-                | SemanticRole::Option
-                | SemanticRole::MenuBar
-                | SemanticRole::Menu
-                | SemanticRole::MenuItem
-                | SemanticRole::Tooltip
-                | SemanticRole::LiveRegion
-                | SemanticRole::TabList
-                | SemanticRole::Tab
-                | SemanticRole::Tree
-                | SemanticRole::TreeItem
-                | SemanticRole::Table
-                | SemanticRole::Row
-                | SemanticRole::Cell
-                | SemanticRole::PropertyGrid
-                | SemanticRole::List
-                | SemanticRole::ListItem
-                | SemanticRole::Timeline
-                | SemanticRole::Splitter
-                | SemanticRole::Dialog
-                | SemanticRole::Graph
-                | SemanticRole::Canvas => {
-                    unreachable!("focusable filter is exact")
-                }
+                _ => assert!(
+                    bounds.size.height >= 20.0,
+                    "{} control height fell below the compact-action minimum",
+                    node.name
+                ),
             }
         }
     }
@@ -1676,28 +2473,28 @@ mod tests {
         };
         assert_eq!(
             action_id(&edit_document, "editor.play-start"),
-            Some(UiNodeId::new(104))
+            Some(UiNodeId::new(92_003))
         );
 
         let mut runtime = UiRuntime::new(edit_document);
         let focused = runtime.reconcile({
             let mut input = UiFrameInput::new(UiSize::new(1024.0, 720.0));
-            input.events = vec![UiEvent::AssistiveFocus(UiNodeId::new(104))];
+            input.events = vec![UiEvent::AssistiveFocus(UiNodeId::new(92_003))];
             input
         });
-        assert_eq!(focused.focused, Some(UiNodeId::new(104)));
+        assert_eq!(focused.focused, Some(UiNodeId::new(92_003)));
 
         session.start_play().expect("Play session starts");
         let play_document = creator_alpha_document(&session).expect("valid Play workspace");
         assert_eq!(
             action_id(&play_document, "editor.play-apply"),
-            Some(UiNodeId::new(105))
+            Some(UiNodeId::new(92_043))
         );
         assert_eq!(
             action_id(&play_document, "editor.play-discard"),
-            Some(UiNodeId::new(106))
+            Some(UiNodeId::new(92_007))
         );
-        assert!(play_document.node(UiNodeId::new(104)).is_none());
+        assert!(play_document.node(UiNodeId::new(92_003)).is_none());
         runtime.replace_document(play_document);
         let output = runtime.reconcile({
             let mut input = UiFrameInput::new(UiSize::new(1024.0, 720.0));
@@ -1743,26 +2540,90 @@ mod tests {
     }
 
     #[test]
-    fn creator_workspace_gives_the_source_preview_and_header_clear_priority() {
+    fn creator_workspace_uses_the_locked_shell_and_world_width_priorities() {
         let session = public_creator_session();
         let document = creator_alpha_document(&session).expect("valid Creator workspace");
         let mut runtime = UiRuntime::new(document);
-        let output = runtime.reconcile(UiFrameInput::new(UiSize::new(1024.0, 720.0)));
-        let header = semantic_bounds(&output, UiNodeId::new(2));
+        let output = runtime.reconcile(UiFrameInput::new(UiSize::new(1440.0, 900.0)));
+        let application_row = semantic_bounds(&output, SHELL_APPLICATION_ROW);
+        let workspace_row = semantic_bounds(&output, SHELL_WORKSPACE_ROW);
+        let status_row = semantic_bounds(&output, SHELL_STATUS_ROW);
         let viewport = semantic_bounds(&output, UiNodeId::new(132));
-        let project_panel = semantic_bounds(&output, UiNodeId::new(100));
+        let browser = semantic_bounds(&output, UiNodeId::new(164));
         let inspector = semantic_bounds(&output, UiNodeId::new(196));
 
-        assert!((header.size.height - 56.0).abs() < 0.1);
-        assert!(viewport.size.width > project_panel.size.width);
+        assert!((application_row.size.height - 44.0).abs() < 0.1);
+        assert!((workspace_row.size.height - 36.0).abs() < 0.1);
+        assert!((status_row.size.height - 24.0).abs() < 0.1);
+        assert!((browser.size.width - 264.0).abs() < 0.1);
+        assert!((inspector.size.width - 344.0).abs() < 0.1);
+        assert!(viewport.size.width > browser.size.width);
         assert!(viewport.size.width > inspector.size.width);
-        assert!(viewport.size.height > project_panel.size.height);
+    }
+
+    #[test]
+    fn world_viewport_is_a_real_canvas_decorated_from_authoritative_source() {
+        let mut session = public_creator_session();
+        let document = creator_alpha_document(&session).expect("valid Creator workspace");
+        let canvas = document
+            .node(CREATOR_WORLD_VIEWPORT_CANVAS)
+            .expect("World viewport canvas");
+        assert_eq!(canvas.kind, UiWidgetKind::Canvas);
+        assert_eq!(canvas.semantics.role, SemanticRole::Canvas);
+
+        let mut runtime = UiRuntime::new(document);
+        let frame = runtime.reconcile(UiFrameInput::new(UiSize::new(1440.0, 900.0)));
+        let undecorated_count = frame.display_list.primitives.len();
+        let decorated = decorate_world_viewport(&session, &frame).expect("viewport decorates");
+        let first_paths = decorated
+            .display_list
+            .primitives
+            .iter()
+            .filter_map(|primitive| match primitive {
+                DisplayPrimitive::Path { commands, .. } => Some(commands.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(first_paths.len() >= 19);
+        assert_eq!(frame.display_list.primitives.len(), undecorated_count);
+
+        let placement_id = *session
+            .document()
+            .placements
+            .keys()
+            .next()
+            .expect("public placement");
+        session
+            .commit(EditorTransaction {
+                command: EditorCommand::SetPlacementTranslation {
+                    placement_id,
+                    translation: Translation {
+                        x_mm: 1_000,
+                        y_mm: 0,
+                        z_mm: -1_000,
+                    },
+                },
+                metadata: CommandMetadata::local("Move public placement", [placement_id]),
+            })
+            .expect("source edit commits");
+        let moved = decorate_world_viewport(&session, &frame).expect("moved viewport decorates");
+        let moved_paths = moved
+            .display_list
+            .primitives
+            .iter()
+            .filter_map(|primitive| match primitive {
+                DisplayPrimitive::Path { commands, .. } => Some(commands.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_ne!(first_paths, moved_paths);
     }
 
     #[test]
     fn creator_workspace_renders_truthful_state_in_a_bounded_visible_shell() {
         let session = public_creator_session();
         let view = CreatorWorkspaceView {
+            project: "Creator Alpha".to_owned(),
             activity: "Opened authoritative source with validated recovery context.".to_owned(),
             recovery: "Recovery restored the source-matching local selection.".to_owned(),
             build: "No build is running; the durable build service is ready.".to_owned(),

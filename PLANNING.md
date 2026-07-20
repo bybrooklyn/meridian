@@ -54,7 +54,7 @@ media, cost-prediction, or competitive-validation system.
 | Audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | implementation remains outside the current Creator Editor package |
 | Alluvium | `ImplementedFoundation` | canonical text recipes, strict scalar evaluation, derived-cache recovery, CLI, and a basic inspector are qualified; production/domain work remains open |
 | Native modeler | `Partial` | bounded editable-model source, stable topology lineage, semantic recovery, and a derived preview exist; broad modeling remains later scope |
-| Rust gameplay, Luau, animation, navigation, frameworks, first-class 2D, Meridian Shader Language, Collective | `Planned` or `Deferred` | specifications and registries exist; no product implementation claim |
+| Rust gameplay, Luau, Artus body motion, navigation, frameworks, first-class 2D, Meridian Shader Language, Collective | `Planned` or `Deferred` | specifications and registries exist; no product implementation claim |
 | Torsant, networking, XR, modding, agents, VCS/sync | `Planned`, `Research`, or `Deferred` | no production implementation claim |
 | Distributed worlds, advanced integrity, and other `PRG-*` programs | `Deferred` or `Research` | post-1.0 authority only; no milestone or implementation evidence |
 | Marquee | `Deferred` | ResearchReady post-1.0 architecture; no crate, active package, service integration, or promotional-quality evidence |
@@ -489,9 +489,10 @@ Scope boundary: `WP-BLD-001` owns the bounded MS-03 local-Cargo prerequisite:
 one observable operation, typed Cargo lifecycle/diagnostics, one optional
 verified executable, durable local recovery, and the command/event seam for
 `WP-EDT-001`. Planned `WP-BLD-002` owns MS-08 continuation work that would
-change the execution model or trust boundary: multi-node result lineage,
-general artifact/cache policy, service-process and remote-worker supervision,
-team profiles, and broad reproducibility evidence. Those capabilities are not
+change the execution model or trust boundary: managed external toolchains with
+exact project pins, multi-node result lineage, general artifact/cache policy,
+service-process and remote-worker supervision, team profiles, and broad
+reproducibility evidence. Those capabilities are not
 part of this package and cannot keep its MS-03 prerequisite open.
 
 Entry conditions and dependencies: MS-02 is `Pass`; `WP-BLD-001` has no direct
@@ -714,8 +715,8 @@ contract, and new durable references retain the complete declared graph manifest
 but build-wide provenance still lacks per-node result lineage. The current graph scheduler is single-host, dependency-only,
 and restricted to the Cargo metadata -> check/build proof. Concurrent/resource-aware
 build-DAG scheduling, external service-process restart, lossless manifest editing,
-rust-analyzer, remote execution, signing, and deployment are planned
-`WP-BLD-002` work.
+rust-analyzer, managed toolchain installation/repair/rollback, remote
+execution, signing, and deployment are planned `WP-BLD-002` work.
 
 Reviewers/sign-offs: Definition of Ready was reviewed against the current
 workspace and MS-02 evidence. `EV-BLD-20260715-001` records local
@@ -1147,11 +1148,12 @@ GPU path now has bounded isolated/nested layer targets and a local native
 `Presented` structural smoke with bounded surface readback. It also has the
 bounded direct backdrop and geometry/color-quality treatments described below,
 plus local profile-bound offscreen raw-RGBA golden comparison, controlled
-device-destruction replay, and raw uncalibrated performance samples. These are
-`Inconclusive` qualification evidence for current local/dirty source and are
-not presented visual, accessibility, or cross-platform qualification. Real
-screen-reader and visible-review evidence is absent, and hosted cross-platform
-qualification remains unavailable; none can be waived into a completion claim.
+device-destruction replay, raw uncalibrated performance samples, and a canonical
+2x capture copied from a mapped `Presented` surface. These are `Inconclusive`
+qualification evidence for current local/dirty source and are not human-approved
+visual, accessibility, or cross-platform qualification. Real screen-reader and
+human-review evidence is absent, and hosted cross-platform qualification remains
+unavailable; none can be waived into a completion claim.
 
 Requirements: `REQ-UI-001`, `REQ-UI-002`; gate: `RG-UI-001`
 
@@ -1218,22 +1220,53 @@ stencil depth, binding requirements, nested composition, and rejected-frame
 state are regression-tested. Native presented-surface readback also validates
 bounded RGBA8 sRGB metadata and non-uniform output; this is local structural
 evidence, not a visual-quality claim. Local profile-bound raw-RGBA comparison,
-controlled device-destruction replay, and raw uncalibrated performance samples
-are recorded as `EV-UI-20260718-001` through `EV-UI-20260718-003`: the settled
+controlled device-destruction replay, raw uncalibrated performance samples, and
+presented review input are recorded as `EV-UI-20260718-001` through
+`EV-UI-20260719-004`: the settled
 local working-tree runner outputs are profile-bound 3/3 exact raw-RGBA goldens
 at `target/meridian-evidence/ui-direct-qualification/20260718-settled/`, a
 controlled `Destroyed` -> `DeviceLost` recovery with a zero-difference
 57,600-pixel replay at
 `target/meridian-evidence/ui-direct-device-loss-replay/20260718-settled/`, and
 three warmups plus ten samples per mode at
-`target/meridian-evidence/ui-direct-performance/20260718-settled/`. Each is
+`target/meridian-evidence/ui-direct-performance/20260718-settled/`, plus the
+640x360 canonical 2x presented-surface capture at
+`target/meridian-evidence/ui-direct-presented-review/20260719-local-2/`. Each is
 `Inconclusive`, caller-declared working-tree evidence and is non-promoting.
-Presented
-visual qualification, calibrated renderer measurements, real screen-reader and
-visible-review evidence, accessibility qualification, and cross-platform CI
+Human visual approval, calibrated renderer measurements, real screen-reader and
+accessibility qualification, and cross-platform CI
 remain open. This is not renderer or package completion. The complete proportional
 gates are rerun before source delivery. Cross-platform CI remains required
 before promotion.
+
+The bounded `ui_accessibility_review` runner now keeps a real AccessKit-backed
+fixture alive long enough for an assistive client, records only native adapter
+actions with payload contents redacted, and leaves five spoken-output/focus
+checks to a human reviewer. Local `EV-UI-20260719-005` exercised its timeout
+path: adapter projection passed, no assistive action was observed in five
+seconds, and screen-reader evidence is correctly `NotRun`.
+
+The retained runtime now records saturated monotonic durations for accepted
+reconciliation, layout, text shaping/rasterization, display validation, and
+semantic-delta work. A bounded Meridian-owned source-timestamp side table
+reports exact minimum/maximum/mean source-to-reconciliation-boundary latency
+only when a caller supplies comparable monotonic frame-boundary timing.
+Malformed timing batches are typed pre-mutation rejections with accepted
+revision, focus, and private text rollback covered by local tests; untimestamped
+callers remain truthfully `Unavailable`. Actual input-to-presented-surface
+latency remains platform/renderer evidence. This closes the locally actionable
+diagnostics-contract gap but does not supply calibrated performance, human
+review, cross-platform CI, or a package-promotion claim.
+
+The direct renderer now preflights a collision-safe, exact-content-deduplicated
+atlas, keeps per-image, aggregate-atlas, and vertex/index failures typed
+separately, and treats valid zero-area whitespace masks as non-drawing glyphs.
+The real retained 720x450 logical / 1440x900 physical framework component
+gallery prepares successfully without platform-specific state. Its local native
+presented-review attempt remained `SkippedOccluded`, so no screenshot, visual
+approval, or evidence promotion is claimed. The runner also preserves its first
+failure report instead of allowing a later platform callback to overwrite the
+root cause.
 
 ## 15.4 Paused partial package — WP-EDT-002 / permanent shell and World workspace
 

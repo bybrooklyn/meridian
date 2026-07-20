@@ -1,136 +1,289 @@
-# Animation, Cinematics, and Facial Systems Specification
+# Artus — Meridian Procedural Body-Motion Subsystem
 
-[Master index](MERIDIAN_MASTER_SPEC.md) · [Assets and worlds](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Gameplay](GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Penumbra](RENDERING_AND_GRAPHICS_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [Delivery](DELIVERY_ROADMAP.md)
+[Master index](MERIDIAN_MASTER_SPEC.md) · [Assets and worlds](ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md) · [Cairn](CAIRN_PHYSICS_SPEC.md) · [Gameplay](GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md) · [Navigation](NAVIGATION_AND_AI_INFRASTRUCTURE_SPEC.md) · [Multiplayer](MULTIPLAYER_AND_SERVER_SPEC.md) · [Agents](AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md) · [Delivery](DELIVERY_ROADMAP.md)
 
-Status: version 0.5 normative architecture, 2026-07-15.
+Status: version 0.5 normative architecture, 2026-07-18.
 
 Documentation maturity: `ResearchReady`. Implementation maturity: `Planned`.
-Governing IDs: `REQ-ANI-001` through `REQ-ANI-003`; `WP-ANI-001`; `WP-ANI-002`; `PRG-ANI-001`.
+Governing IDs: `REQ-ANI-001` through `REQ-ANI-003`; `WP-ANI-001`;
+`WP-ANI-002`; `RG-ANI-001`; `RG-ANI-002`; `PRG-ANI-001`.
 
-Current implementation status: Meridian has no production animation graph, retargeter, cinematic sequencer, facial solver, or performance-capture pipeline. This document defines planned contracts and evidence gates only.
+Current implementation status: Meridian has no Artus runtime, animation graph,
+retargeter, motion-matching database, cinematic sequencer, facial solver, or
+performance-capture pipeline. This document defines intended contracts and
+evidence gates only; illustrative names below do not declare implemented Rust
+types, crate boundaries, asset extensions, algorithms, or quality.
 
 ## 1. Authority, Goals, and Non-Goals
 
-The `ANI` domain owns animation-source documents, skeleton and clip semantics, runtime pose evaluation, retargeting, animation graphs, cinematic sequencing, root-motion output, inverse-kinematics requests, and later facial-performance data. Gameplay owns decisions and commands; Cairn owns physical state; Penumbra owns skinning resources and presentation; the native modeler owns editable geometry and rig-authoring surfaces without becoming the runtime animation authority.
+Artus is Meridian's unified character-performance subsystem. It accepts
+semantic intent, authored motion, environmental context, body proportions, and
+physical constraints, then produces an adaptive body and later facial
+performance. Its initial public scope is humanoids; the architecture must not
+permanently exclude other articulated bodies.
+
+Artus owns animation-source documents, skeleton and rig semantics, pose
+evaluation, graph and future pose-search motion sources, retargeting,
+root-motion proposals, contact and IK requests, performance sequencing,
+motion diagnostics, and motion-intent execution. It is a named `ANI`
+subsystem, not a new governance domain or user-facing application.
 
 Goals:
 
-- provide a general animation baseline before specialized cinematic and facial systems;
-- keep imported, authored, generated, and captured motion editable and provenance-tracked;
-- separate deterministic state selection from presentation-only interpolation;
-- support streamed clips, layered graphs, root motion, IK, events, retargeting, and rollback-safe state;
-- expose beginner workflows and expert graph, curve, event, and profiling tools in the single Meridian application.
+- make a beginner humanoid workflow possible through a profile-first path;
+- preserve authored timing and artistic control while adapting to contacts,
+  terrain, proportions, and physical outcomes;
+- give gameplay, future Bearings decision layers, player controllers, and
+  sequences one semantic intent boundary rather than direct bone mutation;
+- keep advanced graph, contact, curve, timeline, diagnostic, and scripting
+  workflows available inside the single Meridian application;
+- support bounded, explainable, provenance-safe, accessible, and testable
+  performance across hero characters and reduced-cost crowds.
 
-Non-goals before 1.0 include a proprietary motion-capture service, neural facial synthesis, a film-compositing suite, mandatory cloud processing, or a promise to match dedicated commercial animation packages. `PRG-ANI-001` contains advanced facial, performance-capture, cinematic-character, and virtual-production work after 1.0 qualification.
+Pre-1.0 non-goals include self-balancing physical locomotion, general creature
+locomotion, unrestricted agent mutation, a proprietary motion-capture service,
+neural facial synthesis, a film-compositing suite, mandatory cloud processing,
+or claims to match dedicated commercial animation products. Advanced facial
+performance, capture, cinematic characters, and virtual production remain
+`PRG-ANI-001` after MS-10. MS-09 may establish only a versioned facial
+profile/import and pose-layer foundation.
 
 ## 2. Ownership and Forbidden Edges
 
-| Producer or consumer | ANI authority | Other authority |
-|---|---|---|
-| Modeler/DCC | skeleton, skin, morph, clip, and marker import contracts | editable mesh, topology, rig tools, source interchange |
-| Gameplay/frameworks | state parameters, commands, tags, event consumption | locomotion/combat decisions and game rules |
-| Cairn | root-motion request and physical-animation target | collision, constraints, ragdoll bodies, final physical transform |
-| Penumbra | immutable pose/palette/morph snapshot | GPU buffers, deformation execution, visibility, presentation |
-| Audio/Wavefront | sample-accurate cue request and marker | mixing, device time, spatial output |
-| Saves/network | stable graph state and clip/event cursor | transaction, replication, rollback transport |
-| Marquee | imports approved rendered clips and audio after manual capture | in-engine sequencing, camera/game control, animation state, or source performance authority |
+| Boundary | Artus owns | Neighbor owns |
+| --- | --- | --- |
+| Modeler/DCC | rig semantics, imported clip interpretation, retarget profiles | editable mesh, topology lineage, rig-authoring surfaces, source interchange |
+| Gameplay/frameworks | semantic intent execution and completion reports | decisions, abilities, permissions, damage, inventory, and game-state consequences |
+| Bearings | intent production as a future gameplay/AI decision-layer consumer | goals, tactics, awareness, behavior selection, and planning |
+| NAV | locomotion targets and transition metadata consumed by Artus | traversability artifacts, path/flow queries, dynamic-obstacle results |
+| Cairn | proposed root displacement, physical-animation targets, and pose adaptation | collision, rigid-body dynamics, controllers, joints, contacts, impulses, and final physical transform |
+| Penumbra | immutable pose, palette, morph, and LOD snapshots | deformation execution, GPU resources, motion vectors, visibility, and presentation |
+| Wavefront | semantic contact/event timing | surface choice, cue selection, mixing, device time, and output |
+| NET/saves | stable intent/graph/profile state and replay inputs | transport authority, replication policy, persistence transactions, and rollback transport |
+| Sequencing | body-performance tracks and execution | timeline structure, camera timing, scene timing, and event scheduling |
 
-Forbidden edges include renderer handles in animation source documents, gameplay rules hidden inside clip events, animation jobs mutating physics directly, editor widgets as serialization authority, and network packets containing transient pointers or backend-specific pose layouts.
+Forbidden edges include renderer handles in source documents; direct mutation of
+Cairn state by animation jobs; gameplay rules hidden in events; transient
+handles in saves or network packets; editor widgets as serialization authority;
+and raw file mutation or privileged agent paths. Artus does not make Bearings
+an implemented subsystem or move gameplay decisions into NAV.
 
-## 3. Planned Public Contracts
+## 3. Public Contract Direction and Data Authority
 
-Logical contracts, not implemented Rust types:
+Source documents are authoritative, schema-defined, versioned, inspectable,
+recoverable, and provenance-bearing. Compiled clips, motion-search indexes,
+pose caches, retarget tables, and baked results are derived artifacts. Stable
+source IDs cross import, save, package, and network boundaries; generation-
+checked handles remain process-local.
 
-```text
-SkeletonAsset { id, joints, bind_pose, semantic_tags, compatibility_signature }
-AnimationClip { id, duration_ticks, tracks, curves, events, root_motion, compression_profile }
-AnimationGraph { id, parameters, states, transitions, layers, nodes, output_contract }
-AnimationInstanceState { graph_id, state_ids, normalized_times, parameters, event_cursors }
-PoseSnapshot { skeleton_id, generation, local_pose, morph_weights, root_motion_delta }
-RetargetProfile { source_signature, target_signature, mappings, scale_policy, constraints }
-CinematicSequence { id, tracks, shots, bindings, timebase, branch_policy, provenance }
-```
-
-Stable IDs identify joints, tracks, states, transitions, events, bindings, and source spans. Runtime instances use generation-checked handles. Source documents remain backend-neutral and migrate one version at a time.
-
-## 4. Ordered Runtime and Authoring Pipelines
-
-Runtime evaluation:
+The following are illustrative Meridian-owned contract shapes:
 
 ```text
-capture immutable gameplay parameters
--> select graph transitions at declared simulation barrier
--> request/decompress required clip pages
--> sample clips and curves on integer animation ticks
--> blend layers and masks
--> solve bounded IK/constraints
--> emit ordered events and root-motion request
--> reconcile physical authority
--> publish immutable pose snapshot
--> Penumbra performs selected deformation path
+ArtusRigProfile { skeleton_id, semantic_bones, canonical_rest_pose,
+                  retarget_chains, joint_limits, body_measurements,
+                  contact_sites, facial_profile? }
+ArtusMotionProfile { rig_profile, motion_sources, graph?, motion_database?,
+                     procedural_layers, interaction_profile, physics_profile,
+                     facial_profile?, lod_profile, fallback_policy }
+ArtusMotionIntent { id, source, kind, priority, timing, body_mask,
+                    spatial_target?, constraints, interrupt_policy }
+ArtusContact { effector, target, desired_transform, priority, timing,
+               ownership, tolerances, failure_policy }
+ArtusMotionResolution { intent_id, proposed_root_delta, contacts, status,
+                        completion_reason?, diagnostics }
+ArtusPoseSnapshot { skeleton_id, generation, local_pose, morph_weights,
+                    achieved_root_delta, events, lod_state }
 ```
 
-Import and authoring:
+`ArtusMotionIntent` is the shared semantic boundary. Candidate families include
+locomotion, facing, gaze, reach, grasp, carry, interact, sit, climb, brace,
+avoid, reaction, gesture, and performance. Its precise schema, extension
+policy, arbitration, hard-lock permissions, cancellation, and authority rules
+remain `RG-ANI-001`; consumers never manipulate bones as their normal API.
+
+## 4. Runtime and Authoring Pipelines
+
+Artus uses negotiated movement. A controller or higher-level system supplies
+desired intent and trajectory; Artus selects or synthesizes a pose and
+proposes root displacement; Cairn resolves physical movement and contacts;
+Artus adapts the pose to the achieved result. Safety and collision validity,
+then high-priority contacts, body-region priorities, interaction requirements,
+and source-pose fidelity resolve conflict in that order unless a later
+profiled policy explicitly changes it.
 
 ```text
-ingest source with provenance
--> validate skeleton/topology/units/timebase
--> preserve source IDs where possible
--> create explicit retarget/compression profile
--> preview in Meridian
--> build deterministic derived artifacts
--> compare visual, event, memory, and runtime evidence
--> atomically publish accepted artifacts
+capture immutable intents, navigation results, and Cairn snapshot
+-> arbitrate intents and build desired trajectory
+-> select graph, authored performance, recorded performance, or future pose search
+-> sample/decompress motion and retarget canonical motion to the target rig
+-> apply bounded procedural layers and predict contacts
+-> propose root displacement to Cairn
+-> consume achieved root/contact result
+-> solve prioritized contacts and IK, relaxing lower-priority constraints first
+-> apply physical reaction and optional facial layers
+-> emit ordered semantic events and publish immutable pose snapshot
+-> Penumbra selects deformation execution
 ```
 
-Cinematic sequences request gameplay, camera, animation, audio, UI, and world actions through typed bindings. They cannot seize ownership of those systems or hide required gameplay state in editor-only timelines.
+Simulation-relevant intent arbitration, root negotiation, contact ownership,
+and completion reporting use declared simulation ordering. Pose sampling and
+render interpolation may run at display cadence but cannot feed
+nondeterministic state back into gameplay. Clip I/O, decompression, retarget
+preparation, motion-search preparation, validation, and cache building use
+bounded cancellable workers. Missing data, budget saturation, or a failed
+solve produces a declared hold, graph fallback, relaxed low-priority contact,
+or recoverable failure; it never creates unbounded work, invalid memory, or
+explosive joint motion.
 
-ANI owns in-engine sequencing and shot execution. Marquee owns only deterministic post-capture promotion timelines over imported media. A Marquee campaign cannot invoke a `CinematicSequence`, move a camera, start gameplay, or automatically capture footage.
+### 4.1 Rig, graph, and procedural composition
 
-## 5. Time, Threads, Memory, and Lifetime
+Humanoid import detects candidate topology, proposes semantic assignments and
+retarget chains, estimates body measurements/contact sites, identifies rest
+pose, builds canonical representation, runs validation motions, and requires
+visual confirmation before saving an `ArtusRigProfile`. The canonical form
+normalizes axes, body-space orientation, rest reference, chain measures, joint
+limits, and contact sites while preserving the source skeleton for rendering,
+export, and recovery. Required validation motions include stance, crouch,
+reach, walk/run, turn, stairs, foot plant, sit alignment, ragdoll transition,
+and head look; unsupported or incomplete semantics are explicit capability
+limits, not silently repaired guesses.
 
-- Simulation-relevant graph transitions and events use integer ticks and recorded ordering.
-- Presentation interpolation may run at display cadence and cannot feed nondeterministic values back into authoritative gameplay.
-- Clip I/O, decompression, retarget preparation, graph compilation, and compression run on bounded workers.
-- Pose evaluation uses preplanned scratch and bounded per-instance work; skinning path selection is capability-driven.
-- Clip pages and pose buffers use generation-checked residency. Missing data produces a declared hold, fallback pose, or recoverable failure, never invalid memory.
-- Rollback stores compact graph state and authoritative parameters, not opaque worker state or GPU buffers.
+The first graph surface supports clip players, one- and two-dimensional blend
+spaces, state machines, transitions, layered/additive blends, masks, sync
+groups, events, root-motion extraction, parameter inputs, pose caches, and
+procedural insertion points. Profile-first setup may create or configure a
+graph, but advanced graph edits and profile synchronization remain an open
+contract decision rather than an implied hidden graph format.
 
-## 6. Failure, Diagnostics, Security, and Provenance
+Initial procedural layers are foot placement, pelvis adjustment, stride/turn
+warping, terrain lean, head/gaze, basic hand placement, ragdoll blending, and
+basic impact reactions. Layers declare their inputs, body mask, phase,
+priority, canonical/target space, root-motion permission, contact authority,
+determinism, and LOD behavior. Later layers may cover breathing, balance,
+stairs, carry, injury, fatigue, water, ladders, and crowd posture; self-
+balancing locomotion and torque-level control remain research-only.
 
-Required diagnostics include graph/clip/skeleton IDs and hashes, active states, transition reason, event order, missing pages, retarget error, compression error, pose cost, skinning cost, root-motion reconciliation, and source provenance. Invalid source, cyclic graph dependencies, incompatible skeletons, missing required joints, corrupt pages, or budget excess fail with stable codes and preserve the last accepted artifact.
+### 4.2 Interactions, face, baking, and networking
 
-Untrusted imports are decoded in bounded workers. Animation events invoke only registered typed commands. Captured biometric or performance data is private by default and cannot enter public evidence without explicit sanitization and consent.
+Artus interaction definitions combine authored smart-object metadata, contact
+events, runtime inference for simple cases, full-body alignment, and typed
+failure/exit paths. Reusable definitions can describe approach regions, facing
+tolerance, limb availability, contact transforms/timing, root expectations,
+object bindings, variants, and recovery. Initial hands use hand IK, authored
+grip profiles, lightweight finger correction, and contact events; collision-
+aware finger synthesis is deferred.
 
-## 7. Workflows, Accessibility, and Capability Tiers
+Face and body are one long-term performance system. The MS-09 foundation may
+carry a versioned facial profile and import/pose layer for blendshape,
+bone-driven, hybrid, stylized, or eye-only rigs. It does not promise speech,
+emotion, production gaze, capture, or full facial visual quality; those remain
+post-1.0 work with privacy and consent evidence.
 
-Beginner workflow: import or create a skeleton, assign a clip, choose a graph template, preview, fix plain-language diagnostics, and attach typed events. Expert workflow: edit curves, masks, blend spaces, retarget maps, compression, source spans, event traces, pose memory, and per-node timing.
+Artus may later bake full or selected poses, root motion, canonical or target
+poses, procedural layers, contacts, physics results, and facial results. Every
+bake retains source profile/clip/intent/procedural settings, rig version,
+generator version, and dependency hashes so it can be inspected and rebuilt.
+For multiplayer profiles, the default direction is authoritative high-level
+intent, root state, and important contact/interaction state from the server
+while clients synthesize noncritical body detail locally. Gameplay-critical
+contacts and outcomes retain their declared server authority.
 
-Animation tools require keyboard navigation, semantic labels, scalable timelines, reduced-motion preview, color-independent state distinctions, and textual alternatives for graph operations.
+## 5. Capability Tiers and Delivery
 
-Tiers:
+1. `WP-ANI-001` establishes pose/skeleton time and identity, clip import and
+   sampling, simple blending, root-motion extraction, semantic rig/profile
+   source, validation, and bounded event foundations for MS-08.
+2. `WP-ANI-002` establishes graph and profile authoring, retargeting, IK,
+   contacts, negotiated Cairn coupling, terrain/stride/turn adaptation,
+   interactions, diagnostics, and the beginner usable-humanoid workflow.
+   Its MS-09 scope adds evidence-gated pose search, motion LOD, replicated
+   high-level intent, and a narrow facial profile/import/pose-layer foundation.
+3. `PRG-ANI-001` covers advanced facial performance, capture, cinematic
+   characters, virtual production, active physical control, and other
+   research-only performance capabilities after MS-10.
 
-1. baseline clips, skeletons, events, CPU pose evaluation, and simple graphs;
-2. layered graphs, root motion, retargeting, IK, streamed clips, and GPU skinning;
-3. advanced physical animation, cinematic sequencing, facial rigs, capture, and research paths.
+Motion sources remain interchangeable: graphs, blend spaces/state machines,
+authored or recorded performances, future motion matching, and future physical
+controllers all feed the same composition, contact, IK, and Cairn-coupling
+pipeline. Motion matching must retain a declared graph or current-motion
+fallback. Motion LOD can reduce update rate, secondary motion, fingers,
+facial detail, contact solve, IK iterations, search cost, or skeleton detail;
+it must not silently weaken authoritative physical or gameplay contacts.
+Disabled Artus, facial, pose-search, or GPU paths allocate no components,
+workers, listeners, GPU resources, editor panels, dependencies, or package
+chunks.
 
-Disabled facial, cinematic, IK, or GPU paths allocate no runtime state and schedule no work.
+## 6. Research Gates and Open Decisions
 
-## 8. Requirements, Evidence, and Delivery
+`RG-ANI-001` selects the motion-intent, arbitration, negotiated-control, and
+completion-report contract before Artus packages depend on it. `RG-ANI-002`
+selects bounded retargeting, IK/constraint, pose-search, compression, and
+deformation portfolios before the MS-09 advanced scope. Each must preregister
+candidate revisions, representative humanoid corpus, determinism and recovery
+expectations, accessibility/security/licensing review, metrics, stop rule, and
+losing-prototype archive; a decision requires an ADR.
 
-- `REQ-ANI-001`: stable, versioned skeleton, clip, graph, event, and pose contracts with import/migration evidence.
-- `REQ-ANI-002`: bounded runtime evaluation, streaming, root-motion, and rollback behavior with timing, memory, and determinism evidence.
-- `REQ-ANI-003`: provenance-safe authoring, retargeting, diagnostics, and accessible workflows with representative corpus evidence.
-- `WP-ANI-001` delivers skeleton, clip, import, compression, runtime pose, and event foundations.
-- `WP-ANI-002` delivers graph authoring, root motion, IK, retargeting, debugging, and baseline sequencing.
-- `PRG-ANI-001` covers advanced facial, capture, cinematic-character, and virtual-production work after MS-10.
+Intentionally deferred choices are the exact intent schema and custom-extension
+policy, canonical humanoid coordinate convention, solver algorithms,
+motion-feature schema, compression, facial standard, morph limits, network
+correction protocol, asset extensions, crate layout, and GPU pose evaluation.
+No illustrative example resolves them.
 
-Tests cover schema migration, stable IDs, malformed import fuzzing, clip-page starvation, graph determinism, event ordering, root-motion/physics reconciliation, retarget fixtures, rollback, memory budgets, CPU/GPU deformation differential output, and accessibility. Structural output cannot satisfy visual-quality requirements.
+## 7. Workflows, Accessibility, Security, and Agents
 
-## 9. Examples
+Beginner workflow: import a character, create an Artus profile, confirm the
+proposed semantic mapping, select starter motion, enable safe procedural
+defaults, preview generated test environments, resolve plain-language errors,
+and save. Expert workflow: inspect and edit graphs, masks, curves, contacts,
+retarget chains, joint limits, solver passes, motion databases, LOD policy,
+and timelines. The Artus workspace provides a viewport, profile/library tree,
+context inspector, timeline/contact history, and optional graph/search/Cairn
+diagnostics without becoming a separate application.
 
-End to end: a modeler-authored rig and imported walk clip compile into a graph; a framework sets movement parameters; ANI emits root motion and footstep markers; Cairn accepts bounded motion; Wavefront schedules sound; Penumbra presents the pose.
+All Artus workflows require keyboard operation, visible focus, semantic labels,
+scalable timelines, color-independent diagnostics, textual graph/overlay
+alternatives, reduced-motion preview, and accessible recovery from invalid
+assets or failed solves. Visual overlays include semantic bones, trajectories,
+contacts, priorities, joint limits, root disagreement, solver error, active
+motion source, LOD state, and network corrections.
 
-Failure: a clip references a removed joint. Publication stops, the prior clip remains active, and Meridian identifies the source track and suggested remap.
+Imports, graph nodes, procedural code, agent input, and scripts are untrusted.
+Validate bounds before allocation and run decoding or expensive validation in
+bounded workers. Agents use the same typed command/query, permission, preview,
+transaction, audit, undo, and rollback paths as people. They may propose rig
+mappings, profiles, graphs, databases, contacts, test scenes, diagnostics, and
+bakes, but never commit a mutation without the configured reviewable
+transaction. Captured biometric data is private by default and cannot enter
+public evidence without explicit consent and sanitization.
 
-Performance debug: a crowd spike groups pose time, decompression, skinning, and residency by graph and skeleton, revealing an oversized blend graph and cold clip pages.
+## 8. Validation, Evidence, and Failure Policy
+
+Static validation covers semantic mapping, hierarchy, rest pose, joint limits,
+root motion, contact events, interaction reachability, masks, and source
+versions. Dynamic fixtures cover foot sliding/penetration, joint inversion,
+hand drift, root teleportation, solver instability, ragdoll continuity,
+motion-search thrashing, LOD transitions, and correction spikes. The
+representative humanoid corpus varies topology, naming, rest poses,
+proportions, optional bones, terrain, frame/simulation rates, latency, forces,
+and malformed input. Golden references compare declared root trajectories,
+contact timing, bounded error, selection identity when reproducible, and
+measured cost; they do not by themselves prove visual quality.
+
+Required evidence includes schema migration, stable identity, malformed-import
+fuzzing, graph/event determinism, clip-page starvation, root-motion/Cairn
+reconciliation, retarget corpus, contact/interaction recovery, rollback,
+thread/memory bounds, CPU/GPU deformation differential where a GPU path exists,
+accessibility, provenance, and stripped disabled-pack builds. Structural output
+or a successfully constructed graph is never proof of believable motion.
+
+End to end: an imported humanoid receives a validated rig profile and motion
+profile; a gameplay or Bearings consumer submits a locomotion intent; Artus
+proposes movement, Cairn resolves it, Artus keeps the foot contact or reports a
+bounded fallback, Wavefront receives a semantic event, and Penumbra consumes
+the final immutable pose.
+
+Failure: an incompatible rig or unreachable interaction blocks publication or
+execution with stable diagnostics, leaves the last accepted artifact active
+where safe, and offers a remap, graph fallback, contact relaxation, or explicit
+cancel path. Performance debugging attributes pose, decompression, retarget,
+search, IK, skinning, and residency costs to the profile and motion source.

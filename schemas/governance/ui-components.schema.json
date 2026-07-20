@@ -13,7 +13,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "owner", "states", "semantic_role", "input", "keyboard", "motion", "package_dependencies"],
+        "required": ["id", "owner", "states", "semantic_role", "input", "keyboard", "disabled_behavior", "validation", "motion", "package_dependencies"],
         "properties": {
           "id": {"type": "string", "pattern": "^component\\.[a-z0-9.-]+$"},
           "owner": {"enum": ["runtime", "editor"]},
@@ -21,6 +21,8 @@
           "semantic_role": {"type": "string", "minLength": 2},
           "input": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["pointer", "keyboard", "controller", "text", "ime", "scroll", "drag-drop", "assistive-action"]}},
           "keyboard": {"type": "string", "minLength": 3},
+          "disabled_behavior": {"type": "string", "minLength": 3},
+          "validation": {"type": "string", "minLength": 3},
           "motion": {"enum": ["none", "state-transition", "physical-spring"]},
           "virtualized": {"type": "boolean"},
           "package_dependencies": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^WP-(UI|EDT)-[0-9]{3}$"}}

@@ -136,35 +136,7 @@ impl SemanticTree {
                 }
             }
             validate_bounds(node.id, node.bounds)?;
-            if node.actions.len() > SemanticAction::ALL.len() {
-                return Err(SemanticTreeError::TooManyActions(node.id));
-            }
-            let action_set = node.actions.iter().copied().collect::<BTreeSet<_>>();
-            if action_set.len() != node.actions.len() {
-                return Err(SemanticTreeError::DuplicateAction(node.id));
-            }
-            if node.state.disabled && !node.actions.is_empty() {
-                return Err(SemanticTreeError::DisabledNodeHasActions(node.id));
-            }
-            for action in &node.actions {
-                if !action_is_valid(node, *action) {
-                    return Err(SemanticTreeError::InvalidAction {
-                        node: node.id,
-                        action: *action,
-                    });
-                }
-            }
-            if node.focused && !action_set.contains(&SemanticAction::Focus) {
-                return Err(SemanticTreeError::FocusedNodeCannotFocus(node.id));
-            }
-            if (!node.actions.is_empty() || node.command.is_some() || node.focused)
-                && node.name.trim().is_empty()
-            {
-                return Err(SemanticTreeError::UnnamedInteractiveNode(node.id));
-            }
-            if let Some(command) = node.command.as_deref() {
-                validate_command_name(node.id, command)?;
-            }
+            validate_interaction(node)?;
             for text in [
                 Some(node.name.as_str()),
                 node.description.as_deref(),
@@ -305,6 +277,7 @@ pub enum SemanticTreeError {
     TooManyActions(UiNodeId),
     DuplicateAction(UiNodeId),
     DisabledNodeHasActions(UiNodeId),
+    InvalidMixedState(UiNodeId),
     InvalidAction {
         node: UiNodeId,
         action: SemanticAction,
@@ -359,6 +332,42 @@ fn validate_command_name(node: UiNodeId, command: &str) -> Result<(), SemanticTr
     } else {
         Err(SemanticTreeError::InvalidCommandName(node))
     }
+}
+
+fn validate_interaction(node: &SemanticNode) -> Result<(), SemanticTreeError> {
+    if node.actions.len() > SemanticAction::ALL.len() {
+        return Err(SemanticTreeError::TooManyActions(node.id));
+    }
+    let action_set = node.actions.iter().copied().collect::<BTreeSet<_>>();
+    if action_set.len() != node.actions.len() {
+        return Err(SemanticTreeError::DuplicateAction(node.id));
+    }
+    if node.state.disabled && !node.actions.is_empty() {
+        return Err(SemanticTreeError::DisabledNodeHasActions(node.id));
+    }
+    if node.state.mixed && (node.role != SemanticRole::ToggleButton || node.state.selected) {
+        return Err(SemanticTreeError::InvalidMixedState(node.id));
+    }
+    for action in &node.actions {
+        if !action_is_valid(node, *action) {
+            return Err(SemanticTreeError::InvalidAction {
+                node: node.id,
+                action: *action,
+            });
+        }
+    }
+    if node.focused && !action_set.contains(&SemanticAction::Focus) {
+        return Err(SemanticTreeError::FocusedNodeCannotFocus(node.id));
+    }
+    if (!node.actions.is_empty() || node.command.is_some() || node.focused)
+        && node.name.trim().is_empty()
+    {
+        return Err(SemanticTreeError::UnnamedInteractiveNode(node.id));
+    }
+    if let Some(command) = node.command.as_deref() {
+        validate_command_name(node.id, command)?;
+    }
+    Ok(())
 }
 
 fn action_is_valid(node: &SemanticNode, action: SemanticAction) -> bool {
@@ -551,6 +560,45 @@ mod tests {
             duplicate.validate(),
             Err(SemanticTreeError::DuplicateAction(_))
         ));
+    }
+
+    #[test]
+    fn semantic_tree_accepts_only_non_selected_mixed_toggles() {
+        let root = UiNodeId::new(1);
+        let toggle = UiNodeId::new(2);
+        let mut mixed_toggle = node(2, Some(1), false);
+        mixed_toggle.role = SemanticRole::ToggleButton;
+        mixed_toggle.state.mixed = true;
+        SemanticTree {
+            root: Some(root),
+            focus: None,
+            nodes: vec![node(1, None, false), mixed_toggle.clone()],
+        }
+        .validate()
+        .expect("mixed toggle semantics are valid");
+
+        let mut invalid_role = mixed_toggle.clone();
+        invalid_role.role = SemanticRole::Button;
+        assert_eq!(
+            SemanticTree {
+                root: Some(root),
+                focus: None,
+                nodes: vec![node(1, None, false), invalid_role],
+            }
+            .validate(),
+            Err(SemanticTreeError::InvalidMixedState(toggle))
+        );
+
+        mixed_toggle.state.selected = true;
+        assert_eq!(
+            SemanticTree {
+                root: Some(root),
+                focus: None,
+                nodes: vec![node(1, None, false), mixed_toggle],
+            }
+            .validate(),
+            Err(SemanticTreeError::InvalidMixedState(toggle))
+        );
     }
 
     #[test]

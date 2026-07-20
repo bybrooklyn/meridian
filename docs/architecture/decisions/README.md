@@ -54,6 +54,8 @@ Use the status vocabulary from the master specification:
 | [ADR-0027](ADR-0027-competitive-performance-quality-program.md) | Competitive Performance and Quality Program | Adopted | ResearchReady program; implementation deferred |
 | [ADR-0028](ADR-0028-meridian-ui-retained-framework-and-shell.md) | Meridian UI Retained Framework and Permanent Application Shell | Adopted | Planned sequential packages after qualified foundations |
 | [ADR-0029](ADR-0029-meridian-ui-display-list-renderer.md) | Meridian UI Display-List Renderer Direction | Adopted | Partial direct-path implementation; bounded fallback retained |
+| [ADR-0030](ADR-0030-artus-procedural-body-motion.md) | Artus Procedural Body-Motion Architecture | Adopted | Planned architecture; no Artus runtime implemented |
+| [ADR-0031](ADR-0031-managed-development-toolchains.md) | Managed Development Toolchains | Adopted | Planned architecture; current local Cargo adapter only records host tool identity |
 
 ## Template
 

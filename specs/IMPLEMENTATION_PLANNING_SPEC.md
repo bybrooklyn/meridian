@@ -215,7 +215,7 @@ The machine-readable companion is
 | MS-05 | MS-04 | `WP-PEN-010` -> `WP-PEN-011` | `WP-PRC-001` through `WP-PRC-004`, `WP-MDL-001`, terrain, vegetation, weather, streaming, quality tiers | measured representative forest and accepted native model sources |
 | MS-06 | MS-03 and MS-05 | `WP-GAM-001` -> `WP-PRJ-001` | Cairn, Wavefront, Rust gameplay, save, accessibility | reproducible private Rust prototype |
 | MS-07 | MS-06 plus private creative lock | `WP-PRJ-002` | platform, accessibility, audio, provenance | complete opening playable slice |
-| MS-08 | MS-07 and native entry gate | `WP-RHI-002` -> `WP-REL-003` | `WP-BLD-002` advanced build service; modeler, animation, navigation, official-framework foundation, first-class 2D, shader language, editor/data maturity, selected simulation/DCC/VCS/agents | Engine Alpha with wgpu retained |
+| MS-08 | MS-07 and native entry gate | `WP-RHI-002` -> `WP-REL-003` | `WP-BLD-002` advanced build and managed-toolchain service; modeler, animation, navigation, official-framework foundation, first-class 2D, shader language, editor/data maturity, selected simulation/DCC/VCS/agents | Engine Alpha with wgpu retained |
 | MS-09 | mature Metal/common RHI | `WP-RHI-003` -> `WP-REL-004` | Collective baseline, optional Luau, advanced animation/navigation/shader lowering, networking, mods, XR, sync | declared Engine Beta profiles without a hosted-cloud promise |
 | MS-10 | Beta profile freeze | `WP-SEC-001` -> `WP-REL-001` | documentation, migration, support, reproducibility | qualified 1.0 profiles |
 

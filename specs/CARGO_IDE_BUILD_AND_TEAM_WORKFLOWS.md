@@ -1,12 +1,13 @@
 # Cargo, IDE, Build, and Team Workflows
 
-[Master](MERIDIAN_MASTER_SPEC.md) · [ADR-0018](../docs/architecture/decisions/ADR-0018-general-purpose-single-application.md) · [Architecture](REPOSITORY_AND_CRATE_ARCHITECTURE.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Shader language](MERIDIAN_SHADER_LANGUAGE_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [VCS](VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md)
+[Master](MERIDIAN_MASTER_SPEC.md) · [ADR-0018](../docs/architecture/decisions/ADR-0018-general-purpose-single-application.md) · [ADR-0031](../docs/architecture/decisions/ADR-0031-managed-development-toolchains.md) · [Architecture](REPOSITORY_AND_CRATE_ARCHITECTURE.md) · [Security](SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md) · [Native modeler](NATIVE_MODELING_AND_DCC_SPEC.md) · [Shader language](MERIDIAN_SHADER_LANGUAGE_SPEC.md) · [Alluvium](PROCEDURAL_AUTHORING_SPEC.md) · [Marquee](MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md) · [VCS](VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md)
 
-version 0.5 · 2026-07-15 · Normative · Current Cargo workspace foundation, build service Partial
+version 0.5 · 2026-07-18 · Normative · Current Cargo workspace foundation, build service Partial
 
 Documentation maturity: `ImplementationReady`. Implementation maturity:
 `ImplementedFoundation` for the bounded `WP-BLD-001` local Cargo service and
-CLI slice; broader build graph and team-service work remains planned. Governing IDs: `REQ-BLD-001`,
+CLI slice; broader build graph, managed development-toolchain, and team-service
+work remains planned. Governing IDs: `REQ-BLD-001`, `REQ-BLD-002`,
 `WP-BLD-001`, `WP-BLD-002`.
 
 ## 1. Goals and non-goals
@@ -113,6 +114,65 @@ Cargo.toml and Cargo.lock are source authority. Editing uses a lossless syntax t
 
 Meridian project metadata lives under namespaced Cargo package/workspace metadata only where Cargo semantics permit; engine-specific project documents remain separate and reference package IDs from cargo metadata.
 
+## 3.1 Managed development toolchains
+
+`REQ-BLD-002`: Meridian manages development tools as externally installed,
+versioned components. `rustc`, Cargo, rust-analyzer, each selected platform SDK,
+each debugger or debugger adapter, and each external shader compiler are
+separately installed, addressable components; none is bundled into the Meridian
+main binary. An upstream distribution may be acquired as one archive only when
+its component records, installed roots, versions, hashes, licenses, and
+activation state remain separately inspectable and replaceable.
+
+A project owns an exact compatible toolchain lock. It names every required
+component by component kind, provider, version, platform/architecture,
+artifact hash, license/provenance record, and compatibility profile. Platform
+SDK, debugger, and external shader-compiler entries are mandatory whenever the
+selected project profile requires them; an unavailable, incompatible, or
+unverified entry is a typed blocked-toolchain outcome, never a fallback to an
+ambient host installation. BuildId and evidence records retain the resolved
+component manifest hash and exact component versions. A project pin changes
+only through an explicit, previewable project transaction after compatibility
+verification; a Meridian, channel, or default-toolchain update MUST NOT
+silently rewrite it.
+
+The Meridian CLI and editor expose the same manager operations: discover,
+install, verify, update, repair, select, pin, compare, rollback, list, and
+clean up. They invoke a bounded toolchain-management service rather than
+embedding compilers or SDKs in the application binary. Discovery reports the
+component source, trust state, compatibility, license/notice record, disk use,
+projects that pin it, and whether it is active, staged, corrupt, or removable.
+The editor supplies the same information through accessible status, recovery,
+and confirmation workflows; it never requires a terminal for the normal path.
+
+Install, update, and repair download into a quarantined staging generation,
+verify declared length, cryptographic hash, signature/provenance policy,
+component identity/version, compatibility, and required license/notice record
+before use, then perform any bounded health check. Only a complete verified
+generation may become selectable, using an atomic same-store activation. The
+previous verified generation remains available until health and recovery policy
+allow its removal. Interrupted, corrupt, or incompatible staging is quarantined
+and cannot change the active generation. A repair reinstalls or reconstructs
+the exact pinned component bytes; it does not substitute a newer compatible
+version.
+
+Multiple verified versions coexist in separate managed roots. Rollback selects
+a retained verified generation and records the reason; it never weakens trust
+metadata or changes a project's lock without the explicit pin transaction.
+Cleanup is quota-aware and previewable, and MUST retain every version pinned by
+a local project, active operation, retained rollback generation, or required
+provenance/evidence record. License tracking retains component identity,
+version, artifact hash, SPDX or vendor license expression, notice location,
+source/provenance, acceptance or restriction state where applicable, and the
+projects/builds that used it. A missing or changed license record blocks
+activation rather than being silently carried forward.
+
+`WP-BLD-001` does not implement this manager: its local host toolchain remains
+an explicitly recorded input only. `WP-BLD-002` owns the planned managed
+component store, project lock resolution, compatibility matrix, user-facing
+recovery flows, and evidence. This section is normative architecture, not a
+claim that the current CLI or editor can install or update toolchains.
+
 ## 4. Build identity and graph
 
 ~~~text
@@ -141,7 +201,10 @@ name/version, workspace-relative manifest path, and target contract. The latter
 hash combines with `Cargo.lock` in `BuildId`, so relocating one checkout does
 not alone alter this component. Source checkpoint, toolchain, target, and
 allowlisted host environment remain deliberate local identity inputs; this is
-not yet a full cross-machine reproducibility claim. The current
+not yet a full cross-machine reproducibility claim. Before `WP-BLD-002`, this
+field is the current local host toolchain identity, not a managed project lock.
+After that package, it is the exact verified component manifest described in
+section 3.1. The current
 `build_graph_contract` is a canonical hash of requested roots and each declared
 node ID, kind, tool, input hashes, environment names, and dependency topology.
 It prevents a changed declared graph from reusing a `BuildId`. New requests and
@@ -236,7 +299,7 @@ Large artifacts are immutable and streamed/range-addressed. A worker cannot publ
 - untrusted worker events are revalidated before lifecycle state can advance or
   enter the durable local snapshot; malformed, mismatched, or unredacted values
   are rejected rather than rewritten silently;
-- downloaded tools/SDKs have pinned version/hash/license/provenance;
+- downloaded tools/SDKs use the managed component policy in section 3.1;
 - signing is a separate least-privilege operation;
 - compiler/build output is treated as untrusted until validated.
 - Alluvium external tools and kernels receive only declared content-addressed
@@ -259,6 +322,9 @@ Build service crash recovery reopens the operation database, validates committed
 - cancellation at each node lifecycle point;
 - worker crash, protocol mismatch, partial artifact, cache corruption;
 - rust-analyzer restart/document-version races;
+- managed-component install/verify/update/repair/rollback/cleanup, including
+  interrupted staging, hash/signature/license mismatch, side-by-side selection,
+  pinned-project non-mutation, and referenced-version retention;
 - clean versus incremental rebuild correctness;
 - feature/minimal/default/all-profile dependency gates;
 - build latency/critical path/cache hit/memory/IO on named corpus.
@@ -270,9 +336,10 @@ graph inputs. `WP-BLD-001` is the MS-03 local-Cargo prerequisite: one bounded
 observable operation, a verified optional executable, durable local recovery,
 and the editor command/event seam. `WP-PRC-001` integrates Alluvium validation
 and baking with the same observable build graph before MS-05. Planned
-`WP-BLD-002` is the MS-08 continuation for multi-node result lineage, general
-artifact/cache policy, service-process and remote-worker supervision, team
-profiles, and broader evidence output; it cannot block `WP-BLD-001` or MS-03.
+`WP-BLD-002` is the MS-08 continuation for managed development toolchains,
+multi-node result lineage, general artifact/cache policy, service-process and
+remote-worker supervision, team profiles, and broader evidence output; it
+cannot block `WP-BLD-001` or MS-03.
 MS-08/MS-09 integrate source/sync checkpoints, the native modeler, animation,
 ShaderIr, Rust gameplay, and optional Luau build adapters as their packages
 activate. MS-10 certifies reproducibility and selected remote/signing profiles.

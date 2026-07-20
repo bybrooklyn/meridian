@@ -22,7 +22,7 @@ Goals are deterministic or explicitly nondeterministic query modes, large-world 
 | Basalt/Alluvium | compiled navigation surfaces, tiles, links, fields | source terrain, geometry, semantic regions, generation inputs |
 | Cairn | collision/query snapshots consumed for updates | physical bodies, contacts, sweeps, final movement |
 | Gameplay/FWK | query and crowd results | intent, goals, path acceptance, behavior, tactics |
-| ANI | locomotion target and link-transition metadata | animation selection, root motion, IK |
+| Artus (`ANI`) | locomotion target and link-transition metadata | intent production, animation selection, root proposal, contacts, and IK |
 | Streaming | navigation artifact dependencies and readiness | cell residency, activation, eviction |
 | NET/saves | stable navigation state needed for replay | transport, authority, persistence transactions |
 
@@ -98,7 +98,7 @@ Tests include malformed geometry, tile seam continuity, multiple profiles, parti
 
 ## 8. Examples
 
-End to end: Alluvium emits walkability fields for a Basalt cell; NAV builds a tile; gameplay requests a path; Cairn executes movement; ANI consumes locomotion targets.
+End to end: Alluvium emits walkability fields for a Basalt cell; NAV builds a tile; gameplay requests a path; Artus consumes locomotion targets and proposes movement; Cairn resolves it.
 
 Failure: a destination cell is not resident. The result is `Partial` with a stable frontier and dependency, allowing gameplay to wait or choose another action.
 

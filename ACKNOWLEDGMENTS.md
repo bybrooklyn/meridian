@@ -6,11 +6,11 @@ Add a person only with their permission. Use the name, handle, or anonymity they
 
 ## Creator and Project Lead
 
-- **[Preferred name or handle]** — Creator and project lead.
+- **Charlotte** — Creator and project lead.
 
 ## Engine Contributors
 
-- **[Name]** — [Code, architecture, tooling, documentation, art, testing, or other contribution.]
+- **Charlotte** — [Code, architecture, tooling, documentation, art, testing, or other contribution.]
 
 ## Reviewers, Researchers, and Advisors
 

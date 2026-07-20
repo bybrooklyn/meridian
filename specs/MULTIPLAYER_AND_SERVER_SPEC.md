@@ -69,6 +69,12 @@ Components opt in through schema metadata: authority, relevance, frequency, quan
 
 Server builds immutable per-client replication views after simulation commit. Interest combines spatial cells, rooms/visibility, gameplay relevance, ownership, audio/physics needs, and budgets, reusing world scheduling concepts without coupling crates.
 
+Artus replication sends authoritative high-level intent, root state, declared
+gameplay-critical contacts, and corrections where a game profile requires them.
+Clients may synthesize cosmetic pose, IK, gaze, fingers, and noncritical
+reactions locally. NET owns transport and reconciliation policy; Artus does not
+claim byte-identical client poses or network authority over gameplay outcomes.
+
 ## 7. Prediction and rollback
 
 Clients timestamp semantic input by local sequence and intended simulation tick. Server validates and applies authority. Client prediction keeps bounded input/state history for selected components; reconciliation compares authoritative snapshots and reapplies permitted inputs.

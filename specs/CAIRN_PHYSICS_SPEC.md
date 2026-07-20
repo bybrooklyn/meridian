@@ -82,6 +82,7 @@ zero-cost feature tiers.
 | `meridian-physics` transitional | Current Rapier-backed wrapper and grounded-controller tests | Permanent Cairn ownership once fork exists |
 | `meridian-world` | Spatial cells, origin rebasing, source IDs for physics entities | Solver internals |
 | `meridian-save` | Persisted stable physics state and schema migrations | Direct solver memory dumps |
+| Artus | Root-motion proposals, physical-animation targets, and immutable intent/contact requests | Direct solver mutation, Cairn implementation types, or ownership of final physical state |
 | Editor physics tools | Debug panels, previews, authoring controls, stress/failure visualization | Hidden runtime state outside schemas |
 | The Alluvium Engine | Collision, physical-material, constraint, structural, and fracture-rule source facets | Live Cairn world, contacts, constraints, solver state, or destruction authority |
 
@@ -94,6 +95,9 @@ Invalid dependencies:
   meshes on a server.
 - Save data must serialize Cairn descriptors and state, not internal array
   indices without generation/version checks.
+- Artus may propose movement and consume immutable resolution snapshots, but it
+  must not mutate solver arrays, manufacture physical contacts, or expose
+  Cairn implementation types through its public contracts.
 - Cairn runtime must not invoke Alluvium editor/compiler internals or infer
   physical authority from visual artifacts.
 

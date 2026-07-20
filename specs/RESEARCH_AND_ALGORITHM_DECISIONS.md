@@ -224,7 +224,7 @@ Rust gameplay implementation under `WP-GAM-001` is not a language-selection expe
 
 Native modeling research keeps editable model documents, stable element IDs, topology lineage, semantic operations, modifiers, undo/recovery, and explicit interchange loss stable. Candidate mesh kernels, robust predicates, booleans, UV/LOD methods, and optional DCC bridges compare correctness, degeneracy behavior, source recovery, accessibility, performance, licensing, and maintenance. Advanced sculpting/retopology/hair/cloth remains `PRG-MDL-001`, not a hidden 1.0 gate.
 
-Animation research keeps skeleton/clip/graph/event/pose contracts stable while comparing compression, retargeting, blend/IK execution, CPU/GPU deformation, streaming, and rollback behavior. Facial/performance-capture work is `PRG-ANI-001` and adds biometric privacy/provenance gates.
+Artus research keeps semantic rig/clip/profile/graph/event/pose contracts stable. `RG-ANI-001` decides shared motion-intent, contact, arbitration, interruption, completion, and negotiated Cairn-control semantics before package work relies on them. `RG-ANI-002` compares compression, retargeting, constraint/IK execution, pose search, CPU/GPU deformation, streaming, and rollback behavior against a preregistered humanoid corpus. MS-09 may add only a facial profile/import/pose-layer foundation; advanced facial and performance-capture work remains `PRG-ANI-001` with biometric privacy and provenance gates.
 
 Navigation research keeps source facets, profiles, artifacts, bounded queries, partial outcomes, streaming epochs, and trace semantics stable while comparing mesh/grid/voxel/flow/hybrid representations and optional accelerators. Gameplay AI decisions remain outside NAV.
 
