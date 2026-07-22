@@ -96,6 +96,7 @@ accessibility evidence, and visible application review pass.
 - Keep one primary active package per working context. Parallel lanes require disjoint write authority and a named convergence package or review.
 - Preserve unrelated dirty changes.
 - Do not commit, push, tag, publish, deploy, message externally, or change credentials unless explicitly authorized.
+- Work only on `main`. Before changing files, verify the current branch is `main`. Never create, switch to, commit on, push, or open a pull request from another branch. If repository rules or permissions prevent direct work on `main`, stop and ask the user to resolve the restriction; do not use another branch as a workaround.
 - A milestone cannot complete from scaffolds, marker types, constructors, definitions, or documentation alone.
 - Unsupported hardware/capability is an explicit evidence status, never a silent skip or Pass.
 - Do not claim visible quality from occluded or structural GPU smoke.
