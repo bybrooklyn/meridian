@@ -4116,7 +4116,7 @@ impl UiDirectFramePlan {
             rhi.create_buffer("Meridian direct UI indices", index_size, BufferUsage::Index)?;
         rhi.write_buffer(&vertex_buffer, 0, &self.vertex_bytes)?;
         rhi.write_buffer(&index_buffer, 0, &self.index_bytes)?;
-        let atlas_texture = rhi.create_texture(
+        let atlas_texture = rhi.create_clamped_texture(
             "Meridian direct UI atlas",
             meridian_platform::WindowSize::new(self.atlas.width, self.atlas.height),
             1,
@@ -5097,11 +5097,19 @@ fn full_viewport_rect(viewport: UiSize) -> UiRect {
 fn glyph_rect(origin: UiRect, glyph: &UiGlyphBitmap, scale_factor: f32) -> UiRect {
     UiRect::new(
         UiPoint {
-            x: origin.origin.x + glyph.origin.x / scale_factor,
-            y: origin.origin.y + glyph.origin.y / scale_factor,
+            // Raster glyphs are already expressed in physical pixels. Snap
+            // the combined origin after adding the logical text slot so a
+            // fractional flex/dock position cannot turn every antialiased
+            // edge into a blurry half-pixel sample on the direct path.
+            x: snap_glyph_origin(origin.origin.x, glyph.origin.x, scale_factor),
+            y: snap_glyph_origin(origin.origin.y, glyph.origin.y, scale_factor),
         },
         glyph_size(glyph, scale_factor),
     )
+}
+
+fn snap_glyph_origin(logical_origin: f32, physical_offset: f32, scale_factor: f32) -> f32 {
+    ((logical_origin * scale_factor + physical_offset).round()) / scale_factor
 }
 
 #[allow(clippy::cast_precision_loss)]
@@ -6566,6 +6574,15 @@ mod tests {
                 2.0,
             ),
             UiRect::new(UiPoint { x: 12.0, y: 23.0 }, UiSize::new(4.0, 5.0))
+        );
+        assert_eq!(
+            glyph_rect(
+                UiRect::new(UiPoint { x: 10.25, y: 20.25 }, UiSize::new(20.0, 20.0)),
+                &glyph,
+                2.0,
+            )
+            .origin,
+            UiPoint { x: 12.5, y: 23.5 }
         );
         assert_eq!(
             ndc(

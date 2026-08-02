@@ -1960,6 +1960,49 @@ impl Rhi {
         mip_level_count: u32,
         format: TextureFormat,
     ) -> Result<GpuTexture, RhiError> {
+        self.create_texture_with_address_mode(
+            label,
+            size,
+            mip_level_count,
+            format,
+            wgpu::AddressMode::Repeat,
+        )
+    }
+
+    /// Allocates a sampled 2D texture whose edges clamp instead of repeating.
+    ///
+    /// UI atlases and other packed textures must not repeat neighbouring or
+    /// unrelated content when a filtered sample lands just outside a region.
+    /// General material textures retain [`Self::create_texture`] and its
+    /// repeat sampler policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same typed failures as [`Self::create_texture`].
+    pub fn create_clamped_texture(
+        &self,
+        label: &str,
+        size: WindowSize,
+        mip_level_count: u32,
+        format: TextureFormat,
+    ) -> Result<GpuTexture, RhiError> {
+        self.create_texture_with_address_mode(
+            label,
+            size,
+            mip_level_count,
+            format,
+            wgpu::AddressMode::ClampToEdge,
+        )
+    }
+
+    fn create_texture_with_address_mode(
+        &self,
+        label: &str,
+        size: WindowSize,
+        mip_level_count: u32,
+        format: TextureFormat,
+        address_mode: wgpu::AddressMode,
+    ) -> Result<GpuTexture, RhiError> {
         if let Some(loss) = self.device_loss() {
             return Err(RhiError::new(
                 RhiErrorKind::DeviceLost,
@@ -1995,9 +2038,9 @@ impl Rhi {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some(label),
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::Repeat,
+            address_mode_u: address_mode,
+            address_mode_v: address_mode,
+            address_mode_w: address_mode,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
