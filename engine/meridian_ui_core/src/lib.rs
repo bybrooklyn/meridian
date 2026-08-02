@@ -2175,7 +2175,12 @@ impl UiStyle {
     #[must_use]
     pub const fn primary_action() -> Self {
         Self {
-            background: Some(UiColor::surface()),
+            background: Some(UiColor::rgba(
+                UiColor::amber().red,
+                UiColor::amber().green,
+                UiColor::amber().blue,
+                0.16,
+            )),
             border: Some(UiBorder {
                 color: UiColor::amber(),
                 width: 1,
@@ -2369,7 +2374,12 @@ impl UiStyleVariant {
         let color = |role| UiTokenColor { role, alpha: 1.0 };
         match self {
             Self::PrimaryAction => UiStyleTokens {
-                background: Some(color(UiColorRole::Surface)),
+                // Primary controls need a visible fill at rest. An outlined
+                // amber border made every action read like passive chrome.
+                background: Some(UiTokenColor {
+                    role: UiColorRole::Emphasis,
+                    alpha: 0.16,
+                }),
                 border: Some(UiColorRole::Emphasis),
                 radius: UiRadiusToken::Control,
                 foreground: UiColorRole::PrimaryText,
@@ -2463,6 +2473,12 @@ impl UiTheme {
         match selector {
             UiStyleSelector::Idle => {}
             UiStyleSelector::Hovered | UiStyleSelector::Focused => {
+                if tokens.background.is_some() {
+                    tokens.background = Some(UiTokenColor {
+                        role: UiColorRole::Emphasis,
+                        alpha: 0.22,
+                    });
+                }
                 tokens.border = Some(UiColorRole::Emphasis);
             }
             UiStyleSelector::Selected => {
@@ -5863,13 +5879,40 @@ mod tests {
             UiVisualState::default(),
             UiContrast::Standard,
         );
-        assert_eq!(primary.style.background, Some(theme.colors.surface));
+        assert_eq!(
+            primary.style.background,
+            Some(UiColor::rgba(
+                theme.colors.warning.red,
+                theme.colors.warning.green,
+                theme.colors.warning.blue,
+                0.16,
+            ))
+        );
         assert_eq!(
             primary.style.border.map(|border| border.color),
             Some(theme.colors.warning)
         );
         assert_ne!(primary.style.background, Some(theme.colors.destructive));
         assert!(!primary.used_token_fallback);
+
+        let hovered = theme.resolve_style(
+            UiStyleReference::Variant(UiStyleVariant::SecondaryAction),
+            UiStyle::secondary_action(),
+            UiVisualState {
+                hovered: true,
+                ..UiVisualState::default()
+            },
+            UiContrast::Standard,
+        );
+        assert_eq!(
+            hovered.style.background,
+            Some(UiColor::rgba(
+                theme.colors.warning.red,
+                theme.colors.warning.green,
+                theme.colors.warning.blue,
+                0.22,
+            ))
+        );
 
         let legacy = theme.resolve_style(
             UiStyleReference::LegacyTokenResolved,

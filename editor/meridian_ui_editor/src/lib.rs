@@ -694,7 +694,12 @@ fn shell_project_style() -> UiStyle {
 
 fn shell_utility_style(strong: bool, active: bool) -> UiStyle {
     UiStyle {
-        background: active.then_some(UiColor::surface()),
+        background: (strong || active).then_some(UiColor::rgba(
+            UiColor::amber().red,
+            UiColor::amber().green,
+            UiColor::amber().blue,
+            0.14,
+        )),
         border: Some(UiBorder {
             color: if strong || active {
                 UiColor::amber()
@@ -744,7 +749,12 @@ fn shell_icon_cluster_style() -> UiStyle {
 
 fn workspace_tab_style(selected: bool) -> UiStyle {
     UiStyle {
-        background: selected.then_some(UiColor::surface()),
+        background: selected.then_some(UiColor::rgba(
+            UiColor::amber().red,
+            UiColor::amber().green,
+            UiColor::amber().blue,
+            0.12,
+        )),
         border: selected.then_some(UiBorder {
             color: UiColor::amber(),
             width: 1,
@@ -1538,18 +1548,6 @@ fn activity_shelf_action_style(emphasis: bool) -> UiStyle {
     }
 }
 
-fn creator_panel_accent(panel: EditorPanelId) -> UiColor {
-    match panel {
-        EditorPanelId::ProjectRecovery | EditorPanelId::Recipe => UiColor::amber(),
-        EditorPanelId::Viewport | EditorPanelId::Build | EditorPanelId::Modeler => UiColor::grass(),
-        EditorPanelId::Hierarchy
-        | EditorPanelId::Assets
-        | EditorPanelId::Inspector
-        | EditorPanelId::History => UiColor::secondary_text(),
-        EditorPanelId::Diagnostics => UiColor::red(),
-    }
-}
-
 fn creator_hub_status_style() -> UiStyle {
     UiStyle {
         background: None,
@@ -1625,24 +1623,25 @@ fn creator_hub_surface_style() -> UiStyle {
 fn creator_hub_action_style(primary: bool) -> UiStyle {
     UiStyle {
         background: Some(if primary {
-            UiColor::surface()
+            UiColor::rgba(
+                UiColor::amber().red,
+                UiColor::amber().green,
+                UiColor::amber().blue,
+                0.16,
+            )
         } else {
             UiColor::background()
         }),
         border: Some(UiBorder {
             color: if primary {
-                UiColor::grass()
+                UiColor::amber()
             } else {
                 UiColor::border()
             },
             width: 1,
         }),
         corner_radius: 10.0,
-        foreground: if primary {
-            UiColor::text()
-        } else {
-            UiColor::secondary_text()
-        },
+        foreground: UiColor::text(),
         padding: 12.0,
         font_size: 15.0,
     }
@@ -1677,7 +1676,7 @@ fn creator_recent_row_style(available: bool) -> UiStyle {
     }
 }
 
-fn creator_compact_action_style(panel: EditorPanelId, command: &str) -> UiStyle {
+fn creator_compact_action_style(_panel: EditorPanelId, command: &str) -> UiStyle {
     let primary = matches!(
         command,
         "editor.play-start"
@@ -1689,26 +1688,30 @@ fn creator_compact_action_style(panel: EditorPanelId, command: &str) -> UiStyle 
             | "procedural.preview"
             | "model.create-primitive"
     );
-    let accent = creator_panel_accent(panel);
     UiStyle {
         // Supporting commands remain quieter than committed actions, but all
         // real controls get a bounded face. Bare text made action rows read as
         // unfinished wireframes and gave no visual anchor for keyboard focus.
         background: Some(if primary {
-            UiColor::surface()
+            UiColor::rgba(
+                UiColor::amber().red,
+                UiColor::amber().green,
+                UiColor::amber().blue,
+                0.14,
+            )
         } else {
             UiColor::background()
         }),
         border: Some(UiBorder {
-            color: if primary { accent } else { UiColor::border() },
+            color: if primary {
+                UiColor::amber()
+            } else {
+                UiColor::border()
+            },
             width: 1,
         }),
         corner_radius: 6.0,
-        foreground: if primary {
-            UiColor::text()
-        } else {
-            UiColor::secondary_text()
-        },
+        foreground: UiColor::text(),
         padding: 8.0,
         font_size: 13.0,
     }
@@ -7956,7 +7959,15 @@ mod tests {
         let activity = compact_document
             .node(UiNodeId::new(93_200))
             .expect("World activity tab");
-        assert_eq!(activity.style.background, Some(UiColor::surface()));
+        assert_eq!(
+            activity.style.background,
+            Some(UiColor::rgba(
+                UiColor::amber().red,
+                UiColor::amber().green,
+                UiColor::amber().blue,
+                0.12,
+            ))
+        );
         assert_eq!(
             activity.style.border.as_ref().map(|border| border.color),
             Some(UiColor::amber())
@@ -8034,15 +8045,23 @@ mod tests {
                 action.style.border.as_ref().map(|border| border.color),
                 Some(UiColor::border())
             );
-            assert_eq!(action.style.foreground, UiColor::secondary_text());
+            assert_eq!(action.style.foreground, UiColor::text());
             assert!((action.style.corner_radius - 6.0).abs() <= f32::EPSILON);
         }
 
         let primary = creator_compact_action_style(EditorPanelId::Build, "build.submit");
-        assert_eq!(primary.background, Some(UiColor::surface()));
+        assert_eq!(
+            primary.background,
+            Some(UiColor::rgba(
+                UiColor::amber().red,
+                UiColor::amber().green,
+                UiColor::amber().blue,
+                0.14,
+            ))
+        );
         assert_eq!(
             primary.border.as_ref().map(|border| border.color),
-            Some(UiColor::grass())
+            Some(UiColor::amber())
         );
     }
 
