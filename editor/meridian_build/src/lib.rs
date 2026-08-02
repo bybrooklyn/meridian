@@ -4293,7 +4293,7 @@ fn terminate_cargo_process_tree(child: &mut std::process::Child) -> Option<Build
     #[cfg(unix)]
     {
         let process_group = format!("-{}", child.id());
-        if run_termination_command("/bin/kill", ["-TERM", process_group.as_str()]) {
+        if run_termination_command("/bin/kill", ["-TERM", "--", process_group.as_str()]) {
             let deadline = std::time::Instant::now() + CARGO_CANCELLATION_GRACE;
             while std::time::Instant::now() < deadline {
                 thread::sleep(CARGO_CANCELLATION_POLL);
@@ -4301,7 +4301,7 @@ fn terminate_cargo_process_tree(child: &mut std::process::Child) -> Option<Build
             // A group can outlive its Cargo leader when a build script or
             // compiler descendant ignores TERM. A nonzero second `kill` means
             // the TERM already removed that group for this same-user child.
-            let _ = run_termination_command("/bin/kill", ["-KILL", process_group.as_str()]);
+            let _ = run_termination_command("/bin/kill", ["-KILL", "--", process_group.as_str()]);
             return None;
         }
     }
