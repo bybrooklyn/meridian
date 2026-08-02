@@ -45,6 +45,7 @@ const PRESENTATION_TIMEOUT: Duration = Duration::from_secs(5);
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
 const PRESENT_RETRY_DELAY: Duration = Duration::from_millis(50);
 const MAX_FAILURE_DETAIL_CHARS: usize = 240;
+const COPY_BYTES_PER_ROW_ALIGNMENT: u64 = 256;
 const REVIEW_CLEAR: ClearColor = ClearColor::new(0.002_731_743, 0.003_346_536, 0.003_346_536, 1.0);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -255,9 +256,7 @@ impl PresentedReviewRunner {
             .into());
         }
         let gpu = plan.upload_gpu_frame(&mut rhi)?;
-        let capture_bytes = u64::from(cache_key.surface_width)
-            .checked_mul(u64::from(cache_key.surface_height))
-            .and_then(|pixels| pixels.checked_mul(4))
+        let capture_bytes = capture_buffer_bytes(cache_key.surface_width, cache_key.surface_height)
             .ok_or("presented review capture byte count overflowed")?;
         rhi.request_capture(CaptureRequest::new(
             FrameId::new(1),
@@ -869,6 +868,14 @@ fn physical_size(case: &UiDirectQualificationCase) -> Result<WindowSize, Box<dyn
     Ok(WindowSize::new(width as u32, height as u32))
 }
 
+fn capture_buffer_bytes(width: u32, height: u32) -> Option<u64> {
+    let tight_bytes_per_row = u64::from(width).checked_mul(4)?;
+    let padded_bytes_per_row = tight_bytes_per_row.checked_add(COPY_BYTES_PER_ROW_ALIGNMENT - 1)?
+        / COPY_BYTES_PER_ROW_ALIGNMENT
+        * COPY_BYTES_PER_ROW_ALIGNMENT;
+    padded_bytes_per_row.checked_mul(u64::from(height))
+}
+
 fn gpu_profile(rhi: &Rhi) -> GpuProfileReport {
     let capabilities = rhi.capabilities();
     let surface = rhi.surface_format();
@@ -976,6 +983,12 @@ mod tests {
                 surface: ReviewSurface::FrameworkGallery,
             })
         );
+    }
+
+    #[test]
+    fn capture_budget_includes_wgpu_row_padding() {
+        assert_eq!(capture_buffer_bytes(1_440, 900), Some(5_299_200));
+        assert_eq!(capture_buffer_bytes(1_280, 720), Some(3_686_400));
     }
 
     #[test]
