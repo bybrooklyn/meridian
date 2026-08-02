@@ -11,8 +11,8 @@ packages are closed with fresh evidence. `WP-UI-001` is an
 `ImplementedFoundation` after cross-platform GitHub Actions evidence. Run
 `29605881704` for `4463bad` qualified the persistent Creator behavioral
 foundation across Linux, Windows, and macOS. `WP-UI-002` through `WP-UI-004`
-are `ImplementedFoundation` after GitHub Actions run `30734817554` for
-`fb819a4`: governance and the complete Linux, Windows, and macOS rows passed.
+are `ImplementedFoundation` after GitHub Actions run `30736118075` for
+`4cc89b0`: governance and the complete Linux, Windows, and macOS rows passed.
 The Linux row uses bounded Cargo/test concurrency and the corrected Unix
 process-group cancellation path. `WP-UI-005` remains `Partial` pending human
 visual, real screen-reader, and calibrated renderer evidence; `WP-UI-006`
@@ -1178,8 +1178,9 @@ device-destruction replay, raw uncalibrated performance samples, and a canonical
 qualification evidence for current local/dirty source and are not human-approved
 visual or accessibility qualification. Real screen-reader and human-review
 evidence is absent. Hosted Linux, Windows, and macOS implementation
-qualification now passes in `EV-UI-20260802-002`, and the clean-commit
-presented-review artifact is recorded in `EV-UI-20260802-003`, but none of that
+qualification now passes in `EV-UI-20260802-002`, and the corrected clean-commit
+presented-review artifact is recorded in `EV-UI-20260802-004` (with the prior
+capture retained in `EV-UI-20260802-003`), but none of that
 headless, structural, or machine-review evidence can be waived into a
 completion claim.
 
