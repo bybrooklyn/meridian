@@ -100,6 +100,30 @@ jobs:
       - name: Present the direct Meridian UI renderer corpus on macOS
         if: runner.os == 'macOS'
         run: cargo run -p meridian-renderer --features ui-direct --example ui_direct_smoke
+      - name: Capture non-promoting presented UI review evidence on macOS
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        env:
+          MERIDIAN_SOURCE_STATE: clean-commit
+          MERIDIAN_SOURCE_CHECKPOINT: ${{ github.sha }}
+        run: >-
+          cargo run -p meridian-benchmark
+          --features ui-direct-qualification
+          --example ui_direct_presented_review --
+          --evidence target/meridian-ci-creator-alpha/ui-direct-presented-review
+          --surface framework-gallery
+      - name: Capture non-promoting accessibility review evidence on macOS
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        env:
+          MERIDIAN_SOURCE_STATE: clean-commit
+          MERIDIAN_SOURCE_CHECKPOINT: ${{ github.sha }}
+        run: >-
+          cargo run -p meridian-benchmark
+          --features ui-accessibility-review
+          --example ui_accessibility_review --
+          --evidence target/meridian-ci-creator-alpha/ui-accessibility-review
+          --timeout-seconds 1
       - name: Project native accessibility semantics on macOS
         if: runner.os == 'macOS'
         run: cargo run -p meridian-platform --features accessibility --example accessibility_native_smoke
