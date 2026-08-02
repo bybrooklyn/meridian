@@ -1,6 +1,6 @@
 ---
 name: meridian-engine
-description: Work safely and truthfully on the Meridian Rust engine and its separate private Project Meridian game repository. Use for implementation, debugging, planning, specification amendments, architecture reviews, validation, milestone or work-package status, repository navigation, evidence closure, CI, commits, pushes, or any task under /Users/brooklyn/meridian or /Users/brooklyn/meridian/game.
+description: Work safely and truthfully on the Meridian Rust engine and its separate private Project Meridian game repository. Use for implementation, debugging, planning, specification amendments, architecture reviews, validation, milestone or work-package status, repository navigation, evidence closure, CI, commits, pushes, or any task under the engine checkout or its ignored nested game checkout.
 ---
 
 # Meridian Engine
@@ -10,8 +10,8 @@ implementation, evidence, or private game content.
 
 ## Repository roots
 
-- Engine: `/Users/brooklyn/meridian`, remote `bybrooklyn/meridian`.
-- Game: `/Users/brooklyn/meridian/game`, an independent ignored nested repository,
+- Engine: the repository checkout, remote `bybrooklyn/meridian`.
+- Game: `game/`, an independent ignored nested repository,
   remote `bybrooklyn/project-meridian`.
 - Treat both repositories as private unless live GitHub metadata says otherwise.
 - Run Git commands with an explicit working directory. Never stage the nested
@@ -21,7 +21,7 @@ implementation, evidence, or private game content.
 
 ## Start every task from live state
 
-1. Read `/Users/brooklyn/meridian/AGENTS.md` and any narrower `AGENTS.md`.
+1. Read `AGENTS.md` at the repository root and any narrower `AGENTS.md`.
 2. Run `scripts/project-status.sh`; add `--remote` when GitHub/CI state matters.
 3. Read the current versions of:
    - `specs/MERIDIAN_MASTER_SPEC.md`;
@@ -81,7 +81,7 @@ finished product or visual quality.
 
 ### Work on Project Meridian
 
-- Read `/Users/brooklyn/meridian/game/docs/README.md` first.
+- Read `game/docs/README.md` first.
 - Keep narrative, route, art, AMI identity, proprietary recipes/seeds, assets,
   hero overrides, and game code in the private game repository.
 - Put only sanitized functional contracts, generated surrogates, controlled

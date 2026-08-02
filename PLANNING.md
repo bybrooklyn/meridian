@@ -16,17 +16,27 @@ are `Partial` after locally validated source packages; GitHub Actions runs
 because of the account billing state. Each workflow concluded `failure` before
 implementation steps ran; the skipped platform rows are `NotRun`, not failed
 implementation evidence. `ADR-0029` decided `RG-UI-001` for the Penumbra-owned
-direct display-list path without claiming renderer completion. `WVR-UI-001`
-permits non-promoting local continuation. `WP-UI-005` is reactivated as the
-sole corrective package. It now has local profile-bound exact offscreen golden
+direct display-list path without claiming renderer completion. `WVR-UI-001` and
+`WVR-EDT-001` permit non-promoting local continuation. `WP-UI-005` reached its
+bounded local source stop point but remains unqualified. `WP-UI-006` is the
+sole active source-only package: it makes `UiDocument` the versioned,
+ergonomic authored source and compiles it into the existing frame contract.
+`WP-EDT-002` is suspended at its recorded `Partial` state and resumes after
+that work; `WP-EDT-003` then composes the remaining current Creator workspaces.
+The framework
+has local profile-bound exact offscreen golden
 capture, controlled device-destruction replay, and uncalibrated raw performance
 output. That output remains `Inconclusive` qualification evidence for current
 local/dirty source because provenance is caller-declared; this preserves
 unavailable timing/memory states and does not establish visual review, real
 screen-reader, accessibility, or cross-platform qualification.
 Fresh Linux, Windows, and macOS evidence is still `NotRun` because hosted
-runners cannot be allocated. In-progress `WP-EDT-002` source is preserved but
-paused; no editor completion or maturity claim follows.
+runners cannot be allocated. The latest retry, GitHub Actions run
+`29952062179` for `ae97f82`, again failed governance with zero executed steps
+and skipped the Rust matrix; it provides no implementation evidence. `WP-UI-006`
+source work does not establish UI
+qualification or maturity promotion; no later Creator package may promote from
+this local work.
 `WP-MDL-001` remains `Partial`; MS-03 remains open.
 
 ## 1. Authority and stop rule
@@ -49,7 +59,7 @@ media, cost-prediction, or competitive-validation system.
 | Penumbra | `Partial` / `Transitional` | direct PBR, cascaded shadows, diffuse irradiance IBL, extraction/upload, typed pass timing, asynchronous visible capture, and structural/native GPU smokes exist |
 | Assets/world/streaming/save | `ImplementedFoundation` / `Partial` | one bounded public source family imports transactionally, packages, worker-streams, activates, saves, recovers, and reconstructs; production schemas/compression/signing remain incomplete |
 | Cairn | `Transitional` | current Rapier wrapper and grounded controller are evidence; Meridian-owned Cairn internals are not implemented |
-| Meridian UI | `ImplementedFoundation` / `Partial` | the MS-02 core proof is qualified; `WP-UI-002` through `WP-UI-005` are locally implemented but lack cross-platform qualification, with profile-bound offscreen golden correctness, controlled replay, and raw uncalibrated timing output local-only and `Inconclusive`; presented visual, real screen-reader, accessibility, and cross-platform evidence remain open |
+| Meridian UI | `ImplementedFoundation` / `Partial` / `Active` | the MS-02 core proof is qualified; `WP-UI-002` through `WP-UI-005` are locally implemented but lack cross-platform qualification, and active `WP-UI-006` adds only local source-authoring ergonomics; profile-bound offscreen golden correctness, controlled replay, and raw uncalibrated timing remain `Inconclusive`; presented visual, real screen-reader, accessibility, and cross-platform evidence remain open |
 | Creator Editor | `ImplementedFoundation` | persistent hub, source-authoritative project documents, typed actions, Creator journey, and universal app structure passed run `29605881704`; this is a behavioral foundation, not Meridian UI 1.0 visual completion |
 | Audio, Isobar, Basalt, vegetation | `Scaffold` unless a registry entry says narrower | implementation remains outside the current Creator Editor package |
 | Alluvium | `ImplementedFoundation` | canonical text recipes, strict scalar evaluation, derived-cache recovery, CLI, and a basic inspector are qualified; production/domain work remains open |
@@ -316,8 +326,10 @@ remain outside MS-01.
 `WP-EDT-001` are qualified MS-03 foundations. `RG-UI-001` is `Decided` by
 `ADR-0029`; `WP-UI-002` through `WP-UI-005` and `WP-MDL-001` are retained as
 `Partial` under `WVR-UI-001` and cannot be promoted by local UI work.
-`WP-UI-005` is reactivated as the sole corrective framework package;
-`WP-EDT-002` is `Partial` and paused.
+`WP-UI-005` reached its bounded local source stop point and remains
+unqualified. `WP-UI-006` is the sole active source-only package under
+`WVR-UI-001`; `WP-EDT-002` is suspended as `Partial` under `WVR-EDT-001` and
+remains unqualified.
 Penumbra Stage 1 then proceeds through `WP-PEN-003` and
 `WP-PEN-010`, with `WP-PEN-009` as bounded parallel image-quality work and
 `WP-PEN-011` as the later executable/calibrated forest corpus. `RG-PEN-001`
@@ -986,9 +998,9 @@ to allocate a hosted runner for the account billing state. The workflows
 concluded `failure`; their skipped Linux, Windows, and macOS implementation rows
 are `NotRun`. No package or milestone promotion follows.
 
-Current sequence: `WP-UI-002` through `WP-UI-004` remain locally delivered as
-`Partial`; `WP-UI-005` is active only under non-promoting `WVR-UI-001`, and
-`WP-EDT-002` is paused.
+Current sequence: `WP-UI-002` through `WP-UI-005` remain locally delivered as
+`Partial`; active `WP-UI-006` owns the authored-document and source-to-frame
+foundation. `WP-EDT-002` is suspended at its recorded source state.
 
 ## 15.1 Partial package — WP-UI-003 / professional interaction and controls
 
@@ -1042,11 +1054,13 @@ workspace tests, warning-denied workspace Clippy, native/headless UI and Creator
 journey smokes, RHI/renderer structural smokes, runtime/UI dependency checks,
 private-content and secret scans, and `git diff --check`. IME validation uses
 UTF-8 byte boundaries matching the private winit adapter while retained editing
-uses grapheme boundaries. `actionlint` is `NotRun` because it is not installed.
+uses grapheme boundaries. The current workflow passes local `actionlint`; the
+historical package run did not include that check.
 Linux and Windows remain unobserved under `WVR-UI-001`; no package or milestone
 promotion follows.
 
-Current package: `WP-UI-005`, active only under non-promoting `WVR-UI-001`.
+Next package: active `WP-UI-006` is source-only under non-promoting
+`WVR-UI-001`; it remains unqualified.
 
 ## 15.2 Partial package — WP-UI-004 / docking, workspaces, and persistence
 
@@ -1124,13 +1138,14 @@ Local validation passed 23 `meridian-ui-editor` tests, `meridian-spec check`,
 locked metadata, formatting, full workspace tests, warning-denied workspace
 Clippy, native/headless UI and Creator journeys, RHI/renderer/runtime structural
 smokes, the UI-free runtime dependency check, and `git diff --check`.
-`actionlint` is `NotRun` because it is not installed. Linux and Windows remain
-unobserved under `WVR-UI-001`; no package or milestone promotion follows.
+The current workflow passes local `actionlint`; the historical package run did
+not include that check. Linux and Windows remain unobserved under
+`WVR-UI-001`; no package or milestone promotion follows.
 
-Next package: `WP-UI-005` is reactivated only under non-promoting
-`WVR-UI-001`; `WP-EDT-002` remains paused.
+Next package: active `WP-UI-006` is source-only under non-promoting
+`WVR-UI-001`; it remains unqualified.
 
-## 15.3 Active corrective package — WP-UI-005 / motion, accessibility, and renderer qualification
+## 15.3 Partial package — WP-UI-005 / motion, accessibility, and renderer qualification
 
 Work package: `WP-UI-005`
 
@@ -1139,7 +1154,8 @@ reduced-motion substitutions, bounded overlay effects, complete Meridian-owned
 semantics with private platform adapters, and an evidence-backed display-list
 renderer decision without allowing adapter types into public APIs.
 
-Status: `Active`; implementation maturity: `Partial`. Interruptible bounded
+Status: `Partial`; implementation maturity: `Partial`. `WP-UI-005` reached its
+bounded local source stop point under non-promoting `WVR-UI-001`. Interruptible bounded
 motion, Reduced Motion, effect fallback, complete Meridian semantic snapshots,
 private AccessKit projection/action routing/recovery, pane-focus cycling,
 100–400% scale fixtures, and the complete 15-category display-list corpus have
@@ -1258,6 +1274,21 @@ latency remains platform/renderer evidence. This closes the locally actionable
 diagnostics-contract gap but does not supply calibrated performance, human
 review, cross-platform CI, or a package-promotion claim.
 
+The corrective runtime scopes keyboard, assistive, programmatic focus, and
+host-delivered target interaction to the visible top
+combo/menu/context-menu/command-palette subtree. The first pointer press outside
+that surface dismisses it without activating the background target; opening the
+surface cancels prior pointer/scroll/drag/timeline/canvas preview capture; and
+document replacement restores invalidated focus inside the visible transient
+before considering the background. The semantic projection keeps only the root
+and active transient subtree, correctly reparenting nested transient semantics
+without exposing background controls to assistive traversal. Local regressions
+cover keyboard cycling; hidden/background assistive and host-value rejection;
+programmatic-focus denial; scoped scroll and property-cancel rollback; focus
+restoration; topmost nested-surface dismissal; stale pointer-release
+cancellation; and outside-click dismissal. This remains local source evidence
+only.
+
 The direct renderer now preflights a collision-safe, exact-content-deduplicated
 atlas, keeps per-image, aggregate-atlas, and vertex/index failures typed
 separately, and treats valid zero-area whitespace masks as non-drawing glyphs.
@@ -1268,7 +1299,120 @@ approval, or evidence promotion is claimed. The runner also preserves its first
 failure report instead of allowing a later platform callback to overwrite the
 root cause.
 
-## 15.4 Paused partial package — WP-EDT-002 / permanent shell and World workspace
+## 15.4 Active source-only package — WP-UI-006 / authored documents and source-to-frame compilation
+
+Work package: `WP-UI-006`
+
+User-visible result: Meridian UI uses the existing `UiDocument` as its
+versioned canonical editable source while making the locked design system easy
+to author through typed spacing/geometry, named styles, reusable components,
+stable IDs, source diagnostics, bounded packaged assets, and deterministic
+source-to-frame compilation.
+
+Status: `Active` only under non-promoting `WVR-UI-001`; implementation maturity
+is not promoted by this local source work. `WP-UI-005` supplies the retained
+layout, semantics, renderer-neutral display list, direct-path recovery, and
+locked tokens while remaining `Partial`. `WP-EDT-002` is deliberately suspended
+at its recorded source state until this shared authored vocabulary exists. The
+requirement registry now maps both `REQ-UI-001` and `REQ-UI-002` to this source
+package, matching the package registry and the owning UI specification.
+
+Deliverables: one `UiDocument` source model with schema/version, root, stable
+nodes, styles, component definitions and explicit typed instance projections,
+token/style references,
+semantic bindings, and bounded raster asset references; ergonomic builders and
+diagnostics; stable source-location categories for typed validation failures
+and document-level canonical-source envelope failures;
+immutable compiled snapshots consumed identically by runtime and Creator;
+bounded canonical source bytes with an explicit envelope, legacy
+snapshot migration, and full revalidation before recovery; source-to-frame
+determinism and recovery tests; and direct text corpus checks at 1x and 2x.
+Vectors remain native bounded paths or audited `IconId` values. Raw
+constructors remain only for migration and fixture compatibility.
+
+Explicit non-goals: a separate UI authoring document, loose file paths or SVG
+parsing in the source model, backend handles in source, executable content,
+direct-manipulation canvas editing, renderer/accessibility qualification, or
+milestone promotion.
+
+Latest local source closure pass: `UiDocumentCompiler` now exposes the
+canonical source-to-frame boundary as one immutable `UiCompiledFrame`, and the
+native Creator application owns that compiler façade rather than a parallel
+editor-only runtime. Authored image nodes require a packaged `UiAssetRef`;
+private resolution binds the source node to a process-local image handle and
+successful compilation emits a renderer-neutral image primitive, while missing
+or wrong-kind assets produce typed unavailable diagnostics without advancing
+retained state. Authored document deltas report changed style definitions, component
+definitions, and node source provenance by stable identity in addition to
+retained/inserted/removed/updated nodes. `UiDocument::component_instances`
+exposes each component-attached stable node as a typed explicit instance
+projection, so Creator inspection does not infer instances by scanning raw
+source maps. The fresh continuation pass also covers stable typed component
+instance projection and component-attachment deltas in `EV-UI-20260801-005`.
+Regression coverage proves that an
+authored style, component default, or packaged-asset reference cannot change
+without an addressable delta, and that authored/recovered source compiles to
+the same layout, renderer-neutral display list, and semantic tree as the
+resolved contract. The Creator UI-authoring preview now consumes this compiler
+façade for its real World-source inspection frame instead of constructing a
+parallel preview path. Canonical persisted source bytes now enter through that
+same façade: the compiler decodes and fully validates bounded source before
+atomically replacing retained state, reports legacy storage-shape migration,
+uses typed envelope/legacy parsing without first materializing an untyped JSON
+tree, and preserves the last accepted source on decode failure. Source
+diagnostics distinguish transient-surface failures from generic semantics.
+Packaged-asset
+lowering is now part of the same façade: resolution happens before frame
+advancement, repeated references share one derived package resolution, and
+missing assets leave retained runtime state unchanged. The UI-authoring preview
+also carries the same
+source-derived World grid and placement decoration as the normal World path,
+so its compiled viewport is an actual inspection surface rather than an empty
+placeholder. The current local
+non-promoting evidence set includes the UI-authoring review capture at
+`target/meridian-evidence/ui-authoring-header-fix.png`, direct display-list
+corpus output at
+`target/meridian-evidence/ui-direct-qualification/wpui-final/`, controlled
+device-loss replay at
+`target/meridian-evidence/ui-direct-device-loss-replay/wpui-final/`, and the
+native accessibility review at
+`target/meridian-evidence/ui-accessibility-review/wpui-final/`. The latest
+authoring capture is
+`target/meridian-evidence/ui-authoring-header-fix.png`; its retained browser
+and inspector headers remain inside their panel rows, and the same preview
+path now has a 1×/2× projected-glyph scaling regression. Sequential package
+suites also pass for core (40), text (14), runtime (122), and editor (59),
+plus the Creator application suite (42), covering the locally implemented
+UI-002 through UI-004 contracts and the UI-006 source path. The clean workspace
+suite, warning-denied Clippy, spec/metadata/diff checks, RHI and renderer
+smokes, UI headless smoke, and Creator UI smoke are now recorded in
+`EV-UI-20260801-001`; the earlier July closure record remains historical. A
+feature-gated `meridian-platform --features accessibility` run also passes all
+20 private AccessKit projection/action tests as `EV-UI-20260801-002`, without
+claiming real assistive-client observation; the same feature compiles for
+Windows GNU and macOS targets as `EV-UI-20260801-003`, without claiming native
+execution. A
+fresh World-shell review capture is registered as
+`EV-UI-20260722-009`; it remains local offscreen review material and does not
+self-approve visual quality. The feature-gated and full-workspace cross-target
+checks are compile-only dirty-source evidence and do not execute native Windows
+or macOS, platform accessibility adapters, renderer presentation, or packaging;
+the full-workspace result is recorded separately as
+`EV-UI-20260801-004`. The evidence set is therefore
+registered as `EV-UI-20260722-001` through `EV-UI-20260724-001`, with the
+current source pass recorded separately in `EV-UI-20260801-001`; canonical
+source encoding now rejects payloads larger than the same bounded 8 MiB source
+envelope accepted by recovery.
+These artifacts remain `Inconclusive` or `NotRun` where the evidence contract
+requires human, screen-reader, or cross-platform observation; they do not
+promote any UI package.
+
+Stop/rollback rule: stop if an authored asset becomes a loose path or renderer
+handle, a component instance loses explicit stable identity, a compile failure
+cannot name its source node/property, raw constructors regain design-system
+authority, or a cache becomes source authority.
+
+## 15.5 Suspended partial package — WP-EDT-002 / permanent shell and World workspace
 
 Work package: `WP-EDT-002`
 
@@ -1277,10 +1421,17 @@ application shell, a production-quality hub, and the World workspace with the
 locked palette, hierarchy/browser, real viewport, wider inspector, shelf,
 status, persistent context, and native accessibility.
 
-Status: `Partial` and paused; implementation maturity: `Partial`. Uncommitted
-shell and World integration source is preserved while `WP-UI-005` owns the sole
-active context. The qualified `WP-EDT-001` Creator behavior remains available,
-but no editor completion or visual-quality claim is made.
+Status: `Partial` and suspended under non-promoting `WVR-EDT-001`; it resumes
+only after `WP-UI-006`. The qualified `WP-EDT-001` Creator behavior remains
+available, but current local work cannot establish editor completion, visual
+quality, accessibility, framework qualification, or milestone promotion.
+Current local source adds a typed Settings surface backed by a versioned local
+hub-preference document: high contrast, Reduced Motion, and density persist
+atomically, v1 hub state migrates to v2, settings restore an open workspace,
+preferences never mutate project source, and the permanent Play/Build actions
+remain bound to a temporarily covered open project rather than falsely becoming
+unavailable. The activity rail's pane command now cycles the active dock pane
+through the versioned workspace state and rolls back if its local save fails.
 
 Deliverables: exact separate 44px application and 36px workspace rows;
 macOS-correct title chrome; persistent hub; World composition over real
@@ -1292,6 +1443,13 @@ Explicit non-goals: completing later domain workspaces, simulating unavailable
 capabilities, a web shell, a generic assistant sidebar, decorative rings,
 private game content, signing/notarization claims, or milestone promotion
 without fresh Linux, Windows, macOS, accessibility, and visible evidence.
+
+On resumption, rebuild the shell and World workspace from their existing
+authoritative Creator behavior using `WP-UI-006` components. Then
+`WP-EDT-003` may compose current workspaces while preserving explicit
+unavailable states for incomplete domains. Neither package, `WP-UI-006`, nor
+`MS-03` can close while cross-platform, accessibility, and visible-review
+evidence remains absent.
 
 ## 16. Evidence policy
 

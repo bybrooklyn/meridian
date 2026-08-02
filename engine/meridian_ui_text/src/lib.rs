@@ -8,8 +8,8 @@ use cosmic_text::{
     SwashContent,
 };
 use meridian_ui_core::{
-    sanitized_scale_factor, UiFontRole, UiNodeId, UiPoint, UiTextValidation, MAX_RETAINED_NODES,
-    MAX_TEXT_BYTES,
+    sanitized_scale_factor, UiFontRole, UiFontWeight, UiNodeId, UiPoint, UiTextValidation,
+    MAX_RETAINED_NODES, MAX_TEXT_BYTES,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -19,6 +19,15 @@ pub const MAX_GLYPH_RASTER_BYTES: usize = 1024 * 1024;
 const MONA_SANS: &[u8] = include_bytes!("../assets/fonts/MonaSansVF.ttf");
 const HUBOT_SANS: &[u8] = include_bytes!("../assets/fonts/HubotSansVF.ttf");
 const JETBRAINS_MONO: &[u8] = include_bytes!("../assets/fonts/JetBrainsMonoVF.ttf");
+const DISPLAY_ELLIPSIS: &str = "…";
+
+const fn cosmic_font_weight(weight: UiFontWeight) -> fontdb::Weight {
+    match weight {
+        UiFontWeight::Normal => fontdb::Weight::NORMAL,
+        UiFontWeight::Medium => fontdb::Weight::MEDIUM,
+        UiFontWeight::Semibold => fontdb::Weight::SEMIBOLD,
+    }
+}
 
 const fn bundled_family(font_role: UiFontRole) -> &'static str {
     match font_role {
@@ -563,6 +572,7 @@ struct UiTextCacheKey {
     font_size_bits: u32,
     scale_factor_bits: u32,
     font_role: UiFontRole,
+    font_weight: UiFontWeight,
 }
 
 #[derive(Debug, Default)]
@@ -676,7 +686,32 @@ impl UiTextEngine {
         scale_factor: f32,
         font_role: UiFontRole,
     ) -> Result<UiTextLayout, UiTextLayoutError> {
-        self.prepare(text, width, font_size, scale_factor, font_role)
+        self.measure_with_weight(
+            text,
+            width,
+            font_size,
+            scale_factor,
+            font_role,
+            UiFontWeight::Normal,
+        )
+    }
+
+    /// Shapes and measures text with a bounded authored emphasis weight.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UiTextLayoutError::TextTooLarge`] before invoking the private
+    /// text adapter when `text` exceeds [`MAX_TEXT_BYTES`].
+    pub fn measure_with_weight(
+        &mut self,
+        text: &str,
+        width: f32,
+        font_size: f32,
+        scale_factor: f32,
+        font_role: UiFontRole,
+        font_weight: UiFontWeight,
+    ) -> Result<UiTextLayout, UiTextLayoutError> {
+        self.prepare(text, width, font_size, scale_factor, font_role, font_weight)
             .map(|shaped| shaped.layout)
     }
 
@@ -710,7 +745,32 @@ impl UiTextEngine {
         scale_factor: f32,
         font_role: UiFontRole,
     ) -> Result<UiTextOutput, UiTextLayoutError> {
-        let shaped = self.prepare(text, width, font_size, scale_factor, font_role)?;
+        self.layout_with_weight(
+            text,
+            width,
+            font_size,
+            scale_factor,
+            font_role,
+            UiFontWeight::Normal,
+        )
+    }
+
+    /// Shapes and rasterizes text with a bounded authored emphasis weight.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UiTextLayoutError::TextTooLarge`] before invoking the private
+    /// text adapter when `text` exceeds [`MAX_TEXT_BYTES`].
+    pub fn layout_with_weight(
+        &mut self,
+        text: &str,
+        width: f32,
+        font_size: f32,
+        scale_factor: f32,
+        font_role: UiFontRole,
+        font_weight: UiFontWeight,
+    ) -> Result<UiTextOutput, UiTextLayoutError> {
+        let shaped = self.prepare(text, width, font_size, scale_factor, font_role, font_weight)?;
         let rasterization_started = Instant::now();
         let mut raster = UiTextRaster::default();
         let mut raster_bytes = 0_usize;
@@ -758,6 +818,114 @@ impl UiTextEngine {
         })
     }
 
+    /// Shapes one display-only value as exactly one line, adding an ellipsis
+    /// at an extended-grapheme boundary when the available width cannot hold
+    /// the full value.
+    ///
+    /// This is deliberately a presentation operation. Callers retain the full
+    /// source and semantic value; the fitted text is only what a compact
+    /// control draws in its bounded visual slot.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same bounded text-layout error as [`Self::layout`] before
+    /// shaping untrusted text.
+    pub fn layout_single_line(
+        &mut self,
+        text: &str,
+        width: f32,
+        font_size: f32,
+        scale_factor: f32,
+        font_role: UiFontRole,
+    ) -> Result<UiFittedText, UiTextLayoutError> {
+        self.layout_single_line_with_weight(
+            text,
+            width,
+            font_size,
+            scale_factor,
+            font_role,
+            UiFontWeight::Normal,
+        )
+    }
+
+    /// Fits and rasterizes one bounded line with a bounded authored emphasis weight.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UiTextLayoutError::TextTooLarge`] before invoking the private
+    /// text adapter when `text` exceeds [`MAX_TEXT_BYTES`].
+    pub fn layout_single_line_with_weight(
+        &mut self,
+        text: &str,
+        width: f32,
+        font_size: f32,
+        scale_factor: f32,
+        font_role: UiFontRole,
+        font_weight: UiFontWeight,
+    ) -> Result<UiFittedText, UiTextLayoutError> {
+        let output =
+            self.layout_with_weight(text, width, font_size, scale_factor, font_role, font_weight)?;
+        if output.layout.line_count <= 1 {
+            return Ok(UiFittedText {
+                text: text.to_owned(),
+                output,
+            });
+        }
+
+        let ellipsis = self.layout_with_weight(
+            DISPLAY_ELLIPSIS,
+            width,
+            font_size,
+            scale_factor,
+            font_role,
+            font_weight,
+        )?;
+        if ellipsis.layout.line_count > 1 || ellipsis.layout.width > width.max(1.0) {
+            return Ok(UiFittedText {
+                text: String::new(),
+                output: self.layout_with_weight(
+                    "",
+                    width,
+                    font_size,
+                    scale_factor,
+                    font_role,
+                    font_weight,
+                )?,
+            });
+        }
+
+        let graphemes = text.graphemes(true).collect::<Vec<_>>();
+        let mut low = 0_usize;
+        let mut high = graphemes.len();
+        let mut best = UiFittedText {
+            text: DISPLAY_ELLIPSIS.to_owned(),
+            output: ellipsis,
+        };
+        while low < high {
+            let midpoint = low + (high - low).div_ceil(2);
+            let mut candidate = graphemes[..midpoint].concat();
+            candidate.push_str(DISPLAY_ELLIPSIS);
+            let candidate_output = self.layout_with_weight(
+                &candidate,
+                width,
+                font_size,
+                scale_factor,
+                font_role,
+                font_weight,
+            )?;
+            if candidate_output.layout.line_count <= 1 {
+                low = midpoint;
+                best = UiFittedText {
+                    text: candidate,
+                    output: candidate_output,
+                };
+            } else {
+                high = midpoint.saturating_sub(1);
+            }
+        }
+        Ok(best)
+    }
+
     fn prepare(
         &mut self,
         text: &str,
@@ -765,6 +933,7 @@ impl UiTextEngine {
         font_size: f32,
         scale_factor: f32,
         font_role: UiFontRole,
+        font_weight: UiFontWeight,
     ) -> Result<UiShapedText, UiTextLayoutError> {
         if text.len() > MAX_TEXT_BYTES {
             return Err(UiTextLayoutError::TextTooLarge {
@@ -780,12 +949,13 @@ impl UiTextEngine {
             font_size_bits: font_size.to_bits(),
             scale_factor_bits: scale_factor.to_bits(),
             font_role,
+            font_weight,
         };
         if let Some(shaped) = self.shape_cache.find(&key) {
             self.shape_cache.record_shaping(shaping_started.elapsed());
             return Ok(shaped);
         }
-        let shaped = self.shape(text, width, font_size, scale_factor, font_role);
+        let shaped = self.shape(text, width, font_size, scale_factor, font_role, font_weight);
         self.shape_cache.insert(key, shaped.clone());
         self.shape_cache.record_shaping(shaping_started.elapsed());
         Ok(shaped)
@@ -798,6 +968,7 @@ impl UiTextEngine {
         font_size: f32,
         scale_factor: f32,
         font_role: UiFontRole,
+        font_weight: UiFontWeight,
     ) -> UiShapedText {
         let scale_factor = sanitized_scale_factor(scale_factor);
         let family = Family::Name(bundled_family(font_role));
@@ -808,7 +979,14 @@ impl UiTextEngine {
         let metrics = Metrics::relative((font_size * scale_factor).max(1.0), 1.25);
         let mut buffer = Buffer::new(&mut self.fonts, metrics);
         buffer.set_size(Some((width * scale_factor).max(1.0)), None);
-        buffer.set_text(text, &Attrs::new().family(family), Shaping::Advanced, None);
+        buffer.set_text(
+            text,
+            &Attrs::new()
+                .family(family)
+                .weight(cosmic_font_weight(font_weight)),
+            Shaping::Advanced,
+            None,
+        );
         let mut line_count = 0;
         let mut glyph_count = 0;
         let mut observed_width = 0.0_f32;
@@ -859,9 +1037,18 @@ impl UiTextEngine {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct UiTextOutput {
     pub layout: UiTextLayout,
     pub raster: UiTextRaster,
+}
+
+/// The visual text and raster output accepted for one compact display slot.
+/// The original source value remains outside this display-only result.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UiFittedText {
+    pub text: String,
+    pub output: UiTextOutput,
 }
 
 fn bounded_count_as_f32(value: usize) -> f32 {
@@ -882,25 +1069,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bundled_locked_fonts_shape_without_platform_substitution() {
+    fn bundled_locked_fonts_and_weights_shape_without_platform_substitution_at_1x_and_2x() {
         let mut engine = UiTextEngine::default();
-        for role in [
-            UiFontRole::Interface,
-            UiFontRole::Display,
-            UiFontRole::Monospace,
-        ] {
-            let output = engine
-                .layout("Meridian 0123", 320.0, 14.0, 2.0, role)
-                .expect("bounded fixture shapes");
-            assert_eq!(output.layout.font_role, role);
-            assert!(!output.layout.used_fallback_metrics);
-            assert!(
-                !output.layout.used_fallback_font,
-                "locked {role:?} font unexpectedly substituted: {:?}",
-                output.layout
-            );
-            assert!(output.layout.glyph_count > 0);
-            assert!(!output.raster.glyphs.is_empty());
+        for scale_factor in [1.0, 2.0] {
+            for role in [
+                UiFontRole::Interface,
+                UiFontRole::Display,
+                UiFontRole::Monospace,
+            ] {
+                for weight in [
+                    UiFontWeight::Normal,
+                    UiFontWeight::Medium,
+                    UiFontWeight::Semibold,
+                ] {
+                    let output = engine
+                        .layout_with_weight(
+                            "Meridian 0123",
+                            320.0,
+                            14.0,
+                            scale_factor,
+                            role,
+                            weight,
+                        )
+                        .expect("bounded fixture shapes");
+                    assert_eq!(output.layout.font_role, role);
+                    assert!(!output.layout.used_fallback_metrics);
+                    assert!(
+                        !output.layout.used_fallback_font,
+                        "locked {role:?}/{weight:?} font unexpectedly substituted at {scale_factor}x: {:?}",
+                        output.layout
+                    );
+                    assert!(output.layout.glyph_count > 0);
+                    assert!(!output.raster.glyphs.is_empty());
+                    assert!(
+                        output
+                            .raster
+                            .glyphs
+                            .iter()
+                            .flat_map(|glyph| glyph.alpha.iter())
+                            .any(|alpha| *alpha > 0 && *alpha < u8::MAX),
+                        "locked {role:?}/{weight:?} font must retain antialiased glyph coverage at {scale_factor}x"
+                    );
+                }
+            }
         }
     }
 
@@ -915,6 +1126,25 @@ mod tests {
                 maximum: MAX_TEXT_BYTES,
             }) if observed == bytes
         ));
+    }
+
+    #[test]
+    fn single_line_layout_truncates_at_a_grapheme_boundary() {
+        let mut engine = UiTextEngine::default();
+        let fitted = engine
+            .layout_single_line(
+                "Meridian 👩‍🔬 workspace control label",
+                92.0,
+                14.0,
+                1.0,
+                UiFontRole::Interface,
+            )
+            .expect("bounded compact label shapes");
+
+        assert_eq!(fitted.output.layout.line_count, 1);
+        assert!(fitted.text.ends_with('…'));
+        assert!(fitted.text.is_char_boundary(fitted.text.len()));
+        assert!(fitted.text.len() <= "Meridian 👩‍🔬 workspace control label…".len());
     }
 
     #[test]
@@ -955,7 +1185,7 @@ mod tests {
     }
 
     #[test]
-    fn shaping_cache_keys_every_geometry_and_font_input() {
+    fn shaping_cache_keys_every_geometry_font_and_weight_input() {
         let mut engine = UiTextEngine::default();
         let base = ("Meridian", 180.0, 28.0, 1.0, UiFontRole::Interface);
         engine
@@ -973,10 +1203,20 @@ mod tests {
                 .measure(text, width, font_size, scale, role)
                 .expect("changed fixture shapes");
         }
+        engine
+            .measure_with_weight(
+                base.0,
+                base.1,
+                base.2,
+                base.3,
+                base.4,
+                UiFontWeight::Semibold,
+            )
+            .expect("weighted fixture shapes");
         let activity = engine.take_cache_activity();
         assert_eq!(
             (activity.hits, activity.misses, activity.evictions),
-            (0, 5, 0)
+            (0, 6, 0)
         );
         assert_eq!(activity.rasterization_nanoseconds, 0);
     }
@@ -1014,6 +1254,7 @@ mod tests {
             font_size_bits: 14.0_f32.to_bits(),
             scale_factor_bits: 1.0_f32.to_bits(),
             font_role: UiFontRole::Interface,
+            font_weight: UiFontWeight::Normal,
         };
         let first_bytes = MAX_TEXT_BYTES / 2 + 1;
         cache.insert(key("a".repeat(first_bytes), 100.0), shaped.clone());

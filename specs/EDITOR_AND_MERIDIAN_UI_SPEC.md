@@ -8,7 +8,7 @@ Implementation maturity: `ImplementedFoundation` for `WP-UI-001` and the
 qualified Creator behavioral baseline; the Meridian UI 1.0 framework and final
 workspace composition remain sequential package work. Governing IDs:
 `REQ-UI-001`, `REQ-UI-002`, `REQ-EDT-001`, `REQ-EDT-002`, `WP-UI-001` through
-`WP-UI-005`, `WP-EDT-001` through `WP-EDT-003`, and `RG-UI-001`.
+`WP-UI-006`, `WP-EDT-001` through `WP-EDT-003`, and `RG-UI-001`.
 
 This document owns Meridian application/editor UI architecture, design tokens,
 components, input behavior, accessibility, workspace composition, responsive
@@ -206,13 +206,42 @@ classes. Optional event source timestamps are indexed, bounded, and comparable
 only against a declared reconciliation boundary in the same monotonic epoch.
 Editor interfaces include panel sizing, preview/pinned tabs, focus layouts,
 companion-window identity, and versioned workspace-state persistence.
+Application-local hub preferences are a separate versioned document. They may
+migrate prior local-only preference state atomically, but can never alter or
+stand in for authoritative project source.
 
 ## 6. Retained document and frame pipeline
 
-Editable UI documents have stable node identities. Repeated runtime nodes use
-stable composite identities. Cache handles remain process-local and generation
-checked. Reconciliation compares immutable prior and accepted logical state,
-retains identity where semantics match, and reports duplicate or unstable keys.
+`UiDocument` is the versioned canonical editable UI source. It owns the schema
+version, root, stable nodes, named authored styles, reusable component
+definitions and explicit component instances, token references, semantic
+bindings, and bounded packaged raster-asset references. Repeated runtime nodes
+use stable composite identities. The compiled frame, display list, glyph atlas,
+GPU caches, and process-local image handles are derived and rebuildable.
+
+Authoring APIs must make the locked system easier to use than raw renderer-like
+construction: typed four-pixel spacing, registered 4/6/10/14 radii, layout
+helpers, named style/variant references, component instantiation with explicit
+stable IDs, and diagnostics that name the source node and property. Legacy raw
+constructors remain only as migration and fixture compatibility. Packaged
+rasters use stable `UiAssetRef` references that a private resource adapter
+lowers to process-local image handles before an authored image node emits a
+renderer-neutral `Image` primitive. A missing or wrong-kind asset is a typed
+unavailable result and cannot partially advance the retained frame. Vectors are bounded native paths or
+audited `IconId` values; source documents never contain loose paths, generic
+SVG, backend handles, or executable content.
+
+Persisted `UiDocument` source uses a bounded versioned envelope separate from
+the document schema. Decode validates size, envelope version, stable source
+identities, and the entire retained document before a frame can compile. The
+only accepted legacy shape is the pre-envelope direct source snapshot; it
+migrates in memory and is re-emitted in the current envelope by the next
+successful authoritative write. Renderer resources, display lists, glyph
+atlases, and caches are never serialized.
+
+Reconciliation compares immutable prior and accepted logical state, retains
+identity where semantics match, resolves authored tokens/styles/components, and
+reports duplicate or unstable keys before a frame can observe them.
 
 Each frame:
 
@@ -297,6 +326,26 @@ Focus uses stable semantic identity, not row index. Filtering, virtualization,
 Play transitions, reconciliation, workspace changes, and companion-window moves
 restore the same focus where it remains valid; otherwise focus moves by a
 documented deterministic rule.
+
+Visible focus-owning transient surfaces (combo boxes, menus, context menus, and
+the command palette) scope keyboard and assistive focus to their retained
+subtree. The first pointer press outside the top surface dismisses that surface
+without activating the underlying control; dismissal restores the recorded
+focus target or uses the normal deterministic recovery rule.
+Programmatic focus and host-delivered target interactions—value edits,
+property/timeline/canvas actions, drag/drop, and scroll targeting—are confined
+to the same scope or reject without mutating retained or source authority. A
+new focus-owning transient cancels prior pointer, scroll, drag, timeline-scrub,
+and canvas-preview capture before it takes focus. Document replacement restores
+an invalidated focus target to the visible top transient before considering a
+background control; unrealized collection selection remains recoverable without
+weakening that modal rule.
+Its assistive projection retains the document root plus only that active
+transient subtree, reparenting a nested surface to the nearest retained
+structural ancestor. Background controls and their relationships are absent
+until the focus-owning transient closes.
+Each such surface must retain at least one enabled focusable descendant; an
+empty focus-owning surface is rejected before it can enter a frame.
 
 Precise trackpad pixel deltas and platform momentum are preserved. Discrete
 wheel lines are normalized separately. A gesture locks its intended target;
@@ -553,8 +602,9 @@ The rewrite is sequential and has one active package at a time:
 | `WP-UI-003` | Input, scrolling, text/IME, drag/drop, professional controls, virtualization | `WP-UI-002` |
 | `WP-UI-004` | Docking, workspaces, responsive layouts, persistence, companion windows | `WP-UI-003` |
 | `WP-UI-005` | Motion, effects, high contrast, platform accessibility, renderer qualification | `WP-UI-004`, `RG-UI-001` |
-| `WP-EDT-002` | Exact application shell, hub, and production-quality World workspace | `WP-EDT-001`, `WP-UI-005` |
-| `WP-EDT-003` | Remaining workspace composition and cross-workspace consistency | `WP-EDT-002` plus applicable domain foundations |
+| `WP-UI-006` | Ergonomic versioned `UiDocument` authoring, source-to-frame compilation, and packaged-asset lowering | `WP-UI-005` |
+| `WP-EDT-002` | Exact application shell, hub, and production-quality World workspace | `WP-EDT-001`, `WP-UI-006` |
+| `WP-EDT-003` | Remaining current Creator workspace composition and cross-workspace consistency | `WP-EDT-002`, `WP-UI-006`, and applicable domain foundations |
 
 `WP-EDT-001` remains the behavioral baseline for project/session persistence,
 recovery, Creator commands, and build integration. It is not expanded into the
@@ -576,6 +626,12 @@ Reduced Motion, and 1×/2× output.
 The editor journey covers create/open/import/edit/undo/redo, Play Apply/Discard,
 workspace/focus switching, Code contextual/full activation, recipe/model
 actions, asynchronous build/artifacts, crash recovery, and explicit exit.
-`MS-03` stays open until `WP-EDT-002`, native evidence, accessibility review,
-and visible application approval pass. Planned workspace presentation never
+`WP-EDT-002` resumes only after the active `WP-UI-006` source package. Then
+`WP-EDT-003` composes Hub, Settings, contextual/focused Code, Modeler, UI,
+Materials, Alluvium, Build, Profile, and Recovery from the same authored
+component vocabulary. The initial UI workspace inspects `UiDocument` source,
+component tree, styles/tokens, assets, responsive states, and compiled preview;
+direct-manipulation canvas editing is deferred to its own later bounded package.
+`MS-03` stays open until the Creator packages, native evidence, accessibility
+review, and visible application approval pass. Workspace presentation never
 closes a domain package.

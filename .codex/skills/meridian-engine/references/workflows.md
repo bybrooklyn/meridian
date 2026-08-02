@@ -5,15 +5,15 @@
 Run:
 
 ```bash
-/Users/brooklyn/.codex/skills/meridian-engine/scripts/project-status.sh
-sed -n '1,220p' /Users/brooklyn/meridian/AGENTS.md
-sed -n '1,260p' /Users/brooklyn/meridian/PLANNING.md
+./.codex/skills/meridian-engine/scripts/project-status.sh
+sed -n '1,220p' AGENTS.md
+sed -n '1,260p' PLANNING.md
 ```
 
 For remote truth:
 
 ```bash
-/Users/brooklyn/.codex/skills/meridian-engine/scripts/project-status.sh --remote
+./.codex/skills/meridian-engine/scripts/project-status.sh --remote
 ```
 
 Then read the owning spec, package registry entry, requirement records, ADRs,
@@ -123,8 +123,8 @@ Only act after explicit user authorization.
 Use explicit roots:
 
 ```bash
-git -C /Users/brooklyn/meridian status -sb
-git -C /Users/brooklyn/meridian/game status -sb
+git status -sb
+git -C game status -sb
 /opt/homebrew/bin/gh run list -R bybrooklyn/meridian --limit 5
 ```
 

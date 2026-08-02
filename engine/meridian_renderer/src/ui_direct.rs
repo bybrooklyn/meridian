@@ -5122,7 +5122,7 @@ mod tests {
     use meridian_ui_render::{
         UiBackdropDescriptor, UiImageHandle, UiLayerId, UiMeshHandle, UiPathCommand,
     };
-    use meridian_ui_text::{UiTextLayout, UiTextRaster};
+    use meridian_ui_text::{UiTextEngine, UiTextLayout, UiTextRaster};
 
     use super::*;
 
@@ -5175,6 +5175,67 @@ mod tests {
                 .saturating_mul(usize::try_from(plan.atlas.height).expect("atlas height fits"))
                 .saturating_mul(4)
         );
+    }
+
+    #[test]
+    fn direct_glyph_corpus_keeps_locked_fonts_crisp_at_one_and_two_x() {
+        let mut text = UiTextEngine::default();
+        for role in [
+            UiFontRole::Interface,
+            UiFontRole::Display,
+            UiFontRole::Monospace,
+        ] {
+            let one_x = text
+                .layout("Meridian authoring 0123", 320.0, 14.0, 1.0, role)
+                .expect("1x locked font rasterizes");
+            let two_x = text
+                .layout("Meridian authoring 0123", 320.0, 14.0, 2.0, role)
+                .expect("2x locked font rasterizes");
+            assert!(!one_x.layout.used_fallback_font);
+            assert!(!two_x.layout.used_fallback_font);
+            assert!(!one_x.raster.has_unrasterized_glyphs);
+            assert!(!two_x.raster.has_unrasterized_glyphs);
+            assert!(!one_x.raster.glyphs.is_empty());
+            assert!(!two_x.raster.glyphs.is_empty());
+            assert!(
+                one_x
+                    .raster
+                    .glyphs
+                    .iter()
+                    .flat_map(|glyph| glyph.alpha.iter())
+                    .any(|alpha| *alpha > 0 && *alpha < u8::MAX),
+                "1x {role:?} text must preserve antialiased glyph coverage"
+            );
+            assert!((one_x.layout.width - two_x.layout.width).abs() <= 0.01);
+            assert!((one_x.layout.height - two_x.layout.height).abs() <= 0.01);
+
+            for (scale_factor, output) in [(1.0, one_x), (2.0, two_x)] {
+                let list = DisplayList {
+                    primitives: vec![DisplayPrimitive::GlyphRun {
+                        node: UiNodeId::new(800 + u128::from(role as u8)),
+                        bounds: UiRect::new(UiPoint { x: 12.0, y: 16.0 }, UiSize::new(320.0, 32.0)),
+                        text: "Meridian authoring 0123".to_owned(),
+                        color: UiColor::foreground(),
+                        layout: output.layout,
+                        raster: output.raster,
+                    }],
+                };
+                let mut renderer = UiDirectGpuRenderer::new(identity(1, 1));
+                let plan = renderer
+                    .prepare_frame(UiDirectPrepareRequest {
+                        display_revision: 1,
+                        display_list: &list,
+                        viewport: UiSize::new(360.0, 80.0),
+                        scale_factor,
+                        contrast: UiContrast::Standard,
+                        effects: UiEffectCapabilities::default(),
+                        resources: &UiDirectResourceSet::default(),
+                    })
+                    .expect("direct glyph plan prepares");
+                assert!(plan.diagnostics.glyph_mask_count > 0);
+                assert!(!plan.diagnostics.full_frame_cpu_rasterized);
+            }
+        }
     }
 
     #[test]

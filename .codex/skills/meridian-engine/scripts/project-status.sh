@@ -7,7 +7,7 @@ if [[ "${1:-}" == "--remote" ]]; then
   shift
 fi
 
-engine_root="${1:-/Users/brooklyn/meridian}"
+engine_root="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 game_root="${engine_root}/game"
 gh_bin="/opt/homebrew/bin/gh"
 

@@ -49,6 +49,8 @@ jobs:
       - name: Run workspace tests outside Windows
         if: runner.os != 'Windows'
         run: cargo test --workspace
+      - name: Validate feature-gated accessibility adapter
+        run: cargo test -p meridian-platform --features accessibility
       - name: Validate direct and recovery UI renderer paths
         if: runner.os != 'Windows'
         run: cargo test -p meridian-renderer --all-features
@@ -181,7 +183,7 @@ jobs:
           if compgen -G "${artifact_root}/*" > /dev/null; then
             (
               cd "${artifact_root}"
-              shasum -a 256 * > SHA256SUMS
+              shasum -a 256 -- * > SHA256SUMS
             )
           fi
       - name: Retain macOS preview and Creator Alpha evidence

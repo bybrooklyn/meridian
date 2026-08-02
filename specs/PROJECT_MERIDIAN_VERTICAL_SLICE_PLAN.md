@@ -168,7 +168,7 @@ Quality profiles change meaningful algorithms/content tiers and preserve route/r
 
 ### VS-12 Platform and final review
 
-Primary profiling: M4 MacBook model/config recorded. Secondary: user’s named main PC hardware/OS recorded. Linux and Windows claims match actual available evidence; unsupported rows remain open.
+Primary profiling: the registered M4 Mac hardware/config is recorded. Secondary: the registered PC hardware/OS is recorded. Linux and Windows claims match actual available evidence; unsupported rows remain open.
 
 Final reviews: creative/narrative, art/readability, audio, accessibility, performance, recovery, security, package/provenance, and documentation.
 

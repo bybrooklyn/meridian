@@ -11,8 +11,20 @@
       "expires": "2026-08-17",
       "blocked_milestone": "MS-03",
       "remediation_package": "WP-UI-002",
-      "reason": "GitHub-hosted runners are unavailable because the repository account cannot enable Actions billing; the project owner directed local sequential implementation to continue.",
-      "risk": "Linux and Windows regressions may remain unobserved until hosted or equivalent cross-platform validation becomes available; this waiver cannot qualify or promote any package or milestone."
+      "reason": "GitHub-hosted runners are unavailable because the repository account cannot enable Actions billing; the project owner directed local sequential UI implementation, including WP-UI-006 authored-document work, to continue.",
+      "risk": "Linux and Windows regressions may remain unobserved until hosted or equivalent cross-platform validation becomes available; this waiver permits only non-promoting WP-UI-002 through WP-UI-006 local source work and cannot qualify or promote any package or milestone."
+    },
+    {
+      "id": "WVR-EDT-001",
+      "status": "Active",
+      "owner": "EDT lead",
+      "approver": "Project owner",
+      "approval_role": "Validation",
+      "expires": "2026-08-17",
+      "blocked_milestone": "MS-03",
+      "remediation_package": "WP-EDT-002",
+      "reason": "WP-EDT-002 is suspended at its recorded local source state while WP-UI-006 establishes authored-document ergonomics; GitHub-hosted runners remain unavailable because the repository account cannot enable Actions billing, and the project owner directed resumed source-only Creator composition after that package.",
+      "risk": "Linux and Windows shell, accessibility, and renderer regressions may remain unobserved until hosted or equivalent cross-platform validation becomes available; this waiver permits only non-promoting resumed WP-EDT-002 and subsequent WP-EDT-003 source work and cannot qualify or promote any package or milestone."
     }
   ]
 }

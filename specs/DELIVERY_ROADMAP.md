@@ -30,7 +30,7 @@ Every milestone review records:
 | Governance and release | GOV, REL, SEC | truthful specifications, evidence, trust, compatibility, and release policy | v0.5 closure passed locally; recent remote workflows concluded `failure` before their skipped implementation rows could run |
 | Runtime and platform | CORE, RUN | clocks, tasks, diagnostics, input, platform lifecycle, recovery | implemented foundations; platform matrix incomplete |
 | RHI and Penumbra | RHI, PEN | capability-driven GPU abstraction and Meridian-owned renderer | direct PBR/shadow/diffuse-IBL foundation; production Forward+ incomplete |
-| Creator experience | UI, EDT | Meridian UI and an accessible, recoverable editor | MS-02 UI core proof and `WP-EDT-001` Creator behavior are qualified; `WP-UI-005` is reactivated to close framework renderer, diagnostics, recovery, and platform-evidence gaps under a non-promoting waiver; `WP-EDT-002` is paused Partial and the production shell remains open |
+| Creator experience | UI, EDT | Meridian UI and an accessible, recoverable editor | MS-02 UI core proof and `WP-EDT-001` Creator behavior are qualified; `WP-UI-005` remains `Partial` and unqualified, `WP-UI-006` is the sole active source-only authoring package under non-promoting waivers, and the production shell remains open |
 | Data and production | DAT, BLD, MDL, DCC | source authority, imports, worlds, packages, saves, build graph, native modeling, optional DCC tools | build and Creator foundations are qualified; `WP-MDL-001` retains its bounded editable-model foundation as `Partial` |
 | World authoring and simulation | PHY, ISO, BAS, VEG, PRC, TOR | Cairn, Isobar, Basalt, vegetation, Alluvium, and coupled simulation | physics wrapper transitional; named environmental crates scaffold; Alluvium `WP-PRC-001` is `ImplementedFoundation` |
 | Game and media | GAM, FWK, ANI, NAV, PRJ, AUD | Rust-first gameplay, optional Luau, reusable frameworks, animation/navigation, Project Meridian, Wavefront | game external; Wavefront scaffold; other domains planned |
@@ -148,10 +148,12 @@ then `WP-EDT-002` permanent shell, hub, production World workspace, native
 captures, and visible review. Bootstrap UI remains isolated and deletable.
 
 The critical path is `WP-UI-002 -> WP-UI-003 -> WP-UI-004 -> WP-UI-005 ->
-WP-EDT-002`. A source package advances only after its Linux, Windows, and macOS
-evidence passes. `WP-EDT-003` completes the remaining editor composition in
-MS-08 as its domain foundations become real; polished unavailable states cannot
-substitute for those domains.
+WP-UI-006 -> WP-EDT-002 -> WP-EDT-003`. Normally, a source package advances
+only after its Linux, Windows, and macOS evidence passes. Under the existing
+non-promoting waivers, `WP-UI-006` is the sole active local source package;
+`WP-EDT-002` resumes afterwards and `WP-EDT-003` composes the current Creator
+workspaces in MS-03. Explicit unavailable states may expose a domain boundary,
+but cannot substitute for that domain's foundations or qualify a package.
 
 Alluvium contributes textual recipe, headless validation/evaluation, and basic
 typed-inspector foundations through `WP-PRC-001`. The complete visual graph

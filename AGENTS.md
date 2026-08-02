@@ -38,16 +38,22 @@ Creator hub, source-authoritative project persistence, native picker boundary,
 Creator journey, and universal macOS bundle. That evidence does not qualify the
 Meridian UI 1.0 framework, production shell, platform accessibility, or visual
 quality. `WP-UI-002` through `WP-UI-005` are `Partial` after locally validated
-source packages; GitHub Actions runs `29611418454`, `29621896632`, and
+source work. GitHub
+Actions runs `29611418454`, `29621896632`, and
 `29622972884` concluded `failure` before executing implementation steps because
 the account could not allocate hosted runners; their Linux, Windows, and macOS
 implementation rows are `NotRun`. `ADR-0029` decided `RG-UI-001` for a Penumbra-owned direct display-list
 path while retaining the current CPU raster bridge as structural/recovery only.
-`WVR-UI-001` permits non-promoting local continuation through 2026-08-17.
-`WP-UI-005` is reactivated as the sole corrective framework package;
-`WP-EDT-002` is `Partial` and paused so current work does not expand editor
-composition before the framework renderer, diagnostics, recovery, and platform
-evidence are closed.
+`WVR-UI-001` and `WVR-EDT-001` permit non-promoting local continuation through
+2026-08-17. `WP-UI-005` reached its bounded local source stop point but remains
+unqualified for renderer, accessibility, and cross-platform evidence.
+`WP-UI-006` is the sole active source-only package: it makes the existing
+`UiDocument` an ergonomic authored source and compiles it into the existing
+renderer-neutral frame contract. `WP-EDT-002` is `Partial` and suspended at its
+recorded local source state until `WP-UI-006` completes; `WP-EDT-003` then
+composes the remaining current Creator workspaces with truthful domain states.
+No local evidence treats the framework, any package, or the milestone as
+qualified.
 `WP-PRC-001` is `ImplementedFoundation` after GitHub Actions run
 `29511174569` for `9c88cc152878b1eb22f18c236c00ad1abd984fa5` passed governance
 and the Linux, Windows, and macOS workspace rows. `WP-MDL-001` is `Partial`:
@@ -106,6 +112,12 @@ accessibility evidence, and visible application review pass.
 Respect the workspace toolchain and lockfile. Prefer workspace dependencies and existing utilities. The `meridian-spec` tool is the only package in this pass authorized to add its bounded tool-only dependency set.
 
 Unsafe Rust is denied by default. Generated files identify generator, input schema, version, and regeneration command. Public APIs use Meridian-owned descriptors/errors/handles. MS-01 additionally permits the registered `blake3` data-integrity boundary and `png` benchmark-capture encoder; other dependency additions require an owning `DEP-*` decision. Donor or borrowed code requires exact source, revision, hash, SPDX identity, notices, modifications, owner, tests, and exit/update strategy under `third_party/provenance/` before use.
+
+During long Rust implementation sessions, run `cargo clean` often enough to keep
+incremental artifacts from becoming stale or exhausting local disk. Never launch,
+package, smoke, capture, or otherwise summon the native Meridian app unless the
+user explicitly asks for that action; prefer source and non-windowed validation
+while the user is working in the application.
 
 ## 7. Required validation
 

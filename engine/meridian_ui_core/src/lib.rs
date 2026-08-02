@@ -5,8 +5,10 @@
 //! borrowing widget state or exposing their native types here.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::{self, Write};
 
 use meridian_core::StableId;
+use serde::{Deserialize, Serialize};
 
 const MIN_SUPPORTED_SCALE_FACTOR: f32 = 0.5;
 const MAX_SUPPORTED_SCALE_FACTOR: f32 = 4.0;
@@ -33,6 +35,10 @@ pub const MAX_DROP_OPERATIONS: usize = 3;
 /// each operation needs an explicit, validated host command before it can be
 /// exposed to an assistive adapter.
 pub const MAX_ASSISTIVE_ACTION_BINDINGS: usize = 5;
+/// Maximum accepted canonical authored-source payload before JSON parsing.
+///
+/// This keeps source recovery bounded independently of renderer frame limits.
+pub const MAX_UI_DOCUMENT_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 /// Minimum logical extent of a focusable control at every supported text scale.
 pub const MIN_ACCESSIBLE_CONTROL_EXTENT: f32 = 44.0;
 
@@ -85,7 +91,8 @@ impl Default for UiTextScale {
 }
 
 /// A stable retained-document identity, suitable for saved UI state and tests.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
 pub struct UiNodeId(StableId);
 
 impl UiNodeId {
@@ -103,7 +110,10 @@ impl UiNodeId {
 macro_rules! stable_ui_id {
     ($name:ident, $description:literal) => {
         #[doc = $description]
-        #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        #[derive(
+            Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+        )]
+        #[serde(transparent)]
         pub struct $name(StableId);
 
         impl $name {
@@ -139,6 +149,130 @@ stable_ui_id!(
     UiSharedElementId,
     "Stable identity pairing source and destination presentations across retained nodes."
 );
+stable_ui_id!(
+    UiStyleId,
+    "Stable identity for one authored Meridian UI style definition."
+);
+stable_ui_id!(
+    UiComponentId,
+    "Stable identity for one reusable authored Meridian UI component definition."
+);
+stable_ui_id!(
+    UiComponentInstanceId,
+    "Stable identity for one explicit authored Meridian UI component instance."
+);
+
+/// Current version of the canonical editable [`UiDocument`] source contract.
+pub const UI_DOCUMENT_SCHEMA_VERSION: u16 = 1;
+
+/// Version declaration retained with authored source, not a renderer cache.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct UiDocumentSchema {
+    pub version: u16,
+}
+
+impl Default for UiDocumentSchema {
+    fn default() -> Self {
+        Self {
+            version: UI_DOCUMENT_SCHEMA_VERSION,
+        }
+    }
+}
+
+/// Locked four-pixel spacing vocabulary for authored layout and styles.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum UiSpacing {
+    Px4,
+    Px8,
+    Px12,
+    Px16,
+    Px20,
+    Px24,
+    Px32,
+    Px48,
+}
+
+impl UiSpacing {
+    #[must_use]
+    pub const fn pixels(self) -> f32 {
+        match self {
+            Self::Px4 => 4.0,
+            Self::Px8 => 8.0,
+            Self::Px12 => 12.0,
+            Self::Px16 => 16.0,
+            Self::Px20 => 20.0,
+            Self::Px24 => 24.0,
+            Self::Px32 => 32.0,
+            Self::Px48 => 48.0,
+        }
+    }
+}
+
+/// Registered authored corner radii. Dense tables, code, and fields can use
+/// [`Self::None`] instead of accumulating decorative rounded cards.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum UiRadius {
+    None,
+    Px4,
+    Px6,
+    Px10,
+    Px14,
+}
+
+impl UiRadius {
+    #[must_use]
+    pub const fn pixels(self) -> f32 {
+        match self {
+            Self::None => 0.0,
+            Self::Px4 => 4.0,
+            Self::Px6 => 6.0,
+            Self::Px10 => 10.0,
+            Self::Px14 => 14.0,
+        }
+    }
+}
+
+/// Stable packaged raster source reference. It intentionally has no filesystem
+/// path, decoder, or renderer handle; private adapters lower it at the resource
+/// boundary only after an authored document has been accepted.
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct UiAssetRef {
+    package: String,
+    asset: String,
+}
+
+impl UiAssetRef {
+    /// Constructs a bounded Meridian package reference such as
+    /// `("meridian.ui", "brand.mark")`.
+    #[must_use]
+    pub fn new(package: impl Into<String>, asset: impl Into<String>) -> Option<Self> {
+        let package = package.into();
+        let asset = asset.into();
+        if Self::is_identifier(&package) && Self::is_identifier(&asset) {
+            Some(Self { package, asset })
+        } else {
+            None
+        }
+    }
+
+    fn is_identifier(value: &str) -> bool {
+        !value.is_empty()
+            && value.len() <= 128
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+    }
+
+    #[must_use]
+    pub fn package(&self) -> &str {
+        &self.package
+    }
+
+    #[must_use]
+    pub fn asset(&self) -> &str {
+        &self.asset
+    }
+}
 
 /// Platform-neutral modifier state accepted at one immutable UI frame boundary.
 ///
@@ -360,7 +494,7 @@ pub struct UiScrollEvent {
 }
 
 /// Typed drag families shared by pointer and keyboard alternatives.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum UiDragKind {
     Asset,
     Entity,
@@ -372,7 +506,7 @@ pub enum UiDragKind {
 }
 
 /// Host operation negotiated by a typed drop target.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum UiDropOperation {
     Move,
     Copy,
@@ -388,7 +522,7 @@ pub struct UiDragPayload {
 }
 
 /// Bounded text validation that does not execute a caller-supplied expression.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiTextValidation {
     NonEmpty,
     Integer,
@@ -465,7 +599,7 @@ impl UiCollectionCursor {
 }
 
 /// Realized half-open range for a virtualized collection.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UiVirtualRange {
     pub start: usize,
     pub end: usize,
@@ -477,7 +611,7 @@ pub struct UiVirtualRange {
 /// half-open `realized` range names only the rows currently represented by
 /// retained children. Runtime navigation may request another range, but the
 /// source adapter remains responsible for mapping an index to a stable node ID.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UiVirtualCollection {
     pub item_count: usize,
     pub realized: UiVirtualRange,
@@ -636,10 +770,22 @@ pub enum MotionPreference {
 /// Logical layout, hit testing, focus, and semantics always use the accepted
 /// target geometry. This descriptor authorizes only the renderer-facing
 /// presentation interpolation between retained layouts.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiSpatialMotionKind {
     PhysicalPanel,
     SharedElement,
+}
+
+/// Bounded visual depth for an authored retained surface.
+///
+/// Elevation changes only renderer-facing decoration. It never changes
+/// geometry, focus, hit testing, semantic authority, or source ownership.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum UiElevation {
+    #[default]
+    Flat,
+    Raised,
+    Floating,
 }
 
 /// Presentation-only intent declared by one retained node.
@@ -647,11 +793,12 @@ pub enum UiSpatialMotionKind {
 /// The opacity target is part of the retained visual source, while its current
 /// interpolated value is owned by the runtime. It cannot change layout,
 /// interaction, or semantic authority.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct UiPresentationOptions {
     pub spatial_motion: Option<UiSpatialMotionKind>,
     /// Required when `spatial_motion` is `SharedElement`; never aliases a node ID.
     pub shared_element: Option<UiSharedElementId>,
+    pub elevation: UiElevation,
     pub opacity: f32,
 }
 
@@ -660,6 +807,7 @@ impl Default for UiPresentationOptions {
         Self {
             spatial_motion: None,
             shared_element: None,
+            elevation: UiElevation::Flat,
             opacity: 1.0,
         }
     }
@@ -676,12 +824,30 @@ pub enum LayoutMode {
 }
 
 /// Typeface purpose. Font-library handles remain private to text adapters.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
 pub enum UiFontRole {
     #[default]
     Interface,
     Display,
     Monospace,
+}
+
+/// Bounded text emphasis resolved by the locked bundled font assets.
+///
+/// This is intentionally a small semantic vocabulary rather than an arbitrary
+/// numeric axis: authored Creator documents can distinguish navigation,
+/// headings, controls, and reading text without importing font-library types
+/// or creating unbounded visual variants.
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
+pub enum UiFontWeight {
+    #[default]
+    Normal,
+    Medium,
+    Semibold,
 }
 
 /// A Meridian-owned font request resolved by an audited platform asset adapter.
@@ -704,7 +870,7 @@ impl UiFontDescriptor {
 }
 
 /// Stable icon vocabulary. SVGs and parser types remain inside audited adapters.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum IconId {
     Play,
     Stop,
@@ -804,14 +970,14 @@ pub struct UiTheme {
 }
 
 /// Logical-space point; adapters apply display scale at their boundary.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct UiPoint {
     pub x: f32,
     pub y: f32,
 }
 
 /// Logical-space size.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct UiSize {
     pub width: f32,
     pub height: f32,
@@ -837,7 +1003,7 @@ impl UiSize {
 }
 
 /// Logical-space axis-aligned bounds.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct UiRect {
     pub origin: UiPoint,
     pub size: UiSize,
@@ -862,7 +1028,7 @@ impl UiRect {
 /// Named design tokens preserve their authored sRGB channel values. Renderer
 /// adapters own any target colour-space conversion; third-party colour types
 /// never cross this boundary.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct UiColor {
     pub red: f32,
     pub green: f32,
@@ -1003,7 +1169,7 @@ impl UiTheme {
                 browser_width: 264.0,
                 world_inspector_width: 344.0,
                 bottom_shelf_peek: 32.0,
-                bottom_shelf_expanded: 240.0,
+                bottom_shelf_expanded: 192.0,
             },
             motion: UiMotionTokens {
                 state_transition_min_ms: 100,
@@ -1022,10 +1188,12 @@ impl UiTheme {
 }
 
 /// Retained widget families shared by runtime and professional editor composition.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiWidgetKind {
     Panel,
     Label,
+    /// Read-only raster presentation lowered from a packaged [`UiAssetRef`].
+    Image,
     Button,
     IconButton,
     Toggle,
@@ -1059,7 +1227,7 @@ pub enum UiWidgetKind {
 }
 
 /// Framework-owned transient presentation family.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiTransientSurfaceKind {
     ComboBox,
     Menu,
@@ -1070,14 +1238,14 @@ pub enum UiTransientSurfaceKind {
 }
 
 /// Whether transient state gates a node itself or only its option subtree.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiTransientPresentation {
     NodeAndSubtree,
     Children,
 }
 
 /// Accepted starting state for one transient presentation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiTransientInitialState {
     Hidden,
     Queued,
@@ -1089,7 +1257,7 @@ pub enum UiTransientInitialState {
 /// Timings are caller-selected presentation policy. They never delay source
 /// transactions, allocate rows, or grant host authority. The runtime advances
 /// them only from the caller's monotonic frame interval.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UiTransientSurface {
     pub kind: UiTransientSurfaceKind,
     pub presentation: UiTransientPresentation,
@@ -1103,7 +1271,7 @@ pub struct UiTransientSurface {
 ///
 /// Domain time conversion remains outside Meridian UI. The framework owns only
 /// bounded preview, scrubbing, range selection, and zoom state.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UiTimelineContract {
     pub minimum: i64,
     pub maximum: i64,
@@ -1117,7 +1285,7 @@ pub struct UiTimelineContract {
 }
 
 /// Bounded pan/zoom contract for graph and direct-manipulation canvases.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UiCanvasContract {
     pub pan_limit: i32,
     pub initial_pan_x: i32,
@@ -1203,14 +1371,14 @@ impl UiTransientSurface {
 }
 
 /// Primary direction for Flex and Scroll layout.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiAxis {
     Horizontal,
     Vertical,
 }
 
 /// Layout policy used by the retained document.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum UiLayout {
     Overlay,
     Flex {
@@ -1236,6 +1404,27 @@ pub enum UiLayout {
 }
 
 impl UiLayout {
+    /// Creates an authored horizontal stack using the locked spacing scale.
+    #[must_use]
+    pub const fn row(gap: UiSpacing) -> Self {
+        Self::HorizontalStack { gap: gap.pixels() }
+    }
+
+    /// Creates an authored vertical stack using the locked spacing scale.
+    #[must_use]
+    pub const fn column(gap: UiSpacing) -> Self {
+        Self::VerticalStack { gap: gap.pixels() }
+    }
+
+    /// Creates an authored grid using the locked spacing scale.
+    #[must_use]
+    pub const fn grid(columns: u8, gap: UiSpacing) -> Self {
+        Self::Grid {
+            columns,
+            gap: gap.pixels(),
+        }
+    }
+
     #[must_use]
     pub const fn mode(self) -> LayoutMode {
         match self {
@@ -1251,7 +1440,7 @@ impl UiLayout {
 }
 
 /// Alignment applied after a child resolves its constraints.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiAlignment {
     Start,
     Center,
@@ -1261,7 +1450,7 @@ pub enum UiAlignment {
 }
 
 /// Bounded logical constraints independent of a renderer or platform toolkit.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct UiConstraints {
     pub minimum: UiSize,
     pub maximum: Option<UiSize>,
@@ -1285,7 +1474,7 @@ impl Default for UiConstraints {
 }
 
 /// Edge offsets for a child of an Absolute container.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct UiAbsolutePosition {
     pub left: f32,
     pub top: f32,
@@ -1298,7 +1487,7 @@ pub struct UiAbsolutePosition {
 /// A preferred dimension is a bounded starting point, not an absolute pixel
 /// requirement: the layout engine scales it down before overflowing a smaller
 /// viewport. Remaining space is shared by positive `grow` values.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct UiLayoutHints {
     pub preferred_width: Option<f32>,
     pub preferred_height: Option<f32>,
@@ -1354,7 +1543,7 @@ impl Default for UiLayoutHints {
 }
 
 /// Public semantic role independent of a platform accessibility API.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum SemanticRole {
     Group,
     Status,
@@ -1388,7 +1577,7 @@ pub enum SemanticRole {
 }
 
 /// Interaction state projected to semantics without platform-native values.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiToggleValue {
     #[default]
     Off,
@@ -1419,7 +1608,7 @@ impl UiToggleValue {
 
 /// Interaction state projected to semantics without platform-native values.
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UiControlState {
     pub disabled: bool,
     pub selected: bool,
@@ -1435,7 +1624,7 @@ pub struct UiControlState {
 /// The owning node declares the relationship and document validation resolves
 /// every target against the accepted retained tree. Platform adapters remain
 /// private and may only project this bounded vocabulary.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum UiSemanticRelationshipKind {
     LabelledBy,
     DescribedBy,
@@ -1450,7 +1639,7 @@ pub enum UiSemanticRelationshipKind {
 /// Structural parent/child ownership remains the retained document tree. These
 /// relations add only non-structural assistive context and never grant command
 /// or filesystem authority.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UiSemanticRelationships {
     pub labelled_by: Vec<UiNodeId>,
     pub described_by: Vec<UiNodeId>,
@@ -1463,7 +1652,7 @@ pub struct UiSemanticRelationships {
 /// Position metadata for one realized item in a potentially virtualized
 /// collection. The collection itself is never materialized merely to publish
 /// this bounded semantic context.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UiSemanticCollectionItem {
     pub position: u32,
     pub set_size: u32,
@@ -1475,7 +1664,7 @@ pub struct UiSemanticCollectionItem {
 /// Focus, activation, text edits, and scrolling have retained-runtime paths.
 /// These operations require an explicit host command because they change a
 /// domain-owned tree, splitter, timeline, or context-menu state.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum UiHostAssistiveAction {
     Expand,
     Collapse,
@@ -1514,14 +1703,14 @@ impl UiHostAssistiveAction {
 
 /// Validated binding between one advertised assistive operation and one
 /// canonical Meridian command name.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UiAssistiveActionBinding {
     pub action: UiHostAssistiveAction,
     pub command: String,
 }
 
 /// Named semantics and a typed action token declared by a UI node.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UiSemantics {
     pub role: SemanticRole,
     pub name: String,
@@ -1672,7 +1861,7 @@ pub enum UiColorRole {
 }
 
 /// Locked component-level visual treatments available to retained nodes.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiStyleVariant {
     Panel,
     Text,
@@ -1697,7 +1886,7 @@ pub enum UiStyleVariant {
 /// build [`UiStyle`] values. The runtime maps every legacy color and metric to
 /// an active-theme token before layout or display-list emission; raw values are
 /// never renderer authority.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiStyleReference {
     Variant(UiStyleVariant),
     LegacyTokenResolved,
@@ -1708,7 +1897,7 @@ pub enum UiStyleReference {
 /// Background, border, radius, and padding never inherit implicitly. Text
 /// inheritance carries only the resolved foreground and font size from the
 /// nearest retained parent, keeping layout and rendering deterministic.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UiStyleInheritance {
     #[default]
     None,
@@ -1767,7 +1956,7 @@ impl UiVisualState {
 /// Nodes also carry a [`UiStyleReference`]. Consumers must resolve this value
 /// through [`UiTheme::resolve_style`] rather than treating its raw fields as
 /// design-system authority.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct UiStyle {
     pub background: Option<UiColor>,
     pub border: Option<UiBorder>,
@@ -1778,7 +1967,7 @@ pub struct UiStyle {
 }
 
 /// A bounded rectangular stroke drawn around a retained node.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct UiBorder {
     pub color: UiColor,
     pub width: u8,
@@ -1848,7 +2037,7 @@ struct UiStyleTokens {
 ///
 /// Password values stay in the private runtime state: they are masked in the
 /// display list and never emitted through semantic or clipboard output.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UiTextInputOptions {
     pub password: bool,
 }
@@ -2633,7 +2822,7 @@ const fn text_size_value(token: UiTextSizeToken) -> f32 {
 }
 
 /// One retained node.  Children are ordered for traversal, focus, and layout.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct UiNode {
     pub id: UiNodeId,
     pub kind: UiWidgetKind,
@@ -2649,11 +2838,16 @@ pub struct UiNode {
     pub absolute_position: Option<UiAbsolutePosition>,
     pub icon: Option<IconId>,
     pub font_role: UiFontRole,
+    #[serde(default)]
+    pub font_weight: UiFontWeight,
     /// Retained presentation intent; never authoritative geometry or state.
     pub presentation: UiPresentationOptions,
     pub semantics: UiSemantics,
     pub text: Option<String>,
     pub text_input: Option<UiTextInputOptions>,
+    /// Visual guidance for an empty retained text control. This is never a
+    /// source value or semantic value.
+    pub placeholder: Option<String>,
     pub text_validation: Option<UiTextValidation>,
     /// Optional source/realization contract for a virtualized collection.
     pub virtual_collection: Option<UiVirtualCollection>,
@@ -2690,10 +2884,12 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            font_weight: UiFontWeight::Normal,
             presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::group(name),
             text: None,
             text_input: None,
+            placeholder: None,
             text_validation: None,
             virtual_collection: None,
             transient: None,
@@ -2721,10 +2917,12 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            font_weight: UiFontWeight::Normal,
             presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::status(name),
             text: Some(text.into()),
             text_input: None,
+            placeholder: None,
             text_validation: None,
             virtual_collection: None,
             transient: None,
@@ -2736,6 +2934,21 @@ impl UiNode {
             focusable: false,
             children: Vec::new(),
         }
+    }
+
+    /// Creates a read-only raster presentation node.
+    ///
+    /// The packaged asset reference is attached by the authored source builder
+    /// with [`UiNodeSource::with_asset`]. Keeping that reference outside the
+    /// node prevents paths, decoders, and process-local image handles from
+    /// becoming retained source state.
+    #[must_use]
+    pub fn image(id: UiNodeId, name: impl Into<String>) -> Self {
+        let mut node = Self::container(id, name, UiLayout::Overlay, Vec::new());
+        node.kind = UiWidgetKind::Image;
+        node.style_reference = UiStyleReference::Variant(UiStyleVariant::Transparent);
+        node.style = UiStyle::transparent();
+        node
     }
 
     #[must_use]
@@ -2757,10 +2970,12 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            font_weight: UiFontWeight::Medium,
             presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::button(name, action),
             text: Some(text.into()),
             text_input: None,
+            placeholder: None,
             text_validation: None,
             virtual_collection: None,
             transient: None,
@@ -2798,6 +3013,7 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            font_weight: UiFontWeight::Normal,
             presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::text_input(name),
             text: Some(if options.password {
@@ -2806,6 +3022,7 @@ impl UiNode {
                 initial_value.into()
             }),
             text_input: Some(options),
+            placeholder: None,
             text_validation: None,
             virtual_collection: None,
             transient: None,
@@ -2830,6 +3047,16 @@ impl UiNode {
         node.kind = UiWidgetKind::SearchInput;
         node.semantics.role = SemanticRole::SearchBox;
         node
+    }
+
+    /// Adds bounded visual guidance for an empty text or search field.
+    ///
+    /// Placeholder text is intentionally excluded from retained input state and
+    /// accessibility value projection, so it cannot be mistaken for source.
+    #[must_use]
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.placeholder = Some(placeholder.into());
+        self
     }
 
     /// Replaces this node's Meridian-owned visual treatment.
@@ -2859,6 +3086,13 @@ impl UiNode {
     #[must_use]
     pub const fn with_font_role(mut self, font_role: UiFontRole) -> Self {
         self.font_role = font_role;
+        self
+    }
+
+    /// Selects a bounded emphasis weight from the locked bundled font asset.
+    #[must_use]
+    pub const fn with_font_weight(mut self, font_weight: UiFontWeight) -> Self {
+        self.font_weight = font_weight;
         self
     }
 
@@ -2899,6 +3133,13 @@ impl UiNode {
     pub const fn with_shared_element_motion(mut self, shared_element: UiSharedElementId) -> Self {
         self.presentation.spatial_motion = Some(UiSpatialMotionKind::SharedElement);
         self.presentation.shared_element = Some(shared_element);
+        self
+    }
+
+    /// Requests one registered, renderer-neutral elevation treatment.
+    #[must_use]
+    pub const fn with_elevation(mut self, elevation: UiElevation) -> Self {
+        self.presentation.elevation = elevation;
         self
     }
 
@@ -3083,6 +3324,7 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            font_weight: UiFontWeight::Medium,
             presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::toggle_value(name, action, value),
             text: Some(
@@ -3094,6 +3336,7 @@ impl UiNode {
                 .to_owned(),
             ),
             text_input: None,
+            placeholder: None,
             text_validation: None,
             virtual_collection: None,
             transient: None,
@@ -3123,10 +3366,12 @@ impl UiNode {
             absolute_position: None,
             icon: None,
             font_role: UiFontRole::Interface,
+            font_weight: UiFontWeight::Normal,
             presentation: UiPresentationOptions::default(),
             semantics: UiSemantics::progress(name, value),
             text: Some(format!("{value}%")),
             text_input: None,
+            placeholder: None,
             text_validation: None,
             virtual_collection: None,
             transient: None,
@@ -3391,6 +3636,28 @@ impl UiNode {
         node
     }
 
+    /// Creates an expandable tree branch with its native disclosure vector.
+    ///
+    /// The icon remains an audited [`IconId`] in retained source; adapters
+    /// resolve its bounded geometry with the active theme instead of callers
+    /// baking a Unicode arrow or backend path into a label.
+    #[must_use]
+    pub fn tree_branch(
+        id: UiNodeId,
+        name: impl Into<String>,
+        action: impl Into<String>,
+        selected: bool,
+        expanded: bool,
+    ) -> Self {
+        let mut node = Self::tree_item(id, name, action, selected, expanded);
+        node.icon = Some(if expanded {
+            IconId::ChevronDown
+        } else {
+            IconId::ChevronRight
+        });
+        node
+    }
+
     fn professional_region(
         id: UiNodeId,
         name: impl Into<String>,
@@ -3600,10 +3867,28 @@ impl UiNode {
 /// Invalid retained documents are rejected before rendering or accessibility output.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UiDocumentError {
+    UnsupportedSchemaVersion(u16),
     TooManyNodes {
         count: usize,
         maximum: usize,
     },
+    DuplicateAuthoredStyle(UiStyleId),
+    DuplicateComponent(UiComponentId),
+    UnknownAuthoredStyle {
+        node: UiNodeId,
+        style: UiStyleId,
+    },
+    UnknownComponent {
+        node: UiNodeId,
+        component: UiComponentId,
+    },
+    ComponentStyleMissing {
+        component: UiComponentId,
+        style: UiStyleId,
+    },
+    ImageAssetMissing(UiNodeId),
+    SourceReferenceMissingNode(UiNodeId),
+    DuplicateSourceReference(UiNodeId),
     MissingRoot(UiNodeId),
     DuplicateNode(UiNodeId),
     DuplicateChild(UiNodeId),
@@ -3634,6 +3919,8 @@ pub enum UiDocumentError {
     TextInputNotFocusable(UiNodeId),
     MissingTextInputOptions(UiNodeId),
     UnexpectedTextInputOptions(UiNodeId),
+    UnexpectedPlaceholder(UiNodeId),
+    PasswordPlaceholder(UiNodeId),
     UnexpectedTextValidation(UiNodeId),
     PasswordInitialValue(UiNodeId),
     PasswordSemanticValue(UiNodeId),
@@ -3721,6 +4008,7 @@ pub enum UiDocumentError {
     },
     InvalidTransientSurface(UiNodeId),
     TransientSurfaceCannotOwnRoot(UiNodeId),
+    FocusOwningTransientHasNoFocusableDescendant(UiNodeId),
     TransientAnchorMissing {
         surface: UiNodeId,
         anchor: UiNodeId,
@@ -3733,6 +4021,205 @@ pub enum UiDocumentError {
     InvalidMixedState(UiNodeId),
 }
 
+/// Authored property category associated with a rejected [`UiDocument`]
+/// source record. This remains Meridian-owned so editor diagnostics do not
+/// need to pattern-match implementation-specific validation wording.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiSourceProperty {
+    Document,
+    NodeTree,
+    StyleRegistry,
+    ComponentRegistry,
+    StyleReference,
+    ComponentReference,
+    AssetReference,
+    Identity,
+    Layout,
+    Presentation,
+    Motion,
+    Semantics,
+    SemanticRelationships,
+    Action,
+    AssistiveActions,
+    TextInput,
+    TextValue,
+    TextValidation,
+    DragDrop,
+    Virtualization,
+    TransientSurface,
+    Timeline,
+    Canvas,
+}
+
+/// Stable source location for a rejected authored-document record.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiSourceLocation {
+    pub node: Option<UiNodeId>,
+    pub property: UiSourceProperty,
+}
+
+impl UiDocumentError {
+    /// Returns the authored source node and property category responsible for
+    /// this validation failure. Registry and document-level failures have no
+    /// node, while node-specific failures retain the stable authored ID.
+    #[allow(clippy::too_many_lines)]
+    #[must_use]
+    pub const fn source_location(&self) -> UiSourceLocation {
+        use UiSourceProperty as Property;
+
+        match self {
+            Self::UnsupportedSchemaVersion(_) | Self::TooManyNodes { .. } => UiSourceLocation {
+                node: None,
+                property: Property::Document,
+            },
+            Self::DuplicateAuthoredStyle(_) => UiSourceLocation {
+                node: None,
+                property: Property::StyleRegistry,
+            },
+            Self::DuplicateComponent(_) | Self::ComponentStyleMissing { .. } => UiSourceLocation {
+                node: None,
+                property: Property::ComponentRegistry,
+            },
+            Self::UnknownAuthoredStyle { node, .. } => UiSourceLocation {
+                node: Some(*node),
+                property: Property::StyleReference,
+            },
+            Self::UnknownComponent { node, .. } => UiSourceLocation {
+                node: Some(*node),
+                property: Property::ComponentReference,
+            },
+            Self::ImageAssetMissing(node) => UiSourceLocation {
+                node: Some(*node),
+                property: Property::AssetReference,
+            },
+            Self::SourceReferenceMissingNode(node) | Self::DuplicateSourceReference(node) => {
+                UiSourceLocation {
+                    node: Some(*node),
+                    property: Property::Identity,
+                }
+            }
+            Self::MissingRoot(node)
+            | Self::DuplicateNode(node)
+            | Self::DuplicateChild(node)
+            | Self::MultipleParents(node)
+            | Self::Cycle(node)
+            | Self::Unreachable(node) => UiSourceLocation {
+                node: Some(*node),
+                property: Property::NodeTree,
+            },
+            Self::MissingChild { parent, .. } => UiSourceLocation {
+                node: Some(*parent),
+                property: Property::NodeTree,
+            },
+            Self::UnnamedFocusable(node)
+            | Self::InteractiveNodeNotFocusable(node)
+            | Self::InvalidMixedState(node)
+            | Self::SemanticTextTooLong { node, .. }
+            | Self::InvalidSemanticCollectionItem(node) => UiSourceLocation {
+                node: Some(*node),
+                property: Property::Semantics,
+            },
+            Self::InvalidTransientSurface(node)
+            | Self::TransientSurfaceCannotOwnRoot(node)
+            | Self::FocusOwningTransientHasNoFocusableDescendant(node)
+            | Self::TransientAnchorSelfReference(node) => UiSourceLocation {
+                node: Some(*node),
+                property: Property::TransientSurface,
+            },
+            Self::MissingButtonAction(node) | Self::InvalidCommandName(node) => UiSourceLocation {
+                node: Some(*node),
+                property: Property::Action,
+            },
+            Self::TooManyAssistiveActionBindings { node, .. }
+            | Self::DuplicateAssistiveActionBinding { node, .. }
+            | Self::InvalidAssistiveActionBinding { node, .. } => UiSourceLocation {
+                node: Some(*node),
+                property: Property::AssistiveActions,
+            },
+            Self::TextInputNotFocusable(node)
+            | Self::MissingTextInputOptions(node)
+            | Self::UnexpectedTextInputOptions(node)
+            | Self::UnexpectedPlaceholder(node)
+            | Self::PasswordPlaceholder(node)
+            | Self::PasswordInitialValue(node)
+            | Self::PasswordSemanticValue(node) => UiSourceLocation {
+                node: Some(*node),
+                property: Property::TextInput,
+            },
+            Self::UnexpectedTextValidation(node) => UiSourceLocation {
+                node: Some(*node),
+                property: Property::TextValidation,
+            },
+            Self::DragSourceNotFocusable(node)
+            | Self::DropTargetNotFocusable(node)
+            | Self::TooManyDropKinds { node, .. }
+            | Self::DuplicateDropKind { node, .. }
+            | Self::MissingDropOperation(node)
+            | Self::UnexpectedDropOperation(node)
+            | Self::DuplicateDropOperation { node, .. }
+            | Self::TooManyDropOperations { node, .. } => UiSourceLocation {
+                node: Some(*node),
+                property: Property::DragDrop,
+            },
+            Self::TextTooLong { node, .. } => UiSourceLocation {
+                node: Some(*node),
+                property: Property::TextValue,
+            },
+            Self::NonFiniteConstraint(node)
+            | Self::MinimumExceedsMaximum(node)
+            | Self::InvalidAspectRatio(node)
+            | Self::InvalidLayoutValue(node) => UiSourceLocation {
+                node: Some(*node),
+                property: Property::Layout,
+            },
+            Self::InvalidPresentationOpacity(node) => UiSourceLocation {
+                node: Some(*node),
+                property: Property::Presentation,
+            },
+            Self::SharedElementIdentityMissing(node)
+            | Self::UnexpectedSharedElementIdentity(node)
+            | Self::DuplicateSharedElementIdentity { first: node, .. } => UiSourceLocation {
+                node: Some(*node),
+                property: Property::Motion,
+            },
+            Self::SemanticRelationshipMissingTarget { node, .. }
+            | Self::SemanticRelationshipSelfReference { node, .. }
+            | Self::DuplicateSemanticRelationship { node, .. }
+            | Self::TooManySemanticRelationshipTargets { node, .. } => UiSourceLocation {
+                node: Some(*node),
+                property: Property::SemanticRelationships,
+            },
+            Self::VirtualCollectionOnUnsupportedNode(node)
+            | Self::InvalidVirtualCollection(node) => UiSourceLocation {
+                node: Some(*node),
+                property: Property::Virtualization,
+            },
+            Self::VirtualCollectionSetSizeMismatch { collection, .. }
+            | Self::VirtualCollectionItemOutsideRealizedRange { collection, .. }
+            | Self::DuplicateVirtualCollectionPosition { collection, .. } => UiSourceLocation {
+                node: Some(*collection),
+                property: Property::Virtualization,
+            },
+            Self::TransientAnchorMissing { surface, .. } => UiSourceLocation {
+                node: Some(*surface),
+                property: Property::TransientSurface,
+            },
+            Self::InvalidTimelineContract(node) | Self::TimelineContractOnUnsupportedNode(node) => {
+                UiSourceLocation {
+                    node: Some(*node),
+                    property: Property::Timeline,
+                }
+            }
+            Self::InvalidCanvasContract(node) | Self::CanvasContractOnUnsupportedNode(node) => {
+                UiSourceLocation {
+                    node: Some(*node),
+                    property: Property::Canvas,
+                }
+            }
+        }
+    }
+}
+
 /// Bounded semantic string field reported by document validation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UiSemanticField {
@@ -3742,12 +4229,370 @@ pub enum UiSemanticField {
     Value,
 }
 
+/// Named authored style that resolves through the locked Meridian theme before
+/// layout and display-list emission.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct UiAuthoredStyle {
+    pub id: UiStyleId,
+    pub variant: UiStyleVariant,
+    pub padding: Option<UiSpacing>,
+    pub radius: Option<UiRadius>,
+}
+
+impl UiAuthoredStyle {
+    #[must_use]
+    pub const fn new(id: UiStyleId, variant: UiStyleVariant) -> Self {
+        Self {
+            id,
+            variant,
+            padding: None,
+            radius: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_padding(mut self, padding: UiSpacing) -> Self {
+        self.padding = Some(padding);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_radius(mut self, radius: UiRadius) -> Self {
+        self.radius = Some(radius);
+        self
+    }
+
+    const fn resolve(self) -> UiStyle {
+        let mut style = self.variant.compatibility_style();
+        if let Some(padding) = self.padding {
+            style.padding = padding.pixels();
+        }
+        if let Some(radius) = self.radius {
+            style.corner_radius = radius.pixels();
+        }
+        style
+    }
+}
+
+/// Reusable authored component vocabulary. Instances still supply their own
+/// stable node identity, semantics, action, and children.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct UiComponentDefinition {
+    pub id: UiComponentId,
+    pub default_style: UiStyleId,
+}
+
+impl UiComponentDefinition {
+    #[must_use]
+    pub const fn new(id: UiComponentId, default_style: UiStyleId) -> Self {
+        Self { id, default_style }
+    }
+}
+
+/// One explicit authored component instance.
+///
+/// The instance is projected from the canonical node provenance rather than
+/// stored as a second tree. Its identity is derived from the stable root node
+/// identity, so source round trips cannot silently turn an instance into a
+/// positional row. The projection gives authoring and inspection callers a
+/// typed instance contract while keeping [`UiNodeSource`] the sole source of
+/// component attachment.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiComponentInstance {
+    pub id: UiComponentInstanceId,
+    pub component: UiComponentId,
+    pub root: UiNodeId,
+}
+
+impl UiComponentInstance {
+    #[must_use]
+    pub const fn new(root: UiNodeId, component: UiComponentId) -> Self {
+        Self {
+            id: UiComponentInstanceId::new(root.stable_id().get()),
+            component,
+            root,
+        }
+    }
+}
+
+/// Source provenance for one authored node. It remains part of the canonical
+/// document while the resolved `UiNode` is the immutable frame input.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct UiNodeSource {
+    pub style: Option<UiStyleId>,
+    pub component: Option<UiComponentId>,
+    pub asset: Option<UiAssetRef>,
+}
+
+impl UiNodeSource {
+    #[must_use]
+    pub const fn plain() -> Self {
+        Self {
+            style: None,
+            component: None,
+            asset: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_style(mut self, style: UiStyleId) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_component(mut self, component: UiComponentId) -> Self {
+        self.component = Some(component);
+        self
+    }
+
+    #[must_use]
+    pub fn with_asset(mut self, asset: UiAssetRef) -> Self {
+        self.asset = Some(asset);
+        self
+    }
+}
+
+/// Stable-order recovery record for the canonical [`UiDocument`] source.
+///
+/// This is deliberately a projection of `UiDocument`, rather than a second
+/// authoring model. A durable file-format adapter can persist this record
+/// without gaining access to a renderer handle, frame cache, glyph atlas, or
+/// other derived state. Its vectors are emitted in stable identity order so
+/// source recovery is deterministic before a byte-level persistence adapter is
+/// selected.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct UiDocumentSourceSnapshot {
+    pub schema: UiDocumentSchema,
+    pub root: UiNodeId,
+    pub nodes: Vec<UiNode>,
+    pub styles: Vec<UiAuthoredStyle>,
+    pub components: Vec<UiComponentDefinition>,
+    pub node_sources: Vec<(UiNodeId, UiNodeSource)>,
+}
+
+/// Current private envelope version for persisted [`UiDocumentSourceSnapshot`]
+/// bytes. This is deliberately independent from [`UiDocumentSchema`]: the
+/// envelope can migrate storage shape while the authored document schema stays
+/// stable, and vice versa.
+pub const UI_DOCUMENT_SOURCE_FORMAT_VERSION: u16 = 1;
+const UI_DOCUMENT_SOURCE_ENVELOPE_SCHEMA: &str = "meridian.ui-document-source/v1";
+
+/// Migration applied while decoding one authored source payload.
+///
+/// The v0 shape was the direct JSON projection of
+/// [`UiDocumentSourceSnapshot`]. It is accepted only as a bounded migration
+/// input and is re-emitted in the v1 envelope on the next authoritative write.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UiDocumentSourceMigration {
+    Current,
+    LegacySnapshotV0,
+}
+
+/// Bounded failure while encoding, decoding, or migrating persisted authored
+/// UI source. Renderer state and derived frames never enter this boundary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum UiDocumentSourceError {
+    PayloadTooLarge { bytes: usize, maximum: usize },
+    InvalidJson(String),
+    UnsupportedEnvelopeSchema(String),
+    UnsupportedEnvelopeVersion(u16),
+    Document(UiDocumentError),
+}
+
+impl std::fmt::Display for UiDocumentSourceError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PayloadTooLarge { bytes, maximum } => write!(
+                formatter,
+                "authored UI source is {bytes} bytes; maximum is {maximum} bytes"
+            ),
+            Self::InvalidJson(message) => {
+                write!(formatter, "invalid authored UI source JSON: {message}")
+            }
+            Self::UnsupportedEnvelopeSchema(schema) => {
+                write!(formatter, "unsupported authored UI source schema: {schema}")
+            }
+            Self::UnsupportedEnvelopeVersion(version) => {
+                write!(
+                    formatter,
+                    "unsupported authored UI source format version: {version}"
+                )
+            }
+            Self::Document(error) => write!(formatter, "invalid authored UI document: {error:?}"),
+        }
+    }
+}
+
+impl std::error::Error for UiDocumentSourceError {}
+
+impl UiDocumentSourceError {
+    /// Returns the authored source location associated with a persistence
+    /// failure. Envelope and payload failures are document-level because no
+    /// validated node can be trusted yet; validated document failures retain
+    /// their more specific node/property location.
+    #[must_use]
+    pub const fn source_location(&self) -> UiSourceLocation {
+        match self {
+            Self::PayloadTooLarge { .. }
+            | Self::InvalidJson(_)
+            | Self::UnsupportedEnvelopeSchema(_)
+            | Self::UnsupportedEnvelopeVersion(_) => UiSourceLocation {
+                node: None,
+                property: UiSourceProperty::Document,
+            },
+            Self::Document(error) => error.source_location(),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+struct UiDocumentSourceEnvelope {
+    schema: String,
+    format_version: u16,
+    document: UiDocumentSourceSnapshot,
+}
+
+struct BoundedJsonWriter {
+    bytes: Vec<u8>,
+    maximum: usize,
+    attempted_bytes: usize,
+}
+
+impl BoundedJsonWriter {
+    fn new(maximum: usize) -> Self {
+        Self {
+            bytes: Vec::new(),
+            maximum,
+            attempted_bytes: 0,
+        }
+    }
+}
+
+impl Write for BoundedJsonWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let Some(end) = self.bytes.len().checked_add(bytes.len()) else {
+            self.attempted_bytes = usize::MAX;
+            return Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "bounded JSON source length overflow",
+            ));
+        };
+        if end > self.maximum {
+            self.attempted_bytes = end;
+            return Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "bounded JSON source exceeds its maximum size",
+            ));
+        }
+        self.bytes.extend_from_slice(bytes);
+        self.attempted_bytes = end;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Ergonomic builder for the canonical [`UiDocument`] source model.
+#[derive(Clone, Debug)]
+pub struct UiDocumentBuilder {
+    schema: UiDocumentSchema,
+    root: UiNodeId,
+    nodes: Vec<UiNode>,
+    styles: Vec<UiAuthoredStyle>,
+    components: Vec<UiComponentDefinition>,
+    node_sources: BTreeMap<UiNodeId, UiNodeSource>,
+}
+
+impl UiDocumentBuilder {
+    #[must_use]
+    pub fn new(root: UiNodeId) -> Self {
+        Self {
+            schema: UiDocumentSchema::default(),
+            root,
+            nodes: Vec::new(),
+            styles: Vec::new(),
+            components: Vec::new(),
+            node_sources: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub const fn with_schema(mut self, schema: UiDocumentSchema) -> Self {
+        self.schema = schema;
+        self
+    }
+
+    #[must_use]
+    pub fn with_style(mut self, style: UiAuthoredStyle) -> Self {
+        self.styles.push(style);
+        self
+    }
+
+    #[must_use]
+    pub fn with_component(mut self, component: UiComponentDefinition) -> Self {
+        self.components.push(component);
+        self
+    }
+
+    #[must_use]
+    pub fn with_node(mut self, node: UiNode) -> Self {
+        self.nodes.push(node);
+        self
+    }
+
+    /// Adds a node with explicit source style/component/asset provenance.
+    #[must_use]
+    pub fn with_authored_node(mut self, node: UiNode, source: UiNodeSource) -> Self {
+        self.node_sources.insert(node.id, source);
+        self.nodes.push(node);
+        self
+    }
+
+    /// Instantiates a named component without deriving a node ID from position.
+    #[must_use]
+    pub fn instantiate(mut self, node: UiNode, component: UiComponentId) -> Self {
+        self.node_sources
+            .insert(node.id, UiNodeSource::plain().with_component(component));
+        self.nodes.push(node);
+        self
+    }
+
+    /// Validates and resolves this authored source into one immutable document.
+    ///
+    /// # Errors
+    ///
+    /// Returns source-addressable diagnostics when schema, style, component,
+    /// asset, identity, semantic, or retained-tree validation fails.
+    pub fn build(self) -> Result<UiDocument, UiDocumentError> {
+        UiDocument::new_authored(
+            self.schema,
+            self.root,
+            self.nodes,
+            self.styles,
+            self.components,
+            self.node_sources,
+        )
+    }
+}
+
+type AuthoredRegistries = (
+    BTreeMap<UiStyleId, UiAuthoredStyle>,
+    BTreeMap<UiComponentId, UiComponentDefinition>,
+);
+
 /// Validated retained UI document.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiDocument {
+    schema: UiDocumentSchema,
     root: UiNodeId,
     nodes: BTreeMap<UiNodeId, UiNode>,
     parents: BTreeMap<UiNodeId, UiNodeId>,
+    styles: BTreeMap<UiStyleId, UiAuthoredStyle>,
+    components: BTreeMap<UiComponentId, UiComponentDefinition>,
+    node_sources: BTreeMap<UiNodeId, UiNodeSource>,
 }
 
 impl UiDocument {
@@ -3758,12 +4603,178 @@ impl UiDocument {
     /// Returns an error when identity, reachability, focus semantics, or action
     /// declarations would make the retained tree ambiguous or inaccessible.
     pub fn new(root: UiNodeId, nodes: Vec<UiNode>) -> Result<Self, UiDocumentError> {
+        Self::new_authored(
+            UiDocumentSchema::default(),
+            root,
+            nodes,
+            Vec::new(),
+            Vec::new(),
+            BTreeMap::new(),
+        )
+    }
+
+    /// Starts a versioned authored document while retaining the legacy
+    /// [`Self::new`] compatibility constructor for existing migrations/tests.
+    #[must_use]
+    pub fn authoring(root: UiNodeId) -> UiDocumentBuilder {
+        UiDocumentBuilder::new(root)
+    }
+
+    /// Projects this accepted source into a deterministic recovery record.
+    ///
+    /// The record contains only retained document source: schema, identities,
+    /// authored registries, and source provenance. It intentionally excludes
+    /// immutable frame output, renderer caches, glyph atlases, and process-local
+    /// image handles.
+    #[must_use]
+    pub fn canonical_source_snapshot(&self) -> UiDocumentSourceSnapshot {
+        UiDocumentSourceSnapshot {
+            schema: self.schema,
+            root: self.root,
+            nodes: self.nodes.values().cloned().collect(),
+            styles: self.styles.values().copied().collect(),
+            components: self.components.values().copied().collect(),
+            node_sources: self
+                .node_sources
+                .iter()
+                .map(|(node, source)| (*node, source.clone()))
+                .collect(),
+        }
+    }
+
+    /// Revalidates one canonical source recovery record before it can emit a
+    /// frame or semantic tree.
+    ///
+    /// # Errors
+    ///
+    /// Returns the source-addressable validation error without retaining a
+    /// partial document. Duplicate source provenance is rejected explicitly
+    /// instead of allowing map insertion to silently replace an earlier record.
+    pub fn recover_source_snapshot(
+        snapshot: UiDocumentSourceSnapshot,
+    ) -> Result<Self, UiDocumentError> {
+        let mut node_sources = BTreeMap::new();
+        for (node, source) in snapshot.node_sources {
+            if node_sources.insert(node, source).is_some() {
+                return Err(UiDocumentError::DuplicateSourceReference(node));
+            }
+        }
+        Self::new_authored(
+            snapshot.schema,
+            snapshot.root,
+            snapshot.nodes,
+            snapshot.styles,
+            snapshot.components,
+            node_sources,
+        )
+    }
+
+    /// Encodes the accepted canonical source into deterministic, bounded bytes.
+    ///
+    /// The private JSON adapter serializes the stable-order source snapshot
+    /// only. Compiled frames, display lists, glyph atlases, resource handles,
+    /// and renderer caches remain derived and are excluded by construction.
+    ///
+    /// # Errors
+    ///
+    /// Returns a structured serialization error rather than emitting partial
+    /// source bytes.
+    pub fn encode_canonical_source(&self) -> Result<Vec<u8>, UiDocumentSourceError> {
+        let envelope = UiDocumentSourceEnvelope {
+            schema: UI_DOCUMENT_SOURCE_ENVELOPE_SCHEMA.to_owned(),
+            format_version: UI_DOCUMENT_SOURCE_FORMAT_VERSION,
+            document: self.canonical_source_snapshot(),
+        };
+        let mut writer = BoundedJsonWriter::new(MAX_UI_DOCUMENT_SOURCE_BYTES);
+        let result = serde_json::to_writer(&mut writer, &envelope);
+        if writer.attempted_bytes > MAX_UI_DOCUMENT_SOURCE_BYTES {
+            return Err(UiDocumentSourceError::PayloadTooLarge {
+                bytes: writer.attempted_bytes,
+                maximum: MAX_UI_DOCUMENT_SOURCE_BYTES,
+            });
+        }
+        result.map_err(|error| UiDocumentSourceError::InvalidJson(error.to_string()))?;
+        Ok(writer.bytes)
+    }
+
+    /// Decodes one canonical authored-source payload and revalidates it before
+    /// any frame can be compiled.
+    ///
+    /// # Errors
+    ///
+    /// Rejects oversized, malformed, unsupported, or invalid source without
+    /// retaining a partial document.
+    pub fn decode_canonical_source(bytes: &[u8]) -> Result<Self, UiDocumentSourceError> {
+        Self::decode_canonical_source_with_migration(bytes).map(|(document, _)| document)
+    }
+
+    /// Decodes canonical source and reports whether a bounded storage-shape
+    /// migration was applied. Callers should atomically rewrite
+    /// [`UiDocumentSourceMigration::LegacySnapshotV0`] using
+    /// [`Self::encode_canonical_source`] only after their surrounding source
+    /// transaction commits.
+    ///
+    /// # Errors
+    ///
+    /// Rejects the entire source payload before document recovery on malformed
+    /// JSON, an unsupported envelope, or an invalid retained document.
+    pub fn decode_canonical_source_with_migration(
+        bytes: &[u8],
+    ) -> Result<(Self, UiDocumentSourceMigration), UiDocumentSourceError> {
+        if bytes.len() > MAX_UI_DOCUMENT_SOURCE_BYTES {
+            return Err(UiDocumentSourceError::PayloadTooLarge {
+                bytes: bytes.len(),
+                maximum: MAX_UI_DOCUMENT_SOURCE_BYTES,
+            });
+        }
+
+        let (snapshot, migration) =
+            if let Ok(envelope) = serde_json::from_slice::<UiDocumentSourceEnvelope>(bytes) {
+                if envelope.schema != UI_DOCUMENT_SOURCE_ENVELOPE_SCHEMA {
+                    return Err(UiDocumentSourceError::UnsupportedEnvelopeSchema(
+                        envelope.schema,
+                    ));
+                }
+                if envelope.format_version != UI_DOCUMENT_SOURCE_FORMAT_VERSION {
+                    return Err(UiDocumentSourceError::UnsupportedEnvelopeVersion(
+                        envelope.format_version,
+                    ));
+                }
+                (envelope.document, UiDocumentSourceMigration::Current)
+            } else {
+                // Try the pre-envelope shape only after the typed envelope parser
+                // rejects the payload. This keeps the accepted source bounded to
+                // one typed document projection at a time instead of first
+                // materializing an untyped JSON tree and then deserializing it.
+                let legacy: UiDocumentSourceSnapshot = serde_json::from_slice(bytes)
+                    .map_err(|error| UiDocumentSourceError::InvalidJson(error.to_string()))?;
+                (legacy, UiDocumentSourceMigration::LegacySnapshotV0)
+            };
+        Self::recover_source_snapshot(snapshot)
+            .map(|document| (document, migration))
+            .map_err(UiDocumentSourceError::Document)
+    }
+
+    fn new_authored(
+        schema: UiDocumentSchema,
+        root: UiNodeId,
+        mut nodes: Vec<UiNode>,
+        styles: Vec<UiAuthoredStyle>,
+        components: Vec<UiComponentDefinition>,
+        node_sources: BTreeMap<UiNodeId, UiNodeSource>,
+    ) -> Result<Self, UiDocumentError> {
+        if schema.version != UI_DOCUMENT_SCHEMA_VERSION {
+            return Err(UiDocumentError::UnsupportedSchemaVersion(schema.version));
+        }
         if nodes.len() > MAX_RETAINED_NODES {
             return Err(UiDocumentError::TooManyNodes {
                 count: nodes.len(),
                 maximum: MAX_RETAINED_NODES,
             });
         }
+
+        let (authored_styles, authored_components) =
+            Self::resolve_authored_source(&mut nodes, styles, components, &node_sources)?;
         let mut by_id = BTreeMap::new();
         for node in nodes {
             let id = node.id;
@@ -3798,10 +4809,102 @@ impl UiDocument {
         }
 
         Ok(Self {
+            schema,
             root,
             nodes: by_id,
             parents,
+            styles: authored_styles,
+            components: authored_components,
+            node_sources,
         })
+    }
+
+    fn resolve_authored_source(
+        nodes: &mut [UiNode],
+        styles: Vec<UiAuthoredStyle>,
+        components: Vec<UiComponentDefinition>,
+        node_sources: &BTreeMap<UiNodeId, UiNodeSource>,
+    ) -> Result<AuthoredRegistries, UiDocumentError> {
+        let authored_styles = Self::authored_style_map(styles)?;
+        let authored_components = Self::authored_component_map(components, &authored_styles)?;
+        let declared_nodes = nodes.iter().map(|node| node.id).collect::<BTreeSet<_>>();
+        for id in node_sources.keys() {
+            if !declared_nodes.contains(id) {
+                return Err(UiDocumentError::SourceReferenceMissingNode(*id));
+            }
+        }
+        for node in nodes.iter() {
+            if node.kind == UiWidgetKind::Image
+                && node_sources
+                    .get(&node.id)
+                    .is_none_or(|source| source.asset.is_none())
+            {
+                return Err(UiDocumentError::ImageAssetMissing(node.id));
+            }
+        }
+        for node in nodes {
+            let Some(source) = node_sources.get(&node.id) else {
+                continue;
+            };
+            let style = Self::source_style_for_node(node.id, source, &authored_components)?;
+            if let Some(style) = style {
+                let authored =
+                    authored_styles
+                        .get(&style)
+                        .ok_or(UiDocumentError::UnknownAuthoredStyle {
+                            node: node.id,
+                            style,
+                        })?;
+                node.style_reference = UiStyleReference::Variant(authored.variant);
+                node.style = authored.resolve();
+            }
+        }
+        Ok((authored_styles, authored_components))
+    }
+
+    fn authored_style_map(
+        styles: Vec<UiAuthoredStyle>,
+    ) -> Result<BTreeMap<UiStyleId, UiAuthoredStyle>, UiDocumentError> {
+        let mut result = BTreeMap::new();
+        for style in styles {
+            if result.insert(style.id, style).is_some() {
+                return Err(UiDocumentError::DuplicateAuthoredStyle(style.id));
+            }
+        }
+        Ok(result)
+    }
+
+    fn authored_component_map(
+        components: Vec<UiComponentDefinition>,
+        styles: &BTreeMap<UiStyleId, UiAuthoredStyle>,
+    ) -> Result<BTreeMap<UiComponentId, UiComponentDefinition>, UiDocumentError> {
+        let mut result = BTreeMap::new();
+        for component in components {
+            if !styles.contains_key(&component.default_style) {
+                return Err(UiDocumentError::ComponentStyleMissing {
+                    component: component.id,
+                    style: component.default_style,
+                });
+            }
+            if result.insert(component.id, component).is_some() {
+                return Err(UiDocumentError::DuplicateComponent(component.id));
+            }
+        }
+        Ok(result)
+    }
+
+    fn source_style_for_node(
+        node: UiNodeId,
+        source: &UiNodeSource,
+        components: &BTreeMap<UiComponentId, UiComponentDefinition>,
+    ) -> Result<Option<UiStyleId>, UiDocumentError> {
+        let Some(component) = source.component else {
+            return Ok(source.style);
+        };
+        let definition = components
+            .get(&component)
+            .ok_or(UiDocumentError::UnknownComponent { node, component })?;
+        Ok(Some(source.style.unwrap_or(definition.default_style)))
     }
 
     fn validate_geometry(id: UiNodeId, node: &UiNode) -> Result<(), UiDocumentError> {
@@ -4185,6 +5288,16 @@ impl UiDocument {
             if *id == root && transient.presentation == UiTransientPresentation::NodeAndSubtree {
                 return Err(UiDocumentError::TransientSurfaceCannotOwnRoot(*id));
             }
+            if matches!(
+                transient.kind,
+                UiTransientSurfaceKind::ComboBox
+                    | UiTransientSurfaceKind::Menu
+                    | UiTransientSurfaceKind::ContextMenu
+                    | UiTransientSurfaceKind::CommandPalette
+            ) && !Self::has_focusable_transient_descendant(*id, nodes)
+            {
+                return Err(UiDocumentError::FocusOwningTransientHasNoFocusableDescendant(*id));
+            }
             if let Some(anchor) = transient.anchor {
                 if anchor == *id {
                     return Err(UiDocumentError::TransientAnchorSelfReference(*id));
@@ -4198,6 +5311,29 @@ impl UiDocument {
             }
         }
         Ok(())
+    }
+
+    fn has_focusable_transient_descendant(
+        surface: UiNodeId,
+        nodes: &BTreeMap<UiNodeId, UiNode>,
+    ) -> bool {
+        let mut pending = nodes
+            .get(&surface)
+            .map_or_else(Vec::new, |node| node.children.clone());
+        let mut visited = BTreeSet::new();
+        while let Some(candidate) = pending.pop() {
+            if !visited.insert(candidate) {
+                continue;
+            }
+            let Some(node) = nodes.get(&candidate) else {
+                continue;
+            };
+            if node.focusable && !node.semantics.state.disabled {
+                return true;
+            }
+            pending.extend(node.children.iter().copied());
+        }
+        false
     }
 
     fn validate_timeline_contracts(
@@ -4292,6 +5428,9 @@ impl UiDocument {
         if !is_text_input && node.text_input.is_some() {
             return Err(UiDocumentError::UnexpectedTextInputOptions(id));
         }
+        if !is_text_input && node.placeholder.is_some() {
+            return Err(UiDocumentError::UnexpectedPlaceholder(id));
+        }
         if !is_text_input && node.text_validation.is_some() {
             return Err(UiDocumentError::UnexpectedTextValidation(id));
         }
@@ -4304,11 +5443,23 @@ impl UiDocument {
         {
             return Err(UiDocumentError::PasswordSemanticValue(id));
         }
+        if node.text_input.is_some_and(|options| options.password) && node.placeholder.is_some() {
+            return Err(UiDocumentError::PasswordPlaceholder(id));
+        }
         if let Some(text) = &node.text {
             if text.len() > MAX_TEXT_BYTES {
                 return Err(UiDocumentError::TextTooLong {
                     node: id,
                     bytes: text.len(),
+                    maximum: MAX_TEXT_BYTES,
+                });
+            }
+        }
+        if let Some(placeholder) = &node.placeholder {
+            if placeholder.len() > MAX_TEXT_BYTES {
+                return Err(UiDocumentError::TextTooLong {
+                    node: id,
+                    bytes: placeholder.len(),
                     maximum: MAX_TEXT_BYTES,
                 });
             }
@@ -4413,6 +5564,62 @@ impl UiDocument {
         self.root
     }
 
+    /// Returns the retained canonical source schema version.
+    #[must_use]
+    pub const fn schema(&self) -> UiDocumentSchema {
+        self.schema
+    }
+
+    /// Returns a named authored style before it was resolved into frame values.
+    #[must_use]
+    pub fn authored_style(&self, id: UiStyleId) -> Option<&UiAuthoredStyle> {
+        self.styles.get(&id)
+    }
+
+    /// Iterates authored style definitions in stable identity order.
+    #[must_use]
+    pub fn authored_styles(&self) -> impl ExactSizeIterator<Item = &UiAuthoredStyle> {
+        self.styles.values()
+    }
+
+    /// Returns one reusable component definition.
+    #[must_use]
+    pub fn component(&self, id: UiComponentId) -> Option<&UiComponentDefinition> {
+        self.components.get(&id)
+    }
+
+    /// Returns the explicit component instance attached to one stable node.
+    #[must_use]
+    pub fn component_instance(&self, id: UiComponentInstanceId) -> Option<UiComponentInstance> {
+        self.node_sources.iter().find_map(|(root, source)| {
+            let component = source.component?;
+            let instance = UiComponentInstance::new(*root, component);
+            (instance.id == id).then_some(instance)
+        })
+    }
+
+    /// Iterates explicit component instances in stable source-node order.
+    #[must_use = "the projected instances should be consumed or inspected"]
+    pub fn component_instances(&self) -> impl Iterator<Item = UiComponentInstance> + '_ {
+        self.node_sources.iter().filter_map(|(root, source)| {
+            source
+                .component
+                .map(|component| UiComponentInstance::new(*root, component))
+        })
+    }
+
+    /// Returns retained authoring provenance for one stable node.
+    #[must_use]
+    pub fn source(&self, id: UiNodeId) -> Option<&UiNodeSource> {
+        self.node_sources.get(&id)
+    }
+
+    /// Returns the package-scoped raster source reference declared by a node.
+    #[must_use]
+    pub fn asset_ref(&self, id: UiNodeId) -> Option<&UiAssetRef> {
+        self.source(id).and_then(|source| source.asset.as_ref())
+    }
+
     #[must_use]
     pub fn node(&self, id: UiNodeId) -> Option<&UiNode> {
         self.nodes.get(&id)
@@ -4445,14 +5652,66 @@ impl UiDocument {
             .filter(|id| !next.nodes.contains_key(id))
             .copied()
             .collect();
+        let style_ids = self
+            .styles
+            .keys()
+            .chain(next.styles.keys())
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let updated_styles = style_ids
+            .into_iter()
+            .filter(|id| self.styles.get(id) != next.styles.get(id))
+            .collect::<Vec<_>>();
+        let component_ids = self
+            .components
+            .keys()
+            .chain(next.components.keys())
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let updated_components = component_ids
+            .into_iter()
+            .filter(|id| self.components.get(id) != next.components.get(id))
+            .collect::<Vec<_>>();
+        let source_ids = self
+            .node_sources
+            .keys()
+            .chain(next.node_sources.keys())
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let updated_sources = source_ids
+            .into_iter()
+            .filter(|id| self.node_sources.get(id) != next.node_sources.get(id))
+            .collect::<Vec<_>>();
+        let component_instance_ids = self
+            .component_instances()
+            .map(|instance| instance.id)
+            .chain(next.component_instances().map(|instance| instance.id))
+            .collect::<BTreeSet<_>>();
+        let updated_component_instances = component_instance_ids
+            .into_iter()
+            .filter(|id| self.component_instance(*id) != next.component_instance(*id))
+            .collect::<Vec<_>>();
         let updated = self
             .nodes
             .iter()
             .filter_map(|(id, node)| {
-                next.nodes
+                let node_changed = next
+                    .nodes
                     .get(id)
-                    .is_some_and(|next_node| next_node != node)
-                    .then_some(*id)
+                    .is_some_and(|next_node| next_node != node);
+                let source_changed = updated_sources.contains(id);
+                let component_changed = self
+                    .node_sources
+                    .get(id)
+                    .and_then(|source| source.component)
+                    .into_iter()
+                    .chain(
+                        next.node_sources
+                            .get(id)
+                            .and_then(|source| source.component),
+                    )
+                    .any(|component| updated_components.contains(&component));
+                (node_changed || source_changed || component_changed).then_some(*id)
             })
             .collect();
         UiDocumentDelta {
@@ -4460,6 +5719,10 @@ impl UiDocument {
             inserted,
             removed,
             updated,
+            updated_styles,
+            updated_components,
+            updated_component_instances,
+            updated_sources,
         }
     }
 
@@ -4503,11 +5766,20 @@ pub struct UiDocumentDelta {
     pub inserted: Vec<UiNodeId>,
     pub removed: Vec<UiNodeId>,
     pub updated: Vec<UiNodeId>,
+    /// Authored style definitions whose token/geometry contract changed.
+    pub updated_styles: Vec<UiStyleId>,
+    /// Authored component definitions whose default style contract changed.
+    pub updated_components: Vec<UiComponentId>,
+    /// Explicit component instances whose stable attachment changed.
+    pub updated_component_instances: Vec<UiComponentInstanceId>,
+    /// Node source provenance whose style/component/asset reference changed.
+    pub updated_sources: Vec<UiNodeId>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     #[test]
     fn locked_theme_matches_registered_palette_geometry_and_typography() {
@@ -4527,7 +5799,7 @@ mod tests {
         assert_token(theme.geometry.activity_rail_expanded, 160.0);
         assert_token(theme.geometry.browser_width, 264.0);
         assert_token(theme.geometry.world_inspector_width, 344.0);
-        assert_token(theme.geometry.bottom_shelf_expanded, 240.0);
+        assert_token(theme.geometry.bottom_shelf_expanded, 192.0);
         assert_eq!(theme.motion.state_transition_min_ms, 100);
         assert_eq!(theme.motion.state_transition_max_ms, 160);
         assert_token(theme.icons.size, 16.0);
@@ -4656,13 +5928,81 @@ mod tests {
     }
 
     #[test]
-    fn retained_nodes_select_locked_typography_by_meridian_role() {
+    fn retained_nodes_select_locked_typography_by_meridian_role_and_weight() {
         let node = UiNode::label(UiNodeId::new(7), "Build log", "compiled")
-            .with_font_role(UiFontRole::Monospace);
+            .with_font_role(UiFontRole::Monospace)
+            .with_font_weight(UiFontWeight::Semibold);
         assert_eq!(node.font_role, UiFontRole::Monospace);
+        assert_eq!(node.font_weight, UiFontWeight::Semibold);
         assert_eq!(
             UiFontDescriptor::locked(node.font_role).family,
             "JetBrains Mono"
+        );
+    }
+
+    #[test]
+    fn document_errors_expose_stable_authored_source_locations() {
+        let node = UiNodeId::new(7_001);
+
+        assert_eq!(
+            UiDocumentError::UnknownAuthoredStyle {
+                node,
+                style: UiStyleId::new(7_002),
+            }
+            .source_location(),
+            UiSourceLocation {
+                node: Some(node),
+                property: UiSourceProperty::StyleReference,
+            }
+        );
+        assert_eq!(
+            UiDocumentError::InvalidLayoutValue(node).source_location(),
+            UiSourceLocation {
+                node: Some(node),
+                property: UiSourceProperty::Layout,
+            }
+        );
+        assert_eq!(
+            UiDocumentError::DuplicateAuthoredStyle(UiStyleId::new(7_003)).source_location(),
+            UiSourceLocation {
+                node: None,
+                property: UiSourceProperty::StyleRegistry,
+            }
+        );
+        assert_eq!(
+            UiDocumentError::InvalidTransientSurface(node).source_location(),
+            UiSourceLocation {
+                node: Some(node),
+                property: UiSourceProperty::TransientSurface,
+            }
+        );
+        assert_eq!(
+            UiDocumentError::TransientAnchorSelfReference(node).source_location(),
+            UiSourceLocation {
+                node: Some(node),
+                property: UiSourceProperty::TransientSurface,
+            }
+        );
+    }
+
+    #[test]
+    fn source_errors_expose_document_or_nested_authored_locations() {
+        assert_eq!(
+            UiDocumentSourceError::InvalidJson("truncated".to_owned()).source_location(),
+            UiSourceLocation {
+                node: None,
+                property: UiSourceProperty::Document,
+            }
+        );
+
+        let node = UiNodeId::new(7_004);
+        assert_eq!(
+            UiDocumentSourceError::Document(UiDocumentError::InvalidLayoutValue(node))
+                .source_location(),
+            UiSourceLocation {
+                node: Some(node),
+                property: UiSourceProperty::Layout,
+            }
         );
     }
 
@@ -4712,6 +6052,66 @@ mod tests {
         assert_eq!(delta.inserted, vec![inserted]);
         assert_eq!(delta.removed, vec![removed]);
         assert_eq!(delta.updated, vec![root, retained]);
+    }
+
+    #[test]
+    fn authored_delta_reports_style_component_and_source_changes_by_stable_identity() {
+        let root = UiNodeId::new(11);
+        let button = UiNodeId::new(12);
+        let style = UiStyleId::new(13);
+        let alternate_style = UiStyleId::new(14);
+        let component = UiComponentId::new(15);
+        let alternate_component = UiComponentId::new(16);
+        let before_asset = UiAssetRef::new("meridian.ui", "before.mark").expect("before asset");
+        let after_asset = UiAssetRef::new("meridian.ui", "after.mark").expect("after asset");
+        let make = |padding, default_style, attached_component, asset| {
+            UiDocument::authoring(root)
+                .with_style(
+                    UiAuthoredStyle::new(style, UiStyleVariant::SecondaryAction)
+                        .with_padding(padding),
+                )
+                .with_style(UiAuthoredStyle::new(
+                    alternate_style,
+                    UiStyleVariant::PrimaryAction,
+                ))
+                .with_component(UiComponentDefinition::new(component, default_style))
+                .with_component(UiComponentDefinition::new(
+                    alternate_component,
+                    alternate_style,
+                ))
+                .with_node(UiNode::container(
+                    root,
+                    "Root",
+                    UiLayout::column(UiSpacing::Px8),
+                    vec![button],
+                ))
+                .with_authored_node(
+                    UiNode::button(button, "Run", "workspace.run", "Run"),
+                    UiNodeSource::plain()
+                        .with_component(attached_component)
+                        .with_asset(asset),
+                )
+                .build()
+                .expect("authored delta fixture")
+        };
+        let before = make(UiSpacing::Px8, style, component, before_asset);
+        let after = make(
+            UiSpacing::Px12,
+            alternate_style,
+            alternate_component,
+            after_asset,
+        );
+
+        let delta = before.delta_to(&after);
+        assert_eq!(delta.retained, vec![root, button]);
+        assert_eq!(delta.updated, vec![button]);
+        assert_eq!(delta.updated_styles, vec![style]);
+        assert_eq!(delta.updated_components, vec![component]);
+        assert_eq!(
+            delta.updated_component_instances,
+            vec![UiComponentInstanceId::new(button.stable_id().get())]
+        );
+        assert_eq!(delta.updated_sources, vec![button]);
     }
 
     #[test]
@@ -4767,6 +6167,31 @@ mod tests {
                 vec![UiNode::label(root, "Opacity", "Invalid").with_presentation_opacity(1.01)],
             ),
             Err(UiDocumentError::InvalidPresentationOpacity(root))
+        );
+
+        assert_eq!(
+            UiDocument::new(
+                root,
+                vec![UiNode::label(root, "Status", "Ready").with_placeholder("Nope")],
+            ),
+            Err(UiDocumentError::UnexpectedPlaceholder(root))
+        );
+
+        assert_eq!(
+            UiDocument::new(
+                root,
+                vec![
+                    UiNode::container(root, "Recovery", UiLayout::Overlay, vec![field]),
+                    UiNode::text_input(
+                        field,
+                        "Recovery password",
+                        "",
+                        UiTextInputOptions { password: true },
+                    )
+                    .with_placeholder("Password"),
+                ],
+            ),
+            Err(UiDocumentError::PasswordPlaceholder(field))
         );
 
         let first = UiNodeId::new(72);
@@ -5180,6 +6605,22 @@ mod tests {
             Err(UiDocumentError::TransientSurfaceCannotOwnRoot(menu))
         );
 
+        assert_eq!(
+            UiDocument::new(
+                root,
+                vec![
+                    UiNode::container(root, "Root", UiLayout::Overlay, vec![menu]),
+                    UiNode::transient_menu(
+                        menu,
+                        "Empty menu",
+                        Vec::new(),
+                        UiTransientInitialState::Hidden,
+                    ),
+                ],
+            ),
+            Err(UiDocumentError::FocusOwningTransientHasNoFocusableDescendant(menu))
+        );
+
         let missing = UiNodeId::new(199);
         assert_eq!(
             UiDocument::new(
@@ -5350,6 +6791,34 @@ mod tests {
         assert_eq!(item.drag_source, Some(UiDragKind::Entity));
         assert_eq!(item.drop_accepts, vec![UiDragKind::Entity]);
         assert_eq!(item.drop_operations, vec![UiDropOperation::Move]);
+    }
+
+    #[test]
+    fn tree_branch_uses_the_registered_disclosure_icon_instead_of_label_glyphs() {
+        let expanded = UiNode::tree_branch(
+            UiNodeId::new(12),
+            "World sources",
+            "world.toggle-sources",
+            false,
+            true,
+        );
+        let collapsed = UiNode::tree_branch(
+            UiNodeId::new(13),
+            "Generated sources",
+            "world.toggle-generated",
+            false,
+            false,
+        );
+        assert_eq!(expanded.icon, Some(IconId::ChevronDown));
+        assert_eq!(collapsed.icon, Some(IconId::ChevronRight));
+        assert!(!expanded
+            .text
+            .as_deref()
+            .is_some_and(|text| text.contains('▾')));
+        assert!(!collapsed
+            .text
+            .as_deref()
+            .is_some_and(|text| text.contains('▸')));
     }
 
     #[test]
@@ -5616,5 +7085,295 @@ mod tests {
             UiDocument::new(node, vec![invalid]),
             Err(UiDocumentError::InvalidCommandName(node))
         );
+    }
+
+    #[test]
+    fn authored_documents_resolve_locked_styles_components_and_assets() {
+        let root = UiNodeId::new(1_001);
+        let button = UiNodeId::new(1_002);
+        let style = UiStyleId::new(2_001);
+        let component = UiComponentId::new(3_001);
+        let asset = UiAssetRef::new("meridian.ui", "brand.mark").expect("bounded asset ref");
+        let document = UiDocument::authoring(root)
+            .with_style(
+                UiAuthoredStyle::new(style, UiStyleVariant::SecondaryAction)
+                    .with_padding(UiSpacing::Px8)
+                    .with_radius(UiRadius::Px6),
+            )
+            .with_component(UiComponentDefinition::new(component, style))
+            .with_node(UiNode::container(
+                root,
+                "Authoring fixture",
+                UiLayout::column(UiSpacing::Px8),
+                vec![button],
+            ))
+            .with_authored_node(
+                UiNode::button(button, "Run", "workspace.run", "Run"),
+                UiNodeSource::plain()
+                    .with_component(component)
+                    .with_asset(asset.clone()),
+            )
+            .build()
+            .expect("authored document is valid");
+
+        assert_eq!(document.schema().version, UI_DOCUMENT_SCHEMA_VERSION);
+        assert_eq!(
+            document
+                .component(component)
+                .map(|entry| entry.default_style),
+            Some(style)
+        );
+        assert_eq!(document.asset_ref(button), Some(&asset));
+        let instance = document
+            .component_instances()
+            .next()
+            .expect("authored component instance is projected");
+        assert_eq!(instance.root, button);
+        assert_eq!(instance.component, component);
+        assert_eq!(document.component_instance(instance.id), Some(instance));
+        assert_eq!(
+            document.node(button).map(|node| node.style.padding),
+            Some(8.0)
+        );
+        assert_eq!(
+            document.node(button).map(|node| node.style.corner_radius),
+            Some(6.0)
+        );
+        assert_eq!(
+            document.node(button).map(|node| node.style_reference),
+            Some(UiStyleReference::Variant(UiStyleVariant::SecondaryAction))
+        );
+
+        let snapshot = document.canonical_source_snapshot();
+        assert_eq!(
+            snapshot
+                .nodes
+                .iter()
+                .map(|node| node.id)
+                .collect::<Vec<_>>(),
+            [root, button]
+        );
+        assert_eq!(
+            snapshot
+                .node_sources
+                .iter()
+                .map(|(node, _)| *node)
+                .collect::<Vec<_>>(),
+            [button]
+        );
+        let recovered =
+            UiDocument::recover_source_snapshot(snapshot).expect("canonical source recovers");
+        assert_eq!(recovered, document);
+    }
+
+    #[test]
+    fn authored_image_requires_a_packaged_source_reference() {
+        let root = UiNodeId::new(1_011);
+        let image = UiNodeId::new(1_012);
+        assert_eq!(
+            UiDocument::new(
+                root,
+                vec![
+                    UiNode::container(root, "Image root", UiLayout::Overlay, vec![image]),
+                    UiNode::image(image, "Brand mark"),
+                ],
+            ),
+            Err(UiDocumentError::ImageAssetMissing(image))
+        );
+
+        let asset = UiAssetRef::new("meridian.ui", "brand.mark").expect("bounded asset");
+        let document = UiDocument::authoring(root)
+            .with_node(UiNode::container(
+                root,
+                "Image root",
+                UiLayout::Overlay,
+                vec![image],
+            ))
+            .with_authored_node(
+                UiNode::image(image, "Brand mark"),
+                UiNodeSource::plain().with_asset(asset.clone()),
+            )
+            .build()
+            .expect("packaged image source is valid");
+        assert_eq!(document.asset_ref(image), Some(&asset));
+    }
+
+    #[test]
+    fn canonical_source_bytes_are_stable_recoverable_and_versioned() {
+        let root = UiNodeId::new(1_021);
+        let child = UiNodeId::new(1_022);
+        let style = UiStyleId::new(2_021);
+        let component = UiComponentId::new(3_021);
+        let document = UiDocument::authoring(root)
+            .with_style(UiAuthoredStyle::new(style, UiStyleVariant::PrimaryAction))
+            .with_component(UiComponentDefinition::new(component, style))
+            .with_node(UiNode::container(
+                root,
+                "Persistence fixture",
+                UiLayout::column(UiSpacing::Px8),
+                vec![child],
+            ))
+            .with_authored_node(
+                UiNode::button(child, "Apply", "source.apply", "Apply"),
+                UiNodeSource::plain().with_component(component),
+            )
+            .build()
+            .expect("persistence fixture is valid");
+
+        let first = document
+            .encode_canonical_source()
+            .expect("canonical source encodes");
+        let (recovered, migration) = UiDocument::decode_canonical_source_with_migration(&first)
+            .expect("canonical source decodes");
+        assert_eq!(migration, UiDocumentSourceMigration::Current);
+        assert_eq!(recovered, document);
+        assert_eq!(
+            recovered
+                .encode_canonical_source()
+                .expect("recovered source re-encodes"),
+            first
+        );
+
+        let mut unsupported: Value =
+            serde_json::from_slice(&first).expect("canonical source is JSON");
+        unsupported["format_version"] =
+            Value::from(u64::from(UI_DOCUMENT_SOURCE_FORMAT_VERSION + 1));
+        assert_eq!(
+            UiDocument::decode_canonical_source(
+                &serde_json::to_vec(&unsupported).expect("versioned JSON serializes"),
+            ),
+            Err(UiDocumentSourceError::UnsupportedEnvelopeVersion(
+                UI_DOCUMENT_SOURCE_FORMAT_VERSION + 1
+            ))
+        );
+
+        unsupported["format_version"] = Value::from(u64::from(UI_DOCUMENT_SOURCE_FORMAT_VERSION));
+        unsupported["schema"] = Value::String("meridian.ui-document-source/v2".to_owned());
+        assert_eq!(
+            UiDocument::decode_canonical_source(
+                &serde_json::to_vec(&unsupported).expect("schema-versioned JSON serializes"),
+            ),
+            Err(UiDocumentSourceError::UnsupportedEnvelopeSchema(
+                "meridian.ui-document-source/v2".to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn canonical_source_encoding_rejects_oversized_payloads() {
+        let root = UiNodeId::new(1_025);
+        let children: Vec<_> = (0..130).map(|index| UiNodeId::new(1_026 + index)).collect();
+        let large_text = "x".repeat(MAX_TEXT_BYTES);
+        let mut nodes = Vec::with_capacity(children.len() + 1);
+        nodes.push(UiNode::container(
+            root,
+            "Oversized source",
+            UiLayout::Overlay,
+            children.clone(),
+        ));
+        nodes.extend(
+            children
+                .into_iter()
+                .map(|node| UiNode::label(node, "Large source value", large_text.clone())),
+        );
+        let document = UiDocument::new(root, nodes).expect("bounded nodes remain valid");
+
+        assert!(matches!(
+            document.encode_canonical_source(),
+            Err(UiDocumentSourceError::PayloadTooLarge { bytes, maximum })
+                if bytes > maximum && maximum == MAX_UI_DOCUMENT_SOURCE_BYTES
+        ));
+    }
+
+    #[test]
+    fn legacy_source_snapshot_migrates_and_invalid_source_stays_atomic() {
+        let root = UiNodeId::new(1_031);
+        let document = UiDocument::new(root, vec![UiNode::label(root, "Source", "Source")])
+            .expect("legacy fixture is valid");
+        let legacy = serde_json::to_vec(&document.canonical_source_snapshot())
+            .expect("legacy snapshot serializes");
+        let (recovered, migration) = UiDocument::decode_canonical_source_with_migration(&legacy)
+            .expect("legacy snapshot migrates");
+        assert_eq!(migration, UiDocumentSourceMigration::LegacySnapshotV0);
+        assert_eq!(recovered, document);
+        assert!(recovered
+            .encode_canonical_source()
+            .expect("migrated source writes")
+            .windows(UI_DOCUMENT_SOURCE_ENVELOPE_SCHEMA.len())
+            .any(|window| window == UI_DOCUMENT_SOURCE_ENVELOPE_SCHEMA.as_bytes()));
+
+        let duplicate_provenance = UiDocumentSourceSnapshot {
+            schema: UiDocumentSchema::default(),
+            root,
+            nodes: vec![UiNode::label(root, "Source", "Source")],
+            styles: Vec::new(),
+            components: Vec::new(),
+            node_sources: vec![(root, UiNodeSource::plain()), (root, UiNodeSource::plain())],
+        };
+        assert_eq!(
+            UiDocument::decode_canonical_source(
+                &serde_json::to_vec(&duplicate_provenance)
+                    .expect("invalid snapshot serializes for recovery test"),
+            ),
+            Err(UiDocumentSourceError::Document(
+                UiDocumentError::DuplicateSourceReference(root)
+            ))
+        );
+        assert_eq!(
+            UiDocument::decode_canonical_source(&vec![b' '; MAX_UI_DOCUMENT_SOURCE_BYTES + 1]),
+            Err(UiDocumentSourceError::PayloadTooLarge {
+                bytes: MAX_UI_DOCUMENT_SOURCE_BYTES + 1,
+                maximum: MAX_UI_DOCUMENT_SOURCE_BYTES,
+            })
+        );
+    }
+
+    #[test]
+    fn source_snapshot_rejects_duplicate_provenance_without_partial_recovery() {
+        let root = UiNodeId::new(1_051);
+        let snapshot = UiDocumentSourceSnapshot {
+            schema: UiDocumentSchema::default(),
+            root,
+            nodes: vec![UiNode::label(root, "Source", "Source")],
+            styles: Vec::new(),
+            components: Vec::new(),
+            node_sources: vec![(root, UiNodeSource::plain()), (root, UiNodeSource::plain())],
+        };
+        assert_eq!(
+            UiDocument::recover_source_snapshot(snapshot),
+            Err(UiDocumentError::DuplicateSourceReference(root))
+        );
+    }
+
+    #[test]
+    fn authored_documents_report_the_source_node_and_missing_property_reference() {
+        let root = UiNodeId::new(1_101);
+        let button = UiNodeId::new(1_102);
+        let missing_style = UiStyleId::new(2_101);
+        assert_eq!(
+            UiDocument::authoring(root)
+                .with_node(UiNode::container(
+                    root,
+                    "Root",
+                    UiLayout::Overlay,
+                    vec![button]
+                ))
+                .with_authored_node(
+                    UiNode::button(button, "Build", "workspace.build", "Build"),
+                    UiNodeSource::plain().with_style(missing_style),
+                )
+                .build(),
+            Err(UiDocumentError::UnknownAuthoredStyle {
+                node: button,
+                style: missing_style,
+            })
+        );
+    }
+
+    #[test]
+    fn packaged_asset_references_reject_paths_and_executable_syntax() {
+        assert!(UiAssetRef::new("meridian.ui", "icons/play").is_none());
+        assert!(UiAssetRef::new("meridian.ui", "<script>").is_none());
+        assert!(UiAssetRef::new("meridian.ui", "icon.play").is_some());
     }
 }

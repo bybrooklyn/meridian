@@ -10,21 +10,22 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use meridian_ui_core::{
-    sanitized_scale_factor, CommandId, MotionPreference, ThemeId, UiAlignment, UiAxis,
+    sanitized_scale_factor, CommandId, MotionPreference, ThemeId, UiAlignment, UiAssetRef, UiAxis,
     UiCanvasContract, UiCollectionCursor, UiCollectionNavigation, UiColor, UiConstraints,
     UiContrast, UiControlAdjustment, UiControllerControl, UiControllerEvent, UiControllerPhase,
-    UiDensity, UiDocument, UiDocumentDelta, UiDocumentError, UiDragKind, UiDragPayload,
-    UiDropOperation, UiFontRole, UiHostAssistiveAction, UiIconTokens, UiInputDeviceId,
-    UiInputDeviceKind, UiLayout, UiModifiers, UiNode, UiNodeId, UiPoint, UiPointerButton,
-    UiPointerEvent, UiPointerPhase, UiRect, UiScrollEvent, UiScrollPhase, UiScrollUnit,
-    UiSemanticRelationships, UiSharedElementId, UiSize, UiStyle, UiStyleInheritance,
-    UiStyleSelector, UiTextScale, UiTextValidation, UiTheme, UiTimelineContract,
-    UiTransientInitialState, UiTransientPresentation, UiTransientSurfaceKind, UiVirtualRange,
-    UiVisualState, UiWidgetKind, MAX_FRAME_EVENTS, MAX_TEXT_BYTES, MIN_ACCESSIBLE_CONTROL_EXTENT,
+    UiDensity, UiDocument, UiDocumentDelta, UiDocumentError, UiDocumentSourceError,
+    UiDocumentSourceMigration, UiDragKind, UiDragPayload, UiDropOperation, UiElevation, UiFontRole,
+    UiFontWeight, UiHostAssistiveAction, UiIconTokens, UiInputDeviceId, UiInputDeviceKind,
+    UiLayout, UiModifiers, UiNode, UiNodeId, UiPoint, UiPointerButton, UiPointerEvent,
+    UiPointerPhase, UiRect, UiScrollEvent, UiScrollPhase, UiScrollUnit, UiSemanticRelationships,
+    UiSemantics, UiSharedElementId, UiSize, UiStyle, UiStyleInheritance, UiStyleSelector,
+    UiTextScale, UiTextValidation, UiTheme, UiTimelineContract, UiTransientInitialState,
+    UiTransientPresentation, UiTransientSurfaceKind, UiVirtualRange, UiVisualState, UiWidgetKind,
+    MAX_FRAME_EVENTS, MAX_TEXT_BYTES, MIN_ACCESSIBLE_CONTROL_EXTENT,
 };
 use meridian_ui_render::{
     icon_geometry, DisplayList, DisplayListError, DisplayPrimitive, UiClipId, UiCornerRadii,
-    UiStroke,
+    UiImageHandle, UiStroke,
 };
 use meridian_ui_semantics::{
     SemanticAction, SemanticCollectionItem, SemanticDelta, SemanticLive, SemanticNode,
@@ -37,6 +38,93 @@ use meridian_ui_text::{
 };
 
 const LEGACY_POINTER_DEVICE: UiInputDeviceId = UiInputDeviceId::new(1);
+// A leaf in a retained tree aligns its text with the text of a branch: a
+// branch reserves the native 16 px disclosure icon and its 8 px text gap,
+// while a leaf reserves the same 24 px leading column without inventing
+// whitespace in the authored label or inflating vertical padding.
+const TREE_CHILD_TEXT_INDENT: f32 = 24.0;
+
+/// Private host boundary that lowers an authored package asset reference to a
+/// process-local renderer image handle. Neither a path nor the handle enters
+/// [`UiDocument`] source.
+pub trait UiAssetResolver {
+    /// Returns the current process-local image handle for an accepted package
+    /// asset, or a typed unavailable/wrong-asset outcome.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed missing or wrong-kind result without exposing adapter
+    /// paths, decoders, or backend resource objects.
+    fn resolve(&mut self, asset: &UiAssetRef) -> Result<UiImageHandle, UiAssetResolutionError>;
+}
+
+/// Asset-lowering failure associated with the retained source node that asked
+/// for the resource. It is safe to render as a visible unavailable state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum UiAssetResolutionError {
+    Missing { node: UiNodeId, asset: UiAssetRef },
+    WrongKind { node: UiNodeId, asset: UiAssetRef },
+}
+
+/// Derived process-local image mapping for one accepted immutable document.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct UiResolvedAssets {
+    handles: BTreeMap<UiAssetRef, UiImageHandle>,
+    node_handles: BTreeMap<UiNodeId, UiImageHandle>,
+}
+
+impl UiResolvedAssets {
+    /// Resolves every declared packaged raster through a private adapter.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact stable source node and asset reference that the adapter
+    /// could not resolve; no partial mapping is retained by the caller.
+    pub fn resolve_document(
+        document: &UiDocument,
+        resolver: &mut impl UiAssetResolver,
+    ) -> Result<Self, UiAssetResolutionError> {
+        let mut handles = BTreeMap::new();
+        let mut node_handles = BTreeMap::new();
+        for node in document.nodes() {
+            let Some(asset) = document.asset_ref(node.id) else {
+                continue;
+            };
+            if let Some(handle) = handles.get(asset).copied() {
+                node_handles.insert(node.id, handle);
+                continue;
+            }
+            let handle = resolver.resolve(asset).map_err(|error| match error {
+                UiAssetResolutionError::Missing { .. } => UiAssetResolutionError::Missing {
+                    node: node.id,
+                    asset: asset.clone(),
+                },
+                UiAssetResolutionError::WrongKind { .. } => UiAssetResolutionError::WrongKind {
+                    node: node.id,
+                    asset: asset.clone(),
+                },
+            })?;
+            handles.insert(asset.clone(), handle);
+            node_handles.insert(node.id, handle);
+        }
+        Ok(Self {
+            handles,
+            node_handles,
+        })
+    }
+
+    /// Returns the derived process-local handle for one authored asset.
+    #[must_use]
+    pub fn handle(&self, asset: &UiAssetRef) -> Option<UiImageHandle> {
+        self.handles.get(asset).copied()
+    }
+
+    /// Returns the derived image handle for one authored source node.
+    #[must_use]
+    pub fn handle_for_node(&self, node: UiNodeId) -> Option<UiImageHandle> {
+        self.node_handles.get(&node).copied()
+    }
+}
 
 /// Platform-normalized event delivered to the retained interaction model.
 #[derive(Clone, Debug, PartialEq)]
@@ -580,6 +668,12 @@ pub enum UiDiagnostic {
         node: UiNodeId,
     },
     DragUnavailable,
+    /// An image source was accepted but no process-local resource was supplied
+    /// for this frame. The node remains semantic and can recover on the next
+    /// compile with a successful private asset resolution.
+    AssetUnavailable {
+        node: UiNodeId,
+    },
     CollectionQueryTooLong {
         maximum: usize,
     },
@@ -1238,6 +1332,184 @@ pub struct UiFrameSnapshot {
 /// Shared immutable compatibility handle retained while callers migrate.
 pub type UiFrameOutput = Arc<UiFrameSnapshot>;
 
+/// Immutable result of compiling one canonical authored document for a frame.
+///
+/// The source is the accepted [`UiDocument`] snapshot, while `frame` is the
+/// derived renderer-neutral and semantic output. Keeping the two together
+/// gives runtime and Creator one source-to-frame boundary without introducing
+/// a second authoring document or exposing process-local renderer state.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UiCompiledFrame {
+    pub source: UiDocument,
+    pub frame: UiFrameOutput,
+    /// Process-local packaged-asset handles resolved for this source snapshot.
+    /// Handles are derived adapter state and never enter `source`.
+    pub assets: UiResolvedAssets,
+}
+
+/// Source-facing compiler for the canonical [`UiDocument`] authoring model.
+///
+/// This is intentionally a small façade over [`UiRuntime`]. It owns retained
+/// interaction state across compilations, accepts source replacements only at
+/// frame boundaries, and returns the same immutable frame consumed by runtime,
+/// renderer, and semantic adapters.
+#[derive(Debug)]
+pub struct UiDocumentCompiler {
+    runtime: UiRuntime,
+}
+
+impl UiDocumentCompiler {
+    #[must_use]
+    pub fn new(source: UiDocument) -> Self {
+        Self {
+            runtime: UiRuntime::new(source),
+        }
+    }
+
+    /// Returns the accepted canonical source behind the compiler façade.
+    #[must_use]
+    pub const fn document(&self) -> &UiDocument {
+        self.source()
+    }
+
+    /// Compiles the accepted source into one immutable frame result.
+    #[must_use]
+    pub fn compile(&mut self, input: UiFrameInput) -> UiCompiledFrame {
+        let frame = self.runtime.reconcile(input);
+        UiCompiledFrame {
+            source: self.runtime.document().clone(),
+            frame,
+            assets: UiResolvedAssets::default(),
+        }
+    }
+
+    /// Compatibility host entrypoint that returns the derived frame while the
+    /// compiler still keeps the canonical source boundary available.
+    #[must_use]
+    pub fn reconcile(&mut self, input: UiFrameInput) -> UiFrameOutput {
+        self.compile(input).frame
+    }
+
+    /// Resolves packaged assets and compiles one immutable source/frame result.
+    ///
+    /// Asset resolution happens before runtime reconciliation. A missing or
+    /// wrong-kind asset therefore produces no new frame and cannot partially
+    /// advance retained interaction state.
+    ///
+    /// # Errors
+    ///
+    /// Returns the stable source node and asset reference that the private
+    /// adapter could not resolve.
+    pub fn compile_with_assets(
+        &mut self,
+        input: UiFrameInput,
+        resolver: &mut impl UiAssetResolver,
+    ) -> Result<UiCompiledFrame, UiAssetResolutionError> {
+        let source = self.runtime.document().clone();
+        let assets = UiResolvedAssets::resolve_document(&source, resolver)?;
+        let frame = self.runtime.reconcile_with_assets(input, &assets);
+        Ok(UiCompiledFrame {
+            source,
+            frame,
+            assets,
+        })
+    }
+
+    /// Returns the currently accepted canonical source.
+    #[must_use]
+    pub const fn source(&self) -> &UiDocument {
+        self.runtime.document()
+    }
+
+    /// Replaces source at a frame boundary and reports stable identity changes.
+    pub fn replace_source(&mut self, source: UiDocument) -> UiDocumentDelta {
+        self.runtime.replace_document(source)
+    }
+
+    /// Decodes, validates, and atomically replaces the canonical persisted
+    /// source at a frame boundary.
+    ///
+    /// The source bytes are fully bounded and revalidated before the runtime
+    /// accepts them. A malformed, unsupported, or semantically invalid payload
+    /// leaves the previously accepted source and interaction state unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns the typed persistence or source-validation error without
+    /// partially replacing the compiler source.
+    pub fn try_replace_canonical_source(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<UiDocumentDelta, UiDocumentSourceError> {
+        let (delta, _) = self.try_replace_canonical_source_with_migration(bytes)?;
+        Ok(delta)
+    }
+
+    /// Decodes and replaces canonical source while reporting a bounded legacy
+    /// storage-shape migration to the caller.
+    ///
+    /// Callers should rewrite [`UiDocumentSourceMigration::LegacySnapshotV0`]
+    /// only after their surrounding source transaction commits.
+    ///
+    /// # Errors
+    ///
+    /// Returns the typed persistence or source-validation error without
+    /// partially replacing the compiler source.
+    pub fn try_replace_canonical_source_with_migration(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<(UiDocumentDelta, UiDocumentSourceMigration), UiDocumentSourceError> {
+        let (source, migration) = UiDocument::decode_canonical_source_with_migration(bytes)?;
+        let delta = self.replace_source(source);
+        Ok((delta, migration))
+    }
+
+    /// Compatibility spelling for hosts that previously owned `UiRuntime`
+    /// directly. The operation still replaces canonical source at a frame
+    /// boundary and reports the same stable-identity delta.
+    pub fn replace_document(&mut self, source: UiDocument) -> UiDocumentDelta {
+        self.replace_source(source)
+    }
+
+    /// Validates and atomically replaces source at a frame boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns the source-addressable validation error while retaining the
+    /// previously accepted source and runtime state.
+    pub fn try_replace_source(
+        &mut self,
+        root: UiNodeId,
+        nodes: Vec<UiNode>,
+    ) -> Result<UiDocumentDelta, UiDocumentError> {
+        self.runtime.try_replace_document(root, nodes)
+    }
+
+    /// Returns the most recent accepted source reconciliation summary.
+    #[must_use]
+    pub const fn last_source_delta(&self) -> &UiDocumentDelta {
+        self.runtime.last_document_delta()
+    }
+
+    /// Returns one private non-password text value for host-side source
+    /// synchronization.
+    #[must_use]
+    pub fn text_input_value(&self, node: UiNodeId) -> Option<&str> {
+        self.runtime.text_input_value(node)
+    }
+
+    /// Restores focus through the same retained identity contract used by the
+    /// runtime host. Invalid or disabled identities remain rejected.
+    pub fn focus_retained_node(&mut self, node: UiNodeId) -> bool {
+        self.runtime.focus_retained_node(node)
+    }
+
+    /// Resets one retained text field from the current accepted source value.
+    pub fn reset_text_input_from_document(&mut self, node: UiNodeId) -> bool {
+        self.runtime.reset_text_input_from_document(node)
+    }
+}
+
 /// Typed frame rejection before any mutated interaction state is committed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UiFrameError {
@@ -1293,11 +1565,12 @@ pub enum UiLayoutError {
     UnsatisfiableConstraints { node: UiNodeId },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct PointerCapture {
     device: UiInputDeviceId,
     target: UiNodeId,
     button: UiPointerButton,
+    last_position: UiPoint,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1720,6 +1993,32 @@ fn emit_node_surface(
     Ok(())
 }
 
+fn emit_node_elevation(
+    node: UiNodeId,
+    bounds: UiRect,
+    style: UiStyle,
+    elevation: UiElevation,
+    contrast: UiContrast,
+    display: &mut DisplayList,
+) -> Result<(), DisplayListError> {
+    if contrast == UiContrast::High || elevation == UiElevation::Flat {
+        return Ok(());
+    }
+    let (offset, spread, alpha) = match elevation {
+        UiElevation::Flat => return Ok(()),
+        UiElevation::Raised => (UiPoint { x: 0.0, y: 1.0 }, 2.0, 0.32),
+        UiElevation::Floating => (UiPoint { x: 0.0, y: 3.0 }, 5.0, 0.48),
+    };
+    display.try_push(DisplayPrimitive::Shadow {
+        node,
+        bounds,
+        radii: UiCornerRadii::uniform(style.corner_radius),
+        offset,
+        spread,
+        color: UiColor::rgba(0.0, 0.0, 0.0, alpha),
+    })
+}
+
 fn emit_state_treatments(
     node: UiNodeId,
     bounds: UiRect,
@@ -1869,8 +2168,10 @@ fn aligned_preferred_bounds(
 struct UiEmission<'a> {
     layout: &'a BTreeMap<UiNodeId, UiRect>,
     presentation_layout: &'a BTreeMap<UiNodeId, UiRect>,
+    resolved_assets: &'a BTreeMap<UiNodeId, UiImageHandle>,
     scale_factor: f32,
     text_scale: UiTextScale,
+    contrast: UiContrast,
     icon_tokens: meridian_ui_core::UiIconTokens,
     icon_tokens_fallback: bool,
     display: &'a mut DisplayList,
@@ -1919,9 +2220,11 @@ struct UiLayoutCacheKey {
 
 struct UiIntrinsicRequest {
     node: UiNodeId,
+    kind: UiWidgetKind,
     text: Option<String>,
     style: UiStyle,
     font_role: UiFontRole,
+    font_weight: UiFontWeight,
     has_icon: bool,
     focusable: bool,
 }
@@ -2071,6 +2374,7 @@ pub struct UiRuntime {
     motion_system: UiMotionSystem,
     resolved_styles: BTreeMap<UiNodeId, UiStyle>,
     animated_color_targets: BTreeMap<UiNodeId, UiAnimatedColorTarget>,
+    resolved_assets: BTreeMap<UiNodeId, UiImageHandle>,
 }
 
 impl UiRuntime {
@@ -2133,6 +2437,7 @@ impl UiRuntime {
             motion_system: UiMotionSystem::default(),
             resolved_styles: BTreeMap::new(),
             animated_color_targets: BTreeMap::new(),
+            resolved_assets: BTreeMap::new(),
         };
         runtime.promote_next_toast();
         runtime
@@ -2205,7 +2510,6 @@ impl UiRuntime {
             .and_then(|container| self.collection_cursors.get(&container))
             .and_then(|cursor| cursor.selected)
             .is_some_and(|selected| document.node(selected).is_none());
-        self.restore_focus_after_document_replace(&document, preserve_hidden_collection_selection);
         if self.hovered.is_some_and(|id| {
             document
                 .node(id)
@@ -2232,6 +2536,7 @@ impl UiRuntime {
         self.timeline_states = Self::initial_timeline_states(&self.document);
         self.canvas_states = Self::initial_canvas_states(&self.document);
         self.restore_document_transients(transient_checkpoint);
+        self.restore_focus_after_document_replace(preserve_hidden_collection_selection);
         self.reconcile_pending_virtual_focus();
         self.recover_invisible_focus();
         self.last_document_delta.clone_from(&delta);
@@ -2300,16 +2605,10 @@ impl UiRuntime {
         self.resolve_pending_virtual_focus();
     }
 
-    fn restore_focus_after_document_replace(
-        &mut self,
-        document: &UiDocument,
-        preserve_hidden_collection_selection: bool,
-    ) {
-        let focus_needs_recovery = self.focused.is_some_and(|id| {
-            !document
-                .node(id)
-                .is_some_and(|node| node.focusable && !node.semantics.state.disabled)
-        });
+    fn restore_focus_after_document_replace(&mut self, preserve_hidden_collection_selection: bool) {
+        let focus_needs_recovery = self
+            .focused
+            .is_some_and(|id| !self.focus_target_is_eligible(id));
         if focus_needs_recovery {
             self.focused = None;
         }
@@ -2317,18 +2616,24 @@ impl UiRuntime {
             .active_collection
             .and_then(|container| self.collection_cursors.get(&container))
             .and_then(|cursor| cursor.selected)
-            .filter(|id| {
-                document
-                    .node(*id)
-                    .is_some_and(|node| node.focusable && !node.semantics.state.disabled)
-            });
+            .filter(|id| self.focus_target_is_eligible(*id));
         if self.focused.is_none() {
             self.focused = selected_focus;
         }
-        if focus_needs_recovery && self.focused.is_none() && !preserve_hidden_collection_selection {
-            self.focused = document.focus_order().into_iter().next();
-            if let Some(focused) = self.focused {
-                self.remember_collection_focus(document, focused);
+        // Filtering and virtualization intentionally retain an unrealized
+        // collection selection. A visible focus-owning transient is different:
+        // it must always receive a concrete in-surface focus target.
+        let must_restore_transient_focus = self.active_focus_surface().is_some();
+        if focus_needs_recovery
+            && self.focused.is_none()
+            && (!preserve_hidden_collection_selection || must_restore_transient_focus)
+        {
+            let recovered = self
+                .active_focus_surface()
+                .and_then(|surface| self.first_focusable_transient_child(surface))
+                .or_else(|| self.visible_focus_order().into_iter().next());
+            if let Some(focused) = recovered {
+                self.set_focus(focused);
             }
         }
         self.focus_recovery_guard = focus_needs_recovery && self.focused.is_some();
@@ -2370,9 +2675,7 @@ impl UiRuntime {
     /// Returns `false` without changing focus when the identity is absent,
     /// disabled, or not keyboard-focusable.
     pub fn focus_retained_node(&mut self, node: UiNodeId) -> bool {
-        if !self.document.node(node).is_some_and(|candidate| {
-            candidate.focusable && !candidate.semantics.state.disabled && self.is_node_visible(node)
-        }) {
+        if !self.focus_target_is_eligible(node) {
             return false;
         }
         self.set_focus(node);
@@ -2406,6 +2709,22 @@ impl UiRuntime {
 
     /// Processes events, resolves retained layout, and returns only immutable output.
     pub fn reconcile(&mut self, input: UiFrameInput) -> UiFrameOutput {
+        self.resolved_assets.clear();
+        self.reconcile_with_current_assets(input)
+    }
+
+    /// Processes one frame with the process-local asset handles resolved for
+    /// the currently accepted authored source.
+    pub fn reconcile_with_assets(
+        &mut self,
+        input: UiFrameInput,
+        assets: &UiResolvedAssets,
+    ) -> UiFrameOutput {
+        self.resolved_assets.clone_from(&assets.node_handles);
+        self.reconcile_with_current_assets(input)
+    }
+
+    fn reconcile_with_current_assets(&mut self, input: UiFrameInput) -> UiFrameOutput {
         let (contrast, motion) = effective_preferences(&input);
         let fallback = RejectedFrameContext {
             theme: input.theme.id,
@@ -2611,11 +2930,14 @@ impl UiRuntime {
         let mut semantic_nodes = Vec::new();
         let visual_states =
             self.resolve_visual_styles(&input.theme, contrast, motion, &mut effects.diagnostics);
+        let resolved_assets = self.resolved_assets.clone();
         let mut emission = UiEmission {
             layout: &layout,
             presentation_layout: &presentation_layout,
+            resolved_assets: &resolved_assets,
             scale_factor: sanitized_scale_factor(input.scale_factor),
             text_scale: input.text_scale,
+            contrast,
             icon_tokens,
             icon_tokens_fallback,
             display: &mut display_list,
@@ -3210,11 +3532,96 @@ impl UiRuntime {
     }
 
     fn visible_focus_order(&self) -> Vec<UiNodeId> {
-        self.document
+        let mut order = self
+            .document
             .focus_order()
             .into_iter()
             .filter(|node| self.is_node_visible(*node))
-            .collect()
+            .collect::<Vec<_>>();
+        if let Some(surface) = self.active_focus_surface() {
+            order.retain(|node| self.target_is_within_focus_surface(*node, surface));
+        }
+        order
+    }
+
+    /// Returns the topmost visible transient that owns keyboard and assistive
+    /// focus. Tooltip and toast presentation is intentionally excluded: those
+    /// surfaces never become modal input authority.
+    fn active_focus_surface(&self) -> Option<UiNodeId> {
+        self.transient_stack.iter().rev().copied().find(|surface| {
+            self.document
+                .node(*surface)
+                .and_then(|node| node.transient)
+                .is_some_and(|transient| {
+                    Self::transient_owns_focus(transient.kind)
+                        && self
+                            .transient_states
+                            .get(surface)
+                            .is_some_and(|state| state.phase == UiTransientPhase::Visible)
+                        && self.is_node_visible(*surface)
+                })
+        })
+    }
+
+    fn target_is_within_focus_surface(&self, target: UiNodeId, surface: UiNodeId) -> bool {
+        target != surface
+            && self
+                .document
+                .route_to(target)
+                .is_some_and(|route| route.contains(&surface))
+    }
+
+    fn target_is_in_active_focus_scope(&self, target: UiNodeId) -> bool {
+        self.active_focus_surface()
+            .is_none_or(|surface| self.target_is_within_focus_surface(target, surface))
+    }
+
+    /// Returns whether a retained target remains visible, enabled, and inside
+    /// the top focus-owning transient when one is visible.
+    ///
+    /// This is the shared trust boundary for host-delivered interaction. It
+    /// prevents a native adapter or document refresh from directing focus or
+    /// mutation behind a currently active menu, combo, context menu, or command
+    /// palette.
+    fn target_is_interactable_in_active_focus_scope(&self, target: UiNodeId) -> bool {
+        self.document.node(target).is_some_and(|node| {
+            !node.semantics.state.disabled
+                && self.is_node_visible(target)
+                && self.target_is_in_active_focus_scope(target)
+        })
+    }
+
+    fn focus_target_is_eligible(&self, target: UiNodeId) -> bool {
+        self.target_is_interactable_in_active_focus_scope(target)
+            && self
+                .document
+                .node(target)
+                .is_some_and(|node| node.focusable)
+    }
+
+    /// Retains the document root plus the top focus-owning transient subtree
+    /// in the assistive tree. The root remains a stable structural anchor while
+    /// background controls are temporarily unavailable to a screen reader.
+    fn node_is_in_active_semantic_scope(&self, target: UiNodeId) -> bool {
+        target == self.document.root()
+            || self.active_focus_surface().is_none_or(|surface| {
+                target == surface || self.target_is_within_focus_surface(target, surface)
+            })
+    }
+
+    /// Finds the nearest retained semantic parent after an active transient
+    /// removes background structural ancestors from the assistive projection.
+    fn semantic_parent(&self, target: UiNodeId, parent: Option<UiNodeId>) -> Option<UiNodeId> {
+        if self.active_focus_surface().is_none() {
+            return parent;
+        }
+        self.document.route_to(target).and_then(|route| {
+            route
+                .into_iter()
+                .rev()
+                .skip(1)
+                .find(|ancestor| self.node_is_in_active_semantic_scope(*ancestor))
+        })
     }
 
     fn visible_semantic_relationships(
@@ -3223,30 +3630,36 @@ impl UiRuntime {
         invalid: bool,
     ) -> SemanticRelationships {
         let mut relationships = semantic_relationships(relationships, invalid);
-        relationships
-            .labelled_by
-            .retain(|target| self.is_node_visible(*target));
-        relationships
-            .described_by
-            .retain(|target| self.is_node_visible(*target));
-        relationships
-            .controls
-            .retain(|target| self.is_node_visible(*target));
-        relationships
-            .details
-            .retain(|target| self.is_node_visible(*target));
-        relationships
-            .flow_to
-            .retain(|target| self.is_node_visible(*target));
-        relationships.error_message = relationships
-            .error_message
-            .filter(|target| self.is_node_visible(*target));
+        relationships.labelled_by.retain(|target| {
+            self.is_node_visible(*target) && self.node_is_in_active_semantic_scope(*target)
+        });
+        relationships.described_by.retain(|target| {
+            self.is_node_visible(*target) && self.node_is_in_active_semantic_scope(*target)
+        });
+        relationships.controls.retain(|target| {
+            self.is_node_visible(*target) && self.node_is_in_active_semantic_scope(*target)
+        });
+        relationships.details.retain(|target| {
+            self.is_node_visible(*target) && self.node_is_in_active_semantic_scope(*target)
+        });
+        relationships.flow_to.retain(|target| {
+            self.is_node_visible(*target) && self.node_is_in_active_semantic_scope(*target)
+        });
+        relationships.error_message = relationships.error_message.filter(|target| {
+            self.is_node_visible(*target) && self.node_is_in_active_semantic_scope(*target)
+        });
         relationships
     }
 
     fn recover_invisible_focus(&mut self) {
-        if self.focused.is_some_and(|node| !self.is_node_visible(node)) {
-            self.focused = self.visible_focus_order().into_iter().next();
+        if self
+            .focused
+            .is_some_and(|node| !self.focus_target_is_eligible(node))
+        {
+            self.focused = self
+                .active_focus_surface()
+                .and_then(|surface| self.first_focusable_transient_child(surface))
+                .or_else(|| self.visible_focus_order().into_iter().next());
             if let Some(focused) = self.focused {
                 if let Some(container) = Self::collection_for(&self.document, focused) {
                     self.collection_cursors
@@ -3718,13 +4131,11 @@ impl UiRuntime {
             .filter(|node| self.is_node_visible(node.id))
             .map(|node| UiIntrinsicRequest {
                 node: node.id,
-                text: self
-                    .text_inputs
-                    .get(&node.id)
-                    .map(UiTextInputState::rendered_text)
-                    .or_else(|| node.text.clone()),
+                kind: node.kind,
+                text: self.rendered_node_text(node),
                 style: self.resolved_style(node.id),
                 font_role: node.font_role,
+                font_weight: node.font_weight,
                 has_icon: node.icon.is_some(),
                 focusable: node.focusable,
             })
@@ -3744,18 +4155,20 @@ impl UiRuntime {
             } else {
                 0.0
             };
-            let horizontal_chrome = request.style.padding * 2.0 + icon_width;
+            let tree_child_indent = tree_child_text_indent(request.kind, request.has_icon);
+            let horizontal_chrome = request.style.padding * 2.0 + icon_width + tree_child_indent;
             let available_text_width =
                 (context.viewport.sanitized().width - horizontal_chrome).max(1.0);
             let (text_width, text_height) = if let Some(text) = request.text.as_deref() {
                 let measured = self
                     .text
-                    .measure(
+                    .measure_with_weight(
                         text,
                         available_text_width,
                         scaled_font_size,
                         context.scale_factor,
                         request.font_role,
+                        request.font_weight,
                     )
                     .map_err(|error| UiFrameError::TextLayoutRejected {
                         node: request.node,
@@ -3771,13 +4184,31 @@ impl UiRuntime {
             } else {
                 0.0
             }) + request.style.padding * 2.0;
-            if request.focusable {
+            // Dense retained navigation rows remain keyboard-operable and
+            // semantic without inheriting the touch-sized command-button
+            // minimum. A tree branch may carry an audited disclosure vector;
+            // that visual affordance must not expand every hierarchy row into
+            // a 44 px stack and erase the editor's information density.
+            if request.focusable && request.kind != UiWidgetKind::TreeItem {
                 width = width.max(MIN_ACCESSIBLE_CONTROL_EXTENT);
                 height = height.max(MIN_ACCESSIBLE_CONTROL_EXTENT);
             }
             sizes.insert(request.node, UiSize::new(width, height));
         }
         Ok(sizes)
+    }
+
+    fn rendered_node_text(&self, node: &UiNode) -> Option<String> {
+        let text = self
+            .text_inputs
+            .get(&node.id)
+            .map(UiTextInputState::rendered_text)
+            .or_else(|| node.text.clone());
+        if text.as_deref().is_some_and(str::is_empty) {
+            node.placeholder.clone()
+        } else {
+            text
+        }
     }
 
     fn process_event(
@@ -3833,7 +4264,7 @@ impl UiRuntime {
             UiEvent::PointerUp(point) => {
                 return self.process_legacy_pointer(false, point, layout, effects, line_step);
             }
-            UiEvent::PointerCancel => self.cancel_pointer_interaction(),
+            UiEvent::PointerCancel => self.cancel_pointer_interaction(effects),
             UiEvent::CancelInteraction => return self.cancel_interaction(effects),
             UiEvent::Controller(event) => {
                 return self.process_controller(event, suppress_activation, layout, effects);
@@ -3963,8 +4394,7 @@ impl UiRuntime {
 
     fn property_editor_is_valid(&self, editor: UiNodeId) -> Option<UiNodeId> {
         let node = self.document.node(editor)?;
-        if !self.is_node_visible(editor)
-            || node.semantics.state.disabled
+        if !self.target_is_interactable_in_active_focus_scope(editor)
             || !node.focusable
             || node.text_input.is_none_or(|options| options.password)
             || !self.text_inputs.contains_key(&editor)
@@ -4013,13 +4443,14 @@ impl UiRuntime {
         };
         let editor = active.editor;
         let grid = active.grid;
-        let valid = self.document.node(editor).is_some_and(|node| {
-            node.text_validation.is_none_or(|rule| {
-                self.text_inputs
-                    .get(&editor)
-                    .is_some_and(|state| state.is_valid(rule))
-            })
-        });
+        let valid = self.property_editor_is_valid(editor).is_some()
+            && self.document.node(editor).is_some_and(|node| {
+                node.text_validation.is_none_or(|rule| {
+                    self.text_inputs
+                        .get(&editor)
+                        .is_some_and(|state| state.is_valid(rule))
+                })
+            });
         if !valid {
             effects
                 .diagnostics
@@ -4042,6 +4473,19 @@ impl UiRuntime {
     }
 
     fn cancel_property_edit(&mut self, effects: &mut UiFrameEffects) {
+        let Some(editor) = self
+            .active_property_edit
+            .as_ref()
+            .map(|active| active.editor)
+        else {
+            return;
+        };
+        if !self.target_is_in_active_focus_scope(editor) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::PropertyEditDenied { node: editor });
+            return;
+        }
         let Some(active) = self.active_property_edit.take() else {
             return;
         };
@@ -4099,7 +4543,7 @@ impl UiRuntime {
 
     fn accepted_timeline_contract(&self, timeline: UiNodeId) -> Option<UiTimelineContract> {
         let node = self.document.node(timeline)?;
-        (!node.semantics.state.disabled && self.is_node_visible(timeline))
+        self.target_is_interactable_in_active_focus_scope(timeline)
             .then_some(node.timeline)
             .flatten()
     }
@@ -4183,6 +4627,13 @@ impl UiRuntime {
                 });
             return;
         };
+        if self.accepted_timeline_contract(timeline).is_none() {
+            self.cancel_timeline_scrub(effects);
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TimelineInteractionDenied { node: timeline });
+            return;
+        }
         self.timeline_states
             .get_mut(&timeline)
             .expect("active scrub has retained state")
@@ -4311,7 +4762,7 @@ impl UiRuntime {
 
     fn accepted_canvas_contract(&self, canvas: UiNodeId) -> Option<UiCanvasContract> {
         let node = self.document.node(canvas)?;
-        (!node.semantics.state.disabled && self.is_node_visible(canvas))
+        self.target_is_interactable_in_active_focus_scope(canvas)
             .then_some(node.canvas)
             .flatten()
     }
@@ -4569,14 +5020,15 @@ impl UiRuntime {
         false
     }
 
-    fn cancel_pointer_interaction(&mut self) {
+    fn cancel_pointer_interaction(&mut self, effects: &mut UiFrameEffects) {
         self.pointer_capture = None;
         self.hovered = None;
         self.scroll_capture = None;
         self.drag = None;
+        self.cancel_pointer_preview_interactions(effects);
     }
 
-    fn cancel_device_interaction(&mut self, device: UiInputDeviceId) {
+    fn cancel_device_interaction(&mut self, device: UiInputDeviceId) -> bool {
         let owns_pointer = self
             .pointer_capture
             .is_some_and(|capture| capture.device == device);
@@ -4593,6 +5045,7 @@ impl UiRuntime {
             self.scroll_capture = None;
         }
         self.hovered = None;
+        owns_pointer
     }
 
     fn advance_transients(&mut self, delta_ms: u32) {
@@ -4682,6 +5135,21 @@ impl UiRuntime {
                 .push(UiDiagnostic::TransientTargetDenied { node });
             return false;
         };
+        let focus_surface_is_allowed = self.active_focus_surface().is_none_or(|surface| {
+            surface == node || self.target_is_within_focus_surface(node, surface)
+        });
+        if Self::transient_owns_focus(transient.kind) && !focus_surface_is_allowed {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TransientTargetDenied { node });
+            return false;
+        }
+        if Self::transient_owns_focus(transient.kind) {
+            // A new modal focus scope invalidates any gesture that began in the
+            // prior scope. A later pointer release or scrub commit must not
+            // mutate the background from behind the transient.
+            self.cancel_pointer_interaction(effects);
+        }
         let restore_focus = self.focused.or(transient.anchor);
         let Some(state) = self.transient_states.get_mut(&node) else {
             effects
@@ -4728,6 +5196,12 @@ impl UiRuntime {
                 .push(UiDiagnostic::TransientTargetDenied { node });
             return false;
         };
+        if Self::transient_owns_focus(transient.kind) && self.active_focus_surface() != Some(node) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::TransientTargetDenied { node });
+            return false;
+        }
         let Some(state) = self.transient_states.get_mut(&node) else {
             effects
                 .diagnostics
@@ -4750,11 +5224,8 @@ impl UiRuntime {
         if transient.kind == UiTransientSurfaceKind::Toast {
             self.promote_next_toast();
         }
-        if let Some(target) = restore_focus.filter(|target| {
-            self.document.node(*target).is_some_and(|node| {
-                node.focusable && !node.semantics.state.disabled && self.is_node_visible(*target)
-            })
-        }) {
+        if let Some(target) = restore_focus.filter(|target| self.focus_target_is_eligible(*target))
+        {
             self.set_focus(target);
         } else {
             self.recover_invisible_focus();
@@ -4787,7 +5258,7 @@ impl UiRuntime {
     }
 
     fn dismiss_top_transient(&mut self, effects: &mut UiFrameEffects) -> bool {
-        while let Some(surface) = self.transient_stack.pop() {
+        while let Some(surface) = self.transient_stack.last().copied() {
             if self
                 .transient_states
                 .get(&surface)
@@ -4795,6 +5266,7 @@ impl UiRuntime {
             {
                 return self.dismiss_transient(surface, effects);
             }
+            self.transient_stack.pop();
         }
         let tooltip = self.transient_document_order().into_iter().find(|node| {
             self.document.node(*node).is_some_and(|node| {
@@ -4811,9 +5283,31 @@ impl UiRuntime {
     }
 
     fn cancel_interaction(&mut self, effects: &mut UiFrameEffects) -> bool {
-        self.cancel_pointer_interaction();
+        self.cancel_pointer_interaction(effects);
         self.cancel_preedit_if_active(effects);
+        self.cancel_property_edit(effects);
         self.dismiss_top_transient(effects)
+    }
+
+    fn cancel_pointer_preview_interactions(&mut self, effects: &mut UiFrameEffects) {
+        self.cancel_timeline_scrub(effects);
+        self.cancel_canvas_connection_previews(effects);
+    }
+
+    /// Rolls back every graph connection preview without proposing a source mutation.
+    fn cancel_canvas_connection_previews(&mut self, effects: &mut UiFrameEffects) {
+        let active: Vec<_> = self
+            .canvas_states
+            .iter()
+            .filter_map(|(canvas, state)| state.connection.is_some().then_some(*canvas))
+            .collect();
+        for canvas in active {
+            self.canvas_states
+                .get_mut(&canvas)
+                .expect("active canvas preview has retained state")
+                .connection = None;
+            self.dispatch(canvas, &mut effects.routes);
+        }
     }
 
     fn adjust_focused_control(
@@ -4931,7 +5425,10 @@ impl UiRuntime {
 
     fn assistive_focus(&mut self, target: UiNodeId, effects: &mut UiFrameEffects) {
         if self.document.node(target).is_some_and(|node| {
-            node.focusable && !node.semantics.state.disabled && self.is_node_visible(target)
+            node.focusable
+                && !node.semantics.state.disabled
+                && self.is_node_visible(target)
+                && self.target_is_in_active_focus_scope(target)
         }) {
             self.dispatch(target, &mut effects.routes);
             self.set_focus(target);
@@ -4948,6 +5445,7 @@ impl UiRuntime {
                 && !node.semantics.state.disabled
                 && node.semantics.action.is_some()
                 && self.is_node_visible(target)
+                && self.target_is_in_active_focus_scope(target)
         });
         if accepted {
             self.dispatch(target, &mut effects.routes);
@@ -5015,6 +5513,15 @@ impl UiRuntime {
                 });
             return false;
         };
+        if !self.target_is_interactable_in_active_focus_scope(target) {
+            effects
+                .diagnostics
+                .push(UiDiagnostic::AssistiveActionDenied {
+                    node: target,
+                    action,
+                });
+            return false;
+        }
         let supported = semantic_actions(&node.semantics, node.focusable, node.timeline.is_some())
             .contains(&action);
         if !supported {
@@ -5102,9 +5609,11 @@ impl UiRuntime {
             .into_iter()
             .rev()
             .find(|ancestor| {
-                self.document
-                    .node(*ancestor)
-                    .is_some_and(|node| matches!(node.layout, UiLayout::Scroll { .. }))
+                self.target_is_in_active_focus_scope(*ancestor)
+                    && self
+                        .document
+                        .node(*ancestor)
+                        .is_some_and(|node| matches!(node.layout, UiLayout::Scroll { .. }))
             })
         else {
             return false;
@@ -5158,8 +5667,7 @@ impl UiRuntime {
         effects: &mut UiFrameEffects,
     ) {
         let editable = self.document.node(target).is_some_and(|node| {
-            node.focusable
-                && !node.semantics.state.disabled
+            self.focus_target_is_eligible(target)
                 && matches!(
                     node.semantics.role,
                     meridian_ui_core::SemanticRole::TextInput
@@ -5343,15 +5851,16 @@ impl UiRuntime {
         line_step: f32,
     ) -> bool {
         if !Self::valid_pointer_event(event) {
-            self.cancel_device_interaction(event.device);
-            effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
+            self.reject_owned_pointer_event(event.device, effects);
             return false;
         }
         if event.phase == UiPointerPhase::Cancel {
             let pointer_owned_by_another_device = self
                 .pointer_capture
                 .is_some_and(|capture| capture.device != event.device);
-            self.cancel_device_interaction(event.device);
+            if self.cancel_device_interaction(event.device) {
+                self.cancel_pointer_preview_interactions(effects);
+            }
             if pointer_owned_by_another_device {
                 effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
             }
@@ -5373,24 +5882,43 @@ impl UiRuntime {
         );
         self.hovered = if hover_capable {
             self.hit_test(event.position, layout)
+                .filter(|target| self.target_is_in_active_focus_scope(*target))
         } else {
             None
         };
         match event.phase {
             UiPointerPhase::Press => {
                 let Some(button) = Self::effective_pointer_button(event) else {
-                    effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
+                    self.reject_owned_pointer_event(event.device, effects);
                     return false;
                 };
                 let target = self.hit_test(event.position, layout);
+                if let Some(surface) = self.active_focus_surface() {
+                    if target
+                        .is_none_or(|target| !self.target_is_within_focus_surface(target, surface))
+                    {
+                        self.hovered = None;
+                        self.dismiss_transient(surface, effects);
+                        return false;
+                    }
+                }
                 self.pointer_capture = target.map(|target| PointerCapture {
                     device: event.device,
                     target,
                     button,
+                    last_position: event.position,
                 });
                 if let Some(target) = target {
-                    self.dispatch(target, &mut effects.routes);
-                    self.set_focus(target);
+                    if !self.begin_pointer_control_interaction(
+                        target,
+                        button,
+                        event.position,
+                        layout,
+                        effects,
+                    ) {
+                        self.dispatch(target, &mut effects.routes);
+                        self.set_focus(target);
+                    }
                 } else if !layout
                     .get(&self.document.root())
                     .is_some_and(|bounds| bounds.contains(event.position))
@@ -5408,10 +5936,13 @@ impl UiRuntime {
                     }
                     return self.drag_auto_scroll(event.position, layout, line_step);
                 }
+                if self.update_pointer_control_interaction(event.position, layout, effects) {
+                    return false;
+                }
             }
             UiPointerPhase::Release => {
                 let Some(button) = Self::effective_pointer_button(event) else {
-                    effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
+                    self.reject_owned_pointer_event(event.device, effects);
                     return false;
                 };
                 return self.release_pointer(event.position, button, layout, effects);
@@ -5419,6 +5950,183 @@ impl UiRuntime {
             UiPointerPhase::Cancel => {}
         }
         false
+    }
+
+    /// Rejects one malformed pointer phase from its owning device without
+    /// leaving a captured preview eligible for a later source request.
+    fn reject_owned_pointer_event(
+        &mut self,
+        device: UiInputDeviceId,
+        effects: &mut UiFrameEffects,
+    ) {
+        if self.cancel_device_interaction(device) {
+            self.cancel_pointer_preview_interactions(effects);
+        }
+        effects.diagnostics.push(UiDiagnostic::InvalidPointerEvent);
+    }
+
+    fn begin_pointer_control_interaction(
+        &mut self,
+        target: UiNodeId,
+        button: UiPointerButton,
+        position: UiPoint,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+        effects: &mut UiFrameEffects,
+    ) -> bool {
+        if button == UiPointerButton::Primary && self.property_editor_is_valid(target).is_some() {
+            self.begin_property_edit(target, effects);
+            return true;
+        }
+        if button == UiPointerButton::Primary {
+            if let Some(value) = self.timeline_value_at_pointer(target, position, layout) {
+                self.begin_timeline_scrub(target, value, effects);
+                return true;
+            }
+        }
+        if matches!(button, UiPointerButton::Primary | UiPointerButton::Middle)
+            && self.accepted_canvas_contract(target).is_some()
+        {
+            self.dispatch(target, &mut effects.routes);
+            self.set_focus(target);
+            return true;
+        }
+        false
+    }
+
+    fn update_pointer_control_interaction(
+        &mut self,
+        position: UiPoint,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+        effects: &mut UiFrameEffects,
+    ) -> bool {
+        let Some(capture) = self.pointer_capture else {
+            return false;
+        };
+        if let Some(value) = self.timeline_value_at_pointer(capture.target, position, layout) {
+            self.update_timeline_scrub(value, effects);
+            self.update_pointer_capture_position(capture.device, position);
+            return true;
+        }
+        let Some(contract) = self.accepted_canvas_contract(capture.target) else {
+            return false;
+        };
+        if !matches!(
+            capture.button,
+            UiPointerButton::Primary | UiPointerButton::Middle
+        ) {
+            return false;
+        }
+        let delta_x = Self::pointer_delta_to_i32(position.x - capture.last_position.x);
+        let delta_y = Self::pointer_delta_to_i32(position.y - capture.last_position.y);
+        self.update_pointer_capture_position(capture.device, position);
+        if delta_x == 0 && delta_y == 0 {
+            return true;
+        }
+        self.pan_canvas(capture.target, contract, delta_x, delta_y);
+        self.dispatch(capture.target, &mut effects.routes);
+        self.set_focus(capture.target);
+        true
+    }
+
+    fn update_pointer_capture_position(&mut self, device: UiInputDeviceId, position: UiPoint) {
+        if let Some(capture) = self
+            .pointer_capture
+            .as_mut()
+            .filter(|capture| capture.device == device)
+        {
+            capture.last_position = position;
+        }
+    }
+
+    fn timeline_value_at_pointer(
+        &self,
+        timeline: UiNodeId,
+        position: UiPoint,
+        layout: &BTreeMap<UiNodeId, UiRect>,
+    ) -> Option<i64> {
+        self.timeline_value_at_bounds(timeline, position, layout.get(&timeline).copied()?)
+    }
+
+    fn timeline_value_at_bounds(
+        &self,
+        timeline: UiNodeId,
+        position: UiPoint,
+        bounds: UiRect,
+    ) -> Option<i64> {
+        let contract = self.accepted_timeline_contract(timeline)?;
+        if !bounds.size.width.is_finite() || bounds.size.width <= 0.0 {
+            return None;
+        }
+        let relative = ((position.x - bounds.origin.x) / bounds.size.width).clamp(0.0, 1.0);
+        let (numerator, denominator) = Self::normalized_pointer_fraction(relative)?;
+        let minimum = i128::from(contract.minimum);
+        let span = u128::try_from(i128::from(contract.maximum) - minimum).ok()?;
+        let offset = span.checked_mul(numerator)?.saturating_add(denominator / 2) / denominator;
+        let raw = minimum.checked_add(i128::try_from(offset).ok()?)?;
+        let step = i128::from(contract.step);
+        let snapped = minimum + ((raw - minimum + step / 2) / step) * step;
+        i64::try_from(snapped.clamp(minimum, i128::from(contract.maximum))).ok()
+    }
+
+    fn normalized_pointer_fraction(value: f32) -> Option<(u128, u128)> {
+        if !value.is_finite() {
+            return None;
+        }
+        if value <= 0.0 {
+            return Some((0, 1));
+        }
+        if value >= 1.0 {
+            return Some((1, 1));
+        }
+        let bits = value.to_bits();
+        let exponent_bits = (bits >> 23) & 0xff;
+        if exponent_bits == 0 {
+            return Some((0, 1));
+        }
+        let exponent = i32::try_from(exponent_bits).ok()? - 127;
+        if exponent < -65 {
+            return Some((0, 1));
+        }
+        let shift = u32::try_from(23_i32.checked_sub(exponent)?).ok()?;
+        let numerator = u128::from((bits & 0x7f_ffff) | (1 << 23));
+        let denominator = 1_u128.checked_shl(shift)?;
+        Some((numerator, denominator))
+    }
+
+    fn pointer_delta_to_i32(delta: f32) -> i32 {
+        const MAX_MAGNITUDE: f32 = 2_147_483_648.0;
+        if !delta.is_finite() {
+            return 0;
+        }
+        let negative = delta.is_sign_negative();
+        let magnitude = delta.abs();
+        if magnitude >= MAX_MAGNITUDE {
+            return if negative { i32::MIN } else { i32::MAX };
+        }
+        let rounded = Self::floor_nonnegative_f32_to_u64(magnitude + 0.5);
+        let magnitude = i32::try_from(rounded).unwrap_or(i32::MAX);
+        if negative {
+            -magnitude
+        } else {
+            magnitude
+        }
+    }
+
+    fn floor_nonnegative_f32_to_u64(value: f32) -> u64 {
+        if value < 1.0 {
+            return 0;
+        }
+        let bits = value.to_bits();
+        let exponent_bits = (bits >> 23) & 0xff;
+        let exponent = i32::try_from(exponent_bits).expect("f32 exponent fits i32") - 127;
+        let mantissa = u64::from((bits & 0x7f_ffff) | (1 << 23));
+        if exponent >= 23 {
+            let shift = u32::try_from(exponent - 23).expect("nonnegative f32 shift");
+            mantissa.checked_shl(shift).unwrap_or(u64::MAX)
+        } else {
+            let shift = u32::try_from(23 - exponent).expect("positive f32 shift");
+            mantissa >> shift
+        }
     }
 
     fn release_pointer(
@@ -5445,6 +6153,24 @@ impl UiRuntime {
         let Some(capture) = captured else {
             return false;
         };
+        if self.accepted_timeline_contract(capture.target).is_some() {
+            self.dispatch(capture.target, &mut effects.routes);
+            if capture.button == button {
+                self.commit_timeline_scrub(effects);
+            } else {
+                self.cancel_timeline_scrub(effects);
+            }
+            return false;
+        }
+        if self.accepted_canvas_contract(capture.target).is_some()
+            && matches!(
+                capture.button,
+                UiPointerButton::Primary | UiPointerButton::Middle
+            )
+        {
+            self.dispatch(capture.target, &mut effects.routes);
+            return false;
+        }
         self.dispatch(capture.target, &mut effects.routes);
         if capture.button != button || released_over != Some(capture.target) {
             return false;
@@ -5593,6 +6319,9 @@ impl UiRuntime {
             .into_iter()
             .rev()
             .filter_map(|node_id| {
+                if !self.target_is_in_active_focus_scope(node_id) {
+                    return None;
+                }
                 let node = self.document.node(node_id)?;
                 let UiLayout::Scroll { axis, .. } = node.layout else {
                     return None;
@@ -5664,7 +6393,8 @@ impl UiRuntime {
         diagnostics: &mut Vec<UiDiagnostic>,
     ) {
         let accepted = self.document.node(source).is_some_and(|node| {
-            !node.semantics.state.disabled && node.drag_source == Some(payload.kind)
+            self.target_is_interactable_in_active_focus_scope(source)
+                && node.drag_source == Some(payload.kind)
         });
         if !accepted {
             diagnostics.push(UiDiagnostic::DragSourceDenied {
@@ -5699,7 +6429,7 @@ impl UiRuntime {
             return;
         };
         let accepted = self.document.node(target).is_some_and(|node| {
-            !node.semantics.state.disabled
+            self.target_is_interactable_in_active_focus_scope(target)
                 && node.drop_accepts.contains(&drag.payload.kind)
                 && node.drop_operations.contains(&drag.payload.operation)
         });
@@ -6042,16 +6772,20 @@ impl UiRuntime {
     fn collection_context(&self) -> Option<(UiNodeId, Vec<UiNodeId>)> {
         let focused_collection = self
             .focused
+            .filter(|focused| self.target_is_in_active_focus_scope(*focused))
             .and_then(|focused| Self::collection_for(&self.document, focused));
         let active_collection = self.active_collection.filter(|container| {
-            self.document
-                .node(*container)
-                .is_some_and(|node| Self::is_collection_kind(node.kind))
+            self.document.node(*container).is_some_and(|node| {
+                Self::is_collection_kind(node.kind)
+                    && self.target_is_in_active_focus_scope(*container)
+            })
         });
         let root_collection = self
             .document
             .node(self.document.root())
-            .filter(|node| Self::is_collection_kind(node.kind))
+            .filter(|node| {
+                Self::is_collection_kind(node.kind) && self.target_is_in_active_focus_scope(node.id)
+            })
             .map(|node| node.id);
         let container = focused_collection
             .or(active_collection)
@@ -6081,7 +6815,11 @@ impl UiRuntime {
         if !self.is_node_visible(current) {
             return;
         }
-        if current != container && node.focusable && !node.semantics.state.disabled {
+        if current != container
+            && node.focusable
+            && !node.semantics.state.disabled
+            && self.target_is_in_active_focus_scope(current)
+        {
             visible.push(current);
         }
         for child in &node.children {
@@ -6339,16 +7077,6 @@ impl UiRuntime {
         }
     }
 
-    fn remember_collection_focus(&mut self, document: &UiDocument, target: UiNodeId) {
-        if let Some(container) = Self::collection_for(document, target) {
-            self.collection_cursors
-                .entry(container)
-                .or_default()
-                .selected = Some(target);
-            self.active_collection = Some(container);
-        }
-    }
-
     fn dispatch(&self, target: UiNodeId, routes: &mut Vec<UiEventRoute>) {
         let Some(path) = self.document.route_to(target) else {
             return;
@@ -6425,6 +7153,7 @@ impl UiRuntime {
         layout: &BTreeMap<UiNodeId, UiRect>,
     ) -> Option<UiNodeId> {
         self.scroll_hit_test_node(self.document.root(), point, layout)
+            .filter(|target| self.target_is_in_active_focus_scope(*target))
     }
 
     fn scroll_hit_test_node(
@@ -6541,6 +7270,9 @@ impl UiRuntime {
             let Some(target) = self.virtual_focus_target(collection, position) else {
                 continue;
             };
+            if !self.focus_target_is_eligible(target) {
+                continue;
+            }
             self.pending_virtual_focus.remove(&collection);
             self.set_focus(target);
         }
@@ -6649,10 +7381,48 @@ impl UiRuntime {
         } else {
             None
         };
-        self.emit_node_visuals(id, bounds, style, emission)?;
-        emission.semantic_nodes.push(SemanticNode {
+        self.emit_node_visuals(
+            id,
+            bounds,
+            style,
+            node.presentation.elevation,
+            opacity,
+            emission,
+        )?;
+        self.emit_node_semantics(
             id,
             parent,
+            semantics,
+            actions,
+            authoritative_bounds,
+            emission,
+        );
+        for child in children {
+            self.emit_node(child, Some(id), opacity, emission)?;
+        }
+        if let Some(id) = clip_id {
+            emission
+                .display
+                .try_push(DisplayPrimitive::PopClip { id })?;
+        }
+        Ok(())
+    }
+
+    fn emit_node_semantics(
+        &self,
+        id: UiNodeId,
+        parent: Option<UiNodeId>,
+        semantics: UiSemantics,
+        actions: Vec<SemanticAction>,
+        bounds: UiRect,
+        emission: &mut UiEmission<'_>,
+    ) {
+        if !self.node_is_in_active_semantic_scope(id) {
+            return;
+        }
+        emission.semantic_nodes.push(SemanticNode {
+            id,
+            parent: self.semantic_parent(id, parent),
             role: semantics.role,
             name: semantics.name,
             description: semantics.description,
@@ -6673,18 +7443,9 @@ impl UiRuntime {
                     position: item.position,
                     set_size: item.set_size,
                 }),
-            bounds: authoritative_bounds,
+            bounds,
             focused: self.focused == Some(id),
         });
-        for child in children {
-            self.emit_node(child, Some(id), opacity, emission)?;
-        }
-        if let Some(id) = clip_id {
-            emission
-                .display
-                .try_push(DisplayPrimitive::PopClip { id })?;
-        }
-        Ok(())
     }
 
     fn emit_node_visuals(
@@ -6692,22 +7453,58 @@ impl UiRuntime {
         id: UiNodeId,
         bounds: UiRect,
         style: UiStyle,
+        elevation: UiElevation,
+        opacity: f32,
         emission: &mut UiEmission<'_>,
     ) -> Result<(), UiEmissionError> {
         let Some(node) = self.document.node(id) else {
             return Ok(());
         };
         let visual_state = self.visual_state(node);
+        emit_node_elevation(
+            id,
+            bounds,
+            style,
+            elevation,
+            emission.contrast,
+            emission.display,
+        )?;
         emit_node_surface(id, style, bounds, emission.display)?;
-        let rendered_text = self
+        if node.kind == UiWidgetKind::Image {
+            if let Some(image) = emission.resolved_assets.get(&id).copied() {
+                emission.display.try_push(DisplayPrimitive::Image {
+                    node: id,
+                    bounds: inset_bounds(bounds, style.padding),
+                    image,
+                    opacity,
+                })?;
+            } else {
+                emission
+                    .diagnostics
+                    .push(UiDiagnostic::AssetUnavailable { node: id });
+            }
+        }
+        let input_text = self
             .text_inputs
             .get(&id)
             .map(UiTextInputState::rendered_text)
             .or_else(|| node.text.clone());
+        let is_placeholder =
+            input_text.as_deref().is_some_and(str::is_empty) && node.placeholder.is_some();
+        let rendered_text = if is_placeholder {
+            node.placeholder.clone()
+        } else {
+            input_text
+        };
+        let mut text_style = style;
+        if is_placeholder && emission.contrast != UiContrast::High {
+            text_style.foreground = UiColor::muted_text();
+        }
         let content_width = (bounds.size.width - style.padding * 2.0).max(1.0);
         let content_height = (bounds.size.height - style.padding * 2.0).max(1.0);
-        let mut text_origin_x = bounds.origin.x + style.padding;
-        let mut text_width = content_width;
+        let tree_child_indent = tree_child_text_indent(node.kind, node.icon.is_some());
+        let mut text_origin_x = bounds.origin.x + style.padding + tree_child_indent;
+        let mut text_width = (content_width - tree_child_indent).max(1.0);
         emit_node_icon(
             IconVisualParams {
                 id,
@@ -6726,12 +7523,14 @@ impl UiRuntime {
                 TextVisualParams {
                     id,
                     node,
-                    style,
+                    style: text_style,
                     text,
                     origin_x: text_origin_x,
                     width: text_width,
                     height: content_height,
                     bounds,
+                    single_line: uses_single_line_text(node.kind),
+                    horizontal_center: uses_centered_control_text(node.kind) && node.icon.is_none(),
                 },
                 emission,
             )?;
@@ -7239,6 +8038,39 @@ struct TextVisualParams<'a> {
     width: f32,
     height: f32,
     bounds: UiRect,
+    single_line: bool,
+    horizontal_center: bool,
+}
+
+fn uses_single_line_text(kind: UiWidgetKind) -> bool {
+    matches!(
+        kind,
+        UiWidgetKind::Button
+            | UiWidgetKind::IconButton
+            | UiWidgetKind::Toggle
+            | UiWidgetKind::Progress
+            | UiWidgetKind::TextInput
+            | UiWidgetKind::SearchInput
+            | UiWidgetKind::ComboBox
+            | UiWidgetKind::ComboOption
+            | UiWidgetKind::MenuItem
+            | UiWidgetKind::Tab
+            | UiWidgetKind::TreeItem
+            | UiWidgetKind::ListItem
+            | UiWidgetKind::Splitter
+    )
+}
+
+fn uses_centered_control_text(kind: UiWidgetKind) -> bool {
+    matches!(
+        kind,
+        UiWidgetKind::Button
+            | UiWidgetKind::Toggle
+            | UiWidgetKind::Progress
+            | UiWidgetKind::ComboOption
+            | UiWidgetKind::MenuItem
+            | UiWidgetKind::Tab
+    )
 }
 
 fn emit_node_text(
@@ -7246,25 +8078,63 @@ fn emit_node_text(
     params: TextVisualParams<'_>,
     emission: &mut UiEmission<'_>,
 ) -> Result<(), UiEmissionError> {
+    let font_size = params.style.font_size * emission.text_scale.factor();
+    let (text, text_output) = if params.single_line {
+        let fitted = text_engine
+            .layout_single_line_with_weight(
+                &params.text,
+                params.width,
+                font_size,
+                emission.scale_factor,
+                params.node.font_role,
+                params.node.font_weight,
+            )
+            .map_err(|error| UiEmissionError::TextLayout {
+                node: params.id,
+                error,
+            })?;
+        (fitted.text, fitted.output)
+    } else {
+        let output = text_engine
+            .layout_with_weight(
+                &params.text,
+                params.width,
+                font_size,
+                emission.scale_factor,
+                params.node.font_role,
+                params.node.font_weight,
+            )
+            .map_err(|error| UiEmissionError::TextLayout {
+                node: params.id,
+                error,
+            })?;
+        (params.text, output)
+    };
+    let drawn_width = if params.horizontal_center {
+        text_output.layout.width.min(params.width)
+    } else {
+        params.width
+    };
+    let drawn_height = if params.single_line {
+        text_output.layout.height.min(params.height)
+    } else {
+        params.height
+    };
     let text_bounds = UiRect::new(
         UiPoint {
-            x: params.origin_x,
-            y: params.bounds.origin.y + params.style.padding,
+            x: if params.horizontal_center {
+                params.origin_x + (params.width - drawn_width) * 0.5
+            } else {
+                params.origin_x
+            },
+            y: if params.single_line {
+                params.bounds.origin.y + params.style.padding + (params.height - drawn_height) * 0.5
+            } else {
+                params.bounds.origin.y + params.style.padding
+            },
         },
-        UiSize::new(params.width, params.height),
+        UiSize::new(drawn_width, drawn_height),
     );
-    let text_output = text_engine
-        .layout(
-            &params.text,
-            text_bounds.size.width,
-            params.style.font_size * emission.text_scale.factor(),
-            emission.scale_factor,
-            params.node.font_role,
-        )
-        .map_err(|error| UiEmissionError::TextLayout {
-            node: params.id,
-            error,
-        })?;
     if text_output.layout.used_fallback_metrics {
         emission
             .diagnostics
@@ -7283,7 +8153,7 @@ fn emit_node_text(
     emission.display.try_push(DisplayPrimitive::Text {
         node: params.id,
         bounds: text_bounds,
-        text: params.text,
+        text,
         color: params.style.foreground,
         layout: text_output.layout,
         raster: text_output.raster,
@@ -7298,6 +8168,14 @@ struct IconVisualParams<'a> {
     bounds: UiRect,
     style: UiStyle,
     has_text: bool,
+}
+
+fn tree_child_text_indent(kind: UiWidgetKind, has_icon: bool) -> f32 {
+    if kind == UiWidgetKind::TreeItem && !has_icon {
+        TREE_CHILD_TEXT_INDENT
+    } else {
+        0.0
+    }
 }
 
 fn emit_node_icon(
@@ -7410,18 +8288,87 @@ pub fn runtime_overlay_document() -> Result<UiDocument, UiDocumentError> {
 mod tests {
     use super::*;
     use meridian_ui_core::{
-        UiAbsolutePosition, UiCanvasContract, UiControlState, UiDragItemId, UiLayoutHints,
-        UiModifierKey, UiScrollDelta, UiSemanticCollectionItem, UiSemanticRelationships,
-        UiSharedElementId, UiStyle, UiTextInputOptions, UiTimelineContract,
-        UiTransientInitialState, UiVirtualCollection,
+        UiAbsolutePosition, UiAssetRef, UiAuthoredStyle, UiCanvasContract, UiComponentDefinition,
+        UiComponentId, UiControlState, UiDragItemId, UiElevation, UiLayoutHints, UiModifierKey,
+        UiNodeSource, UiScrollDelta, UiSemanticCollectionItem, UiSemanticRelationships,
+        UiSharedElementId, UiSpacing, UiStyle, UiStyleId, UiStyleVariant, UiTextInputOptions,
+        UiTimelineContract, UiTransientInitialState, UiVirtualCollection,
+        MAX_UI_DOCUMENT_SOURCE_BYTES,
     };
     use meridian_ui_text::UiTextSelection;
+
+    #[test]
+    fn retained_elevation_emits_a_bounded_shadow_and_high_contrast_omits_it() {
+        let root = UiNodeId::new(8_880);
+        let document = UiDocument::new(
+            root,
+            vec![UiNode::label(root, "Elevated source", "Elevated")
+                .with_style(UiStyle::surface())
+                .with_elevation(UiElevation::Floating)],
+        )
+        .expect("elevated document is valid");
+        let mut runtime = UiRuntime::new(document.clone());
+        let standard = runtime.reconcile(UiFrameInput::new(UiSize::new(320.0, 160.0)));
+        assert!(standard.display_list.primitives.iter().any(
+            |primitive| matches!(primitive, DisplayPrimitive::Shadow { node, .. } if *node == root)
+        ));
+
+        let mut high_contrast = UiRuntime::new(document);
+        let mut input = UiFrameInput::new(UiSize::new(320.0, 160.0));
+        input.contrast = UiContrast::High;
+        let output = high_contrast.reconcile(input);
+        assert!(!output.display_list.primitives.iter().any(
+            |primitive| matches!(primitive, DisplayPrimitive::Shadow { node, .. } if *node == root)
+        ));
+    }
 
     fn frame(events: Vec<UiEvent>) -> UiFrameInput {
         UiFrameInput {
             events,
             ..UiFrameInput::new(UiSize::new(800.0, 600.0))
         }
+    }
+
+    struct FixtureAssetResolver {
+        available: bool,
+    }
+
+    impl UiAssetResolver for FixtureAssetResolver {
+        fn resolve(&mut self, asset: &UiAssetRef) -> Result<UiImageHandle, UiAssetResolutionError> {
+            if self.available {
+                Ok(UiImageHandle(77))
+            } else {
+                Err(UiAssetResolutionError::Missing {
+                    node: UiNodeId::new(0),
+                    asset: asset.clone(),
+                })
+            }
+        }
+    }
+
+    struct CountingAssetResolver {
+        calls: usize,
+    }
+
+    impl UiAssetResolver for CountingAssetResolver {
+        fn resolve(
+            &mut self,
+            _asset: &UiAssetRef,
+        ) -> Result<UiImageHandle, UiAssetResolutionError> {
+            self.calls = self.calls.saturating_add(1);
+            Ok(UiImageHandle(88))
+        }
+    }
+
+    fn primary_pointer(phase: UiPointerPhase, position: UiPoint) -> UiEvent {
+        UiEvent::Pointer(UiPointerEvent {
+            device: UiInputDeviceId::new(0xA11),
+            kind: UiInputDeviceKind::Mouse,
+            phase,
+            position,
+            button: matches!(phase, UiPointerPhase::Press | UiPointerPhase::Release)
+                .then_some(UiPointerButton::Primary),
+        })
     }
 
     fn presentation_motion_document(
@@ -7473,6 +8420,322 @@ mod tests {
         );
         assert!((output.frame_diagnostics.scale_factor - 1.0).abs() < f32::EPSILON);
         assert!(!output.frame_diagnostics.recovered_previous_snapshot);
+    }
+
+    #[test]
+    fn authored_document_compiles_to_the_same_runtime_frame_as_its_resolved_contract() {
+        let root = UiNodeId::new(9_001);
+        let button = UiNodeId::new(9_002);
+        let style = UiStyleId::new(9_101);
+        let component = UiComponentId::new(9_201);
+        let legacy = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Root", UiLayout::column(UiSpacing::Px8), vec![button]),
+                UiNode::button(button, "Run", "workspace.run", "Run"),
+            ],
+        )
+        .expect("resolved fixture is valid");
+        let authored = UiDocument::authoring(root)
+            .with_style(UiAuthoredStyle::new(style, UiStyleVariant::SecondaryAction))
+            .with_component(UiComponentDefinition::new(component, style))
+            .with_node(UiNode::container(
+                root,
+                "Root",
+                UiLayout::column(UiSpacing::Px8),
+                vec![button],
+            ))
+            .with_authored_node(
+                UiNode::button(button, "Run", "workspace.run", "Run"),
+                UiNodeSource::plain().with_component(component),
+            )
+            .build()
+            .expect("authored fixture is valid");
+
+        let recovered = UiDocument::decode_canonical_source(
+            &authored
+                .encode_canonical_source()
+                .expect("authored source serializes before runtime recovery"),
+        )
+        .expect("persisted source restores the authored contract");
+        let legacy_frame = UiRuntime::new(legacy).reconcile(frame(Vec::new()));
+        let authored_frame = UiRuntime::new(authored).reconcile(frame(Vec::new()));
+        let recovered_frame = UiRuntime::new(recovered.clone()).reconcile(frame(Vec::new()));
+        let mut source_compiler = UiDocumentCompiler::new(recovered);
+        let compiled = source_compiler.compile(frame(Vec::new()));
+        assert_eq!(compiled.frame.layout, authored_frame.layout);
+        assert_eq!(compiled.frame.display_list, authored_frame.display_list);
+        assert_eq!(compiled.frame.semantic_tree, authored_frame.semantic_tree);
+        assert_eq!(compiled.source, source_compiler.source().clone());
+        assert_eq!(authored_frame.layout, legacy_frame.layout);
+        assert_eq!(authored_frame.display_list, legacy_frame.display_list);
+        assert_eq!(authored_frame.semantic_tree, legacy_frame.semantic_tree);
+        assert_eq!(recovered_frame.layout, authored_frame.layout);
+        assert_eq!(recovered_frame.display_list, authored_frame.display_list);
+        assert_eq!(recovered_frame.semantic_tree, authored_frame.semantic_tree);
+    }
+
+    #[test]
+    fn compiler_replaces_canonical_source_atomically_and_preserves_it_on_decode_failure() {
+        let original = runtime_overlay_document().expect("runtime source is valid");
+        let replacement = recovery_panel_document().expect("replacement source is valid");
+        let replacement_bytes = replacement
+            .encode_canonical_source()
+            .expect("replacement source encodes");
+        let mut compiler = UiDocumentCompiler::new(original.clone());
+
+        let (_, migration) = compiler
+            .try_replace_canonical_source_with_migration(&replacement_bytes)
+            .expect("canonical source replacement succeeds");
+        assert_eq!(migration, UiDocumentSourceMigration::Current);
+        assert_eq!(compiler.source(), &replacement);
+
+        let result = compiler.try_replace_canonical_source(b"{ malformed");
+        assert!(matches!(result, Err(UiDocumentSourceError::InvalidJson(_))));
+        assert_eq!(compiler.source(), &replacement);
+
+        let result =
+            compiler.try_replace_canonical_source(&vec![b' '; MAX_UI_DOCUMENT_SOURCE_BYTES + 1]);
+        assert_eq!(
+            result,
+            Err(UiDocumentSourceError::PayloadTooLarge {
+                bytes: MAX_UI_DOCUMENT_SOURCE_BYTES + 1,
+                maximum: MAX_UI_DOCUMENT_SOURCE_BYTES,
+            })
+        );
+        assert_eq!(compiler.source(), &replacement);
+        assert_ne!(compiler.source(), &original);
+    }
+
+    #[test]
+    fn authored_assets_lower_only_through_a_private_process_local_adapter() {
+        let root = UiNodeId::new(9_301);
+        let button = UiNodeId::new(9_302);
+        let asset = UiAssetRef::new("meridian.ui", "brand.mark").expect("bounded asset");
+        let document = UiDocument::authoring(root)
+            .with_node(UiNode::container(
+                root,
+                "Root",
+                UiLayout::Overlay,
+                vec![button],
+            ))
+            .with_authored_node(
+                UiNode::button(button, "Run", "workspace.run", "Run"),
+                UiNodeSource::plain().with_asset(asset.clone()),
+            )
+            .build()
+            .expect("asset fixture is valid");
+        let resolved = UiResolvedAssets::resolve_document(
+            &document,
+            &mut FixtureAssetResolver { available: true },
+        )
+        .expect("private adapter resolves the package asset");
+        assert_eq!(resolved.handle(&asset), Some(UiImageHandle(77)));
+        assert_eq!(
+            UiResolvedAssets::resolve_document(
+                &document,
+                &mut FixtureAssetResolver { available: false },
+            ),
+            Err(UiAssetResolutionError::Missing {
+                node: button,
+                asset,
+            })
+        );
+    }
+
+    #[test]
+    fn repeated_packaged_asset_references_share_one_derived_resolution() {
+        let root = UiNodeId::new(9_311);
+        let first = UiNodeId::new(9_312);
+        let second = UiNodeId::new(9_313);
+        let asset = UiAssetRef::new("meridian.ui", "brand.mark").expect("bounded asset");
+        let document = UiDocument::authoring(root)
+            .with_node(UiNode::container(
+                root,
+                "Asset root",
+                UiLayout::Overlay,
+                vec![first, second],
+            ))
+            .with_authored_node(
+                UiNode::image(first, "First mark"),
+                UiNodeSource::plain().with_asset(asset.clone()),
+            )
+            .with_authored_node(
+                UiNode::image(second, "Second mark"),
+                UiNodeSource::plain().with_asset(asset.clone()),
+            )
+            .build()
+            .expect("repeated asset fixture is valid");
+        let mut asset_resolver = CountingAssetResolver { calls: 0 };
+
+        let resolved_assets = UiResolvedAssets::resolve_document(&document, &mut asset_resolver)
+            .expect("repeated package references resolve");
+
+        assert_eq!(asset_resolver.calls, 1);
+        assert_eq!(resolved_assets.handle(&asset), Some(UiImageHandle(88)));
+        assert_eq!(
+            resolved_assets.handle_for_node(first),
+            Some(UiImageHandle(88))
+        );
+        assert_eq!(
+            resolved_assets.handle_for_node(second),
+            Some(UiImageHandle(88))
+        );
+    }
+
+    #[test]
+    fn resolved_authored_image_handles_enter_the_renderer_neutral_frame() {
+        let root = UiNodeId::new(9_321);
+        let image_node = UiNodeId::new(9_322);
+        let asset = UiAssetRef::new("meridian.ui", "brand.mark").expect("bounded asset");
+        let document = UiDocument::authoring(root)
+            .with_node(UiNode::container(
+                root,
+                "Image root",
+                UiLayout::Overlay,
+                vec![image_node],
+            ))
+            .with_authored_node(
+                UiNode::image(image_node, "Meridian mark"),
+                UiNodeSource::plain().with_asset(asset.clone()),
+            )
+            .build()
+            .expect("authored image source is valid");
+        let mut document_compiler = UiDocumentCompiler::new(document);
+
+        let compiled_frame = document_compiler
+            .compile_with_assets(
+                frame(Vec::new()),
+                &mut FixtureAssetResolver { available: true },
+            )
+            .expect("private asset adapter resolves image");
+        assert_eq!(
+            compiled_frame.assets.handle_for_node(image_node),
+            Some(UiImageHandle(77))
+        );
+        assert!(compiled_frame
+            .frame
+            .display_list
+            .primitives
+            .iter()
+            .any(|primitive| {
+                matches!(
+                    primitive,
+                    DisplayPrimitive::Image {
+                        node,
+                        image: UiImageHandle(77),
+                        ..
+                    } if *node == image_node
+                )
+            }));
+        assert!(!compiled_frame
+            .frame
+            .diagnostics
+            .contains(&UiDiagnostic::AssetUnavailable { node: image_node }));
+
+        let fallback = document_compiler.compile(frame(Vec::new()));
+        assert!(!fallback
+            .frame
+            .display_list
+            .primitives
+            .iter()
+            .any(|primitive| matches!(primitive, DisplayPrimitive::Image { .. })));
+        assert!(fallback
+            .frame
+            .diagnostics
+            .contains(&UiDiagnostic::AssetUnavailable { node: image_node }));
+    }
+
+    #[test]
+    fn document_compiler_resolves_assets_before_advancing_the_frame() {
+        let root = UiNodeId::new(9_351);
+        let button = UiNodeId::new(9_352);
+        let asset = UiAssetRef::new("meridian.ui", "brand.mark").expect("bounded asset");
+        let document = UiDocument::authoring(root)
+            .with_node(UiNode::container(
+                root,
+                "Root",
+                UiLayout::Overlay,
+                vec![button],
+            ))
+            .with_authored_node(
+                UiNode::button(button, "Run", "workspace.run", "Run"),
+                UiNodeSource::plain().with_asset(asset.clone()),
+            )
+            .build()
+            .expect("asset compiler fixture is valid");
+        let mut source_compiler = UiDocumentCompiler::new(document);
+        let compiled = source_compiler
+            .compile_with_assets(
+                frame(Vec::new()),
+                &mut FixtureAssetResolver { available: true },
+            )
+            .expect("available asset compiles");
+        assert_eq!(compiled.assets.handle(&asset), Some(UiImageHandle(77)));
+        assert_eq!(compiled.frame.revision, 1);
+
+        assert_eq!(
+            source_compiler.compile_with_assets(
+                frame(Vec::new()),
+                &mut FixtureAssetResolver { available: false },
+            ),
+            Err(UiAssetResolutionError::Missing {
+                node: button,
+                asset: asset.clone(),
+            })
+        );
+        let recovered = source_compiler
+            .compile_with_assets(
+                frame(Vec::new()),
+                &mut FixtureAssetResolver { available: true },
+            )
+            .expect("asset recovery compiles");
+        assert_eq!(recovered.frame.revision, 2);
+        assert_eq!(recovered.assets.handle(&asset), Some(UiImageHandle(77)));
+    }
+
+    #[test]
+    fn document_compiler_replaces_source_and_reports_authored_identity_changes() {
+        let root = UiNodeId::new(9_401);
+        let button = UiNodeId::new(9_402);
+        let style = UiStyleId::new(9_403);
+        let component = UiComponentId::new(9_404);
+        let authored = |variant| {
+            UiDocument::authoring(root)
+                .with_style(UiAuthoredStyle::new(style, variant))
+                .with_component(UiComponentDefinition::new(component, style))
+                .with_node(UiNode::container(
+                    root,
+                    "Root",
+                    UiLayout::column(UiSpacing::Px8),
+                    vec![button],
+                ))
+                .with_authored_node(
+                    UiNode::button(button, "Run", "workspace.run", "Run"),
+                    UiNodeSource::plain().with_component(component),
+                )
+                .build()
+                .expect("compiler source is valid")
+        };
+        let first = authored(UiStyleVariant::SecondaryAction);
+        let second = authored(UiStyleVariant::PrimaryAction);
+        let mut compiler = UiDocumentCompiler::new(first);
+        let first_frame = compiler.compile(frame(Vec::new()));
+        let delta = compiler.replace_source(second.clone());
+
+        assert_eq!(delta.updated_styles, vec![style]);
+        assert_eq!(delta.updated_components, Vec::<UiComponentId>::new());
+        assert_eq!(delta.updated_sources, Vec::<UiNodeId>::new());
+        assert!(delta.updated.contains(&button));
+        assert_eq!(compiler.last_source_delta(), &delta);
+
+        let second_frame = compiler.compile(frame(Vec::new()));
+        assert_eq!(second_frame.source, second);
+        assert_eq!(compiler.source(), &second_frame.source);
+        assert_ne!(
+            first_frame.frame.display_list,
+            second_frame.frame.display_list
+        );
     }
 
     #[test]
@@ -7749,6 +9012,529 @@ mod tests {
     }
 
     #[test]
+    fn assistive_requests_reject_hidden_transient_children() {
+        let root = UiNodeId::new(0x2d3);
+        let menu = UiNodeId::new(0x2d4);
+        let hidden_action = UiNodeId::new(0x2d5);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Hidden transient fixture",
+                    UiLayout::Overlay,
+                    vec![menu],
+                ),
+                UiNode::transient_menu(
+                    menu,
+                    "Project actions",
+                    vec![hidden_action],
+                    UiTransientInitialState::Hidden,
+                ),
+                UiNode::button(
+                    hidden_action,
+                    "Hidden context action",
+                    "fixture.hidden.activate",
+                    "Hidden",
+                )
+                .with_assistive_action(
+                    UiHostAssistiveAction::ShowContextMenu,
+                    "fixture.hidden.context-menu",
+                ),
+            ],
+        )
+        .expect("hidden transient fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        let denied = runtime.reconcile(frame(vec![UiEvent::AssistiveRequest {
+            target: hidden_action,
+            action: SemanticAction::ShowContextMenu,
+        }]));
+
+        assert!(denied.assistive_requests.is_empty());
+        assert!(denied.event_routes.is_empty());
+        assert!(denied
+            .diagnostics
+            .contains(&UiDiagnostic::AssistiveActionDenied {
+                node: hidden_action,
+                action: SemanticAction::ShowContextMenu,
+            }));
+    }
+
+    #[test]
+    fn focus_owning_transients_confine_keyboard_and_assistive_focus() {
+        let root = UiNodeId::new(0x2d8);
+        let before = UiNodeId::new(0x2d9);
+        let menu = UiNodeId::new(0x2da);
+        let first = UiNodeId::new(0x2db);
+        let second = UiNodeId::new(0x2dc);
+        let after = UiNodeId::new(0x2dd);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Transient focus fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![before, menu, after],
+                ),
+                UiNode::button(before, "Before menu", "fixture.before", "Before"),
+                UiNode::transient_menu(
+                    menu,
+                    "Project actions",
+                    vec![first, second],
+                    UiTransientInitialState::Hidden,
+                ),
+                UiNode::menu_item(first, "Rename", "fixture.rename", "Rename"),
+                UiNode::menu_item(second, "Duplicate", "fixture.duplicate", "Duplicate"),
+                UiNode::button(after, "After menu", "fixture.after", "After"),
+            ],
+        )
+        .expect("transient focus fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        let initial = runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        assert_eq!(initial.focused, Some(before));
+
+        let opened = runtime.reconcile(frame(vec![UiEvent::PresentTransient(menu)]));
+        assert_eq!(opened.focused, Some(first));
+        assert!(opened
+            .semantic_tree
+            .nodes
+            .iter()
+            .all(|node| node.id != before && node.id != after));
+        assert!(opened
+            .semantic_tree
+            .nodes
+            .iter()
+            .any(|node| node.id == menu));
+        assert!(!runtime.focus_retained_node(after));
+        let forward = runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        assert_eq!(forward.focused, Some(second));
+        let wrapped = runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        assert_eq!(wrapped.focused, Some(first));
+        let reverse = runtime.reconcile(frame(vec![UiEvent::FocusPrevious]));
+        assert_eq!(reverse.focused, Some(second));
+
+        let denied = runtime.reconcile(frame(vec![
+            UiEvent::AssistiveFocus(after),
+            UiEvent::AssistiveActivate(after),
+            UiEvent::AssistiveRequest {
+                target: after,
+                action: SemanticAction::Activate,
+            },
+        ]));
+        assert_eq!(denied.focused, Some(second));
+        assert!(denied.commands.is_empty());
+        assert!(denied
+            .diagnostics
+            .contains(&UiDiagnostic::AssistiveFocusDenied { node: after }));
+        assert!(denied
+            .diagnostics
+            .contains(&UiDiagnostic::AssistiveActivateDenied { node: after }));
+        assert!(denied
+            .diagnostics
+            .contains(&UiDiagnostic::AssistiveActionDenied {
+                node: after,
+                action: SemanticAction::Activate,
+            }));
+
+        let dismissed = runtime.reconcile(frame(vec![UiEvent::CancelInteraction]));
+        assert_eq!(dismissed.focused, Some(before));
+        let resumed = runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        assert_eq!(resumed.focused, Some(after));
+    }
+
+    #[test]
+    fn document_replacement_recovers_focus_inside_a_visible_transient() {
+        let root = UiNodeId::new(0x2de0);
+        let background = UiNodeId::new(0x2de1);
+        let menu = UiNodeId::new(0x2de2);
+        let removed_item = UiNodeId::new(0x2de3);
+        let replacement_item = UiNodeId::new(0x2de4);
+        let initial = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Transient replacement fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![background, menu],
+                ),
+                UiNode::button(background, "Background", "fixture.background", "Background"),
+                UiNode::transient_menu(
+                    menu,
+                    "Project actions",
+                    vec![removed_item],
+                    UiTransientInitialState::Hidden,
+                ),
+                UiNode::menu_item(removed_item, "Rename", "fixture.rename", "Rename"),
+            ],
+        )
+        .expect("initial transient replacement fixture is valid");
+        let mut runtime = UiRuntime::new(initial);
+
+        runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        let opened = runtime.reconcile(frame(vec![UiEvent::PresentTransient(menu)]));
+        assert_eq!(opened.focused, Some(removed_item));
+
+        let replacement = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Transient replacement fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![background, menu],
+                ),
+                UiNode::button(background, "Background", "fixture.background", "Background"),
+                UiNode::transient_menu(
+                    menu,
+                    "Project actions",
+                    vec![replacement_item],
+                    UiTransientInitialState::Hidden,
+                ),
+                UiNode::menu_item(
+                    replacement_item,
+                    "Duplicate",
+                    "fixture.duplicate",
+                    "Duplicate",
+                ),
+            ],
+        )
+        .expect("replacement transient fixture is valid");
+        runtime.replace_document(replacement);
+
+        let recovered = runtime.reconcile(frame(Vec::new()));
+        assert_eq!(recovered.focused, Some(replacement_item));
+        assert!(recovered.commands.is_empty());
+        assert_eq!(recovered.transients[0].phase, UiTransientPhase::Visible);
+    }
+
+    #[test]
+    fn focus_owning_transient_rejects_host_value_edits_behind_the_surface() {
+        let root = UiNodeId::new(0x2de5);
+        let background_input = UiNodeId::new(0x2de6);
+        let menu = UiNodeId::new(0x2de7);
+        let item = UiNodeId::new(0x2de8);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Transient assistive fixture",
+                    UiLayout::VerticalStack { gap: 4.0 },
+                    vec![background_input, menu],
+                ),
+                UiNode::text_input(
+                    background_input,
+                    "Project name",
+                    "Authoritative",
+                    UiTextInputOptions::default(),
+                ),
+                UiNode::transient_menu(
+                    menu,
+                    "Project actions",
+                    vec![item],
+                    UiTransientInitialState::Hidden,
+                ),
+                UiNode::menu_item(item, "Rename", "fixture.rename", "Rename"),
+            ],
+        )
+        .expect("transient assistive fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        let opened = runtime.reconcile(frame(vec![UiEvent::PresentTransient(menu)]));
+        assert_eq!(opened.focused, Some(item));
+
+        let denied = runtime.reconcile(frame(vec![UiEvent::AssistiveSetValue {
+            target: background_input,
+            text: "Unexpected mutation".to_owned(),
+            replace_selection: false,
+        }]));
+        assert_eq!(denied.focused, Some(item));
+        assert_eq!(
+            runtime.text_input_value(background_input),
+            Some("Authoritative")
+        );
+        assert!(denied
+            .diagnostics
+            .contains(&UiDiagnostic::AssistiveEditDenied {
+                node: background_input,
+            }));
+    }
+
+    #[test]
+    fn focus_owning_transient_does_not_cancel_a_background_property_edit() {
+        let root = UiNodeId::new(0x2de81);
+        let grid = UiNodeId::new(0x2de82);
+        let field = UiNodeId::new(0x2de83);
+        let menu = UiNodeId::new(0x2de84);
+        let item = UiNodeId::new(0x2de85);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Scoped property fixture",
+                    UiLayout::Overlay,
+                    vec![grid, menu],
+                ),
+                UiNode::property_grid(grid, "Transform", vec![field]),
+                UiNode::text_input(field, "Position X", "10", UiTextInputOptions::default())
+                    .with_text_validation(UiTextValidation::Integer),
+                UiNode::transient_menu(
+                    menu,
+                    "Project actions",
+                    vec![item],
+                    UiTransientInitialState::Hidden,
+                ),
+                UiNode::menu_item(item, "Rename", "fixture.rename", "Rename"),
+            ],
+        )
+        .expect("transient property fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        let drafted = runtime.reconcile(frame(vec![
+            UiEvent::BeginPropertyEdit(field),
+            UiEvent::SelectAllText,
+            UiEvent::TextCommit("20".to_owned()),
+        ]));
+        assert_eq!(drafted.focused, Some(field));
+        assert_eq!(runtime.text_input_value(field), Some("20"));
+
+        let opened = runtime.reconcile(frame(vec![UiEvent::PresentTransient(menu)]));
+        assert_eq!(opened.focused, Some(item));
+        let denied = runtime.reconcile(frame(vec![UiEvent::CancelPropertyEdit]));
+        assert_eq!(denied.focused, Some(item));
+        assert_eq!(runtime.text_input_value(field), Some("20"));
+        assert!(denied
+            .diagnostics
+            .contains(&UiDiagnostic::PropertyEditDenied { node: field }));
+
+        let dismissed = runtime.reconcile(frame(vec![
+            UiEvent::DismissTransient(menu),
+            UiEvent::CancelPropertyEdit,
+        ]));
+        assert_eq!(dismissed.focused, Some(field));
+        assert_eq!(runtime.text_input_value(field), Some("10"));
+    }
+
+    #[test]
+    fn nested_focus_surface_reparents_the_accessibility_subtree_to_the_root() {
+        let root = UiNodeId::new(0x2ded);
+        let outer = UiNodeId::new(0x2dee);
+        let outer_item = UiNodeId::new(0x2def);
+        let inner = UiNodeId::new(0x2df0);
+        let inner_item = UiNodeId::new(0x2df1);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Nested menus", UiLayout::Overlay, vec![outer]),
+                UiNode::transient_menu(
+                    outer,
+                    "Outer menu",
+                    vec![outer_item, inner],
+                    UiTransientInitialState::Hidden,
+                ),
+                UiNode::menu_item(outer_item, "Outer action", "fixture.outer", "Outer"),
+                UiNode::transient_menu(
+                    inner,
+                    "Inner menu",
+                    vec![inner_item],
+                    UiTransientInitialState::Hidden,
+                ),
+                UiNode::menu_item(inner_item, "Inner action", "fixture.inner", "Inner"),
+            ],
+        )
+        .expect("nested transient fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        runtime.reconcile(frame(vec![UiEvent::PresentTransient(outer)]));
+        let opened = runtime.reconcile(frame(vec![UiEvent::PresentTransient(inner)]));
+        assert_eq!(opened.focused, Some(inner_item));
+        assert_eq!(
+            opened
+                .semantic_tree
+                .nodes
+                .iter()
+                .map(|node| node.id)
+                .collect::<Vec<_>>(),
+            vec![root, inner, inner_item]
+        );
+        let inner_semantics = opened
+            .semantic_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == inner)
+            .expect("inner transient remains in the semantic tree");
+        assert_eq!(inner_semantics.parent, Some(root));
+
+        let rejected = runtime.reconcile(frame(vec![UiEvent::DismissTransient(outer)]));
+        assert_eq!(rejected.focused, Some(inner_item));
+        assert!(rejected
+            .diagnostics
+            .contains(&UiDiagnostic::TransientTargetDenied { node: outer }));
+        assert!(rejected
+            .transients
+            .iter()
+            .all(|transient| transient.phase == UiTransientPhase::Visible));
+
+        let dismissed_inner = runtime.reconcile(frame(vec![UiEvent::CancelInteraction]));
+        assert_eq!(dismissed_inner.focused, Some(outer_item));
+        assert_eq!(
+            dismissed_inner
+                .transients
+                .iter()
+                .find(|transient| transient.node == inner)
+                .expect("inner transient snapshot")
+                .phase,
+            UiTransientPhase::Hidden
+        );
+        assert_eq!(
+            dismissed_inner
+                .transients
+                .iter()
+                .find(|transient| transient.node == outer)
+                .expect("outer transient snapshot")
+                .phase,
+            UiTransientPhase::Visible
+        );
+    }
+
+    #[test]
+    fn focus_owning_transient_cancels_background_pointer_capture() {
+        let root = UiNodeId::new(0x2de9);
+        let background = UiNodeId::new(0x2dea);
+        let menu = UiNodeId::new(0x2deb);
+        let item = UiNodeId::new(0x2dec);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Transient pointer fixture",
+                    UiLayout::Absolute,
+                    vec![background, menu],
+                ),
+                UiNode::button(background, "Background", "fixture.background", "Background")
+                    .with_absolute_position(UiAbsolutePosition {
+                        left: 8.0,
+                        top: 8.0,
+                        width: Some(120.0),
+                        height: Some(44.0),
+                    }),
+                UiNode::transient_context_menu(
+                    menu,
+                    "Project actions",
+                    vec![item],
+                    Some(background),
+                )
+                .with_absolute_position(UiAbsolutePosition {
+                    left: 240.0,
+                    top: 8.0,
+                    width: Some(160.0),
+                    height: Some(80.0),
+                }),
+                UiNode::menu_item(item, "Rename", "fixture.rename", "Rename"),
+            ],
+        )
+        .expect("transient pointer fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        let pressed = runtime.reconcile(frame(vec![primary_pointer(
+            UiPointerPhase::Press,
+            UiPoint { x: 32.0, y: 24.0 },
+        )]));
+        assert!(pressed.commands.is_empty());
+        let opened = runtime.reconcile(frame(vec![UiEvent::PresentTransient(menu)]));
+        assert_eq!(opened.focused, Some(item));
+
+        let released = runtime.reconcile(frame(vec![primary_pointer(
+            UiPointerPhase::Release,
+            UiPoint { x: 32.0, y: 24.0 },
+        )]));
+        assert_eq!(released.focused, Some(item));
+        assert!(released.commands.is_empty());
+    }
+
+    #[test]
+    fn outside_pointer_press_dismisses_focus_surface_without_background_activation() {
+        let root = UiNodeId::new(0x2de);
+        let background = UiNodeId::new(0x2df);
+        let menu = UiNodeId::new(0x2e0);
+        let item = UiNodeId::new(0x2e1);
+        let tooltip = UiNodeId::new(0x2e2);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Pointer transient fixture",
+                    UiLayout::Absolute,
+                    vec![background, menu, tooltip],
+                ),
+                UiNode::button(background, "Background", "fixture.background", "Background")
+                    .with_absolute_position(UiAbsolutePosition {
+                        left: 8.0,
+                        top: 8.0,
+                        width: Some(120.0),
+                        height: Some(44.0),
+                    }),
+                UiNode::transient_context_menu(
+                    menu,
+                    "Project actions",
+                    vec![item],
+                    Some(background),
+                )
+                .with_absolute_position(UiAbsolutePosition {
+                    left: 240.0,
+                    top: 8.0,
+                    width: Some(160.0),
+                    height: Some(80.0),
+                }),
+                UiNode::menu_item(item, "Rename", "fixture.rename", "Rename"),
+                UiNode::transient_tooltip(
+                    tooltip,
+                    "Background help",
+                    "Select the background",
+                    background,
+                    0,
+                ),
+            ],
+        )
+        .expect("pointer transient fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+        runtime.reconcile(frame(vec![UiEvent::FocusNext]));
+        let opened = runtime.reconcile(frame(vec![UiEvent::PresentTransient(menu)]));
+        assert_eq!(opened.focused, Some(item));
+        assert_eq!(opened.transients[0].phase, UiTransientPhase::Visible);
+
+        let shielded_hover = runtime.reconcile(frame(vec![primary_pointer(
+            UiPointerPhase::Move,
+            UiPoint { x: 32.0, y: 24.0 },
+        )]));
+        assert_eq!(
+            shielded_hover
+                .transients
+                .iter()
+                .find(|transient| transient.node == tooltip)
+                .expect("tooltip state is reported")
+                .phase,
+            UiTransientPhase::Hidden
+        );
+
+        let dismissed = runtime.reconcile(frame(vec![
+            UiEvent::PointerDown(UiPoint { x: 32.0, y: 24.0 }),
+            UiEvent::PointerUp(UiPoint { x: 32.0, y: 24.0 }),
+        ]));
+        assert_eq!(dismissed.focused, Some(background));
+        assert_eq!(dismissed.transients[0].phase, UiTransientPhase::Hidden);
+        assert!(dismissed.commands.is_empty());
+    }
+
+    #[test]
     fn tooltip_delay_escape_and_hidden_relationships_preserve_anchor_focus() {
         let root = UiNodeId::new(0x2e0);
         let anchor = UiNodeId::new(0x2e1);
@@ -7923,9 +9709,12 @@ mod tests {
             .diagnostics
             .contains(&UiDiagnostic::TextValidationFailed { node: field }));
 
-        let cancelled = runtime.reconcile(frame(vec![UiEvent::CancelPropertyEdit]));
+        let cancelled = runtime.reconcile(frame(vec![UiEvent::CancelInteraction]));
         assert_eq!(cancelled.property_edit, None);
         assert_eq!(runtime.text_input_value(field), Some("10"));
+        assert!(!cancelled
+            .diagnostics
+            .contains(&UiDiagnostic::TextInputNotFocused));
 
         let committed = runtime.reconcile(frame(vec![
             UiEvent::BeginPropertyEdit(field),
@@ -8004,6 +9793,47 @@ mod tests {
         assert!(rejected
             .diagnostics
             .contains(&UiDiagnostic::PropertyEditDenied { node: ordinary }));
+    }
+
+    #[test]
+    fn pointer_press_starts_a_property_grid_edit_with_retained_rollback() {
+        let grid = UiNodeId::new(0x315);
+        let field = UiNodeId::new(0x316);
+        let document = UiDocument::new(
+            grid,
+            vec![
+                UiNode::property_grid(grid, "Transform", vec![field]),
+                UiNode::text_input(field, "Position X", "10", UiTextInputOptions::default())
+                    .with_text_validation(UiTextValidation::Integer),
+            ],
+        )
+        .expect("property grid document");
+        let mut runtime = UiRuntime::new(document);
+        let initial = runtime.reconcile(frame(Vec::new()));
+        let field_bounds = initial
+            .layout
+            .iter()
+            .find(|entry| entry.node == field)
+            .expect("property field bounds")
+            .bounds;
+        let point = UiPoint {
+            x: field_bounds.origin.x + field_bounds.size.width / 2.0,
+            y: field_bounds.origin.y + field_bounds.size.height / 2.0,
+        };
+
+        let editing = runtime.reconcile(frame(vec![primary_pointer(UiPointerPhase::Press, point)]));
+        assert_eq!(
+            editing.property_edit,
+            Some(UiPropertyEditSnapshot {
+                grid,
+                editor: field,
+                valid: true,
+            })
+        );
+
+        let rolled_back = runtime.reconcile(frame(vec![UiEvent::CancelInteraction]));
+        assert_eq!(rolled_back.property_edit, None);
+        assert_eq!(runtime.text_input_value(field), Some("10"));
     }
 
     #[test]
@@ -8111,10 +9941,99 @@ mod tests {
                 timeline,
                 value: 75,
             },
-            UiEvent::CancelTimelineScrub,
+            UiEvent::CancelInteraction,
         ]));
         assert_eq!(cancelled.timelines[0].preview_value, 50);
         assert!(!cancelled.timelines[0].scrubbing);
+    }
+
+    #[test]
+    fn pointer_timeline_scrub_uses_capture_and_commits_only_on_release() {
+        let timeline = UiNodeId::new(0x325);
+        let document = UiDocument::new(
+            timeline,
+            vec![UiNode::interactive_timeline(
+                timeline,
+                "Pointer timeline",
+                Vec::new(),
+                UiTimelineContract {
+                    minimum: 0,
+                    maximum: 100,
+                    source_value: 0,
+                    step: 5,
+                    page_step: 20,
+                    minimum_zoom_percent: 50,
+                    maximum_zoom_percent: 200,
+                    initial_zoom_percent: 100,
+                    zoom_step_percent: 25,
+                },
+            )],
+        )
+        .expect("pointer timeline document");
+        let mut runtime = UiRuntime::new(document);
+        let initial = runtime.reconcile(frame(Vec::new()));
+        let bounds = initial
+            .layout
+            .iter()
+            .find(|entry| entry.node == timeline)
+            .expect("timeline bounds")
+            .bounds;
+        let point = |fraction: f32| UiPoint {
+            x: bounds.origin.x + bounds.size.width * fraction,
+            y: bounds.origin.y + bounds.size.height / 2.0,
+        };
+
+        let preview = runtime.reconcile(frame(vec![
+            primary_pointer(UiPointerPhase::Press, point(0.25)),
+            primary_pointer(UiPointerPhase::Move, point(0.75)),
+        ]));
+        assert_eq!(preview.timelines[0].preview_value, 75);
+        assert!(preview.timelines[0].scrubbing);
+        assert!(preview.timeline_requests.is_empty());
+
+        let cancelled = runtime.reconcile(frame(vec![UiEvent::PointerCancel]));
+        assert_eq!(cancelled.timelines[0].preview_value, 0);
+        assert!(!cancelled.timelines[0].scrubbing);
+        assert!(cancelled.timeline_requests.is_empty());
+
+        let malformed_release = UiEvent::Pointer(UiPointerEvent {
+            device: UiInputDeviceId::new(0xA11),
+            kind: UiInputDeviceKind::Mouse,
+            phase: UiPointerPhase::Release,
+            position: point(0.75),
+            button: None,
+        });
+        let rejected = runtime.reconcile(frame(vec![
+            primary_pointer(UiPointerPhase::Press, point(0.25)),
+            primary_pointer(UiPointerPhase::Move, point(0.75)),
+            malformed_release,
+        ]));
+        assert_eq!(rejected.timelines[0].preview_value, 0);
+        assert!(!rejected.timelines[0].scrubbing);
+        assert!(rejected.timeline_requests.is_empty());
+        assert!(rejected
+            .diagnostics
+            .contains(&UiDiagnostic::InvalidPointerEvent));
+
+        let orphaned_release = runtime.reconcile(frame(vec![primary_pointer(
+            UiPointerPhase::Release,
+            point(0.75),
+        )]));
+        assert!(orphaned_release.timeline_requests.is_empty());
+
+        let committed = runtime.reconcile(frame(vec![
+            primary_pointer(UiPointerPhase::Press, point(0.25)),
+            primary_pointer(UiPointerPhase::Move, point(0.75)),
+            primary_pointer(UiPointerPhase::Release, point(0.75)),
+        ]));
+        assert!(!committed.timelines[0].scrubbing);
+        assert_eq!(
+            committed.timeline_requests,
+            vec![UiTimelineRequest {
+                timeline,
+                value: 75,
+            }]
+        );
     }
 
     fn graph_canvas_fixture() -> (UiRuntime, [UiNodeId; 4]) {
@@ -8235,6 +10154,79 @@ mod tests {
         assert_eq!(reset.canvases[0].pan_x, 10);
         assert_eq!(reset.canvases[0].pan_y, -10);
         assert_eq!(reset.canvases[0].zoom_percent, 100);
+    }
+
+    #[test]
+    fn global_cancellation_discards_graph_connection_preview_without_request() {
+        let (mut runtime, [graph, source, target, _]) = graph_canvas_fixture();
+        let cancelled = runtime.reconcile(frame(vec![
+            UiEvent::ManipulateCanvas {
+                canvas: graph,
+                action: UiCanvasAction::BeginConnection { source },
+            },
+            UiEvent::ManipulateCanvas {
+                canvas: graph,
+                action: UiCanvasAction::PreviewConnection {
+                    target: Some(target),
+                },
+            },
+            UiEvent::CancelInteraction,
+        ]));
+
+        assert_eq!(cancelled.canvases[0].connection, None);
+        assert!(cancelled.canvas_requests.is_empty());
+        assert!(!cancelled
+            .diagnostics
+            .contains(&UiDiagnostic::TextInputNotFocused));
+    }
+
+    #[test]
+    fn pointer_canvas_pan_is_retained_and_never_emits_a_source_request() {
+        let canvas = UiNodeId::new(0x338);
+        let document = UiDocument::new(
+            canvas,
+            vec![UiNode::interactive_canvas(
+                canvas,
+                "Pointer canvas",
+                Vec::new(),
+                UiCanvasContract {
+                    pan_limit: 1_000,
+                    initial_pan_x: 0,
+                    initial_pan_y: 0,
+                    minimum_zoom_percent: 50,
+                    maximum_zoom_percent: 200,
+                    initial_zoom_percent: 100,
+                    zoom_step_percent: 25,
+                },
+            )],
+        )
+        .expect("pointer canvas document");
+        let mut runtime = UiRuntime::new(document);
+        let initial = runtime.reconcile(frame(Vec::new()));
+        let bounds = initial
+            .layout
+            .iter()
+            .find(|entry| entry.node == canvas)
+            .expect("canvas bounds")
+            .bounds;
+        let start = UiPoint {
+            x: bounds.origin.x + bounds.size.width / 2.0,
+            y: bounds.origin.y + bounds.size.height / 2.0,
+        };
+        let end = UiPoint {
+            x: start.x + 40.0,
+            y: start.y - 24.0,
+        };
+
+        let panned = runtime.reconcile(frame(vec![
+            primary_pointer(UiPointerPhase::Press, start),
+            primary_pointer(UiPointerPhase::Move, end),
+            primary_pointer(UiPointerPhase::Release, end),
+        ]));
+        assert_eq!(panned.canvases[0].pan_x, 40);
+        assert_eq!(panned.canvases[0].pan_y, -24);
+        assert!(panned.canvas_requests.is_empty());
+        assert_eq!(panned.focused, Some(canvas));
     }
 
     #[test]
@@ -9224,6 +11216,104 @@ mod tests {
     }
 
     #[test]
+    fn compact_control_text_is_single_line_and_optically_centered() {
+        let root = UiNodeId::new(0x241);
+        let action = UiNodeId::new(0x242);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(root, "Centered control", UiLayout::Overlay, vec![action]),
+                UiNode::button(
+                    action,
+                    "Long compact action",
+                    "fixture.long-action",
+                    "A deliberately long compact action label",
+                )
+                .with_layout_hints(UiLayoutHints::fixed_size(96.0, 36.0))
+                .with_constraints(UiConstraints {
+                    horizontal_alignment: UiAlignment::Center,
+                    vertical_alignment: UiAlignment::Center,
+                    ..UiConstraints::default()
+                }),
+            ],
+        )
+        .expect("compact control fixture is valid");
+        let output = UiRuntime::new(document).reconcile(frame(Vec::new()));
+        let control_bounds = output
+            .layout
+            .iter()
+            .find(|entry| entry.node == action)
+            .expect("control layout")
+            .bounds;
+        let (text, text_bounds, layout) = output
+            .display_list
+            .primitives
+            .iter()
+            .find_map(|primitive| match primitive {
+                DisplayPrimitive::Text {
+                    node,
+                    text,
+                    bounds,
+                    layout,
+                    ..
+                } if *node == action => Some((text, bounds, layout)),
+                _ => None,
+            })
+            .expect("control text is emitted");
+
+        assert!(text.ends_with('…'));
+        assert_eq!(layout.line_count, 1);
+        assert!(
+            ((text_bounds.origin.x + text_bounds.size.width * 0.5)
+                - (control_bounds.origin.x + control_bounds.size.width * 0.5))
+                .abs()
+                < 1.0
+        );
+        assert!(
+            ((text_bounds.origin.y + text_bounds.size.height * 0.5)
+                - (control_bounds.origin.y + control_bounds.size.height * 0.5))
+                .abs()
+                < 1.0
+        );
+    }
+
+    #[test]
+    fn tree_branches_keep_dense_row_height_while_emitting_native_disclosure() {
+        let tree = UiNodeId::new(0x243);
+        let branch = UiNodeId::new(0x244);
+        let document = UiDocument::new(
+            tree,
+            vec![
+                UiNode::tree(tree, "Source hierarchy", vec![branch]),
+                UiNode::tree_branch(
+                    branch,
+                    "Project source",
+                    "source.toggle-project",
+                    false,
+                    true,
+                )
+                .with_layout_hints(UiLayoutHints::fixed_height(28.0)),
+            ],
+        )
+        .expect("tree branch fixture is valid");
+        let output = UiRuntime::new(document).reconcile(frame(Vec::new()));
+        let branch_bounds = output
+            .layout
+            .iter()
+            .find(|entry| entry.node == branch)
+            .expect("branch has layout")
+            .bounds;
+        assert!(
+            branch_bounds.size.height < MIN_ACCESSIBLE_CONTROL_EXTENT,
+            "a tree disclosure must not inherit command-button height: {branch_bounds:?}"
+        );
+        assert!(branch_bounds.size.height >= 28.0);
+        assert!(output.display_list.primitives.iter().any(|primitive| {
+            matches!(primitive, DisplayPrimitive::Path { node, .. } if *node == branch)
+        }));
+    }
+
+    #[test]
     fn icon_button_emits_owned_paths_and_preserves_accessible_name() {
         let button = UiNodeId::new(0x240);
         let document = UiDocument::new(
@@ -9976,6 +12066,35 @@ mod tests {
     }
 
     #[test]
+    fn placeholder_renders_as_guidance_without_becoming_a_semantic_value() {
+        let input = UiNodeId::new(0x30a);
+        let document = UiDocument::new(
+            input,
+            vec![UiNode::search_input(input, "Search sources", "")
+                .with_placeholder("Search sources")],
+        )
+        .expect("search placeholder fixture is valid");
+        let output = UiRuntime::new(document).reconcile(frame(Vec::new()));
+
+        assert!(output.display_list.primitives.iter().any(|primitive| {
+            matches!(
+                primitive,
+                DisplayPrimitive::Text { node, text, color, .. }
+                    if *node == input && text == "Search sources" && *color == UiColor::muted_text()
+            )
+        }));
+        assert_ne!(
+            output
+                .semantic_tree
+                .nodes
+                .iter()
+                .find(|node| node.id == input)
+                .and_then(|node| node.value.as_deref()),
+            Some("Search sources")
+        );
+    }
+
+    #[test]
     fn text_input_edits_on_grapheme_boundaries_and_preserves_ime_composition() {
         let (document, input) = text_input_document("a👩‍🔬e\u{301}", false);
         let mut runtime = UiRuntime::new(document);
@@ -10441,6 +12560,62 @@ mod tests {
         assert_eq!(output.focused, Some(target));
         assert!((offset(inner) - 40.0).abs() < f32::EPSILON);
         assert!(offset(outer).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn focus_owning_transient_does_not_scroll_a_background_container() {
+        let root = UiNodeId::new(0x429);
+        let filler = UiNodeId::new(0x42a);
+        let menu = UiNodeId::new(0x42b);
+        let item = UiNodeId::new(0x42c);
+        let document = UiDocument::new(
+            root,
+            vec![
+                UiNode::container(
+                    root,
+                    "Background scroll",
+                    UiLayout::Scroll {
+                        axis: UiAxis::Vertical,
+                        offset: 0.0,
+                    },
+                    vec![filler, menu],
+                )
+                .with_style(UiStyle::transparent()),
+                UiNode::label(filler, "Background filler", "Background filler")
+                    .with_layout_hints(UiLayoutHints::fixed_height(80.0)),
+                UiNode::transient_menu(
+                    menu,
+                    "Scoped actions",
+                    vec![item],
+                    UiTransientInitialState::Hidden,
+                ),
+                UiNode::menu_item(item, "Rename", "fixture.rename", "Rename")
+                    .with_layout_hints(UiLayoutHints::fixed_height(40.0)),
+            ],
+        )
+        .expect("scoped transient scroll fixture is valid");
+        let mut runtime = UiRuntime::new(document);
+
+        let mut open = frame(vec![UiEvent::PresentTransient(menu)]);
+        open.viewport = UiSize::new(200.0, 100.0);
+        let opened = runtime.reconcile(open);
+        assert_eq!(opened.focused, Some(item));
+
+        let mut input = frame(vec![UiEvent::AssistiveRequest {
+            target: item,
+            action: SemanticAction::ScrollIntoView,
+        }]);
+        input.viewport = UiSize::new(200.0, 100.0);
+        let output = runtime.reconcile(input);
+
+        assert_eq!(output.focused, Some(item));
+        let scroll = output
+            .scroll
+            .iter()
+            .find(|snapshot| snapshot.node == root)
+            .expect("background scroll is reported");
+        assert!(scroll.maximum > 0.0);
+        assert!(scroll.offset.abs() < f32::EPSILON);
     }
 
     #[test]
@@ -11613,6 +13788,47 @@ mod tests {
         cancel.viewport = UiSize::new(200.0, 100.0);
         runtime.reconcile(cancel);
         assert!(runtime.scroll_capture.is_none());
+
+        let mut momentum = frame(vec![scroll_event(
+            device,
+            UiScrollPhase::Momentum,
+            UiScrollUnit::Pixels,
+            10.0,
+        )]);
+        momentum.viewport = UiSize::new(200.0, 100.0);
+        let rejected = runtime.reconcile(momentum);
+        assert_eq!(rejected.scroll_outcomes[0].target, None);
+        assert!(rejected
+            .diagnostics
+            .contains(&UiDiagnostic::ScrollTargetUnavailable));
+    }
+
+    #[test]
+    fn global_cancellation_releases_scroll_capture_without_text_noise() {
+        let (document, _, inner) = nested_scroll_document();
+        let mut runtime = UiRuntime::new(document);
+        let device = UiInputDeviceId::new(0x5d);
+        let mut begin = frame(vec![scroll_event(
+            device,
+            UiScrollPhase::Begin,
+            UiScrollUnit::Pixels,
+            10.0,
+        )]);
+        begin.viewport = UiSize::new(200.0, 100.0);
+        let started = runtime.reconcile(begin);
+        assert_eq!(started.scroll_outcomes[0].target, Some(inner));
+        assert_eq!(
+            runtime.scroll_capture.map(|capture| capture.device),
+            Some(device)
+        );
+
+        let mut cancel = frame(vec![UiEvent::CancelInteraction]);
+        cancel.viewport = UiSize::new(200.0, 100.0);
+        let cancelled = runtime.reconcile(cancel);
+        assert!(runtime.scroll_capture.is_none());
+        assert!(!cancelled
+            .diagnostics
+            .contains(&UiDiagnostic::TextInputNotFocused));
 
         let mut momentum = frame(vec![scroll_event(
             device,

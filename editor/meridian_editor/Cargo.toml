@@ -20,7 +20,7 @@ meridian-input = { path = "../../engine/meridian_input" }
 meridian-modeler = { path = "../../engine/meridian_modeler" }
 meridian-package = { path = "../../engine/meridian_package" }
 meridian-platform = { path = "../../engine/meridian_platform", features = ["accessibility"] }
-meridian-renderer = { path = "../../engine/meridian_renderer", features = ["ui-raster-bridge"] }
+meridian-renderer = { path = "../../engine/meridian_renderer", features = ["ui-direct", "ui-raster-bridge"] }
 meridian-rhi = { path = "../../engine/meridian_rhi" }
 meridian-rt = { path = "../../engine/meridian_rt" }
 meridian-save = { path = "../../engine/meridian_save" }
