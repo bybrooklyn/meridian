@@ -38,8 +38,10 @@ Creator hub, source-authoritative project persistence, native picker boundary,
 Creator journey, and universal macOS bundle. That evidence does not qualify the
 Meridian UI 1.0 framework, production shell, platform accessibility, or visual
 quality. `WP-UI-002` through `WP-UI-004` are
-`ImplementedFoundation` after GitHub Actions run `30733414227` for `6d27fd5`
-passed governance and the complete Linux, Windows, and macOS rows. `WP-UI-005`
+`ImplementedFoundation` after GitHub Actions run `30734817554` for `fb819a4`
+passed governance and the complete Linux, Windows, and macOS rows. The same
+run archived a clean-commit presented review artifact and a bounded native
+accessibility report; those remain non-promoting machine evidence. `WP-UI-005`
 remains `Partial` because its human visual, real screen-reader, and calibrated
 renderer evidence is still absent; `WP-UI-006` remains the active authored-
 source package behind that dependency. Earlier runs `29611418454`,
