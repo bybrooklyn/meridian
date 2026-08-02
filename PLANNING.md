@@ -1417,8 +1417,9 @@ current source pass recorded separately in `EV-UI-20260801-001`; canonical
 source encoding now rejects payloads larger than the same bounded 8 MiB source
 envelope accepted by recovery.
 Hosted cross-platform implementation evidence now passes in
-`EV-UI-20260802-002`; the clean-commit presented capture and bounded
-accessibility report are recorded in `EV-UI-20260802-003`. These artifacts
+`EV-UI-20260802-002`; the corrected clean-commit presented capture and bounded
+accessibility report are recorded in `EV-UI-20260802-004` (with the earlier
+capture retained in `EV-UI-20260802-003`). These artifacts
 remain `Inconclusive` or `NotRun` where the evidence contract requires human,
 screen-reader, or presented visual observation, and they do not promote
 WP-UI-005, WP-UI-006, or MS-03.
