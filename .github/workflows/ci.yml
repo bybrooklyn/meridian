@@ -47,7 +47,17 @@ jobs:
           if errorlevel 1 exit /b %errorlevel%
           cargo test -p meridian-renderer --all-features
       - name: Run workspace tests outside Windows
-        if: runner.os != 'Windows'
+        if: runner.os == 'Linux'
+        env:
+          # Keep the public Ubuntu runner's workspace test within its bounded
+          # memory/CPU envelope. The full workspace remains covered; only
+          # Cargo/test concurrency is reduced after repeated runner shutdowns
+          # during otherwise passing test output.
+          CARGO_BUILD_JOBS: 2
+          RUST_TEST_THREADS: 1
+        run: cargo test --workspace
+      - name: Run workspace tests on macOS
+        if: runner.os == 'macOS'
         run: cargo test --workspace
       - name: Validate feature-gated accessibility adapter
         run: cargo test -p meridian-platform --features accessibility
