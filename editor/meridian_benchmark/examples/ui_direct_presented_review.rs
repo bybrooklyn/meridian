@@ -29,10 +29,10 @@ use meridian_rhi::{
     FrameOutcome, Rhi, RhiConfig,
 };
 use meridian_ui_core::{
-    UiControlState, UiDocument, UiLayout, UiLayoutHints, UiNode, UiNodeId, UiSize, UiStyleVariant,
-    UiTextInputOptions, UiTextValidation,
+    UiControlState, UiDocument, UiLayout, UiLayoutHints, UiNode, UiNodeId, UiRect, UiSize,
+    UiStyleVariant, UiTextInputOptions, UiTextValidation,
 };
-use meridian_ui_render::UiEffectCapabilities;
+use meridian_ui_render::{DisplayPrimitive, UiEffectCapabilities};
 use meridian_ui_runtime::{UiDiagnostic, UiEvent, UiFrameInput, UiRuntime};
 use serde::Serialize;
 
@@ -578,9 +578,7 @@ fn framework_gallery_document() -> Result<UiDocument, Box<dyn Error>> {
     let controls_heading = id(0x1_021);
     let search = id(0x1_022);
     let primary = id(0x1_023);
-    let secondary = id(0x1_024);
     let destructive = id(0x1_025);
-    let toggle_label = id(0x1_026);
     let toggle = id(0x1_027);
     let disabled = id(0x1_028);
     let data = id(0x1_030);
@@ -617,7 +615,8 @@ fn framework_gallery_document() -> Result<UiDocument, Box<dyn Error>> {
     let fixed_height = |height| UiLayoutHints::fixed_height(height);
     let fixed_width = |width| UiLayoutHints::fixed_width(width);
     let table_cell = |node, name, text, width| {
-        UiNode::table_cell(node, name, text).with_layout_hints(fixed_width(width))
+        UiNode::table_cell(node, name, text)
+            .with_layout_hints(UiLayoutHints::fixed_size(width, 32.0))
     };
 
     let nodes = vec![
@@ -638,7 +637,7 @@ fn framework_gallery_document() -> Result<UiDocument, Box<dyn Error>> {
         .with_layout_hints(fixed_height(64.0)),
         UiNode::label(title, "Meridian UI", "Meridian UI")
             .with_style_variant(UiStyleVariant::Heading)
-            .with_layout_hints(UiLayoutHints::fixed_size(180.0, 32.0)),
+            .with_layout_hints(UiLayoutHints::fixed_size(180.0, 40.0)),
         UiNode::label(
             subtitle,
             "Framework gallery description",
@@ -652,21 +651,19 @@ fn framework_gallery_document() -> Result<UiDocument, Box<dyn Error>> {
         UiNode::container(
             content,
             "Gallery content",
-            UiLayout::HorizontalStack { gap: 8.0 },
+            UiLayout::HorizontalStack { gap: 6.0 },
             vec![controls, data, state],
         )
         .with_style_variant(UiStyleVariant::Transparent),
         UiNode::container(
             controls,
             "Control gallery",
-            UiLayout::VerticalStack { gap: 8.0 },
+            UiLayout::VerticalStack { gap: 6.0 },
             vec![
                 controls_heading,
                 search,
                 primary,
-                secondary,
                 destructive,
-                toggle_label,
                 toggle,
                 disabled,
             ],
@@ -676,31 +673,16 @@ fn framework_gallery_document() -> Result<UiDocument, Box<dyn Error>> {
         UiNode::label(controls_heading, "Controls", "CONTROLS")
             .with_style_variant(UiStyleVariant::SectionHeading)
             .with_layout_hints(fixed_height(24.0)),
-        UiNode::search_input(search, "Search components", "Search components")
-            .with_layout_hints(fixed_height(42.0)),
-        UiNode::button(
-            primary,
-            "Create component",
-            "gallery.create",
-            "Create component",
-        )
-        .with_style_variant(UiStyleVariant::PrimaryAction)
-        .with_layout_hints(fixed_height(42.0)),
-        UiNode::button(secondary, "Duplicate", "gallery.duplicate", "Duplicate")
-            .with_layout_hints(fixed_height(40.0)),
-        UiNode::button(
-            destructive,
-            "Delete component",
-            "gallery.delete",
-            "Delete component",
-        )
-        .with_style_variant(UiStyleVariant::DestructiveAction)
-        .with_layout_hints(fixed_height(40.0)),
-        UiNode::label(toggle_label, "Toggle label", "SNAP TO GRID")
-            .with_style_variant(UiStyleVariant::MutedText)
-            .with_layout_hints(fixed_height(20.0)),
+        UiNode::search_input(search, "Search components", "Search")
+            .with_layout_hints(fixed_height(38.0)),
+        UiNode::button(primary, "Create component", "gallery.create", "Create")
+            .with_style_variant(UiStyleVariant::PrimaryAction)
+            .with_layout_hints(fixed_height(38.0)),
+        UiNode::button(destructive, "Delete component", "gallery.delete", "Delete")
+            .with_style_variant(UiStyleVariant::DestructiveAction)
+            .with_layout_hints(fixed_height(36.0)),
         UiNode::toggle(toggle, "Snap to grid", "gallery.snap", true)
-            .with_layout_hints(fixed_height(40.0)),
+            .with_layout_hints(fixed_height(34.0)),
         UiNode::button(
             disabled,
             "Unavailable action",
@@ -715,37 +697,38 @@ fn framework_gallery_document() -> Result<UiDocument, Box<dyn Error>> {
         UiNode::container(
             data,
             "Data component gallery",
-            UiLayout::VerticalStack { gap: 8.0 },
+            UiLayout::VerticalStack { gap: 6.0 },
             vec![data_heading, data_description, data_actions, table],
         )
-        .with_style_variant(UiStyleVariant::ElevatedSurface),
-        UiNode::label(data_heading, "Data views", "Retained component gallery")
-            .with_style_variant(UiStyleVariant::Heading)
-            .with_layout_hints(fixed_height(38.0)),
+        .with_style_variant(UiStyleVariant::ElevatedSurface)
+        .with_layout_hints(fixed_width(256.0)),
+        UiNode::label(data_heading, "Data views", "COMPONENTS")
+            .with_style_variant(UiStyleVariant::SectionHeading)
+            .with_layout_hints(fixed_height(24.0)),
         UiNode::label(
             data_description,
             "Data view description",
-            "Stable identity, dense professional controls, and explicit state.",
+            "Stable IDs · explicit state.",
         )
         .with_style_variant(UiStyleVariant::MutedText)
         .with_layout_hints(fixed_height(24.0)),
         UiNode::container(
             data_actions,
             "Data actions",
-            UiLayout::HorizontalStack { gap: 8.0 },
+            UiLayout::HorizontalStack { gap: 6.0 },
             vec![filter, group, export],
         )
         .with_style_variant(UiStyleVariant::Transparent)
-        .with_layout_hints(fixed_height(36.0)),
+        .with_layout_hints(fixed_height(34.0)),
         UiNode::button(filter, "Filter", "gallery.filter", "Filter")
             .with_style_variant(UiStyleVariant::CompactAction)
-            .with_layout_hints(fixed_width(86.0)),
+            .with_layout_hints(fixed_width(60.0)),
         UiNode::button(group, "Group", "gallery.group", "Group")
             .with_style_variant(UiStyleVariant::CompactAction)
-            .with_layout_hints(fixed_width(86.0)),
+            .with_layout_hints(fixed_width(60.0)),
         UiNode::button(export, "Export", "gallery.export", "Export")
             .with_style_variant(UiStyleVariant::CompactAction)
-            .with_layout_hints(fixed_width(86.0)),
+            .with_layout_hints(fixed_width(60.0)),
         UiNode::table(
             table,
             "Component states",
@@ -757,40 +740,37 @@ fn framework_gallery_document() -> Result<UiDocument, Box<dyn Error>> {
             vec![table_header_name, table_header_state, table_header_owner],
         )
         .with_style_variant(UiStyleVariant::Surface)
-        .with_layout_hints(fixed_height(42.0)),
-        table_cell(table_header_name, "Name heading", "COMPONENT", 150.0)
+        .with_layout_hints(fixed_height(52.0)),
+        table_cell(table_header_name, "Name heading", "COMP", 64.0)
             .with_style_variant(UiStyleVariant::SectionHeading),
-        table_cell(table_header_state, "State heading", "STATE", 100.0)
+        table_cell(table_header_state, "State heading", "STATE", 64.0)
             .with_style_variant(UiStyleVariant::SectionHeading),
-        table_cell(table_header_owner, "Owner heading", "OWNER", 110.0)
+        table_cell(table_header_owner, "Owner heading", "OWNER", 64.0)
             .with_style_variant(UiStyleVariant::SectionHeading),
         UiNode::table_row(
             table_first,
             "Button component row",
             vec![table_first_name, table_first_state, table_first_owner],
         )
-        .with_layout_hints(fixed_height(48.0)),
-        table_cell(table_first_name, "Button component", "Button", 150.0),
-        table_cell(table_first_state, "Button state", "Focused", 100.0),
-        table_cell(table_first_owner, "Button owner", "Runtime", 110.0),
+        .with_style_variant(UiStyleVariant::Transparent)
+        .with_layout_hints(fixed_height(32.0)),
+        table_cell(table_first_name, "Button component", "Btn", 64.0),
+        table_cell(table_first_state, "Button state", "Focus", 64.0),
+        table_cell(table_first_owner, "Button owner", "Runtime", 64.0),
         UiNode::table_row(
             table_second,
             "Property grid component row",
             vec![table_second_name, table_second_state, table_second_owner],
         )
-        .with_layout_hints(fixed_height(48.0)),
-        table_cell(
-            table_second_name,
-            "Property grid component",
-            "Property grid",
-            150.0,
-        ),
-        table_cell(table_second_state, "Property grid state", "Editing", 100.0),
-        table_cell(table_second_owner, "Property grid owner", "Editor", 110.0),
+        .with_style_variant(UiStyleVariant::Transparent)
+        .with_layout_hints(fixed_height(32.0)),
+        table_cell(table_second_name, "Property grid component", "Props", 64.0),
+        table_cell(table_second_state, "Property grid state", "Edit", 64.0),
+        table_cell(table_second_owner, "Property grid owner", "Editor", 64.0),
         UiNode::container(
             state,
             "State and token gallery",
-            UiLayout::VerticalStack { gap: 8.0 },
+            UiLayout::VerticalStack { gap: 6.0 },
             vec![
                 state_heading,
                 state_status,
@@ -834,7 +814,7 @@ fn framework_gallery_document() -> Result<UiDocument, Box<dyn Error>> {
             UiLayout::HorizontalStack { gap: 12.0 },
             vec![footer_status, footer_hint],
         )
-        .with_style_variant(UiStyleVariant::Surface)
+        .with_style_variant(UiStyleVariant::Transparent)
         .with_layout_hints(fixed_height(32.0)),
         UiNode::label(footer_status, "Framework state", "READY · 2× DIRECT")
             .with_style_variant(UiStyleVariant::MutedText)
@@ -1024,6 +1004,65 @@ mod tests {
             .prepare_frame(case.prepare_request())
             .expect("the retained framework gallery prepares without adapter-specific state");
         assert!(plan.footprint().cpu_atlas_bytes > 0);
+    }
+
+    #[test]
+    fn framework_gallery_children_remain_inside_their_authored_panels() {
+        let document = framework_gallery_document().expect("gallery document constructs");
+        let mut runtime = UiRuntime::new(document.clone());
+        let mut input = UiFrameInput::new(FRAMEWORK_GALLERY_VIEWPORT);
+        input.scale_factor = 2.0;
+        input.events.push(UiEvent::FocusNext);
+        let frame = runtime
+            .try_reconcile(input)
+            .expect("gallery layout reconciles");
+
+        let bounds = |node: UiNodeId| {
+            frame
+                .layout
+                .iter()
+                .find(|snapshot| snapshot.node == node)
+                .map(|snapshot| snapshot.bounds)
+                .unwrap_or_else(|| panic!("gallery layout omits {node:?}"))
+        };
+        let contains = |parent: UiRect, child: UiRect| {
+            let epsilon = 0.01;
+            child.origin.x + epsilon >= parent.origin.x
+                && child.origin.y + epsilon >= parent.origin.y
+                && child.origin.x + child.size.width
+                    <= parent.origin.x + parent.size.width + epsilon
+                && child.origin.y + child.size.height
+                    <= parent.origin.y + parent.size.height + epsilon
+        };
+
+        for node in document.nodes() {
+            let parent = bounds(node.id);
+            for child in &node.children {
+                assert!(
+                    contains(parent, bounds(*child)),
+                    "gallery child {child:?} escapes parent {:?}: parent={parent:?} child={:?}",
+                    node.id,
+                    bounds(*child)
+                );
+            }
+        }
+
+        for primitive in &frame.display_list.primitives {
+            if let DisplayPrimitive::Text {
+                node,
+                bounds: text_bounds,
+                layout: text_layout,
+                ..
+            } = primitive
+            {
+                assert!(
+                    text_layout.height <= text_bounds.size.height + 0.01,
+                    "gallery text {node:?} needs {} logical pixels but its authored bounds only provide {}",
+                    text_layout.height,
+                    text_bounds.size.height
+                );
+            }
+        }
     }
 
     #[test]
