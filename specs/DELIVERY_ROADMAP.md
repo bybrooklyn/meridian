@@ -27,10 +27,10 @@ Every milestone review records:
 
 | Workstream | Domain | Long-lived result | Current implementation boundary |
 |---|---|---|---|
-| Governance and release | GOV, REL, SEC | truthful specifications, evidence, trust, compatibility, and release policy | v0.5 closure passed locally; recent remote workflows concluded `failure` before their skipped implementation rows could run |
+| Governance and release | GOV, REL, SEC | truthful specifications, evidence, trust, compatibility, and release policy | v0.5 closure passed locally; hosted run `30731457552` passed governance, macOS, and Windows while Ubuntu workspace tests were repeatedly interrupted by runner shutdown |
 | Runtime and platform | CORE, RUN | clocks, tasks, diagnostics, input, platform lifecycle, recovery | implemented foundations; platform matrix incomplete |
 | RHI and Penumbra | RHI, PEN | capability-driven GPU abstraction and Meridian-owned renderer | direct PBR/shadow/diffuse-IBL foundation; production Forward+ incomplete |
-| Creator experience | UI, EDT | Meridian UI and an accessible, recoverable editor | MS-02 UI core proof and `WP-EDT-001` Creator behavior are qualified; `WP-UI-005` remains `Partial` and unqualified, `WP-UI-006` is the sole active source-only authoring package under non-promoting waivers, and the production shell remains open |
+| Creator experience | UI, EDT | Meridian UI and an accessible, recoverable editor | MS-02 UI core proof and `WP-EDT-001` Creator behavior are qualified; `WP-UI-005` remains `Partial` and unqualified, hosted macOS/Windows rows pass while Linux remains inconclusive, `WP-UI-006` is the sole active source-only authoring package under non-promoting waivers, and the production shell remains open |
 | Data and production | DAT, BLD, MDL, DCC | source authority, imports, worlds, packages, saves, build graph, native modeling, optional DCC tools | build and Creator foundations are qualified; `WP-MDL-001` retains its bounded editable-model foundation as `Partial` |
 | World authoring and simulation | PHY, ISO, BAS, VEG, PRC, TOR | Cairn, Isobar, Basalt, vegetation, Alluvium, and coupled simulation | physics wrapper transitional; named environmental crates scaffold; Alluvium `WP-PRC-001` is `ImplementedFoundation` |
 | Game and media | GAM, FWK, ANI, NAV, PRJ, AUD | Rust-first gameplay, optional Luau, reusable frameworks, animation/navigation, Project Meridian, Wavefront | game external; Wavefront scaffold; other domains planned |

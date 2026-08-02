@@ -11,11 +11,15 @@ packages are closed with fresh evidence. `WP-UI-001` is an
 `ImplementedFoundation` after cross-platform GitHub Actions evidence. Run
 `29605881704` for `4463bad` qualified the persistent Creator behavioral
 foundation across Linux, Windows, and macOS. `WP-UI-002` through `WP-UI-005`
-are `Partial` after locally validated source packages; GitHub Actions runs
-`29611418454`, `29621896632`, and `29622972884` could not allocate runners
-because of the account billing state. Each workflow concluded `failure` before
-implementation steps ran; the skipped platform rows are `NotRun`, not failed
-implementation evidence. `ADR-0029` decided `RG-UI-001` for the Penumbra-owned
+remain `Partial` after locally validated source packages. The public push
+triggered GitHub Actions run `30731457552` for `711d430`: governance, macOS,
+and Windows completed successfully, while the Ubuntu workspace-test row was
+interrupted by repeated hosted-runner shutdowns (initial job `91452549779`,
+reruns `91454565691` and `91454899866`) after passing test output. This is
+`Inconclusive` Linux qualification evidence, not an implementation failure.
+Earlier runs `29611418454`, `29621896632`, and `29622972884` could not allocate
+runners because of the account billing state; their skipped platform rows
+remain `NotRun`. `ADR-0029` decided `RG-UI-001` for the Penumbra-owned
 direct display-list path without claiming renderer completion. `WVR-UI-001` and
 `WVR-EDT-001` permit non-promoting local continuation. `WP-UI-005` reached its
 bounded local source stop point but remains unqualified. `WP-UI-006` is the
@@ -30,13 +34,12 @@ output. That output remains `Inconclusive` qualification evidence for current
 local/dirty source because provenance is caller-declared; this preserves
 unavailable timing/memory states and does not establish visual review, real
 screen-reader, accessibility, or cross-platform qualification.
-Fresh Linux, Windows, and macOS evidence is still `NotRun` because hosted
-runners cannot be allocated. The latest retry, GitHub Actions run
-`29952062179` for `ae97f82`, again failed governance with zero executed steps
-and skipped the Rust matrix; it provides no implementation evidence. `WP-UI-006`
-source work does not establish UI
-qualification or maturity promotion; no later Creator package may promote from
-this local work.
+Hosted macOS and Windows implementation rows now pass, but Linux remains
+unqualified because the hosted runner terminates during workspace tests. CI
+still does not establish presented visual approval, real screen-reader
+observation, calibrated renderer timing, or human accessibility review.
+`WP-UI-006` source work and the hosted rows do not establish UI qualification or
+maturity promotion; no later Creator package may promote from this evidence.
 `WP-MDL-001` remains `Partial`; MS-03 remains open.
 
 ## 1. Authority and stop rule
