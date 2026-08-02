@@ -4,27 +4,27 @@
   "records": [
     {
       "id": "WVR-UI-001",
-      "status": "Active",
+      "status": "Closed",
       "owner": "UI lead",
       "approver": "Project owner",
       "approval_role": "Validation",
       "expires": "2026-08-17",
       "blocked_milestone": "MS-03",
       "remediation_package": "WP-UI-002",
-      "reason": "Hosted Actions now runs the public repository, but the Ubuntu workspace-test row has been repeatedly terminated by runner shutdown after passing test output; the project owner directed non-promoting local sequential UI implementation, including WP-UI-006 authored-document work, to continue.",
-      "risk": "Linux regressions remain unqualified while the hosted Ubuntu runner terminates during workspace tests; this waiver permits only non-promoting WP-UI-002 through WP-UI-006 local source work and cannot qualify or promote any package or milestone."
+      "reason": "Closed after GitHub Actions run 30733414227 passed governance and the Linux, Windows, and macOS implementation rows; the temporary hosted-runner interruption was corrected by bounded Linux test concurrency and explicit Unix process-group signaling.",
+      "risk": "Historical waiver: the hosted matrix is now green. Human visual, real screen-reader, calibrated renderer, and milestone integration evidence remain governed by their owning package contracts and are not waived."
     },
     {
       "id": "WVR-EDT-001",
-      "status": "Active",
+      "status": "Closed",
       "owner": "EDT lead",
       "approver": "Project owner",
       "approval_role": "Validation",
       "expires": "2026-08-17",
       "blocked_milestone": "MS-03",
       "remediation_package": "WP-EDT-002",
-      "reason": "WP-EDT-002 is suspended at its recorded local source state while WP-UI-006 establishes authored-document ergonomics; hosted macOS and Windows rows pass, but the Ubuntu workspace-test row is repeatedly terminated by runner shutdown, and the project owner directed resumed source-only Creator composition after that package.",
-      "risk": "Linux shell, accessibility, and renderer regressions remain unqualified while the hosted Ubuntu runner terminates during workspace tests; this waiver permits only non-promoting resumed WP-EDT-002 and subsequent WP-EDT-003 source work and cannot qualify or promote any package or milestone."
+      "reason": "Closed after GitHub Actions run 30733414227 passed governance and the Linux, Windows, and macOS implementation rows. WP-EDT-002 remains suspended for its separate shell, World, accessibility, and visible-review requirements.",
+      "risk": "Historical waiver: hosted platform execution is available. WP-EDT-002 and MS-03 still require their own native accessibility, visible-review, and integration evidence."
     }
   ]
 }

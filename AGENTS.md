@@ -37,31 +37,31 @@ governance and the complete Linux, Windows, and macOS rows for the persistent
 Creator hub, source-authoritative project persistence, native picker boundary,
 Creator journey, and universal macOS bundle. That evidence does not qualify the
 Meridian UI 1.0 framework, production shell, platform accessibility, or visual
-quality. `WP-UI-002` through `WP-UI-005` remain `Partial` after locally
-validated source work. GitHub Actions run `30731457552` for `711d430` passed
-governance, macOS, and Windows; its Ubuntu workspace-test row was interrupted
-by repeated hosted-runner shutdowns after passing test output, so Linux
-qualification is `Inconclusive`, not an implementation failure. Earlier runs
-`29611418454`, `29621896632`, and `29622972884` concluded `failure` before
-executing implementation steps because the account could not allocate hosted
-runners; their skipped rows are `NotRun`. `ADR-0029` decided `RG-UI-001` for a Penumbra-owned direct display-list
+quality. `WP-UI-002` through `WP-UI-004` are
+`ImplementedFoundation` after GitHub Actions run `30733414227` for `6d27fd5`
+passed governance and the complete Linux, Windows, and macOS rows. `WP-UI-005`
+remains `Partial` because its human visual, real screen-reader, and calibrated
+renderer evidence is still absent; `WP-UI-006` remains the active authored-
+source package behind that dependency. Earlier runs `29611418454`,
+`29621896632`, and `29622972884` concluded `failure` before executing
+implementation steps because the account could not allocate hosted runners;
+their skipped rows are historical `NotRun` evidence. `ADR-0029` decided `RG-UI-001` for a Penumbra-owned direct display-list
 path while retaining the current CPU raster bridge as structural/recovery only.
-`WVR-UI-001` and `WVR-EDT-001` permit non-promoting local continuation through
-2026-08-17. `WP-UI-005` reached its bounded local source stop point but remains
-unqualified for renderer, accessibility, and cross-platform evidence.
-`WP-UI-006` is the sole active source-only package: it makes the existing
+The temporary `WVR-UI-001` and `WVR-EDT-001` waivers are closed after the
+green hosted matrix. `WP-UI-005` reached its bounded local source stop point but
+remains unqualified for human visual, accessibility, and calibrated renderer
+evidence. `WP-UI-006` is the sole active source-only package: it makes the existing
 `UiDocument` an ergonomic authored source and compiles it into the existing
 renderer-neutral frame contract. `WP-EDT-002` is `Partial` and suspended at its
 recorded local source state until `WP-UI-006` completes; `WP-EDT-003` then
 composes the remaining current Creator workspaces with truthful domain states.
-No local evidence treats the framework, any package, or the milestone as
-qualified.
+No evidence treats WP-UI-005, WP-UI-006, or MS-03 as fully qualified.
 `WP-PRC-001` is `ImplementedFoundation` after GitHub Actions run
 `29511174569` for `9c88cc152878b1eb22f18c236c00ad1abd984fa5` passed governance
 and the Linux, Windows, and macOS workspace rows. `WP-MDL-001` is `Partial`:
 its MS-03 bounded editable-model foundation remains available to later editor
 composition, while the broader modeler and Alluvium programs remain incomplete.
-MS-03 remains open until `WP-UI-002` through `WP-UI-005`, `WP-EDT-002`, native
+MS-03 remains open until `WP-UI-005`, `WP-UI-006`, `WP-EDT-002`, native
 accessibility evidence, and visible application review pass.
 
 ## 3. Repository and private-game boundary
