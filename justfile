@@ -90,6 +90,21 @@ rt-headless-profile-smoke:
 # 5. Creator Alpha Samples
 # ==============================================================================
 
+# Launch the interactive Meridian Creator application with the public sample project.
+# Override the project with `just creator project=path/to/project` when needed.
+creator project="examples/creator-alpha":
+    cargo run -p meridian-editor --bin meridian -- \
+      --project "{{project}}"
+
+# Launch the bounded 2x Creator UI review surface and write its capture artifact.
+creator-ui-review project="examples/creator-alpha":
+    cargo run -p meridian-editor --bin meridian -- \
+      --creator-alpha-ui-review \
+      --project "{{project}}" \
+      --review-workspace world \
+      --review-size 1440x900 \
+      --capture target/meridian-evidence/creator-alpha-ui-review/creator-alpha-ui.png
+
 # Run end-to-end Creator Alpha smoke test with explicit output path
 creator-alpha-smoke:
     cargo run -p meridian-editor -- --creator-alpha-smoke \
