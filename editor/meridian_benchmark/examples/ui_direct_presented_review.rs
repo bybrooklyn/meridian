@@ -658,7 +658,7 @@ fn framework_gallery_document() -> Result<UiDocument, Box<dyn Error>> {
         UiNode::container(
             controls,
             "Control gallery",
-            UiLayout::VerticalStack { gap: 6.0 },
+            UiLayout::VerticalStack { gap: 4.0 },
             vec![
                 controls_heading,
                 search,
@@ -814,8 +814,8 @@ fn framework_gallery_document() -> Result<UiDocument, Box<dyn Error>> {
             UiLayout::HorizontalStack { gap: 12.0 },
             vec![footer_status, footer_hint],
         )
-        .with_style_variant(UiStyleVariant::Transparent)
-        .with_layout_hints(fixed_height(32.0)),
+        .with_style_variant(UiStyleVariant::Surface)
+        .with_layout_hints(fixed_height(48.0)),
         UiNode::label(footer_status, "Framework state", "READY · 2× DIRECT")
             .with_style_variant(UiStyleVariant::MutedText)
             .with_layout_hints(fixed_width(180.0)),
