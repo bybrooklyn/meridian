@@ -39,6 +39,14 @@ diff-check:
 verify-ui-isolation:
     ! cargo tree -p meridian-rt | grep -q meridian-ui
 
+# Remove Meridian-owned build caches and redownloadable generated data.
+clean:
+    @echo "Cleaning Meridian workspace build caches and generated data"
+    cargo clean
+    if [[ -d examples/creator-alpha/target ]]; then rm -rf -- examples/creator-alpha/target; fi
+    if [[ -d assets_built ]]; then find assets_built -mindepth 1 -maxdepth 1 ! -name '.gitkeep' -exec rm -rf -- {} +; fi
+    if [[ -d benchmarks/results ]]; then find benchmarks/results -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; fi
+
 # Run all non-executing static analysis and quality gates
 audit: fmt-check clippy spec-check metadata-check diff-check verify-ui-isolation
 
