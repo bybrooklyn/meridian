@@ -4,6 +4,7 @@ Meridian is an experimental general-purpose game and interactive-application eng
 
 ## Start here
 
+- [North-star vision (aspirational, not current status)](VISION.md)
 - [Meridian v0.5 master specification](specs/MERIDIAN_MASTER_SPEC.md)
 - [Evidence milestone and workstream roadmap](specs/DELIVERY_ROADMAP.md)
 - [Implementation planning and package gates](specs/IMPLEMENTATION_PLANNING_SPEC.md)
