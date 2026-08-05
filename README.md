@@ -83,6 +83,8 @@ cargo run -p meridian-build --bin meridian-build -- --cargo-test-no-run --worksp
 
 Meridian is licensed under the Mozilla Public License 2.0. See [LICENSE-MPL-2.0](LICENSE-MPL-2.0). Project Meridian content is separate and proprietary.
 
+Contributions require [DCO](DCO.md) sign-off — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## AI notice
 
 AI-assisted contributions are permitted, but the contributor remains responsible for correctness, provenance, licensing, private-content boundaries, tests, and review. Generated or donor-derived material is untrusted until recorded and validated under the same policies as human-authored work.
