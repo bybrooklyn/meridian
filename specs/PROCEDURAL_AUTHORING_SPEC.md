@@ -172,7 +172,7 @@ Required supporting contracts:
 - Limited implicit conversions are deterministic, visible in compile output, and insert an inspectable conversion node. Ambiguous or lossy conversions require explicit nodes.
 - Node IDs survive visual layout changes. Port and parameter identity survive compatible migrations.
 - Output declarations include bounds, resolution policy, coordinate space, affected halo, artifact facets, capability requirements, fallback policy, and shipping eligibility.
-- `EvaluationBudget` includes wall time, CPU work, GPU work, transient bytes, persistent-cache bytes, output bytes, object count, recursion/iteration limits, and runtime frame allocation where applicable.
+- `EvaluationBudget` includes wall time, CPU work, GPU work, transient bytes, persistent-cache bytes, output bytes, object count, recursion/iteration limits, and runtime frame allocation where applicable. Recursion/iteration limits are safety bounds against runaway graphs, not performance targets, and are safe to fix now: default reference recursion depth 64, default reference iteration cap 1,000,000 per evaluation, both project-configurable. Wall time, CPU/GPU work, and byte budgets remain profile-calibrated per `RG-PRC-001` rather than fixed here.
 - Diagnostics include stable code, severity, recipe/node/port/source span, causal chain, affected outputs, recovery action, and links to provenance and cost traces.
 
 ## 5. Graph Domains and Spatial Fields
@@ -512,7 +512,117 @@ facets and `RuntimeCostManifest` prediction/reconciliation. It does not change
 the current package chain, authorize a runtime solver, or promote Alluvium
 implementation maturity.
 
-## 18. Examples
+## 17.1 Work package briefs
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status changes.
+
+**`WP-PRC-002` — Project Meridian environmental proving recipes**
+Result: a reproducible, sanitized forest/field corpus generated from
+public-safe recipes, with manual curation preserved across regeneration
+(§16's acceptance text). Owning artifacts: recipe source under this domain's
+schema (§13), consumed by `WP-PEN-011` and `WP-PRJ-001`. Entry conditions:
+`WP-PRC-001` closed. Deliverables: six relevant benchmark definitions carrying
+recipe/provenance fields, and typed handoff contracts to Basalt, vegetation,
+Isobar, Penumbra, assets, streaming, navigation, Cairn, and audio as
+applicable. Non-goals: no private AMI or route content — corpus content is
+public-safe by construction (`RISK-PRC-006`). Tests: generated-identity
+reconciliation across a regenerate cycle with manual overrides intact; the
+six benchmark fixtures. Stop condition: any recipe that cannot stay
+sanitized under regeneration is cut from the corpus, not patched with a
+one-off exception. Next unblocked: `WP-PRC-003`, `WP-PEN-011`, `WP-PRJ-001`.
+
+**`WP-PRC-003` — Alluvium–Basalt terrain and field production integration**
+Result: terrain authoring (§11.1: geology, slope, drainage, erosion, soil,
+roads) produces typed geometry/source artifacts Basalt actually consumes at
+runtime. Entry conditions: `WP-PRC-002`; Basalt's own `WP-BAS-001` scaffold
+in place to receive typed handoff. Deliverables: heightfield/mesh/SDF-patch
+generation nodes, semantic-spline road/drainage integration, and the
+handoff contract to Basalt (Basalt retains runtime authority per §1).
+Non-goals: this package does not reopen terrain hierarchy algorithm choice —
+that stays `RG-BAS-001`'s decision, not reconsidered "under a procedural
+label" (§15). Tests: `RISK-PRC-007`'s forbidden-edge check that Alluvium
+never claims Basalt's runtime authority. Next unblocked: `WP-PRC-004`.
+
+**`WP-PRC-004` — Alluvium vegetation and ecosystem production integration**
+Result: the tall-grass/forest proving ground (§11.2) — density, species mix,
+clumping, ecological suitability, wind/rain response inputs — generates
+placements vegetation's runtime actually consumes. Entry conditions:
+`WP-PRC-003` (terrain fields vegetation placement depends on). Deliverables:
+placement scoring against contributing fields/constraints/random
+stream/overrides, with every accepted or rejected candidate explainable
+(§11.2's non-goal: no undifferentiated random scatter). Non-goals: growth,
+competition, succession, seasonality, fire/flood response stay `WP-PRC-009`
+(Research), not this package. Tests: `meridian alluvium explain` produces a
+correct contributing-field trace for a sampled placement decision. Next
+unblocked: `WP-PRC-005`; `MS-05`'s representative forest corpus (which
+requires `WP-PRC-001` through `WP-PRC-004` together).
+
+**`WP-PRC-005` — Cross-facet material and causal weathering production**
+Result: one authored material source generates coherent visual, physical,
+acoustic, thermal, fire, fluid, and structural facets from shared causal
+fields (exposure, moisture, drainage, contact, heat, age) rather than
+independent per-system overlays (§11.3). Deliverables: the shared causal
+field model and per-facet derivation (owning runtime systems consume their
+facet only — §11.3's forbidden edge against inferring nonvisual properties
+from rendered pixels). Non-goals: `CombustionMaterialFacet` and
+`FluidInteractionFacet` are named post-1.0 facets (§11.3) — this package
+defines the causal-field mechanism, not those two facets themselves unless
+their own entry conditions are separately met. Tests: a weathering-cause
+change (e.g. increased moisture exposure) produces coherent, correlated
+changes across color, roughness, geometry, and friction facets in the same
+bake. Next unblocked: `WP-PRC-006`.
+
+**`WP-PRC-006` — Semantic infrastructure and constrained-structure authoring**
+Result: semantic splines generate connected roads/paths/rivers/drainage/
+fences/poles/cables/pipes with terrain shaping and support placement (§11.4);
+procedural structures use authored constraints/modules with explicit
+hero-space locks. Entry conditions: `WP-PRC-003` (terrain shaping),
+`WP-PRC-005` (material/weathering outputs the infrastructure needs). Non-goals:
+story-critical layouts remain manually accepted or authored — this package
+never auto-generates a locked hero space (§11.4). Tests: a hero-space lock
+survives regeneration of the surrounding generated infrastructure unchanged.
+Next unblocked: `WP-PRC-007`.
+
+**`WP-PRC-007` — Alluvium native visual authoring**
+Result: the visual graph editor (§12: typed ports, nested groups, reusable
+subgraphs, structural diffs, profiling overlays, CPU/GPU placement, migration
+previews, keyboard-only operation, semantic accessibility nodes, text-source
+round-trip) exists alongside the text/CLI foundation, not replacing it.
+Entry conditions: the text/CLI authoring surface (§12) already qualified —
+this is explicitly not part of the minimum evaluator foundation. Non-goals:
+no new evaluation semantics; the graph is an authoring surface over the same
+recipe schema (§13), not a second source of truth. Tests: text-source
+round-trip is lossless; keyboard-only operation covers every graph action;
+semantic accessibility nodes pass the same accessibility test class as
+Meridian UI's own contract. Next unblocked: `WP-PRC-008`.
+
+**`WP-PRC-008` — Alluvium runtime-safe recipes and streaming integration**
+Result: bounded recipes can run at runtime (not just cook-time) under
+declared budgets, with streaming/persistence/fallback contracts (§14: no
+threads/tasks/allocations/chunks when runtime evaluation is disabled).
+Deliverables: the runtime-safe execution path, cancellation, and the
+`RuntimeCostManifest` prediction/reconciliation loop (§14) reaching its first
+real calibration evidence. Non-goals: `RuntimeCostManifest` never becomes
+runtime authority or a fabricated budget gate (§14) — predictions stay
+labeled uncertainty/calibration evidence. Tests: disabled-runtime-evaluation
+proof of zero added tasks/threads/chunks (§14, mirrored in `RISK-PRC-004`'s
+mitigation); cancellation-latency benchmark. Next unblocked: MS-08/MS-09
+delivery rows (§17).
+
+**`WP-PRC-009` and `WP-PRC-010` — Research status, no full brief**
+Both remain `Research`: the evaluation algorithm/portfolio is not yet chosen,
+so a deliverables/test list here would itself be a false-promotion risk
+(`REQ-GOV-002`). Their gates already have complete, evaluable decision rules
+(§15): `WP-PRC-009` (ecosystem growth/competition/succession/season/
+disturbance) extends `WP-PRC-004`'s placement work once growth-model research
+is decided, and is bounded by the same explainability requirement (§11.2) —
+whatever model wins, every growth/succession outcome must remain traceable to
+contributing fields, not a black-box simulation. `WP-PRC-010` (measured
+dependency replacement and kernel optimization) is gated entirely by
+`RG-PRC-002`, closed until `MS-05`: it cannot start until a preregistered
+material benefit, representative evidence, and an ADR justify replacing a
+wrapped permissive dependency (§15) — the default outcome is no change.
 
 Logical recipe example; YAML is illustrative:
 

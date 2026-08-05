@@ -149,7 +149,12 @@ Before data collection, the study preregisters:
   quality settings, and display mode;
 - camera/input/workflow recordings, warmup, cache, startup, and first-use state;
 - metrics, repetitions, outlier handling, confidence, material threshold, and
-  stop rule;
+  stop rule — the base sampling methodology (minimum warmup passes, minimum
+  repetitions, percentile set, outlier handling) defaults to
+  [`TESTING_BENCHMARKS_AND_VALIDATION.md` §5](TESTING_BENCHMARKS_AND_VALIDATION.md)
+  unless the study's own preregistration documents a stronger method; the
+  material-threshold *value* is never inherited from that default and must
+  be preregistered fresh per study;
 - blind review procedure, reviewer conflicts, accessibility review, security,
   provenance, and maintenance assessment;
 - claim expiry and the competitor/Meridian changes that force renewal.
@@ -170,7 +175,14 @@ Quality is evaluated in three independent layers:
   the domain admits one;
 - **perceptual**: randomized/blinded pairwise or rating review with individual
   results, confidence, reviewer expertise, accessibility needs, and conflict
-  disclosure.
+  disclosure. Methodology default (study may strengthen, never weaken):
+  minimum 12 independent reviewers per comparison, randomized left/right or
+  A/B presentation order per reviewer, inter-rater agreement reported via
+  Krippendorff's alpha, and a review discarded from aggregation (but retained
+  in the raw record) if the reviewer's own attention-check pair is answered
+  incorrectly. This fixes how any such review must be run; it does not
+  preregister what result counts as a material difference — that stays a
+  per-study threshold.
 
 Moving-image review additionally records shimmer, ghosting, disocclusion,
 boiling, popping, exposure instability, latency, motion readability, and quality

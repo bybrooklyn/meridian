@@ -46,20 +46,45 @@ Forbidden edges:
 
 ```text
 ApiModule {
-  id, version, stability, capabilities,
-  types, components, resources, queries,
-  events, commands, functions, documentation
+  id: String,                          // namespaced, default max 128 bytes
+  version: (u16 major, u16 minor, u16 patch),
+  stability: Stability,                // Experimental | Stable | Deprecated
+  capabilities: Vec<CapabilityId>,     // default max 32 declared capabilities per module
+  types: Vec<TypeDecl>,
+  components: Vec<ComponentDecl>,      // default max 512 per module
+  resources: Vec<ResourceDecl>,
+  queries: Vec<QueryDecl>,
+  events: Vec<EventDecl>,
+  commands: Vec<CommandDecl>,
+  functions: Vec<ApiFunction>,
+  documentation: DocBlock,
 }
 
 ApiFunction {
-  id, name, parameters, result, errors,
-  purity, thread_domain, capabilities,
-  determinism, allocation_class, since, deprecated
+  id: u64,
+  name: String,                        // default max 128 bytes
+  parameters: Vec<ParamDecl>,          // default max 16 parameters
+  result: TypeRef,
+  errors: Vec<ErrorVariant>,           // default max 32 declared error variants
+  purity: Purity,                      // Pure | ReadsState | MutatesState
+  thread_domain: ThreadDomain,         // Fixed | Presentation | Headless | Any
+  capabilities: Vec<CapabilityId>,
+  determinism: DeterminismMode,        // Deterministic | BestEffort
+  allocation_class: AllocationClass,   // None | Bounded { max_bytes: u32 } | Unbounded
+  since: (u16 major, u16 minor, u16 patch),
+  deprecated: Option<DeprecationNotice>,
 }
 
 GameplayModuleDescriptor {
-  id, version, api_hash, build_id, dependencies,
-  capabilities, lifecycle, state_schema, reload_policy
+  id: u128,
+  version: (u16 major, u16 minor, u16 patch),
+  api_hash: u64,
+  build_id: BuildId,
+  dependencies: Vec<u128>,             // default max 64 direct module dependencies
+  capabilities: Vec<CapabilityId>,
+  lifecycle: LifecycleState,           // Unloaded | Loading | Active | Unloading | Failed
+  state_schema: SchemaRef,
+  reload_policy: ReloadPolicy,         // HotReload | RestartSession | RestartProcess
 }
 ```
 
@@ -149,8 +174,12 @@ Project Meridian's private rules and creative content remain private. Engine-sid
 
 ```text
 GameplayStateRecord {
-  owner_id, schema_id, schema_version,
-  fields, module_generation, migration_id
+  owner_id: PersistentEntityId,        // u128
+  schema_id: u32,
+  schema_version: u16,
+  fields: BoundedMap<FieldId, Value>,  // default max 256 declared fields per record
+  module_generation: u32,
+  migration_id: Option<u32>,
 }
 ```
 
@@ -184,6 +213,61 @@ Failures include compile error, API mismatch, missing dependency, capability den
 Tests cover API generation and compatibility, Rust module lifecycle, reflected properties, event/command ordering, fixed/presentation/headless barriers, build failures, isolated restart and checkpoint rollback, save migrations, stale entities, deterministic replay, graph type/cycle/reachability fuzzing, and accessibility. Luau adds compatibility, sandbox escape, budget exhaustion, binding parity, reload, and stripped-build tests.
 
 Benchmarks record module build/restart, system/callback distributions, event dispatch, queries, save migration, memory, allocations, optional VM startup/load, and reload. Compilation success alone is not runtime or migration evidence.
+
+## 13.1 Work package briefs
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status changes.
+
+**`WP-GAM-001` — Rust gameplay API module and Play-session reload foundation**
+Result: a creator can create a Rust gameplay project/module from a visible
+template, add reflected properties and typed interactions, build, and run it
+in an isolated Play session with rebuild/restart and checkpoint rollback
+(§4, §11's beginner workflow). Owning crates: project-visible gameplay
+crates plus stable engine API facades (§4). Entry conditions: runtime/ECS/
+data precursors exist (per this doc's current-status line); no stable public
+gameplay API yet, which is exactly this package's deliverable. Deliverables:
+the `ApiModule`/`ApiFunction`/`GameplayModuleDescriptor` schema (§3) with
+generated Rust descriptors/adapters, editor property reflection, typed event/
+command/query contracts, fixed/presentation/headless lifecycle registration,
+the native-reload pipeline in §5 (snapshot → build → verify → checkpoint →
+load-or-restart → migrate → publish-or-rollback), save migrations, and
+diagnostics. Non-goals: no Luau, no exposed Bevy/Rapier/wgpu backend types,
+no arbitrary process/filesystem/network access (§1's non-goals). Failure/
+recovery: an uncertain ABI/loader/thread/state-safety condition restarts the
+isolated Play session rather than pretending an unsafe hot reload succeeded
+(§5); a failed candidate preserves the prior accepted build and checkpoint.
+Security: capabilities deny-by-default, project/profile scoped (§12).
+Tests: the full §13 list (API generation/compatibility, module lifecycle,
+reflected properties, event/command ordering, lifecycle barriers, build
+failures, isolated restart/checkpoint rollback, save migrations, stale
+entities, deterministic replay, accessibility). Stop condition: a build/
+reload path that cannot prove ABI/state safety ships as session-restart-only,
+never as a silent unsafe hot reload. Next unblocked: `WP-GAM-002`; the
+Project Meridian prototype (§9), which this package is required by.
+
+**`WP-GAM-002` — Optional typed Luau runtime and mixed-project support**
+Result: Luau becomes available as an optional project setting (§11) after
+Rust APIs stabilize, with generated bindings from the same schema `WP-GAM-001`
+established — never a default prerequisite. Entry conditions: `WP-GAM-001`
+closed with a stable API schema/hash to bind against (§6: "delivered only by
+`WP-GAM-002` after Rust APIs stabilize"). Deliverables: one VM per configured
+isolation domain, content-addressed modules with source maps/API hash/
+capabilities/budget/state schema, the sandbox rules in §6 (no ambient
+filesystem/process/native-library/network/clipboard/debug/agent/host-pointer
+access; bounded memory/instruction/time/recursion/module/event budgets;
+deterministic random/time in deterministic modes), and reload/migration at a
+safe barrier. Non-goals: Luau cannot redefine gameplay semantics — it binds
+the existing schema, it does not extend it (§6); if Luau is absent, zero VM/
+artifact/task/binding-table/panel/dependency/package-chunk cost (§1's
+zero-cost-omission goal, `REQ-GAM-002`). Failure/recovery: VM fault or
+deterministic divergence is a typed failure with stable error, affected IDs,
+and rollback/restart (§12), never a silent state corruption. Tests: the §13
+Luau-specific list (compatibility, sandbox escape, budget exhaustion, binding
+parity, reload, stripped-build proof of zero cost when absent). Stop
+condition: `WP-GAM-002` cannot block MS-06/MS-07 (§13) — if sandbox/binding
+evidence isn't ready, Rust-only projects ship regardless. Next unblocked:
+selected MS-08/MS-09 mixed-project profiles.
 
 ## 14. Examples
 

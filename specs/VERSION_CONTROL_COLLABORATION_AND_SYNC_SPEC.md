@@ -27,11 +27,11 @@ Non-goals: hiding irreversible data loss, requiring Git knowledge, promising con
 ## 3. Data model
 
 ~~~text
-ChangeId: stable intent across rewritten commits
-CommitId: immutable tree/parents/metadata object
-OperationId: immutable repository-state transition
-WorkspaceId: working view identity
-Bookmark: movable named reference
+ChangeId: u128, stable intent across rewritten commits
+CommitId: content hash (256-bit), immutable tree/parents/metadata object
+OperationId: content hash (256-bit), immutable repository-state transition
+WorkspaceId: u128, working view identity
+Bookmark: String name (default max 255 bytes, UTF-8) -> CommitId, movable named reference
 SemanticChange: schema-aware operations over stable document IDs
 ~~~
 
@@ -86,7 +86,7 @@ Discover/Pair -> Authenticate -> Negotiate capabilities/repository
 
 Pairing uses explicit user action and authenticated key fingerprints/short codes. NAT traversal and transport are research choices; outbound-friendly direct paths are first. Relay stores/forwards encrypted bounded payloads and can be self-hosted. Relay cannot read repository content.
 
-Resumable transfer is chunked, deduplicated, quota-bound, and separately prioritizes source, metadata, package/artifact, and live-session traffic.
+Resumable transfer is chunked (default reference chunk size 4 MiB, content-addressed for deduplication), quota-bound (default max 4 concurrent chunk transfers per peer session), and separately prioritizes source, metadata, package/artifact, and live-session traffic — live-session traffic preempts bulk chunk transfer on the same link.
 
 ## 9. Partial workspaces
 
@@ -132,6 +132,60 @@ jargon or raw object manipulation.
 ## 14. Delivery mapping
 
 MS-08 delivers Meridian's UI/asset-aware VCS model and Git/Jujutsu interoperability after provenance research. MS-08/MS-09 adds P2P sync, partial workspaces, and live collaboration. MS-09 uses VCS/package trust for mods. MS-10 hardens recovery/interoperability/support. `PRG-VCS-001` is post-1.0 and cannot satisfy or block those milestones.
+
+## 14.1 Work package briefs (medium — Deferred)
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status changes; lighter test/evidence detail since MS-08/MS-09 is further
+out than the current work frontier.
+
+**`WP-VCS-001` — Meridian VCS and Git interoperability**
+Result: Meridian's UI/asset-aware VCS model over Git/Jujutsu foundations
+(§14's MS-08 delivery), giving creators "My Change, Shared Changes, History,
+Conflicts, Restore, Share, Sync" (§5) instead of staging/HEAD jargon. Entry
+conditions: provenance research on the exact Git/Jujutsu integration shape
+(§1 — "the exact integration is a provenance and research gate"); this
+package explicitly does not require a new object store or history engine
+(§1). Deliverables: the data model in §3 (`ChangeId`/`CommitId`/
+`OperationId`/`WorkspaceId`/`Bookmark`/`SemanticChange`), core user
+operations (§5), and the semantic diff/merge pipeline (§6: validate schema
+versions → migrate into comparison view → compute semantic operations →
+merge independent operations → flag conflicts → validate candidate →
+present source/semantic views → commit resolution). Non-goals: no native
+storage/history replacement — that stays `PRG-VCS-001`, gated on production
+evidence of material value wrappers can't provide (§1); wrapping Git/Jujutsu
+indefinitely is an explicitly acceptable permanent outcome, not a stopgap
+this package must escape. Tests: operation graph/concurrent workspace,
+undo/restore after every mutation, Git clone/fetch/push/import/export
+fixtures, semantic merge by document type (§13, scoped to this package).
+Stop condition: power loss during a reference update must leave immutable
+objects valid and the incomplete operation ignorable, never a corrupted
+repository (§15's failure example — this recovery guarantee is a hard
+release bar, not best-effort). Next unblocked: `WP-SYN-001`.
+
+**`WP-SYN-001` — Encrypted optional sync and collaboration**
+Result: direct encrypted peer-to-peer exchange (meridian-sync, replacing
+the retired Telepo concept), optional self-hosted relay, partial
+workspaces, and live collaboration (§1, §14's MS-08/MS-09 delivery). Entry
+conditions: `WP-VCS-001` closed — sync operates over VCS operations/
+checkpoints and never becomes authoritative history on its own (§1).
+Deliverables: the P2P session lifecycle in §8 (discover/pair → authenticate
+→ negotiate → exchange summaries → request chunks → verify/decrypt →
+import immutable objects → reconcile → complete), partial-workspace
+materialization with explicit placeholders rather than fake empty objects
+(§9), and live-session presence/cursors/advisory-locks/checkpoint prompts
+(§10) that periodically checkpoint into real VCS changes. Non-goals: no
+mandatory account, cloud, hosted Meridian service, or inbound port (§1);
+live session state is never the only copy of anything (§2's non-goals).
+Security: relay stores/forwards encrypted bounded payloads and cannot read
+repository content (§8); no permanent lock can make data unrecoverable,
+and admin override is audited (§7). Tests: P2P direct/relay/offline/resume/
+rekey/hostile-peer, partial workspace build/materialization, live
+disconnect/rejoin/checkpoint/conflict (§13, scoped to sync/collaboration).
+Stop condition: on disconnect, local operations must remain intact and
+rejoin must exchange only missing operations — a sync failure can never
+silently discard local work (§10). Next unblocked: MS-09's mod-trust
+integration, which uses VCS/package trust this package establishes (§14).
 
 ## 15. Examples
 

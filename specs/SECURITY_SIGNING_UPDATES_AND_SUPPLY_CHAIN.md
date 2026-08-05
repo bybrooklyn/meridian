@@ -84,12 +84,18 @@ Policies cover generation, backup, quorum/threshold, access logging, expiry, rot
 
 ## 7. Update pipeline
 
-1. fetch bounded timestamp metadata over configured transport;
+1. fetch bounded timestamp metadata over configured transport (default max
+   parse size 16 KiB — a parsing/decompression-bomb bound, distinct from the
+   key/threshold/expiry parameters `RG-SEC-001` still owns);
 2. validate root trust/rotation and signatures/thresholds;
 3. reject rollback/freeze/expiry/version/hash/length inconsistency;
-4. fetch snapshot/targets/delegated metadata;
+4. fetch snapshot/targets/delegated metadata (default max parse size 1 MiB
+   per role document, same parsing-bound rationale as step 1);
 5. select compatible channel/platform/architecture/capabilities;
-6. download independent chunks/patch into quarantine with resume quotas;
+6. download independent chunks/patch into quarantine with resume quotas
+   (default reference chunk size 4 MiB, default max 4 concurrent chunk
+   downloads per update, each independently resumable and hash-verified —
+   these are download-engineering limits, not cryptographic parameters);
 7. verify hashes/signatures/package schema/provenance policy;
 8. stage side-by-side;
 9. preview changes/permissions/migrations;
@@ -98,6 +104,11 @@ Policies cover generation, backup, quorum/threshold, access logging, expiry, rot
 12. rollback on failure without downgrading trust metadata improperly.
 
 Offline package install follows equivalent verification and trust prompts.
+The parsing-bound numbers above are ordinary DoS-prevention engineering
+limits and are safe to state now; the cryptographic parameters named in §4
+(signature algorithms, key sizes, threshold counts, expiry durations) remain
+deliberately unstated pending `RG-SEC-001` and must not be inferred from
+these bounds.
 
 The same pipeline governs externally managed development-toolchain components:
 `rustc`, Cargo, rust-analyzer, platform SDKs, debuggers, and external shader
@@ -184,6 +195,47 @@ Interrupted update preserves active version and quarantined resumable chunks. Fa
 ## 15. Delivery mapping
 
 MS-00 establishes policy/research. Security gates are embedded in every milestone and work package. MS-01/MS-03/MS-04 define package/signing seams. MS-03/MS-08 produce build provenance. MS-08/MS-09 protect repositories/sync and add network/Collective/mod/agent threats only for selected profiles. MS-10 completes release/update/key-compromise and platform-signing certification. `PRG-WRL-001` and `PRG-INT-001` add separate post-1.0 threat models and cannot borrow MS-10 evidence as implementation proof.
+
+## 15.1 Work package brief
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status change.
+
+**`WP-SEC-001` — Security, signing, updates, and provenance**
+Result: a release build produces SBOM/provenance and signed targets
+metadata; a client validates the role chain/freshness/hash, stages chunks,
+previews the update, activates, health-checks, and retains rollback (§16's
+end-to-end example). Owning contracts: the TUF-inspired role model
+(`RootRole`/`TargetsRole`/`SnapshotRole`/`TimestampRole`/`DelegatedRoles`,
+§4). Entry conditions: `RG-SEC-001` decided (cryptography and key-management
+selection, §4 — "exact libraries, signature algorithms, key sizes, threshold
+counts... are Research/Security gates," so this package cannot fabricate
+final cryptography ahead of its own gate). Deliverables: the update pipeline
+in §7 (fetch bounded timestamp metadata → validate root trust/signatures →
+reject rollback/freeze/expiry/hash inconsistency → fetch snapshot/targets →
+select compatible channel → download into quarantine → verify → stage
+side-by-side → preview → atomically activate with prior version retained →
+health check → rollback on failure), artifact provenance recording (§5),
+key management with editor UI never handling raw private keys (§6), and the
+managed-toolchain pipeline sharing the same verification machinery for
+rustc/Cargo/rust-analyzer/platform SDKs (§7). Non-goals: no security claim
+resting on obscurity, file extension, model judgment, or TLS alone (§1);
+this package does not itself open `PRG-WRL-001`/`PRG-INT-001`'s post-1.0
+threat models (§15 — those "cannot borrow MS-10 evidence as implementation
+proof"). Failure/recovery: an interrupted update preserves the active
+version and quarantined resumable chunks; a failed health check returns to
+the prior version without downgrading trust metadata improperly (§7, §13).
+Tests: the full §14 list scoped to signing/update/key machinery (parser
+fuzz/property/limits, signature/threshold/root-rotation, rollback/freeze/
+replay, chunk resume/corruption/path-traversal, key-helper IPC/redaction,
+compromised-provider simulation, reproducible build/SBOM, update activate/
+health/rollback, full key-compromise drill, managed-toolchain quarantine/
+hash/signature/atomic-activation). Stop condition: any trust-metadata path
+that cannot prove rollback/freeze/replay rejection blocks that channel from
+shipping, not just from the default profile (§13's diagnostics rule: never
+suggest bypassing verification as the default fix). Next unblocked: MS-08/
+MS-09's repository/sync/network/Collective/mod/agent threat-boundary rows
+(§15), which assume this package's signing/update foundation exists.
 
 ## 16. Examples
 

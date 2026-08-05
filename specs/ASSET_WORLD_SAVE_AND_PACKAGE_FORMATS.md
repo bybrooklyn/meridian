@@ -265,18 +265,34 @@ Logical source contract:
 
 ```text
 PrefabDocument {
-  id, schema_version, root_elements, nested_instances,
-  parameters, variants, default_facets, provenance
+  id: AssetId,
+  schema_version: u32,
+  root_elements: Vec<ElementRef>,        // default max 4,096 elements per prefab
+  nested_instances: Vec<PrefabInstance>, // cycles rejected per rule 2 below
+  parameters: Vec<ParameterDefinition>,  // default max 64 exposed parameters
+  variants: Vec<VariantDefinition>,      // default max 128 variants
+  default_facets: Vec<FacetRef>,
+  provenance: ProvenanceRef,
 }
 
 PrefabInstance {
-  instance_id, prefab_id, selected_variant,
-  parameter_values, transform, override_layers, ownership
+  instance_id: u128,
+  prefab_id: AssetId,
+  selected_variant: Option<VariantKey>,
+  parameter_values: BoundedMap<ParameterId, Value>,
+  transform: Transform,
+  override_layers: Vec<OverrideLayer>,   // default max 32 stacked layers per instance
+  ownership: OwnershipRef,
 }
 
 OverrideLayer {
-  id, owner, priority, operations, base_revision,
-  conflict_policy, orphan_operations
+  id: u128,
+  owner: OwnerRef,
+  priority: i32,                         // higher applies later; ties broken by layer id
+  operations: Vec<OverrideOperation>,    // default max 1,024 operations per layer
+  base_revision: u32,
+  conflict_policy: ConflictPolicy,       // LastWriterWins | Reject | MergeIfDisjoint
+  orphan_operations: Vec<OverrideOperation>, // operations whose target no longer resolves
 }
 ```
 

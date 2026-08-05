@@ -211,10 +211,37 @@ No method returns mutable aliases into hot solver arrays.
 ### 7.4 Dedicated 2D Contracts
 
 ```text
-RigidBody2dDesc { body_type, transform2d, velocity2d, mass, damping, flags }
-Shape2dDesc { circle | capsule | box | segment | polygon | chain | compound }
-Collider2dDesc { shape, material, layer, filter, sensor, one_way_policy }
-CairnWorld2d { create, remove, step, query, snapshot, diagnostics }
+RigidBody2dDesc {
+  body_type: BodyType,
+  transform2d: Isometry2d,
+  velocity2d: BodyVelocity2d,
+  mass: MassProperties,
+  damping: Damping,
+  flags: BodyFlags,
+}
+Shape2dDesc: Circle { radius: f32 }
+           | Capsule { radius: f32, half_height: f32 }
+           | Box { half_extents: Vec2 }
+           | Segment { a: Vec2, b: Vec2 }
+           | Polygon { points: ArtifactRef }   // default max 64 vertices per convex polygon
+           | Chain { points: ArtifactRef }
+           | Compound { children: Vec<ChildShape2dDesc> }
+Collider2dDesc {
+  shape: Shape2dDesc,
+  material: CairnMaterialId,
+  layer: CollisionLayer,                 // u32 bitflag category
+  filter: CollisionFilter,               // u32 bitflag mask
+  sensor: bool,
+  one_way_policy: OneWayPolicy,          // None | OneWayPlatform { normal: Vec2 }
+}
+CairnWorld2d {
+  fn create_body(&mut self, desc: RigidBody2dDesc) -> Result<CairnBody2dId, CairnDiagnostic>;
+  fn remove(&mut self, body: CairnBody2dId) -> Result<(), CairnDiagnostic>;
+  fn step(&mut self, step: CairnStep) -> Result<CairnEvents, CairnDiagnostic>;
+  fn query(&self) -> &dyn CairnQueryApi2d;
+  fn snapshot(&self, filter: SnapshotFilter) -> CairnSnapshot2d;
+  fn diagnostics(&self) -> CairnDiagnosticsSnapshot;
+}
 ```
 
 2D and 3D IDs, coordinate spaces, descriptors, worlds, contacts, joints, and query results are distinct types. Shared semantic material IDs and source entity IDs may map into either dimension. Mixed projects bridge dimensions only through explicit gameplay or authored portal/projection contracts; implicit collision across dimensions is forbidden.

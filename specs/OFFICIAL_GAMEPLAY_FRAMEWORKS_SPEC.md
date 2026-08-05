@@ -106,6 +106,43 @@ Shared foundations include player contexts, movement intent, camera rigs, intera
 
 Validation projects cover at minimum a first-person interaction scene, third-person movement scene, parkour course, 2D platformer, local multiplayer fixture, dedicated server fixture, and one framework-free project. Evidence records selected modules, hashes, settings, platform, timing, memory, accessibility, and stripped output.
 
+## 8.1 Work package brief
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status change.
+
+**`WP-FWK-001` — Shared Rust-first player, movement, camera, interaction, and module-composition foundation**
+Result: a creator selects first-person interaction (or another shared
+primitive) in a project manifest and gets visible Rust modules and data,
+not a black-box package (§9's example). Owning contracts:
+`FrameworkDescriptor`, `FrameworkModule`, `PlayerContext`, `MovementIntent`,
+`CameraRigRequest`, `FrameworkExtensionPoint` (§4). Entry conditions: stable
+public contracts from CORE/RUN, DAT, GAM, PHY (§3) — this package depends on
+`WP-GAM-001` for the gameplay module lifecycle it builds framework modules
+on top of, and on Cairn/ANI/NAV only through their published contracts, not
+their full maturity (§6's boundary table). Deliverables: the composition
+pipeline in §5 (select modules in manifest → validate dependency/capability
+graph → generate project-visible defaults → compile shared schemas/bindings
+→ register systems at declared barriers → run framework tests/accessibility
+checks → strip unused modules at cook), player-context/device assignment for
+local multiplayer (§5), and the shared foundations named in §8 (player
+contexts, movement intent, camera rigs, interaction, typed abilities/actions,
+spawn/checkpoint). Non-goals: none of the six long-term family completions
+(§1's numbered list) — those stay `PRG-FWK-001` after MS-10; no framework
+code may import Project Meridian or other private game types (§3's forbidden
+edges). Failure/recovery: invalid module graphs, missing capabilities, order
+cycles, or authority violations fail before activation or disable only the
+affected optional module, never the whole project (§7). Tests: the
+multi-project validation set in §8 (first-person interaction scene,
+third-person movement scene, parkour course, 2D platformer, local
+multiplayer fixture, dedicated server fixture, one framework-free project),
+each proving an unselected framework contributes zero runtime cost. Stop
+condition: a module that cannot prove clean removal from cooked output for
+the framework-free project blocks that module's release, not the whole
+package. Next unblocked: the five remaining official framework families,
+each requiring its own future package under `PRG-FWK-001`'s post-MS-10
+governance — this package does not itself unlock them.
+
 ## 9. Examples
 
 End to end: a creator selects first-person interaction; Meridian adds visible Rust modules and data; input creates movement intent; Cairn resolves motion; ANI and Wavefront consume typed outputs; the creator can replace any module.

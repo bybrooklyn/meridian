@@ -146,10 +146,16 @@ Input snapshots consumed by fixed simulation are immutable and tick-tagged. Repl
 Local multiplayer is explicit:
 
 ```text
-InputDeviceId -> DeviceAssignment -> LocalPlayerId -> PlayerContext
+InputDeviceId (u32) -> DeviceAssignment -> LocalPlayerId (u8, default max 8 local players) -> PlayerContext
 PlayerContext {
-  device_set, action_maps, context_stack, viewport,
-  UI focus scope, audio listener, authority, accessibility profile
+  device_set: Vec<InputDeviceId>,       // default max 4 devices per local player
+  action_maps: Vec<ActionMapRef>,
+  context_stack: Vec<ActionContextId>,  // default max 16 nested contexts
+  viewport: ViewportRef,
+  ui_focus_scope: FocusId,
+  audio_listener: AudioListenerRef,
+  authority: PlayerAuthority,           // LocalOnly | Networked { connection: ConnectionId }
+  accessibility_profile: AccessibilityProfileRef,
 }
 ```
 
@@ -163,9 +169,18 @@ The runtime emits structured events:
 
 ~~~text
 RuntimeEvent {
-  code, severity, domain, operation_id, trace_id,
-  frame_or_tick, message_key, fields, recovery_action,
-  source, redaction_class
+  code: u32,                            // stable diagnostic code, namespaced per domain
+  severity: Severity,                   // Trace | Debug | Info | Warn | Error | Fatal
+  domain: RuntimeDomain,                // Platform | Simulation | Presentation | Render |
+                                         // Audio | Io | Network
+  operation_id: OperationId,
+  trace_id: u128,
+  frame_or_tick: u64,
+  message_key: String,                  // default max 128 bytes, localization key
+  fields: BoundedMap<String, Value>,    // default max 32 structured fields per event
+  recovery_action: Option<RecoveryAction>,
+  source: SourceLocation,
+  redaction_class: RedactionClass,      // Public | ProjectSensitive | Secret
 }
 ~~~
 
@@ -179,7 +194,7 @@ Crash context writes through a pre-opened bounded path where the platform permit
 
 ## 13. Security and limits
 
-Input, IPC, and file events are untrusted. Enforce message lengths, event rates, path roots, process arguments, environment allowlists, and timeout/cancellation. No shell string construction in build/process APIs. Diagnostic fields are classified public/project-sensitive/secret and redacted at sinks.
+Input, IPC, and file events are untrusted. Enforce message lengths (default max 1 MiB per IPC message), event rates (default max 1,000 input events/second per device before coalescing), path roots, process arguments, environment allowlists, and timeout/cancellation (default reference bound 30 s for a bounded worker before forced cancellation, project-configurable per task class). No shell string construction in build/process APIs. Diagnostic fields are classified public/project-sensitive/secret and redacted at sinks.
 
 ## 14. Quality tiers and fallbacks
 

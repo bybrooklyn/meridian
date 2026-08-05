@@ -214,6 +214,41 @@ vegetation renderer; MS-07 validates the opening slice; MS-08 may expand
 large-world systems. `RG-BAS-001` owns later geometry hierarchy
 selection and remains separate from `RG-PEN-001` renderer-path research.
 
+## 10.1 Work package brief (medium — Scaffold)
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md)
+for the next real step beyond the current Scaffold-plus-partial-precursor
+state. No status change.
+
+**`WP-BAS-001` — Basalt terrain and large-world geometry foundation**
+Result: terrain runtime/source schemas, large-world spatial precision,
+origin rebasing, geometry residency, and path-independent terrain snapshots
+become real (§1) — MS-04's "Basalt snapshots and conventional geometry"
+(§10). Owning crate: `meridian-basalt`. Entry conditions: the existing
+Partial precursors already in place (64-bit world positions, default cells,
+origin rebasing, spatial records, residency, deterministic cell request/
+priority/cancellation, bounded activation — current-status line) — this
+package completes rather than starts from zero; `WP-PRC-003` supplies the
+Alluvium terrain/field authoring handoff (§10) as a parallel input, not a
+blocker for the geometry/residency machinery itself. Deliverables: the
+public contracts in §4, the dependency direction in §5, the runtime
+pipeline in §6, and disabled-pack zero-work behavior (§7). Non-goals: no
+Alluvium recipe/field evaluation or generated-identity ownership (§1 —
+Basalt receives typed geometry, it does not author it, matching the
+forbidden-edge check in `PROCEDURAL_AUTHORING_SPEC.md` §15's
+`RISK-PRC-007`); no Penumbra render-backend internals; no Isobar weather or
+Torsant simulation ownership (§1); terrain-hierarchy algorithm selection
+stays `RG-BAS-001`, separate from `RG-PEN-001` renderer-path research
+(§10, §11). Tests: the §10 list (origin rebase transform and temporal
+invalidation, cell request priority/cancellation/recovery, deterministic
+terrain/vegetation regeneration, source/artifact hash and corrupt-cache
+recovery, renderer snapshot stale-epoch rejection, disabled-pack zero-work).
+Stop condition: a stale renderer-snapshot epoch must be rejected, never
+consumed as current (§10) — matches Isobar's equivalent rule, since both
+feed Penumbra's path-independent snapshot contracts. Next unblocked: MS-05's
+representative terrain/vegetation renderer proof (§10), which this package
+is the direct prerequisite for.
+
 ## 11. Adopted decisions
 
 [ADR-0008](../docs/architecture/decisions/ADR-0008-isobar-basalt-torsant-boundaries.md)

@@ -205,6 +205,20 @@ power/thermal state, display mode, and observer overhead. Frame reports use
 distributions, percentiles/lows, and worst windows rather than average FPS
 alone. CPU/GPU overlap is not double-counted as wall time.
 
+Methodology is fixed even though pass/fail numeric thresholds are not: a
+report records at minimum 5 discarded warmup passes before the first
+retained sample, a minimum of 30 retained repetitions per workload/platform
+combination (more where variance requires it to reach the declared
+confidence level), and the full percentile set — 50th, 95th, 99th, and
+99.9th — plus the single worst frame in the window — never a bare average.
+Outliers are
+identified by median absolute deviation, flagged, and retained in the raw
+record rather than silently discarded; a report that drops samples without
+recording the discard reason is `Inconclusive`, not `Pass`. This procedural
+specificity is safe to fix now because it doesn't calibrate a threshold — it
+only fixes how any future threshold must be measured once `RG-*` gates
+preregister one.
+
 Hardware records contain exact CPU/GPU/memory/storage/display/OS/driver/runtime
 and capability profile. Priority is Apple Silicon; Linux/Steam Deck; Windows
 NVIDIA; Windows AMD; Intel graphics; Windows on ARM. Unknown, emulated, and CI

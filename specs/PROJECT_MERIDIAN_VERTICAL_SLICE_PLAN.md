@@ -172,6 +172,33 @@ Primary profiling: the registered M4 Mac hardware/config is recorded. Secondary:
 
 Final reviews: creative/narrative, art/readability, audio, accessibility, performance, recovery, security, package/provenance, and documentation.
 
+### 5.1 Work package brief
+
+Mapped onto [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md)'s
+contract fields; content lives in this document's own sections, cross-
+referenced rather than duplicated. No status change.
+
+Result: §1's five-minute production-quality opening-forest traversal. Entry
+conditions: `WP-PRJ-001`'s bounded prototype passing does not satisfy this
+gate on its own (§1 — "the bounded MS-06 prototype... cannot satisfy this
+slice"); §3's capability dependency map names every incoming narrow gate
+(runtime/platform, Penumbra/assets, Basalt/streaming, Cairn collision,
+Wavefront/Isobar, Rust/logic, UI/accessibility, save/package). Deliverables:
+the twelve `VS-*` local implementation slices in §5 (route/creative lock
+through platform/final review), each requiring — before MS-07 activation —
+its own bounded tasks with exact dependencies, changed authority, tests,
+evidence, and stop conditions (§5's own framing). Non-goals: the full §2
+list — no enemies/combat/death/sprint/jump, no completing the whole game, no
+multiplayer/mods/XR/additional languages, no full Cairn destruction, no
+claiming visual quality from an occluded GPU smoke. Failure/recovery: §11's
+failure matrix. Security/provenance: §12. Tests/evidence: §13's evidence
+bundle in full. Stop condition: §14's completion rule — MS-07 does not close
+on any single `VS-*` slice passing in isolation; all twelve converge at one
+`WP-PRJ-002` production review (§5). Next unblocked: MS-08 profiles and any
+post-MS-07 program that assumes a real production opening slice exists as
+evidence, per the delivery mapping in `RENDERING_AND_GRAPHICS_SPEC.md` §18
+and this suite's other MS-07-gated rows.
+
 ## 6. Runtime pipeline
 
 1. launch verifies project/package and selects safe capability profile;

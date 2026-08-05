@@ -59,17 +59,21 @@ Late-latching affects presentation transforms only. Reprojection is runtime-owne
 ## 5. Interaction model
 
 ~~~rust
-pub struct InteractionPose { aim: Transform, grip: Transform, confidence: Confidence }
+pub struct InteractionPose {
+    aim: Transform,
+    grip: Transform,
+    confidence: Confidence,           // f32 0.0-1.0, runtime-reported pose-tracking quality
+}
 pub enum InteractionIntent { Point, Select, Grab, Use, Teleport, Manipulate }
 pub struct GrabConstraintDesc {
-    actor: PersistentEntityId,
-    anchor: InteractionAnchor,
-    mode: GrabMode,
-    limits: ConstraintLimits,
+    actor: PersistentEntityId,        // u128
+    anchor: InteractionAnchor,        // Effector { site: ContactSite } | WorldPoint(Vec3)
+    mode: GrabMode,                   // Snap | Free | Constrained { limits: ConstraintLimits }
+    limits: ConstraintLimits,         // linear/angular min-max per axis, default unconstrained
 }
 ~~~
 
-Direct touch, ray, gaze, controller, hand, keyboard, and accessible alternate input map to semantic intents. Gameplay chooses allowed operations. Physics supports kinematic targets, constraints, collision filtering, two-hand manipulation, throw velocity filtering, and deterministic-enough recording modes.
+Direct touch, ray, gaze, controller, hand, keyboard, and accessible alternate input map to semantic intents. Gameplay chooses allowed operations. Physics supports kinematic targets, constraints, collision filtering, two-hand manipulation, throw velocity filtering (default reference bound: velocity samples over the last 150 ms of pose history, project-configurable), and deterministic-enough recording modes.
 
 ## 6. Comfort and accessibility
 
@@ -141,6 +145,42 @@ Pose, room, hand, eye, camera/passthrough, microphone, and spatial-anchor data a
 - Later gates evaluate hand/eye tracking, passthrough, anchors, foveation, and store SDKs.
 
 The current official OpenXR registry is tracked in [research decisions](RESEARCH_AND_ALGORITHM_DECISIONS.md); extensions are selected only against tested runtimes.
+
+## 12.1 Work package brief (medium — Deferred)
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status change; lighter test/evidence detail since MS-09 is further out
+than the current work frontier.
+
+**`WP-XR-001` — OpenXR timing, stereo, and interaction foundation**
+Result: OpenXR lifecycle, stereo rendering, actions, basic interactions, and
+one reference application (§12's MS-09 delivery row) — pressing controller
+grab maps to a `Grab` intent end to end (§13's example). Entry conditions:
+MS-01 through MS-07 preserving the timing/input/render/physics/UI/save
+seams this package plugs into (§12); OpenXR is explicitly "not on the
+opening desktop slice critical path" (§1), so this package cannot block or
+be blocked by MS-07. Deliverables: `meridian-xr-core`/`meridian-xr-openxr`/
+`meridian-xr-interaction` (§2), the lifecycle state machine (§3), the frame
+pipeline in §4 (poll events → wait/begin frame → locate views/action spaces
+→ sample actions → fixed simulation consumes at its clock boundary →
+presentation late-latches → per-view commands → swapchain acquire/render/
+release → end frame → bounded haptics), the interaction model (§5:
+`InteractionPose`, `InteractionIntent`, `GrabConstraintDesc`), and the
+required comfort/accessibility option set (§6). Non-goals: hand/eye
+tracking, passthrough, anchors, foveation, and platform-store SDKs are
+later gates, not this package (§12); XR is never mandatory and must not
+leak types into portable gameplay/simulation contracts (this doc's closing
+non-goals). Security: pose/room/hand/eye/camera/microphone/spatial-anchor
+data are sensitive by default and never enter default traces or VCS (§10).
+Tests: OpenXR conformance-informed lifecycle fixtures, device/session-loss
+and swapchain recreation, action binding/handedness, pose age/late-latch
+invariants, stereo/multiview image tests, disabled-pack zero-resource proof
+(§11). Stop condition: on `LOSS_PENDING`, Meridian must suspend XR
+submission, checkpoint game state, and show desktop recovery before
+destroying session resources — it never corrupts world/save authority on
+session loss (§3, §13's failure example). Next unblocked: the later
+hand/eye/passthrough/anchor/foveation gates named in §12, none of which
+this package unlocks by itself.
 
 ## 13. Examples
 

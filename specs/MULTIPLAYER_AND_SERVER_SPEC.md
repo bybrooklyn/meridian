@@ -44,24 +44,47 @@ Disconnected -> Resolving -> TransportConnected -> Authenticating
 any -> Rejected | TimedOut | Banned | Migrating
 ~~~
 
-Each transition has deadline, retry policy, user-facing diagnostic, and redacted audit record. Authentication and session discovery may come from Collective, while transport encryption and game authorization remain separate capabilities. Offline/direct/LAN projects can use local identities and discovery without Collective.
+Each transition has deadline, retry policy, user-facing diagnostic, and redacted audit record: default reference deadlines are 5 s for `Resolving`/`TransportConnected`, 10 s for `Authenticating` (longer to tolerate an external Collective provider round trip), and 5 s for `NegotiatingProtocol`/`NegotiatingContent`/`Synchronizing`, each project-configurable. Retry uses exponential backoff with jitter, default base 500 ms doubling to a default cap of 10 s, and a default max 5 attempts before the connection reports `TimedOut` rather than retrying indefinitely. Authentication and session discovery may come from Collective, while transport encryption and game authorization remain separate capabilities. Offline/direct/LAN projects can use local identities and discovery without Collective.
 
 ## 5. Protocol
 
 ~~~text
 ProtocolHello {
-  protocol_range, engine_api_hash, game_id, game_version,
-  schema_set_hash, package_set, mod_set,
-  capabilities, transport_properties, nonce
+  protocol_range: (u16 min, u16 max),        // inclusive supported protocol version range
+  engine_api_hash: u64,                      // hash of the negotiated engine API surface
+  game_id: u128,                             // stable persistent game identifier
+  game_version: (u16 major, u16 minor, u16 patch),
+  schema_set_hash: u64,
+  package_set: Vec<PackageRef>,              // u16-prefixed count, default max 256 entries
+  mod_set: Vec<ModRef>,                      // u16-prefixed count, default max 256 entries
+  capabilities: u64,                         // bitflag set; reserved bits MUST round-trip unset
+  transport_properties: TransportProperties, // MTU, unreliable-loss tolerance, relay hints
+  nonce: [u8; 16],                           // per-connection random value, replay resistance
 }
 
 MessageEnvelope {
-  type_id, schema_version, channel, sequence,
-  simulation_tick, payload_length, payload
+  type_id: u32,
+  schema_version: u16,
+  channel: ChannelKind,                      // u8 discriminant: ReliableOrdered=0,
+                                              // ReliableUnordered=1, UnreliableSequenced=2
+  sequence: u32,                              // per-channel monotonic, wraps at u32::MAX
+  simulation_tick: u64,
+  payload_length: u32,                       // default max 64 KiB per message,
+                                              // project-configurable up to a declared ceiling
+  payload: Box<[u8]>,
 }
 ~~~
 
-Messages are length-delimited, bounded, versioned, fuzzed, and unknown-message policy is explicit. Reliable ordered, reliable unordered, and unreliable sequenced semantics are declared independently of transport.
+Messages are length-delimited (explicit `u32` length prefix, never inferred
+from socket boundaries), bounded (`payload_length` rejects anything over the
+project's configured ceiling — default reference bound 64 KiB — before the
+buffer is allocated), versioned (`schema_version` mismatch is a typed
+negotiation failure, never a best-effort parse), fuzzed, and unknown-message
+policy is explicit: an unrecognized `type_id` is dropped with a diagnostic
+and rate-limited abuse counter, never silently ignored past a threshold.
+Reliable ordered, reliable unordered, and unreliable sequenced semantics
+(`ChannelKind`) are declared independently of transport — a QUIC or custom
+UDP transport implements all three the same observable way.
 
 ## 6. Replication
 
@@ -109,7 +132,7 @@ Package transfer is separate from gameplay traffic, bounded, resumable, hash ver
 
 Network IO uses dedicated bounded lanes or runtime integration; message parsing/decompression occurs off simulation. Simulation consumes immutable input/message batches at barriers and publishes snapshots after commit.
 
-Per-connection memory, bandwidth, queued messages, history, decompression, and entity maps have hard limits. Slow/hostile clients degrade/disconnect rather than growing queues indefinitely.
+Per-connection memory, bandwidth, queued messages, history, decompression, and entity maps have hard limits — each a project-configurable ceiling with a default reference value rather than an unbounded allocation: outbound send queue default max 4 MiB per connection, inbound reassembly buffer default max 1 MiB, prediction/input history default max 1,024 ticks, decompressed-message default max 8x the compressed size (rejected above that ratio as a decompression-bomb signal). Slow/hostile clients degrade/disconnect rather than growing queues indefinitely: a connection exceeding its queue ceiling for longer than a configured grace window (default 2 s) is disconnected with a typed reason, not silently throttled forever.
 
 ## 13. Diagnostics and security
 
@@ -147,6 +170,42 @@ Thresholds are genre/corpus/tier calibrated.
 ## 16. Delivery mapping
 
 MS-09 delivers selected core transports/server/replication/reference samples. `WP-COL-001` may add independently selected provider-neutral Collective modules after NET, Wavefront, and security seams stabilize. MS-09 may add modded multiplayer and publishes mod policy. MS-10 certifies only declared transport/provider/server profiles. `PRG-WRL-001` distributed worlds is post-1.0 and cannot be inferred from NET completion.
+
+## 16.1 Work package brief (medium — Deferred)
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status change; lighter test/evidence detail since MS-09 is further out
+than the current work frontier.
+
+**`WP-NET-001` — Transport-neutral networking and providers**
+Result: a client connects, authenticates, negotiates schema/package set,
+streams initial cells, predicts local movement, and reconciles a server
+correction (§17's example) — MS-09's "selected core transports/server/
+replication/reference samples" (§16). Entry conditions: Wavefront and
+security seams stable enough for §16's `WP-COL-001` ordering to make sense
+(NET, then Wavefront/security, then optional Collective); this spec exists
+now specifically so persistent IDs, clocks, schemas, saves, streaming,
+Cairn, and packages keep compatible seams even before NET activates (§1) —
+those seams are a precondition this package inherits, not one it creates.
+Deliverables: `meridian-net-core`/`meridian-net-transport`/
+`meridian-replication`/`meridian-prediction`/`meridian-server` (§3), the
+connection lifecycle state machine (§4), the replication model (§6: schema
+opt-in authority/relevance/frequency/quantization, immutable per-client
+views built after simulation commit), prediction/reconciliation/opt-in
+rollback (§7), and the headless dedicated-server profile excluding
+renderer/graphics/local-audio/editor (§9). Non-goals: no peer-authoritative
+trust by default, no one transport/provider embedded in gameplay APIs, no
+mandatory Steam/EOS/cloud accounts (§2); Project Meridian is single-player
+and this package is explicitly not a MS-06/MS-07 dependency (§1). Security:
+malformed/flooded packets, replay, amplification, and command spoofing are
+required threat scenarios with protocol/parser fuzzing mandatory (§13).
+Tests: the §15 list (protocol compatibility/migration, hostile length/rate/
+decompression fuzzing, loss/latency/jitter/reorder, prediction/rollback with
+side effects, dedicated-server no-presentation-dependency proof). Stop
+condition: an oversized compressed input must be rejected before allocation
+with server simulation unaffected (§17's failure example) — this is a hard
+security bar, not a tuning target. Next unblocked: `WP-COL-001`; MS-09's
+modded-multiplayer and mod-policy work (§16).
 
 ## 17. Examples
 

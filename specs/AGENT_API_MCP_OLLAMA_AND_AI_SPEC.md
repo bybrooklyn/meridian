@@ -30,16 +30,32 @@ Non-goals: arbitrary shell/filesystem access, hidden prompt construction, automa
 
 ~~~text
 CommandDescriptor {
-  id, version, title, input_schema, output_schema,
-  required_capabilities, risk, preview,
-  transaction_policy, undo_or_checkpoint,
-  thread_domain, timeout, audit_fields
+  id: String,                          // namespaced, default max 128 bytes
+  version: (u16 major, u16 minor, u16 patch),
+  title: String,                       // default max 128 bytes, human-readable
+  input_schema: SchemaRef,
+  output_schema: SchemaRef,
+  required_capabilities: Vec<CapabilityId>, // default max 16 per command
+  risk: RiskClass,                     // Observe | Propose | Reversible | External |
+                                        // DestructiveOrTrustChanging
+  preview: PreviewPolicy,              // Required | Optional | NotApplicable
+  transaction_policy: TransactionPolicy,
+  undo_or_checkpoint: UndoPolicy,      // Inverse | Checkpoint | NotReversible
+  thread_domain: ThreadDomain,
+  timeout: Duration,                   // default reference bound 30 s, project-configurable
+  audit_fields: Vec<AuditFieldSpec>,   // default max 32 recorded fields per invocation
 }
 
 QueryDescriptor {
-  id, version, parameters, result_schema,
-  required_capabilities, cost_class,
-  sensitivity, pagination, consistency
+  id: String,
+  version: (u16 major, u16 minor, u16 patch),
+  parameters: Vec<ParamDecl>,          // default max 16 parameters
+  result_schema: SchemaRef,
+  required_capabilities: Vec<CapabilityId>,
+  cost_class: CostClass,               // Cheap | Moderate | Expensive
+  sensitivity: SensitivityClass,       // Public | ProjectSensitive | Secret
+  pagination: PaginationPolicy,        // default page size 100, default max 1,000 per page
+  consistency: ConsistencyLevel,       // Snapshot | EventuallyConsistent
 }
 ~~~
 
@@ -83,7 +99,7 @@ The MCP server exposes:
 - prompts/templates as non-authoritative conveniences;
 - progress/cancellation and stable error codes.
 
-Resource URIs are stable and capability checked. Pagination, byte limits, snapshot/version tokens, and sensitivity labels are mandatory. Server does not expose raw secrets or arbitrary host files.
+Resource URIs are stable and capability checked. Pagination (default page size 100, default max 1,000 rows per page), byte limits (default max 1 MiB per resource read, default max 16 MiB per tool result before requiring pagination), snapshot/version tokens, and sensitivity labels are mandatory. Server does not expose raw secrets or arbitrary host files.
 
 ## 7. Context assembly
 
@@ -91,10 +107,20 @@ Context sources are explicit records:
 
 ~~~text
 ContextItem {
-  resource_id, version_hash, selected_ranges,
-  sensitivity, provenance, reason, token_or_byte_cost
+  resource_id: ResourceUri,
+  version_hash: u64,
+  selected_ranges: Vec<ByteRange>,      // default max 32 ranges per item
+  sensitivity: SensitivityClass,        // Public | ProjectSensitive | Secret
+  provenance: ProvenanceRef,
+  reason: String,                       // default max 256 bytes, shown in the disclosure UI
+  token_or_byte_cost: u32,
 }
 ~~~
+
+A single agent turn's assembled context has a default reference ceiling of
+128,000 tokens (or the active model's advertised context window, whichever
+is smaller) before the assembler must drop or summarize lower-priority
+`ContextItem`s rather than silently truncating mid-item.
 
 Before a network provider call, the UI shows provider, endpoint class, retained/logging policy if known, exact sensitivity classes, and whether source/assets/traces are included. Users can remove items.
 
@@ -179,6 +205,46 @@ When Marquee AI is disabled, it additionally creates no campaign panel, analysis
 Benchmarks report command-registry latency, context assembly and redaction cost,
 index size/build time, provider round-trip distributions, tool execution time,
 and editor responsiveness with the optional agent pack enabled and disabled.
+
+## 15.1 Work package brief
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status change.
+
+**`WP-AGT-001` — Typed command registry, MCP, and guarded agents**
+Result: an agent can query a diagnostic, read selected spec/schema/code,
+propose a bounded change, preview its semantic/source diff, get approval,
+execute through normal commands, run validation, and checkpoint (§16's
+end-to-end example) — with no privileged backdoor over UI/CLI/Rust tools
+(§1). Owning contracts: `CommandDescriptor`, `QueryDescriptor` (§3),
+`ContextItem` (§7). Entry conditions: stable command-registry, build-service,
+and VCS checkpoint contracts (§16 — this package is `Deferred to MS-08/MS-09`
+specifically because it depends on those, not on any Alluvium/Marquee
+maturity). Deliverables: the shared registry UI/CLI/Rust/MCP/agents all
+resolve identically (§3), the capability/approval model with risk classes
+Observe/Propose/Reversible/External/Destructive (§4), the full transaction
+flow in §5 (negotiate → query under capability → propose with rationale →
+validate → preview diff/cost/checkpoint plan → approval → execute → validate
+→ commit-or-rollback → audit), the MCP server surface (§6), context assembly
+with mandatory sensitivity labeling before any network provider call (§7),
+Ollama local/cloud provider-trust separation (§8), and the guarded autonomous
+("YOLO") project mode with its full restriction list (§10). Non-goals: no
+arbitrary shell/filesystem access, no automatic upload, no treating model
+output as trusted, no AI-only project formats (§2); Marquee's narrower
+post-1.0 AI profile (text/analysis only, no audiovisual generation) is
+governed separately and this package does not widen it (§1, §14). Security:
+agents cannot approve their own trust expansion; external messages, PRs,
+deployments, and destructive operations require the same or stricter
+authority as human workflows (§13). Tests: the full §15 list (registry
+parity, schema/version/stale-token rejection, capability/approval/rollback,
+provider trust separation, offline/outage handling, prompt-injection red-team
+corpus, context redaction, task evaluation against expected commands/diffs,
+checkpoint recovery after crash). Stop condition: any surface where agent
+context cannot be proven classified/redacted before a network provider call
+blocks that surface from shipping, not just from the default profile (§7,
+§13's security tests). Next unblocked: MS-08/MS-09 profiles that assume a
+working agent surface, and any later Marquee AI-assist work gated on this
+package's capability/approval model existing first.
 
 ## 16. Delivery mapping and examples
 

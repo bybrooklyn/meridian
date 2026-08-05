@@ -283,6 +283,24 @@ After MS-10, `PRG-REL-001` may competitively validate and optimize these stable
 contracts. It cannot select a solver outside `RG-TOR-001`, make Torsant a 1.0
 dependency, or promote implementation maturity.
 
+## 10.1 Work package note: WP-TOR-001 (Research status, no full brief)
+
+`WP-TOR-001` remains `Research`: no specialized fire/fluid/thermal solver is
+selected, so writing deliverables/tests here ahead of that choice would
+itself be a false-promotion risk (`REQ-GOV-002`). Its gate already has a
+complete, evaluable decision rule: `RG-TOR-001` (§10, §11) chooses
+specialized optional solvers per effect/tier, explicitly ruling out one
+universal solver and any hidden disabled cost, using the stable
+`FireSmokeSnapshot`/`FluidSurfaceSnapshot`/`ThermalMaterialState` seams
+(§4) and workloads PEN-B05/PEN-B07/PEN-B11/PEN-B14/PEN-B15 (§10) regardless
+of which candidate wins. Torsant is not required by the prototype or
+opening slice, and research may begin only in MS-08 (§10) — whatever solver
+portfolio `RG-TOR-001` selects, the resulting package must still pass the
+zero-cost-disabled and stale-reader-rejection tests already specified for
+every other environmental system in this suite (§8, §10), and must produce
+its own future ADR per solver (§11) before any package can claim it as
+implemented.
+
 ## 11. Adopted decisions
 
 [ADR-0008](../docs/architecture/decisions/ADR-0008-isobar-basalt-torsant-boundaries.md)

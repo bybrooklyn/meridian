@@ -61,6 +61,7 @@ Research may improve these decisions but cannot describe them as undecided.
 | RG-PEN-001 | after MS-05 | Penumbra successor renderer-path candidates versus production Forward+ |
 | RG-RHI-001 | after MS-07 | native Metal entry, then later Vulkan/Direct3D 12 common-RHI parity and maintenance |
 | RG-UI-001 | after MS-02 | Meridian UI display-list renderer implementation |
+| RG-UI-002 | after MS-03 | retained UI framework succession: keep Meridian UI or fork Xilem/Masonry, Floem, or Vizia |
 | RG-PHY-001 | after MS-06 | Cairn solver/layout/determinism portfolio behind owned contracts |
 | RG-ISO-001 | after MS-05 | Isobar weather/atmosphere algorithms by capability tier |
 | RG-BAS-001 | after MS-05 | Basalt conventional/meshlet/hierarchy/sparse geometry portfolio |
@@ -150,6 +151,17 @@ universal bit-identical promise. Sources include official
 [Rapier determinism guidance](https://rapier.rs/docs/user_guides/templates/determinism),
 [Rapier simulation structures](https://rapier.rs/docs/user_guides/rust/simulation_structures/),
 and [Box2D releases](https://box2d.org/documentation/md_release__notes__v310.html).
+
+`RG-UI-002` opens only after MS-03 gives Meridian UI a real production surface
+(Creator Editor Alpha) to bench fairly against forks. Candidates are
+keep-Meridian-UI, and forks of Xilem/Masonry, Floem, and Vizia; GPUI was
+considered and rejected up front for tight Zed-coupling and disclaimed pre-1.0
+API stability rather than silently omitted. A bounded live-wgpu-viewport-in-a
+panel spike is a pass/fail precondition before any candidate is scored further.
+Full candidate evidence, the two-stage evaluation, and the stable seams a
+winning candidate must still satisfy live in
+[`EDITOR_AND_MERIDIAN_UI_SPEC.md` §21](EDITOR_AND_MERIDIAN_UI_SPEC.md). Keeping
+Meridian UI is a valid, real outcome, not a formality.
 
 Meridian ECS replacement remains a future gate to register after MS-07. Current
 bevy_ecs use stays behind persistent IDs, schemas, queries, commands, barriers,

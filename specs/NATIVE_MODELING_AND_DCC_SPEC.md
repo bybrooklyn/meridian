@@ -40,14 +40,68 @@ Advanced sculpting, production retopology, hair/grooming, cloth authoring, full 
 ## 3. Editable Data Authority
 
 ```text
-ModelDocument { id, schema, coordinate_system, objects, materials, facets, history, provenance }
-MeshObject { object_id, mesh, transform, modifier_stack, material_regions, derived_facets }
-EditableMesh { vertices, edges, faces, corners, attributes, stable_element_ids }
-ModelSelection { document_generation, object_ids, element_ids, selection_mode }
-ModelOperation { operation_id, inputs, parameters, preconditions, output_mapping }
-Modifier { id, kind, parameters, capability, determinism, evaluation_policy }
-TopologyMap { prior_elements, resulting_elements, split_merge_lineage, orphaned_elements }
-InterchangeReport { source, target, preserved, approximated, omitted, warnings, provenance }
+ModelDocument {
+  id: u128,
+  schema: (u16 major, u16 minor),
+  coordinate_system: CoordinateSystem,
+  objects: Vec<MeshObject>,             // default max 4,096 objects per document
+  materials: Vec<MaterialRegionRef>,
+  facets: Vec<DerivedFacetRef>,
+  history: Vec<ModelOperation>,          // default max 1,000 retained undo steps
+  provenance: ProvenanceRef,
+}
+MeshObject {
+  object_id: u128,
+  mesh: EditableMesh,
+  transform: Transform,
+  modifier_stack: Vec<Modifier>,        // default max 32 stacked modifiers per object
+  material_regions: Vec<MaterialRegionRef>,
+  derived_facets: Vec<DerivedFacetRef>,
+}
+EditableMesh {
+  vertices: Vec<Vertex>,                // default max 2,000,000 vertices per mesh (soft warning)
+  edges: Vec<Edge>,
+  faces: Vec<Face>,
+  corners: Vec<Corner>,
+  attributes: Vec<AttributeChannel>,    // default max 8 UV channels, 8 color channels
+  stable_element_ids: ElementIdTable,
+}
+ModelSelection {
+  document_generation: u32,
+  object_ids: Vec<u128>,
+  element_ids: Vec<ElementId>,          // default max 100,000 selected elements
+  selection_mode: SelectionMode,        // Vertex | Edge | Face | Object
+}
+ModelOperation {
+  operation_id: u64,
+  inputs: ModelSelection,
+  parameters: OperationParams,
+  preconditions: Vec<Precondition>,
+  output_mapping: TopologyMap,
+}
+Modifier {
+  id: u128,
+  kind: ModifierKind,
+  parameters: ModifierParams,
+  capability: CapabilityRequirement,
+  determinism: DeterminismMode,         // Deterministic | BestEffort
+  evaluation_policy: EvaluationPolicy,  // Live | OnDemand | Baked
+}
+TopologyMap {
+  prior_elements: Vec<ElementId>,
+  resulting_elements: Vec<ElementId>,
+  split_merge_lineage: Vec<(ElementId, Vec<ElementId>)>,
+  orphaned_elements: Vec<ElementId>,
+}
+InterchangeReport {
+  source: FormatId,                     // Native | Gltf | OpenUsd | Blender
+  target: FormatId,
+  preserved: Vec<SemanticFeature>,
+  approximated: Vec<(SemanticFeature, ApproximationNote)>,
+  omitted: Vec<(SemanticFeature, OmissionReason)>,
+  warnings: Vec<InterchangeWarning>,
+  provenance: ProvenanceRef,
+}
 ```
 
 The native document—not a render mesh, imported binary, UI state, or modifier cache—is source authority. Vertices, edges, faces, corners, objects, modifiers, regions, UV islands, and facets have stable IDs or explicit lineage. Every topology-changing operation publishes a `TopologyMap` so selections, overrides, materials, collision facets, Alluvium identity, and agent edits can migrate or become explicit orphans.
@@ -119,6 +173,77 @@ Every operation is reachable through keyboard/search/typed command as well as po
 Baseline tools are core editor capability; advanced modules remain optional. When modeling is absent from a player/runtime target, no modeler code, history, caches, workers, or source-only data ship.
 
 Tests cover topology invariants and fuzzing, stable-ID lineage, undo/redo and crash recovery, stale selections, modifiers, UV/collision/LOD fixtures, Alluvium regeneration conflicts, import/export loss reports, accessibility, memory, cancellation, and stripped player builds. Competitive comparisons are capability targets until repeatable evidence exists.
+
+## 8.1 Work package brief
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status change.
+
+**`WP-MDL-002` — Native modifiers, UV, collision, LOD, and interchange expansion**
+Result: the beginner shed-from-primitives workflow (§9's example) gains
+full UV editing, a non-destructive modifier stack, collision/LOD source
+tools, and glTF/OpenUSD/optional-Blender interchange beyond `WP-MDL-001`'s
+bounded MS-03 delivery (current-status line: "UVs, broad topology tools,
+modifiers, collision/LOD, rigging, interchange, and Blender companion work
+remain later scope"). Owning contracts: `Modifier`, `InterchangeReport`
+(§3), extending the existing `ModelDocument`/`EditableMesh`/`TopologyMap`
+foundation `WP-MDL-001` already shipped. Entry conditions: `WP-MDL-001`
+closed beyond `Partial` — this package is the explicit continuation named in
+its own current-status line, not new scope. Deliverables: the non-destructive
+modifier foundation (bounded deterministic evaluation, incremental
+re-evaluation on affected facets, §5), broad UV unwrap/edit tools, collision
+and LOD source facets, and the interchange pipeline (§5: decode in bounded
+worker → normalize coordinates/units → map supported semantics with
+provenance → record approximations/omissions → candidate document →
+validate → require explicit acceptance for lossy conversion) for glTF,
+OpenUSD, and optional Blender companion workflows. Non-goals: advanced
+sculpting, production retopology, hair/grooming, cloth authoring, full
+character creation, neural reconstruction, and high-end CAD stay
+`PRG-MDL-001` post-1.0 (§2) — this package does not open any of that scope.
+Failure/recovery: a dissolve or modifier change that would orphan a
+protected Alluvium override previews the conflict and requires remap,
+discard, or cancel, never a silent orphan (§9's failure example, §5's
+transaction model). Tests: modifiers, UV/collision/LOD fixtures, Alluvium
+regeneration conflicts, import/export loss reports (§8, scoped to this
+package's additions). Stop condition: an interchange format that cannot
+produce an accurate loss report for its unsupported semantics ships gated
+behind explicit user/policy acceptance, never a silent lossy default (§5).
+Next unblocked: `PRG-MDL-001`'s post-MS-10 advanced-modeling program, which
+depends on this package's modifier/topology foundation but requires its own
+separate entry gate.
+
+## 8.2 Work package brief: WP-DCC-001 (medium — Deferred)
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status change; lighter test/evidence detail than `WP-MDL-001`/`WP-MDL-002`
+since this package sits further from the current work frontier.
+
+Result: an optional live-link bridge to an external DCC tool (starting with
+Blender, per §1's "Blender and other DCC tools are optional companions")
+that goes beyond `WP-MDL-002`'s static glTF/OpenUSD/interchange work —
+`WP-DCC-001` owns the "External DCC" boundary row in §4 (interchange and
+companion command contracts, while the external application retains its own
+native authority) as a live round-trip, not a one-shot import/export.
+Entry conditions: `WP-MDL-002` closed — a live-link bridge needs the
+modifier/UV/collision/LOD foundation and the batch interchange loss-report
+machinery (§5's interchange pipeline) already in place; this package adds a
+live channel on top, not a replacement path. Deliverables: a companion-tool
+command contract (§4) that stays capability-scoped and explicit rather than
+ambient (§7: "external tool invocation is explicit, capability-scoped,
+logged, and optional"), and live synchronization of edits through the same
+`TopologyMap`/provenance machinery `WP-MDL-001`/`WP-MDL-002` already
+established (§3, §5), so a live-linked change is not a second, divergent
+source of truth. Non-goals: no proprietary format becomes required to
+recover a document (§4's forbidden edges — "hidden proprietary formats
+required to recover a document" stays forbidden even for a live-linked
+companion); this package does not relax `REQ-MDL-004`'s "no proprietary
+tool requirement" (§8). Security: external tool invocation remains logged
+and capability-scoped like any other untrusted import (§7). Stop condition:
+if live synchronization cannot preserve stable element identity/lineage
+across a round trip, the bridge falls back to `WP-MDL-002`'s batch
+interchange with an explicit loss report rather than silently corrupting
+topology mapping. Next unblocked: any future companion-tool integration
+beyond Blender, gated the same way.
 
 ## 9. Examples
 

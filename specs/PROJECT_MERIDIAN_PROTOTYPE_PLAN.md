@@ -72,6 +72,35 @@ Result: the private repository builds and runs a bounded consumer-game prototype
 
 Subpackages are activated later with stable IDs for project bootstrap, editor journey, world/content import, movement/interaction, rendering/environment, audio, gameplay, save/recovery, package/install, and evidence review. Each package owns one visible journey and can fail independently without corrupting source.
 
+### 6.1 Work package brief
+
+Mapped onto [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md)'s
+contract fields for consistency with the rest of the suite; the content
+already lives in this document's own sections, cross-referenced rather than
+duplicated. No status change.
+
+Result: §2's ten-step end-to-end loop. Owning repository: the private
+`bybrooklyn/project-meridian` prototype, integrating against this engine
+repository's published contracts only (§5). Entry conditions: §4's full gate
+list (MS-03, MS-05, MS-01 observable-runtime evidence, source asset/world/
+save/package foundations, minimum Cairn/Wavefront seams, `WP-MDL-001`,
+`WP-GAM-001`, a stable typed command registry, private-repository checkpoint
+and rights review, `WP-PRC-002` sanitized corpus evidence) — Luau is
+explicitly not a dependency and cannot substitute for missing `WP-GAM-001`
+evidence (§4). Deliverables: the ten numbered subpackages named in §6
+(project bootstrap, editor journey, world/content import, movement/
+interaction, rendering/environment, audio, gameplay, save/recovery, package/
+install, evidence review), each independently failable without corrupting
+source. Non-goals: the full §3 list — no production content/creative
+sign-off, no complete opening sequence, no combat/enemies/multiplayer/XR/
+advanced GI/Torsant/native backends, no shipping-quality assets or
+certification. Failure/recovery: the full §8 table. Tests/evidence: §10 in
+full. Stop condition: any subpackage that cannot independently prove its
+journey blocks only that journey, not the whole prototype (§6's "can fail
+independently" clause). Next unblocked: `WP-PRJ-002`'s opening-slice
+production work, which cannot inherit this package's prototype-only
+acceptance (`PROJECT_MERIDIAN_VERTICAL_SLICE_PLAN.md` §1).
+
 ## 7. Runtime pipeline
 
 ~~~text

@@ -28,14 +28,73 @@ Non-goals are replacing mature compiler infrastructure for branding, embedding r
 ## 2. Planned Contracts
 
 ```text
-ShaderModuleSource { id, language_version, imports, declarations, entry_points, provenance }
-MaterialGraphSource { id, graph_version, nodes, ports, parameters, outputs, provenance }
-ShaderIrModule { id, ir_version, types, constants, resources, functions, stages, source_map }
-ShaderCapabilitySet { portable, indirect, subgroup, mesh, ray, sparse, vr, limits }
-ShaderCompatibility { renderer_paths, required_capabilities, fallback, trust, budgets }
-ShaderReflection { entries, bindings, layouts, specialization, vertex_io, diagnostics }
-ShaderTargetRequest { backend, capability_profile, renderer_path, optimization, debug }
-PipelineCacheManifest { source_hash, ir_hash, target, capabilities, compiler, artifacts }
+ShaderModuleSource {
+  id: u128,
+  language_version: (u16 major, u16 minor),
+  imports: Vec<ImportRef>,               // default max 64 resolved imports per module
+  declarations: Vec<Declaration>,
+  entry_points: Vec<EntryPoint>,          // default max 16 entry points per module
+  provenance: ProvenanceRef,
+}
+MaterialGraphSource {
+  id: u128,
+  graph_version: u32,
+  nodes: Vec<GraphNode>,                  // default max 2,048 nodes per graph before a warning
+  ports: Vec<GraphPort>,
+  parameters: Vec<GraphParameter>,
+  outputs: Vec<GraphOutput>,
+  provenance: ProvenanceRef,
+}
+ShaderIrModule {
+  id: u128,
+  ir_version: u32,
+  types: Vec<IrType>,
+  constants: Vec<IrConstant>,
+  resources: Vec<IrResourceBinding>,      // default max 128 bindings per module
+  functions: Vec<IrFunction>,
+  stages: Vec<ShaderStage>,               // Vertex | Fragment | Compute | Mesh | Task
+  source_map: SourceMap,
+}
+ShaderCapabilitySet {
+  portable: bool,
+  indirect: bool,
+  subgroup: bool,
+  mesh: bool,
+  ray: bool,
+  sparse: bool,
+  vr: bool,
+  limits: CapabilityLimits,               // max bindings/varyings/UBO size per declared tier
+}
+ShaderCompatibility {
+  renderer_paths: Vec<RenderPathId>,
+  required_capabilities: ShaderCapabilitySet,
+  fallback: Option<ShaderModuleId>,
+  trust: TrustLevel,                      // Reviewed | ProjectAuthored | Untrusted
+  budgets: CompileBudget,                 // default reference bound 30 s wall-clock per module
+}
+ShaderReflection {
+  entries: Vec<ReflectionEntry>,
+  bindings: Vec<BindingLayout>,
+  layouts: Vec<PipelineLayout>,
+  specialization: Vec<SpecializationConstant>, // default max 32 per module
+  vertex_io: VertexIoLayout,
+  diagnostics: Vec<ReflectionDiagnostic>,
+}
+ShaderTargetRequest {
+  backend: BackendId,                     // Wgpu | Metal | Vulkan | Direct3D12
+  capability_profile: GpuCapabilityProfile,
+  renderer_path: RenderPathId,
+  optimization: OptimizationLevel,        // None | Size | Speed | Debug
+  debug: bool,
+}
+PipelineCacheManifest {
+  source_hash: u64,
+  ir_hash: u64,
+  target: ShaderTargetRequest,
+  capabilities: ShaderCapabilitySet,
+  compiler: (CompilerId, u32 version),
+  artifacts: Vec<CachedArtifactRef>,
+}
 ```
 
 Stable IDs identify declarations, graph nodes/ports, source spans, resources, entry points, and specializations. Text and graph sources may round-trip only where semantics permit; both always lower to the same `ShaderIr`, not to each other as the canonical representation.
@@ -100,6 +159,64 @@ Naga and other mature permissive foundations may remain behind Meridian contract
 - `PRG-SHD-001`: optional measured compiler-infrastructure internalization after 1.0.
 
 Tests cover parser/type/IR fixtures, malformed/untrusted fuzzing, source-map accuracy, graph/text semantic equivalence, reflection/binding generation, capability rejection/fallback, target differential rendering, cache identity, compiler crashes, pipeline-stall reporting, reproducible cooks, and private-source redaction.
+
+## 8.1 Work package briefs
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status changes.
+
+**`WP-SHD-001` — Meridian Shader Language frontend, canonical ShaderIr, validation, and reflection**
+Result: an artist graph and an expert text module both lower into one
+material `ShaderIr` (§9's example, first half). Owning contracts:
+`ShaderModuleSource`, `MaterialGraphSource`, `ShaderIrModule`,
+`ShaderReflection` (§2). Entry conditions: current WGSL/Naga/wgpu foundations
+exist (current-status line) but no frontend/IR does — this package builds
+the frontend and IR from scratch against those existing foundations, it does
+not wait on Penumbra's Forward+ completion. Deliverables: the first language
+subset (§3: scalar/vector/matrix/value types, structures, functions, bounded
+control flow, stage entry points, typed resources, immutable-by-default,
+explicit conversions, portable capability checks), IR validation (type
+correctness, control-flow validity, resource bounds, stage legality,
+interface compatibility, capability requirements), and reflection/binding
+generation from one authority (§2, §4's toolchain steps through "lower to
+canonical ShaderIr / validate and normalize IR / reflect bindings"). Non-goals:
+no target lowering to WGSL or native backends, no pipeline/cache integration
+— those are `WP-SHD-002`; no undefined behavior, ambient globals, unbounded
+recursion, unrestricted pointers, host filesystem/network access, or
+backend-specific handles, ever (§3 — these are permanent forbidden
+constructs, not deferred scope). Failure/recovery: a failed candidate never
+replaces the last accepted artifact (§6). Tests: parser/type/IR fixtures,
+malformed/untrusted fuzzing, source-map accuracy, graph/text semantic
+equivalence, reflection/binding generation (§8, scoped to frontend/IR).
+Stop condition: text and graph sources that cannot be proven semantically
+equivalent for a shared construct block promotion of that construct, rather
+than shipping silently divergent lowering. Next unblocked: `WP-SHD-002`.
+
+**`WP-SHD-002` — Shader target lowering, source maps, pipeline integration, security, and debugging**
+Result: the wgpu-era target emits WGSL and generated bindings from the IR
+`WP-SHD-001` established (§9's example, second half), with pipeline caching
+and debugging support. Entry conditions: `WP-SHD-001` closed (a canonical
+IR to lower from). Deliverables: WGSL/native target modules, source mapping
+from IR back to original text/graph spans, `PipelineCacheManifest`-keyed
+caching (content-addressed by source/IR/compiler/capability/renderer-path/
+target/settings/dependency hashes, §6), the security boundary (bounded
+compilation workers/isolated processes by trust, import allowlists, no
+arbitrary host access, crash containment for untrusted compilers, artifact
+signing/provenance in release profiles, §6), and pipeline-stall diagnostics
+that distinguish source compile, IR lowering, target compile, driver
+compile, cache miss, and pipeline creation (§6, §9's performance-debug
+example). Non-goals: no native (Metal/Vulkan/D3D12) target lowering ahead of
+`RG-RHI-001`'s own gate (§7 — Naga/wgpu remain the dependency behind Meridian
+contracts until internalization evidence exists under `PRG-SHD-001`). Tests:
+capability rejection/fallback, target differential rendering, cache
+identity, compiler crashes, pipeline-stall reporting, reproducible cooks,
+private-source redaction (§8, scoped to target/pipeline). Stop condition: a
+custom shader requiring an unsupported capability without a declared
+fallback is rejected at cook time with the exact declaration and affected
+renderer paths named (§9's failure example) — it never silently compiles to
+incorrect output (§5's forbidden edges). Next unblocked: MS-08/MS-09
+integration rows in `RENDERING_AND_GRAPHICS_SPEC.md` §18 that depend on
+`WP-SHD-001`/`WP-SHD-002` foundations.
 
 ## 9. Examples
 

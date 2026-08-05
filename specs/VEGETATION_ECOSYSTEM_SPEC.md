@@ -166,6 +166,41 @@ private prototype after editor/forest gates. MS-07 validates production opening
 content. MS-08 may activate richer Alluvium/Torsant integrations;
 `WP-PRC-009` keeps ecosystem growth and succession in research until MS-09.
 
+## 9.1 Work package brief (medium — Scaffold)
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md)
+for the next real step beyond the current `meridian-vegetation` marker
+crate. No status change.
+
+**`WP-VEG-001` — Vegetation geometry and environmental coupling**
+Result: plant instances, deterministic placement results after generation,
+growth/damage state, LOD policy inputs, and vegetation-specific runtime
+snapshots become real (§1) — MS-04's "path-independent vegetation snapshots
+and Forward+ support" (§9). Owning crate: `meridian-vegetation`, explicitly
+not evidenced by the current marker crate alone (§1's non-goals). Entry
+conditions: `WP-PRC-004` supplies ecological placement and production
+authoring (§9) as the Alluvium-side input this package consumes, not
+authors; Basalt geometry/surface authority and Isobar wind/moisture fields
+(§1) through their own published contracts. Deliverables: the public
+contract direction in §3, the data authority/pipeline in §4, and
+disabled-pack zero-work behavior (§8). Non-goals: no terrain, weather, or
+fire/fluid solver ownership; no Alluvium evaluator/source recipes; no
+universal ecosystem solver (§1) — growth/competition/succession/season/
+disturbance stays `WP-PRC-009`, held in research until MS-09 (§9); this
+package does not preempt that gate. Forbidden edges: cannot allocate
+Penumbra resources or issue render passes; cannot maintain a private wind/
+weather RNG (§2) — wind/weather state comes from Isobar's published
+snapshots only. Tests: the §9 list (deterministic placement, dirty-region
+rebuild, override preservation, source/artifact migration, snapshot-epoch
+rejection, origin rebasing, Isobar field coherence, optional Torsant
+absence/events, corrupt-cache recovery, disabled-profile zero work). Stop
+condition: an override made by a creator must survive dirty-region
+regeneration rather than being silently discarded (§9's override-
+preservation test) — this mirrors Alluvium's own generated-identity/
+override rules (`PROCEDURAL_AUTHORING_SPEC.md` §9). Next unblocked: MS-05's
+representative forest proof (§9), which this package is a direct
+prerequisite for alongside `WP-BAS-001` and `WP-ISO-001`.
+
 ## 10. Examples
 
 End-to-end: an artist selects species and a Basalt region, generates candidates

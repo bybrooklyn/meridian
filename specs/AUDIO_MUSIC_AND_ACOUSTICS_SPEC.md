@@ -240,7 +240,7 @@ Parallel/background:
 
 Synchronization:
 
-- Callback consumes single-producer/single-consumer or multi-producer bounded queues with explicit overflow counters.
+- Callback consumes single-producer/single-consumer or multi-producer bounded queues with explicit overflow counters; default reference queue depth is 256 pending `AudioCommand` entries per bus, project-configurable, with excess commands coalesced or dropped per `QueueOverflowPolicy` rather than growing the queue.
 - Ordinary mutexes are allowed in editor/offline compilers, not in the callback path.
 - Graph snapshots use atomic pointer swap plus epoch reclamation.
 - Stream rings use bounded lock-free or wait-free structures only where contention is proven; otherwise use worker-owned rings handed off by atomic indices.
@@ -433,6 +433,47 @@ Acceptance evidence:
 - MS-08: hybrid acoustics, acoustic authoring, bake/probe tooling, advanced profiling.
 - MS-08/MS-09: MCP/agent audio commands with audit and permission checks; optional Wavefront voice-device/runtime contracts may support Collective when independently selected.
 - Later optional packs: plugin hosting, generative music, platform object audio depth, advanced dynamic propagation.
+
+## 13.1 Work package brief (medium — Scaffold)
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md)
+for the next real implementation step beyond `engine/meridian_audio`'s
+current scaffold. No status change.
+
+**`WP-AUD-001` — Audio output, mixer, spatial, and recovery foundation**
+Result: the opening-forest baseline tier (§10: device output, bus mixer,
+streamed ambiences/one-shots, footstep variation, simple point/area
+spatialization, zone occlusion, lightweight reverb, diagnostics overlay) —
+the MS-06/MS-07 delivery row (§13): "output, mixer, streaming, simple
+spatialization, footstep/event cues, forest/field bus transitions,
+diagnostics." Owning crate: `meridian-audio` (§3 — `engine/meridian_audio`
+is currently a scaffold only). Entry conditions: none beyond the scaffold
+itself; this is the first real Wavefront package. Deliverables: the
+real-time-safe callback (§5's per-block pipeline: read compiled graph →
+drain bounded commands → apply graph swaps at safe boundaries → pull PCM
+with silence/fallback substitution on starvation → process DSP nodes →
+spatialize → mix/limit/write), graph compilation (§5), the public
+`AudioBusId`/`AudioCueId`/`AudioCommand`/`CompiledAudioGraph` schema (§4)
+exposing no CPAL/Symphonia/backend handles (§3's invalid-dependency list),
+and device-loss/stream-starvation recovery (§9). Non-goals: no full
+geometric acoustic solver, no plugin hosting (VST3/AU/CLAP/LV2), no
+generative music runtime, no mandatory HRTF, no voice capture until
+explicitly enabled and permissioned (§2, §10's zero-cost-disabled list) —
+all later optional tiers or `WP-COL-001`-adjacent voice work, not this
+package. Failure/recovery: stream starvation crossfades to silence or an
+authored fallback loop; graph compile failure keeps the previous valid
+graph (§9) — the callback itself must never block, allocate unboundedly, or
+take an ordinary mutex wait (§2, §6). Tests: the §12 list (graph compile
+validation, virtual-callback no-allocation proof, clock mapping under
+drift, streaming seek/corruption/cancellation, save/resume transport
+recovery, disabled-feature zero-recurring-work tests) plus the opening-
+forest benchmark fixture (§12). Stop condition: the acceptance evidence in
+§12 requires a demo capture showing no callback underruns in the opening
+slice on target hardware — a passing unit-test suite alone does not close
+this package (§12's structural-vs-evidence distinction mirrors the suite's
+general `REQ-GOV-002` rule). Next unblocked: the MS-04/MS-06/MS-08 robust-
+mixer/DSP-compiler/adaptive-music foundation (§13), and MS-08's hybrid
+acoustics/bake-tooling work, both of which build on this baseline.
 
 ## 14. Examples
 

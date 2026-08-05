@@ -290,6 +290,37 @@ After MS-10, `PRG-REL-001` may competitively optimize the sparse/multirate,
 surface-fluid-handoff, and shared-media contracts. It creates no pre-1.0
 requirement, does not select an algorithm, and cannot promote Isobar maturity.
 
+## 10.1 Work package brief (medium — Scaffold)
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md)
+for the next real step beyond `engine/meridian_isobar`'s renamed empty
+scaffold. No status change.
+
+**`WP-ISO-001` — Isobar weather and atmosphere foundation**
+Result: deterministic weather state, regional fields, wind, fog/visibility,
+and atmosphere optical summaries publish as immutable snapshots rendering/
+vegetation/audio/physics/gameplay can actually consume (§1) — MS-04's
+"Isobar/Penumbra snapshot seam" (§10). Owning crate: `meridian-isobar`.
+Entry conditions: none beyond the scaffold; `WP-PRC-004` provides the typed
+Alluvium authoring inputs for environmental vegetation coupling this
+package's fields feed into (§10), but that is a parallel handoff, not a
+blocking dependency for the weather state machine itself. Deliverables: the
+public contracts in §4, the runtime pipeline in §6, and capability-tiered
+disabled behavior with zero allocated work when the pack is off (§7). Non-
+goals: no Alluvium recipe evaluation or authored climate-field generation
+(§1 — Isobar consumes those, it does not own their authoring); no Basalt
+terrain source geometry or Torsant fire/fluid/thermal simulation ownership
+(§1); algorithm selection for regional-field/wind/precipitation models stays
+`RG-ISO-001`, not fixed by this package (§10, §11). Tests: the §10 list
+(deterministic seed replay under parallel scheduling, snapshot publication/
+reclamation and stale-reader safety, wind query LOD consistency, surface
+page serialization/migration, disabled-pack zero-work, cache corruption
+recovery). Stop condition: a stale snapshot reader must be rejected rather
+than silently consuming outdated weather state (§10's stale-reader-safety
+test) — this is a correctness bar, not a performance target. Next unblocked:
+MS-05's basic forest wind/visibility/fog/weather evidence requirement (§10),
+which this package is the direct prerequisite for.
+
 ## 11. Adopted decisions
 
 [ADR-0008](../docs/architecture/decisions/ADR-0008-isobar-basalt-torsant-boundaries.md)

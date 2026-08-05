@@ -344,6 +344,45 @@ MS-08/MS-09 integrate source/sync checkpoints, the native modeler, animation,
 ShaderIr, Rust gameplay, and optional Luau build adapters as their packages
 activate. MS-10 certifies reproducibility and selected remote/signing profiles.
 
+## 14.1 Work package brief
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status change.
+
+**`WP-BLD-002` — Managed development toolchains, advanced build graph, worker, and team-service integration**
+Result: the managed-toolchain manager described as architecture in §3.1
+becomes real (discover/install/verify/update/repair/select/pin/compare/
+rollback/list/clean-up), plus multi-node result lineage, general artifact/
+cache policy, and service-process/remote-worker supervision (§14's MS-08
+continuation). Owning crates: `meridian-build`'s planned extensions,
+`meridian-build-protocol`. Entry conditions: `WP-BLD-001` closed —
+`ImplementedFoundation` per this doc's header, providing the bounded local
+Cargo service this package extends; MS-08 (§14). Deliverables: the full
+install/update/repair pipeline in §3.1 (quarantined staging generation →
+verify length/hash/signature/provenance/license → bounded health check →
+atomic same-store activation, previous generation retained), multiple
+verified versions coexisting in separate managed roots with previewable
+quota-aware cleanup that never removes a pinned/active/retained/evidence-
+referenced version, the exact verified component manifest becoming
+`BuildId`'s toolchain-identity input in place of the current local-host
+placeholder (§4), concurrent/resource-aware DAG scheduling and complete
+per-node result lineage (§2's explicit `WP-BLD-002` deferral list), and
+service-process/remote-worker supervision plus team profile sharing (§8).
+Non-goals: this package does not enlarge `WP-BLD-001`'s MS-03-local
+completion boundary retroactively (§2) — it is additive, not a redefinition
+of what already shipped. Security: managed components follow the same
+signing/quarantine/license-tracking policy as §3.1 and §11's structured-
+argument/allowlist rules extend unchanged. Tests: the §13 managed-component
+list (install/verify/update/repair/rollback/cleanup, interrupted staging,
+hash/signature/license mismatch, side-by-side selection, pinned-project
+non-mutation, referenced-version retention). Stop condition: a missing or
+changed license record blocks activation of that component rather than
+being silently carried forward (§3.1) — this rule cannot be relaxed to hit
+a delivery date. Next unblocked: `WP-BLD-002` "cannot block `WP-BLD-001` or
+MS-03" (§14) in the other direction either — MS-08/MS-09's source/sync/
+modeler/animation/ShaderIr/gameplay build-adapter integrations (§14) depend
+on this package's general artifact/cache policy existing first.
+
 ## 15. Examples
 
 End-to-end: Export resolves Cargo/profile/assets/shaders/logic, reuses valid nodes, compiles changed nodes, packages/signs under profile, emits BuildId, installs, launches, and links every diagnostic/artifact to inputs.

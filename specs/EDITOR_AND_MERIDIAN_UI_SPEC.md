@@ -8,7 +8,7 @@ Implementation maturity: `ImplementedFoundation` for `WP-UI-001` and the
 qualified Creator behavioral baseline; the Meridian UI 1.0 framework and final
 workspace composition remain sequential package work. Governing IDs:
 `REQ-UI-001`, `REQ-UI-002`, `REQ-EDT-001`, `REQ-EDT-002`, `WP-UI-001` through
-`WP-UI-006`, `WP-EDT-001` through `WP-EDT-003`, and `RG-UI-001`.
+`WP-UI-006`, `WP-EDT-001` through `WP-EDT-003`, `RG-UI-001`, and `RG-UI-002`.
 
 This document owns Meridian application/editor UI architecture, design tokens,
 components, input behavior, accessibility, workspace composition, responsive
@@ -195,7 +195,9 @@ and the UTF-8 representation is bounded to 256 bytes. Runtime activation
 emits the typed `CommandId`; it never executes an unvalidated action string.
 
 Public text-input construction and the direct text-shaping adapter independently
-enforce the retained `MAX_TEXT_BYTES` limit before retaining source or invoking
+enforce the retained `MAX_TEXT_BYTES` limit (default reference bound 1 MiB
+per text node, UTF-8, project-configurable — a parse/allocation safety bound,
+not a content-length product decision) before retaining source or invoking
 their private implementation. An oversized direct request is a typed rejection;
 a future corrupted or incremental document therefore recovers its prior
 immutable frame rather than discarding source or allocating inside an adapter.
@@ -635,3 +637,140 @@ direct-manipulation canvas editing is deferred to its own later bounded package.
 `MS-03` stays open until the Creator packages, native evidence, accessibility
 review, and visible application approval pass. Workspace presentation never
 closes a domain package.
+
+## 20.1 Work package brief: WP-EDT-003
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status change.
+
+Result: Hub, Settings, contextual/focused Code, Modeler, UI, Materials,
+Alluvium, Build, Profile, and Recovery compose from the same authored
+component vocabulary (§20's description), reaching the canonical workspace
+composition table in §15. Entry conditions: `WP-EDT-002` closed (the exact
+application shell, hub, and production World workspace) plus `WP-UI-006`
+(§20's dependency table) — `WP-EDT-002` "resumes only after the active
+`WP-UI-006` source package" and `WP-EDT-003` follows it (§20), so this
+package cannot start out of that order. Deliverables: each named workspace
+from §15's table composed to its documented "canonical composition and
+truth boundary," the initial UI workspace scoped to inspecting `UiDocument`
+source/component tree/styles/tokens/assets/responsive states/compiled
+preview with direct-manipulation canvas editing explicitly deferred to a
+later package (§20), and "applicable domain foundations" wired in per
+workspace (§20's dependency row — e.g. Materials/Alluvium workspaces need
+their owning domain's real state, not placeholder panels). Non-goals: a
+polished workspace may show an explicit typed unavailable state for an
+incomplete domain, but cannot simulate that domain or present planned
+controls as operational (§15) — this package does not get to fake
+completeness for domains that aren't ready. Tests: the interaction matrix
+in §20 (layout rejection, capture, scrolling, IME, clipboard, focus
+stability, drag rollback, virtualization, docking migration/corruption/
+monitor loss, animation interruption, semantic adapters, scaling, high
+contrast, Reduced Motion) plus the editor journey list (create/open/import/
+edit/undo/redo, Play Apply/Discard, workspace/focus switching, Code
+contextual/full activation, recipe/model actions, async build/artifacts,
+crash recovery, explicit exit), run on Linux/Windows/macOS CI before
+evidence (§20). Stop condition: `MS-03` stays open until the Creator
+packages, native evidence, accessibility review, and visible application
+approval all pass (§20) — workspace presentation alone never closes a
+domain package. Next unblocked: MS-03 completion; each domain's own
+subsequent packages (e.g. `WP-PRC-*`, `WP-MDL-002`) that assume a real
+composed workspace to surface their work in, rather than a placeholder
+panel.
+
+## 21. Framework succession research gate
+
+`RG-UI-002` is a registered gate, not a decision. It exists so a fair,
+evidence-based reconsideration of the retained UI framework stays available
+without describing Meridian UI as undecided today. It opens only after
+`MS-03`, once Creator Editor Alpha gives Meridian UI a real production
+surface to bench fairly against alternatives — the same logic `RG-PEN-001`
+uses for Penumbra, gated to `MS-05` for the same reason: there is no honest
+comparison before real usage evidence exists.
+
+### 21.1 Candidates and disqualifications
+
+Candidates are keep-Meridian-UI (the baseline; a valid, real outcome) and
+forks of three general-purpose Rust UI frameworks:
+
+| Framework | License | Render backend | Accessibility | Field signal |
+|---|---|---|---|---|
+| Xilem/Masonry (linebender) | Apache-2.0 | Vello + wgpu (the same GPU stack `meridian-rhi` already targets) | AccessKit | Architecturally the most promising of the three; explicitly experimental/alpha in its own docs and in independent 2026 surveys; custom-WGPU-texture-in-widget support is an open, unresolved upstream issue |
+| Floem (lapce) | MIT | wgpu (vger/vello) or Skia, with a tiny-skia CPU fallback | not confirmed | Its own README reports strong adoption (powers the Lapce editor); independent 2026 field sources instead describe it as troubled — that gap is why independent evidence outweighs vendor docs in the decision rule below |
+| Vizia | MIT | Skia | AccessKit | Absent from independent 2026 landscape reviews found; its own docs orient it toward audio-plugin UI (`nih-plug`), not IDE-scale editors |
+
+GPUI (Zed's UI framework) was considered and is rejected up front rather than
+silently omitted: its published crate trails Zed's internal monorepo
+significantly, remains pre-1.0 with disclaimed API stability, and development
+stays tied to Zed's own roadmap rather than running as an independently
+governed project.
+
+A comparable real-world precedent bounds expectations here: a desktop
+creative-tool team attempted a framework migration off an immediate-mode
+shell, spent four weeks, reached 45% completion, and reverted — the cost of a
+UI framework swap is dominated by accumulated product-specific behavior, not
+by the renderer. Meridian is in an analogous position today (egui as the
+current transitional bootstrap shell, real qualified Meridian UI work already
+built on top of it).
+
+### 21.2 What a winning candidate must still satisfy
+
+None of the three candidates are editors; all are general-purpose widget
+toolkits. This spec's own contracts are Meridian-specific and are not
+provided by any of them natively:
+
+- the versioned `UiDocument` retained-source model and its reconciliation
+  rules (§6), including stable composite identities across component
+  instances;
+- physical-pixel snapping, adaptive tessellation, and the sRGB/linear/
+  premultiplied-alpha pipeline tied to Penumbra's direct-GPU-consumer path
+  (§7, `ADR-0029`);
+- the focus-owning transient-surface model — combo/menu/context-menu/
+  command-palette scoping, deterministic focus recovery, capture-cancel
+  rules (§8);
+- accessibility and assistant command routing through Meridian's shared
+  typed command/permission/audit/undo surface (§14, §16, `REQ-AGT-001`);
+- the eleven canonical workspaces and their product-specific layout truth
+  boundaries (§15);
+- source-authority persistence and the untrusted-input security boundary
+  (§17, §18);
+- continued conformance to the three machine-validated registries:
+  `ui-design-tokens.json`, `ui-components.json`, and `ui-workspaces.json`,
+  all enforced by `meridian-spec check`.
+
+The current implementation of this behavior lives in `meridian_ui_core`,
+`meridian_ui_semantics`, `meridian_ui_render`, `meridian_ui_text`, and
+`meridian_ui_runtime` — real, qualified `ImplementedFoundation`/`Active` code
+across a green cross-platform CI matrix, not paper architecture. A fork
+inherits none of it; at best it replaces the lowest layer (windowing,
+primitive widgets, raw display-list rendering) while the product-specific
+layers above are preserved or rewritten against a foreign reactive/view-tree
+model.
+
+### 21.3 Evaluation
+
+Stage one is a pass/fail precondition, run before anything else is scored: a
+bounded spike renders Penumbra's live wgpu output inside a docked panel on
+each candidate. Meridian's World workspace cannot ship without this; a
+candidate that cannot clear it is cut immediately.
+
+Stage two scores surviving candidates on preregistered thresholds for
+performance, memory, accessibility proven by a real screen-reader pass (not
+AccessKit presence alone), styling and extensibility depth, and fork/vendoring
+maintenance burden. Weighted heaviest: how much of the behavior in §21.2 is
+preserved unchanged versus rewritten against the candidate's own model.
+Evidence is weighted toward independently reported field experience over each
+project's own documentation — the gap between Floem's own README and
+independent 2026 field reports is exactly what this rule exists to catch.
+
+No candidate is predetermined. Keeping Meridian UI is a real, complete
+outcome, not a formality to clear before a fork.
+
+### 21.4 If a fork wins
+
+A winning candidate does not silently discard `WP-UI-002` through
+`WP-UI-006` — those packages are real qualified evidence, not scaffolding.
+The gate's closing ADR must include an explicit migration disposition for
+each: what is ported, what is rewritten, and what is retired, plus a
+`third_party/provenance/DEP-UI-*.md` record for the adopted fork before merge,
+following the existing pattern (`DEP-UI-004-accesskit.md` and its
+neighbors).

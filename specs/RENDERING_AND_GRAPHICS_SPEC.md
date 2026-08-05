@@ -223,9 +223,14 @@ The following names are planned public-contract direction, not implemented Rust
 types in this pass:
 
 ```text
-RendererPathId
-RendererPathDescriptor { id, maturity, required_capabilities, supported_profiles }
-GpuCapabilityProfile { portable_core, gpu_driven, advanced, vr }
+RendererPathId (u32)
+RendererPathDescriptor {
+  id: RendererPathId,
+  maturity: PathMaturity,
+  required_capabilities: Vec<CapabilityId>,
+  supported_profiles: Vec<GpuCapabilityProfile>,
+}
+GpuCapabilityProfile { portable_core: bool, gpu_driven: bool, advanced: bool, vr: bool }
 RenderView
 GpuSceneSnapshot
 VisibilityOutput
@@ -243,15 +248,31 @@ CustomShaderCompatibilityManifest {
   trust_level,
 }
 CustomRenderPassDescriptor {
-  id, trust_level, renderer_paths, queue,
-  declared_reads, declared_writes, lifetime_classes,
-  capabilities, budget, ordering_constraints,
-  fallback_policy, diagnostics, source_provenance,
+  id: u64,
+  trust_level: TrustLevel,               // Reviewed | ProjectAuthored | Untrusted
+  renderer_paths: Vec<RendererPathId>,
+  queue: QueueClass,
+  declared_reads: Vec<ResourceUse>,      // default max 64 declared resource reads per pass
+  declared_writes: Vec<ResourceUse>,     // default max 32 declared resource writes per pass
+  lifetime_classes: Vec<ResourceLifetime>,
+  capabilities: Vec<CapabilityId>,
+  budget: PassBudget,                    // GPU/CPU time and memory ceiling; see §16 for
+                                          // calibration status — not fixed here
+  ordering_constraints: Vec<OrderingConstraint>,
+  fallback_policy: FallbackPolicy,
+  diagnostics: PassDiagnosticsRef,
+  source_provenance: ProvenanceRef,
 }
 CustomRendererPathDescriptor {
-  id, maturity, development_only, shared_system_requirements,
-  capability_profiles, material_lowering, fallback_path,
-  workloads, promotion_gate,
+  id: RendererPathId,
+  maturity: PathMaturity,                // Development | Test | Benchmark | PromotionCandidate
+  development_only: bool,
+  shared_system_requirements: Vec<SharedSystemId>,
+  capability_profiles: Vec<GpuCapabilityProfile>,
+  material_lowering: MaterialLoweringRef,
+  fallback_path: RendererPathId,
+  workloads: Vec<WorkloadId>,            // references into registry/workloads.json
+  promotion_gate: Option<ResearchGateId>, // e.g. RG-PEN-001; None until a gate is opened
 }
 ```
 
@@ -739,7 +760,11 @@ records hardware, OS, backend, driver, renderer path, settings, resolution,
 upscaler, CPU/GPU distributions and lows, memory, stalls, churn, overdraw,
 shadow/volumetric cost, temporal stability, bottlenecks, visual differences,
 artifacts, missing features, warmup/cache state, checkpoint/BuildId, corpus and
-build hashes, and raw evidence.
+build hashes, and raw evidence. The exact sampling methodology (minimum
+warmup passes, minimum repetitions, percentile set, outlier handling) is
+fixed in [`TESTING_BENCHMARKS_AND_VALIDATION.md` §5](TESTING_BENCHMARKS_AND_VALIDATION.md)
+and applies to every workload here — only the pass/fail thresholds
+themselves remain unfixed pending each workload's own calibration run.
 
 Acceptance evidence for Penumbra baseline:
 
@@ -765,6 +790,110 @@ Acceptance evidence for Penumbra baseline:
 | MS-09 | Native Vulkan/Direct3D 12 only after mature Metal/common-RHI gates; `WP-SHD-002` and selected XR work may activate; XR may activate PEN-B16. |
 | MS-10 | Declared renderer profiles pass release qualification and compatibility. |
 | Post-1.0 | `PRG-REL-001` may optimize and competitively validate shared environmental media only after MS-10 and its independent entry gates; it cannot retroactively satisfy a milestone. |
+
+## 18.1 Work package briefs
+
+Definition-of-Ready detail for the `Planned` packages in this domain, per
+[`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md). No
+status changes; activation still requires `PLANNING.md` naming the package
+sole-active.
+
+**`WP-PEN-009` — Prefiltered specular IBL and BRDF LUT**
+Result: specular reflections read correctly across roughness values in any
+built scene, visible in capture. Owning crate: `meridian-renderer`. Entry
+conditions: `WP-PEN-006` (diffuse IBL closure) passed. Deliverables: a
+prefiltered specular environment cube generator, a BRDF integration LUT,
+roughness-driven mip selection in the direct PBR shader path, and fallback
+resources for a missing/partial specular environment. Non-goals: this package
+does not touch diffuse IBL, shadow, or Forward+ clustering; it stays separate
+from the closed pass-timing foundation (§8). Failure/recovery: a missing or
+stale environment cube must degrade to the existing diffuse-only term with a
+typed diagnostic, never an unlit or corrupted result. Tests: diffuse-only,
+specular-enabled, and missing-environment scenes each produce stable
+diagnostics (§17); a differential capture against known roughness/metalness
+reference values. Stop condition: if LUT/prefilter cost regresses PEN-B01/B11
+frame time or memory beyond the package's own preregistered budget, ship
+diffuse-only and reopen as a follow-up package rather than block on tuning.
+Next unblocked: `WP-PEN-010`.
+
+**`WP-PEN-010` — Clustered Forward+ production foundation**
+Result: the ordered pipeline in §7 (depth prepass → clustered light assignment
+→ cascaded shadows → opaque Forward+ PBR → vegetation/terrain/decals/
+transparent → environmental optical integration → postprocess/temporal →
+UI/compositor → present) runs end-to-end on a built scene, not just direct
+PBR. Owning crate: `meridian-renderer`. Entry conditions: `WP-PEN-004` through
+`WP-PEN-008` closed; `WP-PEN-009` for correct specular terms. Deliverables:
+GPU cluster light assignment, the ordered pass graph wired through the shared
+render graph (§9's template applies to every new named system this package
+adds), and MS-04's "shared scene/material/light/environment/temporal systems"
+result from the delivery mapping (§18). Non-goals: no visibility-buffer or
+deferred alternative — those remain `RG-PEN-001` candidates, not this
+package's scope. Failure/recovery: any pass that cannot acquire its declared
+resources reports a structured fallback (§14) rather than a partial frame.
+Tests: the full §17 required-test list, most of which is currently unblocked
+work pending this package (render-graph cycle/lifetime, pipeline warmup,
+camera/frustum, snapshot epoch/stale-data rejection). Benchmarks: PEN-B01
+through PEN-B15 as applicable, each with the full report contract in §17.
+Stop condition: MS-04 does not close on a passing structural smoke alone —
+visible capture and the acceptance-evidence list in §17 are required. Next
+unblocked: `WP-PEN-011`, `RG-PEN-001` (after MS-05's representative forest
+builds on this foundation).
+
+**`WP-PEN-011` — Executable and calibrated Penumbra corpus**
+Result: PEN-B01 through PEN-B16 stop being `DefinitionOnly`/`Uncalibrated`
+(§10) and become executable workloads with real hardware/platform evidence.
+Owning artifacts: `specs/registry/workloads.json` plus the benchmark harness
+that runs against it. Entry conditions: `WP-PEN-010` closed, since most
+workloads exercise the full Forward+ pipeline. Deliverables: one runnable
+fixture per PEN-B ID (PEN-B16 stays inactive until XR work per §18's MS-09
+row), the redacted PEN-B04 generated-surrogate corpus build, and calibrated
+per-platform baseline numbers recorded as evidence, not assumptions. Non-goals:
+this package does not itself decide any research gate — it only makes the
+workloads those gates already cite (`RG-PEN-001`, `RG-RHI-001`, `RG-ISO-001`,
+`RG-BAS-001`, `RG-TOR-001`, `RG-REL-001`) executable. Security/provenance:
+PEN-B04 must ship with no AMI logos, documents, narrative text, route data, or
+proprietary assets, per its existing redaction rule (§10). Tests: each
+workload's report matches the strict report contract in
+`registry/workloads.json`; corpus/build hashes are recorded and reproducible.
+Stop condition: a workload that cannot be made reproducible on a named
+platform ships as `UnsupportedPlatform` evidence rather than a fabricated
+number. Next unblocked: every research gate listed above that currently reads
+`required_workloads` against this corpus.
+
+**`WP-RHI-002` — Native Metal backend and differential parity**
+Result: a native Metal RHI backend runs alongside wgpu, selectable per
+`GpuCapabilityProfile`, with wgpu remaining available throughout (§15).
+Owning crate: `meridian-rhi`. Entry conditions: MS-07 complete, stable RHI
+contracts, complete opening-slice evidence, and `RG-RHI-001` decided in
+Metal's favor (§16) — this package cannot start before its own gate closes.
+Deliverables: the Metal backend implementation, a differential test suite
+against the wgpu backend for every public RHI contract, and native-evidence
+capture on Apple Silicon per the platform-priority order in §15. Non-goals:
+no Vulkan or Direct3D 12 work — those are `WP-RHI-003` and explicitly gated
+behind this package's own maintenance/differential evidence (§15). Failure/
+recovery: any RHI contract that cannot be satisfied identically on Metal is a
+blocking differential failure, not a documented exception, unless the
+contract itself declares a capability-gated variance. Tests: full differential
+rendering, benchmark, recovery, and divergence suite named in §15's native
+gates. Stop condition: if differential parity cannot be reached within the
+package's declared bound, the backend ships behind an explicit
+`UnsupportedCapability` gate rather than a silently degraded default. Next
+unblocked: `WP-RHI-003`.
+
+**`WP-RHI-003` — Native Vulkan and Direct3D 12 common-RHI parity**
+Result: Vulkan and Direct3D 12 backends reach the same differential parity bar
+`WP-RHI-002` established for Metal, sharing one common-RHI abstraction rather
+than three divergent implementations. Owning crate: `meridian-rhi`. Entry
+conditions: `WP-RHI-002` closed with passing differential/benchmark/recovery/
+divergence/maintenance evidence (§15) — mature Metal evidence is an explicit
+precondition, not a parallel-track option. Deliverables: Vulkan and D3D12
+backend implementations, extension of the `WP-RHI-002` differential suite to
+both, and platform-priority native evidence for Windows NVIDIA/AMD, Intel
+graphics, and Windows on ARM (§15). Non-goals: no new public RHI contracts —
+this package conforms to whatever `WP-RHI-002` already stabilized. Stop
+condition: same divergence rule as `WP-RHI-002`; a backend that cannot reach
+parity ships gated rather than silently inconsistent. Next unblocked: MS-09's
+native-backend delivery row (§18).
 
 ## 19. Examples
 

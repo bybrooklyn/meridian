@@ -257,6 +257,62 @@ If a successor is promoted, Forward+ retention, fallback, or removal requires a 
 
 MS-10 closes declared Meridian 1.0 profiles. It does not flatten every long-term ambition into the 1.0 critical path. `PRG-MDL-001`, `PRG-ANI-001`, `PRG-FWK-001`, `PRG-COL-001`, `PRG-WRL-001`, `PRG-INT-001`, `PRG-VCS-001`, `PRG-SHD-001`, `PRG-PRM-001`, and `PRG-REL-001` begin only after their own entry gates. Programs cannot satisfy, block, or promote MS-00 through MS-10, and their `Deferred` or `Research` status is not an implementation claim. Marquee remains entirely deferred: its future local exports, optional text/analysis AI, and adapter research create no 1.0 obligation. Competitive leadership is likewise deferred: adopted seams and benchmark definitions create no solver, optimization, comparator integration, corpus calibration, or superiority evidence.
 
+## 17.1 Work package briefs: qualification reviews
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status changes. `WP-REL-002` (MS-01 observable-runtime qualification) is
+already `Implemented`/`Pass` (§6) and is not repeated here.
+
+**`WP-REL-001` — 1.0 qualification, compatibility, LTS, and release evidence**
+Result: MS-10's declared 1.0 profiles pass compatibility, certification,
+recovery, security, accessibility, provenance, reproducibility, migration,
+support, and LTS gates (§15). Entry conditions: `WP-REL-004` (Beta
+qualification) closed — this package cannot certify 1.0 ahead of Beta
+evidence. Deliverables: the full §15 gate list executed against declared
+1.0 profiles, with unsupported capabilities/platforms left explicit rather
+than implied. Non-goals: MS-10 does not require or authorize a competitive-
+superiority claim — that stays `PRG-REL-001`, gated separately and only
+after MS-10 (§15). Stop condition: no release claim may rely on an expired
+waiver, unredacted private corpus, definition-only benchmark, occluded
+visual result, or uncalibrated provisional threshold (§15) — any one of
+these blocks that specific claim, not just weakens it. Next unblocked: 1.0
+release; `PRG-REL-001`'s own future entry gates.
+
+**`WP-REL-003` — Engine Alpha and native-Metal qualification review**
+Result: MS-08's documented Alpha profile supports real creator workflows
+and the opening slice while Penumbra gains native Metal without losing wgpu
+(§13). Entry conditions: `WP-RHI-002` (native Metal backend) — §13 names
+these as the two critical MS-08 packages together, distinct from the
+`WP-RHI-001` foundation. Deliverables: qualification evidence across the
+selected Alpha-profile capabilities named in §13 (mature editor/data/build
+workflows; selected Wavefront/animation/navigation/gameplay-framework/2D/
+modeler/shader/simulation foundations; stable RHI contracts; differential
+rendering; device-loss recovery; benchmark parity; maintenance plan), each
+independently evidence-gated. Non-goals: listing a capability under Alpha
+does not make it a universal profile requirement (§13) — this review
+certifies only the profiles actually selected. Stop condition: a selected
+capability without its own passing evidence blocks that capability's
+inclusion in the certified Alpha profile, not the whole review. Next
+unblocked: `WP-REL-004`.
+
+**`WP-REL-004` — Engine Beta and common-RHI qualification review**
+Result: MS-09's Beta supports the selected desktop/platform capability
+matrix with mature common-RHI behavior and native Vulkan/Direct3D 12 where
+gates pass (§14). Entry conditions: `WP-RHI-003` (native Vulkan/D3D12
+parity) plus mature native Metal and common-RHI differential image/
+benchmark/recovery/backend-divergence/staffing/maintenance evidence (§14) —
+`WP-REL-003` closed as the Alpha baseline this extends. Deliverables:
+qualification evidence for the selected Beta-profile capabilities named in
+§14 (synchronization, networking/providers, optional Collective modules,
+modding, XR, `WP-GAM-002` Luau, Artus pose search/interaction/motion-LOD/
+intent replication/facial foundations, advanced navigation, shader target
+lowering, platform ecosystem integration) — none implied unless its profile
+is declared. Non-goals: Beta does not promise a Meridian-operated cloud;
+Collective stays provider-neutral and self-hostable (§14). Stop condition:
+same per-capability evidence-gating rule as `WP-REL-003` — an unready
+selected capability is dropped from the certified Beta profile rather than
+certified anyway. Next unblocked: `WP-REL-001`.
+
 ## 18. Change control
 
 Roadmap changes require affected `REQ-*` and `WP-*` identifiers, dependency and milestone impact, old/new disposition in the migration register, an ADR for architectural sequencing changes, and validator-clean registries. PLANNING may activate only one bounded primary package at a time, while explicitly listed sidecar research or maintenance may continue in parallel. Any changed critical path, parallel lane, integration checkpoint, or stop condition also updates `registry/delivery-plan.json`.

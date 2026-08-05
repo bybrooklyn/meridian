@@ -79,20 +79,68 @@ checked handles remain process-local.
 The following are illustrative Meridian-owned contract shapes:
 
 ```text
-ArtusRigProfile { skeleton_id, semantic_bones, canonical_rest_pose,
-                  retarget_chains, joint_limits, body_measurements,
-                  contact_sites, facial_profile? }
-ArtusMotionProfile { rig_profile, motion_sources, graph?, motion_database?,
-                     procedural_layers, interaction_profile, physics_profile,
-                     facial_profile?, lod_profile, fallback_policy }
-ArtusMotionIntent { id, source, kind, priority, timing, body_mask,
-                    spatial_target?, constraints, interrupt_policy }
-ArtusContact { effector, target, desired_transform, priority, timing,
-               ownership, tolerances, failure_policy }
-ArtusMotionResolution { intent_id, proposed_root_delta, contacts, status,
-                        completion_reason?, diagnostics }
-ArtusPoseSnapshot { skeleton_id, generation, local_pose, morph_weights,
-                    achieved_root_delta, events, lod_state }
+ArtusRigProfile {
+  skeleton_id: u128,
+  semantic_bones: BoundedMap<SemanticBoneId, BoneRef>, // default max 256 semantic bones
+  canonical_rest_pose: Pose,
+  retarget_chains: Vec<RetargetChain>,     // default max 32 chains
+  joint_limits: Vec<JointLimit>,
+  body_measurements: BodyMeasurements,
+  contact_sites: Vec<ContactSite>,         // default max 16 (feet, hands, hips, head, ...)
+  facial_profile: Option<FacialProfile>,
+}
+ArtusMotionProfile {
+  rig_profile: u128,
+  motion_sources: Vec<MotionSourceRef>,    // default max 128 clips/sources per profile
+  graph: Option<GraphRef>,
+  motion_database: Option<MotionDatabaseRef>,
+  procedural_layers: Vec<ProceduralLayerRef>, // default max 16 concurrent layers
+  interaction_profile: InteractionProfileRef,
+  physics_profile: PhysicsProfileRef,
+  facial_profile: Option<FacialProfileRef>,
+  lod_profile: LodProfile,                 // tiered by distance/screen coverage
+  fallback_policy: FallbackPolicy,         // Hold | GraphFallback | RelaxLowPriority
+}
+ArtusMotionIntent {
+  id: u64,
+  source: IntentSource,                    // Gameplay | Bearings | Cutscene | Debug
+  kind: IntentKind,                        // Locomotion | Facing | Gaze | Reach | Grasp |
+                                            // Carry | Interact | Sit | Climb | Brace |
+                                            // Avoid | Reaction | Gesture | Performance
+  priority: u8,                            // 0 (lowest) - 255 (safety-critical), higher wins
+  timing: IntentTiming,
+  body_mask: u32,                          // bitflags over body regions
+  spatial_target: Option<Vec3>,
+  constraints: Vec<IntentConstraint>,      // default max 8 constraints per intent
+  interrupt_policy: InterruptPolicy,       // CanInterrupt | HardLock { max_duration_ms: u32 }
+}
+ArtusContact {
+  effector: EffectorId,
+  target: Vec3,
+  desired_transform: Transform,
+  priority: u8,
+  timing: ContactTiming,
+  ownership: ContactOwnership,             // Local | ServerAuthoritative
+  tolerances: ContactTolerances,           // position/rotation epsilon before relaxation
+  failure_policy: ContactFailurePolicy,    // Relax | Hold | ReportOnly
+}
+ArtusMotionResolution {
+  intent_id: u64,
+  proposed_root_delta: Transform,
+  contacts: Vec<ArtusContact>,             // default max 8 concurrent contacts resolved per tick
+  status: ResolutionStatus,                // Active | Completed | Interrupted | Failed
+  completion_reason: Option<CompletionReason>,
+  diagnostics: ResolutionDiagnostics,
+}
+ArtusPoseSnapshot {
+  skeleton_id: u128,
+  generation: u32,                          // generation-checked handle epoch
+  local_pose: Pose,
+  morph_weights: Vec<f32>,                  // default max 256 morph targets
+  achieved_root_delta: Transform,
+  events: Vec<MotionEvent>,                 // default max 16 events per published snapshot
+  lod_state: LodState,
+}
 ```
 
 `ArtusMotionIntent` is the shared semantic boundary. Candidate families include
@@ -212,6 +260,73 @@ it must not silently weaken authoritative physical or gameplay contacts.
 Disabled Artus, facial, pose-search, or GPU paths allocate no components,
 workers, listeners, GPU resources, editor panels, dependencies, or package
 chunks.
+
+## 5.1 Work package briefs
+
+Definition-of-Ready detail per [`IMPLEMENTATION_PLANNING_SPEC.md` §3](IMPLEMENTATION_PLANNING_SPEC.md).
+No status changes.
+
+**`WP-ANI-001` — Artus semantic rig, clip, pose, root-motion, and event foundation**
+Result: an imported humanoid gets pose/skeleton time and identity, clip
+import/sampling, simple blending, root-motion extraction, and a semantic
+rig/profile source a gameplay consumer can request a pose from (§5.1 of the
+delivery list, MS-08 scope). Owning contracts: `ArtusRigProfile`,
+`ArtusPoseSnapshot` (§3). Entry conditions: none of Artus exists yet (current-
+status line); depends on Modeler/DCC for imported clip interpretation (§2),
+not on the modeler's full maturity. Deliverables: the humanoid-import
+pipeline in §4.1 (detect topology → propose semantic assignments/retarget
+chains → estimate body measurements/contact sites → canonical representation
+→ required validation motions: stance, crouch, reach, walk/run, turn, stairs,
+foot plant, sit alignment, ragdoll transition, head look → visual
+confirmation before saving), bounded event foundations, and validation that
+unsupported semantics are explicit capability limits, not silently repaired
+guesses (§4.1). Non-goals: no graph/state-machine authoring, no retargeting
+beyond import, no IK/contacts, no Cairn coupling — all `WP-ANI-002` (§5's
+ordering). Security: captured biometric data private by default, no public
+evidence without consent (§7). Tests: the §8 static-validation list scoped to
+import (semantic mapping, hierarchy, rest pose, joint limits, root motion,
+source versions) against the representative humanoid corpus. Stop condition:
+a rig that fails required validation motions blocks save with stable
+diagnostics rather than saving a guessed mapping (§4.1). Next unblocked:
+`WP-ANI-002`.
+
+**`WP-ANI-002` — Artus profiles, graphs, retargeting, contacts, and negotiated movement**
+Result: the beginner usable-humanoid workflow (§7: import, create profile,
+confirm mapping, select starter motion, enable safe procedural defaults,
+preview, save) works end to end with negotiated Cairn-coupled movement.
+Entry conditions: `WP-ANI-001` closed (rig/pose foundation to build the graph
+and retargeting on); `RG-ANI-001` decided (the motion-intent/arbitration/
+negotiated-control contract, §6) before packages depend on it — this package
+cannot finalize its intent boundary ahead of that gate. Deliverables: the
+first graph surface (§4.1: clip players, 1D/2D blend spaces, state machines,
+transitions, layered/additive blends, masks, sync groups, root-motion
+extraction, procedural insertion points), initial procedural layers (foot
+placement, pelvis adjustment, stride/turn warping, terrain lean, head/gaze,
+basic hand placement, ragdoll blending, basic impact reactions), the full
+negotiated-movement pipeline (§4: arbitrate intents → select motion source →
+sample/retarget → propose root displacement to Cairn → consume achieved
+result → solve prioritized contacts/IK → publish immutable pose), and
+interaction definitions (§4.2: approach regions, facing tolerance, contact
+transforms, recovery). MS-09 scope within this package (per §5) adds
+evidence-gated pose search, motion LOD, replicated high-level intent, and a
+narrow versioned facial profile/import/pose-layer foundation — explicitly
+not speech, emotion, production gaze, or capture (§4.2), which stay
+`PRG-ANI-001`. Non-goals: self-balancing locomotion, torque-level control
+remain research-only (§4.1); this package does not become a separate
+application — one Artus workspace inside Meridian (§7). Failure/recovery:
+missing data, budget saturation, or a failed solve produces a declared hold,
+graph fallback, or relaxed low-priority contact, never unbounded work or
+explosive joint motion (§4). Tests: the §8 dynamic-fixture list (foot
+sliding/penetration, joint inversion, hand drift, root teleportation, solver
+instability, ragdoll continuity, motion-search thrashing, LOD transitions,
+correction spikes) against the representative corpus; `RG-ANI-002`-gated
+retargeting/IK/pose-search/deformation evidence before MS-09's advanced
+subset ships. Stop condition: an incompatible rig or unreachable interaction
+blocks publication with stable diagnostics and keeps the last accepted
+artifact active where safe (§8) — it does not ship a believable-looking but
+unvalidated result; structural graph construction alone is never proof of
+believable motion (§8). Next unblocked: `PRG-ANI-001` (post-MS-10, its own
+entry gate, cannot be started by this package).
 
 ## 6. Research Gates and Open Decisions
 
