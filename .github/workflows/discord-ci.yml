@@ -1,0 +1,29 @@
+name: Discord CI Status
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report CI status to Discord
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          status: ${{ github.event.workflow_run.conclusion }}
+          title: Meridian CI
+          description: |
+            Event: `${{ github.event.workflow_run.event }}`
+            Branch: `${{ github.event.workflow_run.head_branch }}`
+            Commit: `${{ github.event.workflow_run.head_sha }}`
+            Actor: `${{ github.event.workflow_run.actor.login }}`
+          url: ${{ github.event.workflow_run.html_url }}
+          username: Meridian CI
+          nofail: true
+          ack_no_webhook: true
