@@ -415,3 +415,29 @@ fn missing_marquee_amendment_ledger_is_rejected() {
     assert!(output.contains("missing-migration-ledger"), "{output}");
     assert!(output.contains("Marquee amendment ledger"), "{output}");
 }
+
+#[test]
+fn generated_governance_projections_are_not_scanned() {
+    // `governance/` holds v1 projections generated from the root specoment. A v0.5
+    // validator judging them is SPEC-001's forbidden competition running backwards.
+    // The index legitimately cites drafting ledgers ("spec-rewrite v0.22"), which
+    // `has_retired_reference` matches on the substring "v0.2".
+    let (_, output) = run(
+        "tests/fixtures/governance_projection",
+        &["validate", "docs"],
+    );
+    assert!(
+        !output.contains("governance/generated/index.md"),
+        "generated v1 projections must be outside v0.5 scope: {output}"
+    );
+
+    let (_, unmapped) = run("tests/fixtures/governance_projection", &["list-unmapped"]);
+    assert!(
+        !unmapped.contains("PRG-RECON-001"),
+        "v1 identifiers in projections must not be reported: {unmapped}"
+    );
+    assert!(
+        unmapped.contains("REQ-999"),
+        "genuine v0.5 documents must still be reported: {unmapped}"
+    );
+}

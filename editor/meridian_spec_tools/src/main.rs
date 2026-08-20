@@ -302,6 +302,11 @@ fn is_excluded_context_path(path: &Path) -> bool {
         // backwards. Retired with this tool at PH-AUTH-004.
         || is_under(path, ".meridian")
         || is_under(path, "MERIDIAN_SPECOMENT.md")
+        // Generated v1 projections. These are derived from the root specoment and
+        // legitimately cite drafting ledgers such as "spec-rewrite v0.22", which
+        // `has_retired_reference` matches on the substring "v0.2". Retired with this
+        // tool at PH-AUTH-004. WP-V1-RESET-002.
+        || is_under(path, "governance")
 }
 
 fn read_json(path: &Path) -> Result<JsonDoc, String> {
