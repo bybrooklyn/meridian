@@ -1,0 +1,16 @@
+[
+  {
+    "id": "REQ-004",
+    "status": "Planned",
+    "waivers": [
+      {
+        "status": "Closed",
+        "reason": "closed after the hosted matrix passed",
+        "risk": "historical only",
+        "mitigation": "none required",
+        "owner": "validator-test",
+        "expiry": "2026-01-01"
+      }
+    ]
+  }
+]

@@ -83,6 +83,13 @@ fn expired_waivers_are_rejected() {
 }
 
 #[test]
+fn closed_waivers_do_not_expire() {
+    let (ok, output) = run("tests/fixtures/closed_waiver", &["validate", "maturity"]);
+    assert!(ok, "{output}");
+    assert!(!output.contains("expired-waiver"), "{output}");
+}
+
+#[test]
 fn bad_schemas_are_rejected() {
     let (ok, output) = run("tests/fixtures/bad_schema", &["validate", "schemas"]);
     assert!(!ok, "{output}");
