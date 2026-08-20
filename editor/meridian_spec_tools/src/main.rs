@@ -588,7 +588,7 @@ fn validate_maturity(root: &Path, context: &Context, issues: &mut Vec<Issue>) {
                 );
             }
         }
-        for expiry in strings_for_keys(&record.value, &["expiry", "expires"]) {
+        for expiry in live_expiries(&record.value) {
             if expiry < today {
                 push(
                     issues,
@@ -2004,6 +2004,46 @@ fn references(value: &Value) -> Vec<String> {
             "proving_requirements",
         ],
     )
+}
+
+/// Statuses that retire a waiver. A retired waiver grants nothing, so its
+/// expiry date is historical fact rather than a live governance risk.
+const RETIRED_WAIVER_STATUSES: &[&str] = &["Closed", "Retired", "Superseded", "Rejected"];
+
+/// Collect `expiry`/`expires` values that still govern something.
+///
+/// Any object carrying a retired status is skipped whole: neither its own
+/// expiry nor any nested one is reported. Waivers that remain open are
+/// reported exactly as before.
+fn live_expiries(value: &Value) -> Vec<String> {
+    let mut values = Vec::new();
+    collect_live_expiries(value, &mut values);
+    values
+}
+
+fn collect_live_expiries(value: &Value, values: &mut Vec<String>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(status) = map.get("status").and_then(Value::as_str) {
+                if RETIRED_WAIVER_STATUSES.contains(&status) {
+                    return;
+                }
+            }
+            for (key, child) in map {
+                if key == "expiry" || key == "expires" {
+                    collect_strings(child, values);
+                } else {
+                    collect_live_expiries(child, values);
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_live_expiries(item, values);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn strings_for_keys(value: &Value, keys: &[&str]) -> Vec<String> {
