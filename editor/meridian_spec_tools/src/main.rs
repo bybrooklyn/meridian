@@ -297,6 +297,11 @@ fn is_excluded_context_path(path: &Path) -> bool {
         || is_under(path, ".git")
         || is_under(path, "website")
         || is_under(path, "editor/meridian_spec_tools/tests/fixtures")
+        // Staged v1 authority. SPEC-001 requires that old and new authority never
+        // compete; a v0.5 validator judging v1 content is that competition running
+        // backwards. Retired with this tool at PH-AUTH-004.
+        || is_under(path, ".meridian")
+        || is_under(path, "MERIDIAN_SPECOMENT.md")
 }
 
 fn read_json(path: &Path) -> Result<JsonDoc, String> {

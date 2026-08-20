@@ -90,6 +90,23 @@ fn closed_waivers_do_not_expire() {
 }
 
 #[test]
+fn v1_staging_authority_is_not_scanned() {
+    let (_, output) = run("tests/fixtures/v1_staging", &["list-unmapped"]);
+    assert!(
+        !output.contains("PRG-RECON-001"),
+        "root MERIDIAN_SPECOMENT.md must be outside v0.5 scope: {output}"
+    );
+    assert!(
+        !output.contains("VAL-PORTFOLIO-001"),
+        ".meridian/ must be outside v0.5 scope: {output}"
+    );
+    assert!(
+        output.contains("REQ-999"),
+        "genuine v0.5 documents must still be reported: {output}"
+    );
+}
+
+#[test]
 fn bad_schemas_are_rejected() {
     let (ok, output) = run("tests/fixtures/bad_schema", &["validate", "schemas"]);
     assert!(!ok, "{output}");
