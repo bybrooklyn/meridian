@@ -6,3 +6,11 @@
 !/assets_built/.gitkeep
 /benchmarks/results/
 .DS_Store
+
+# Pre-amendment v1 authority preimage. Excluded from the working tree because
+# PH-AUTH-002 establishes ONE root authority and these are full-length documents
+# named as authority. The bytes are preserved in the object database and are
+# reachable via tag v1-authority-preimage -> 0882050a. See WP-V1-RESET-002.
+/.meridian/authority/MERIDIAN_SPECOMENT.original.md
+/.meridian/authority/appendix_a.md
+/.meridian/tools/__pycache__/

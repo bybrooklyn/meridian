@@ -1,0 +1,4 @@
+Meridian RHI: Apple M4 via Metal, SurfaceFormat { name: "Bgra8UnormSrgb", srgb: true }, timestamps Enabled
+Meridian RHI clear surface outcome SkippedOccluded; submitted offscreen structural validation
+Meridian RHI clear frame timing: frame 1, submission 1, pass clear, CPU 41µs, GPU UnsupportedPlatform(MetalTimestampDataInvalid), diagnostics TimingDiagnostics { availability: UnsupportedPlatform(MetalTimestampDataInvalid), readback_capacity: 8, readbacks_in_flight: 0, queued_results: 0, dropped_results: 0 }
+clear_frame exit=0

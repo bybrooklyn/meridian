@@ -1,0 +1,1402 @@
+   Compiling unicode-ident v1.0.24
+   Compiling bitflags v2.13.0
+   Compiling libm v0.2.16
+   Compiling arrayvec v0.7.8
+   Compiling smallvec v1.15.2
+   Compiling log v0.4.33
+   Compiling num-traits v0.2.19
+   Compiling equivalent v1.0.2
+   Compiling foldhash v0.2.0
+   Compiling objc2-encode v4.1.0
+   Compiling proc-macro2 v1.0.106
+   Compiling cfg_aliases v0.2.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling shlex v2.0.1
+   Compiling pin-project-lite v0.2.17
+   Compiling arrayref v0.3.9
+   Compiling constant_time_eq v0.4.2
+   Compiling hashbrown v0.17.1
+   Compiling cc v1.2.67
+   Compiling thiserror v2.0.18
+   Compiling zerocopy v0.8.54
+   Compiling objc-sys v0.3.5
+   Compiling raw-window-handle v0.6.2
+   Compiling objc2 v0.6.4
+   Compiling unicode-segmentation v1.13.3
+   Compiling objc2 v0.5.2
+   Compiling slotmap v1.1.1
+   Compiling quote v1.0.46
+   Compiling dispatch v0.2.0
+   Compiling core-foundation-sys v0.8.7
+   Compiling syn v2.0.119
+   Compiling core-foundation v0.9.4
+   Compiling hashbrown v0.16.1
+   Compiling bitflags v1.3.2
+   Compiling foreign-types-shared v0.3.1
+   Compiling winit v0.30.13
+   Compiling indexmap v2.14.0
+   Compiling core-graphics-types v0.1.3
+   Compiling rustc-hash v1.1.0
+   Compiling tinyvec_macros v0.1.1
+   Compiling tracing-core v0.1.36
+   Compiling static_assertions v1.1.0
+   Compiling tinyvec v1.12.0
+   Compiling parking_lot_core v0.9.12
+   Compiling core_maths v0.1.1
+   Compiling block2 v0.5.1
+   Compiling ttf-parser v0.25.1
+   Compiling objc2-foundation v0.2.2
+   Compiling objc2-core-foundation v0.3.2
+   Compiling blake3 v1.8.5
+   Compiling block2 v0.6.2
+   Compiling tracing v0.1.44
+   Compiling naga v30.0.0
+   Compiling memmap2 v0.9.11
+   Compiling zeno v0.3.3
+   Compiling bit-vec v0.9.1
+   Compiling smol_str v0.2.2
+   Compiling dpi v0.1.2
+   Compiling cursor-icon v1.2.0
+   Compiling unicode-width v0.2.2
+   Compiling yazi v0.2.1
+   Compiling bit-set v0.10.0
+   Compiling parking_lot v0.12.5
+   Compiling codespan-reporting v0.13.1
+   Compiling linebender_resource_handle v0.1.1
+   Compiling self_cell v1.2.2
+   Compiling unicode-script v0.5.8
+   Compiling rangemap v1.7.1
+   Compiling rustc-hash v2.1.3
+   Compiling smol_str v0.3.6
+   Compiling unicode-linebreak v0.1.5
+   Compiling sys-locale v0.3.2
+   Compiling unicode-bidi v0.3.18
+   Compiling accesskit v0.24.1
+   Compiling wgpu-hal v30.0.0
+   Compiling wgpu-core v30.0.0
+   Compiling litrs v1.0.0
+   Compiling crossbeam-utils v0.8.22
+   Compiling wgpu v30.0.0
+   Compiling objc2-foundation v0.3.2
+   Compiling accesskit_consumer v0.38.0
+   Compiling objc2-core-graphics v0.3.2
+   Compiling document-features v0.2.12
+   Compiling parking v2.2.1
+   Compiling slab v0.4.12
+   Compiling meridian-render-graph v0.1.0 (/Users/brooklyn/meridian/engine/meridian_render_graph)
+   Compiling futures-core v0.3.32
+   Compiling pollster v0.4.0
+   Compiling fontdb v0.23.0
+   Compiling concurrent-queue v2.5.0
+   Compiling winnow v1.0.4
+   Compiling fastrand v2.4.1
+   Compiling futures-io v0.3.32
+   Compiling futures-lite v2.6.1
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling event-listener v5.4.1
+   Compiling convert_case v0.10.0
+   Compiling spin v0.10.1
+   Compiling unicode-xid v0.2.6
+   Compiling event-listener-strategy v0.5.4
+   Compiling async-task v4.7.1
+   Compiling async-channel v2.5.0
+   Compiling crossbeam-queue v0.3.13
+   Compiling thread_local v1.1.10
+   Compiling disqualified v1.0.0
+   Compiling atomic-waker v1.1.2
+   Compiling bevy_platform v0.19.0
+   Compiling async-executor v1.14.0
+   Compiling bevy_ptr v0.19.0
+   Compiling fixedbitset v0.5.7
+   Compiling nonmax v0.5.5
+   Compiling bumpalo v3.20.3
+   Compiling toml_parser v1.1.2+spec-1.1.0
+   Compiling bevy_utils v0.19.0
+   Compiling synstructure v0.13.2
+   Compiling num-integer v0.1.46
+   Compiling num-complex v0.4.6
+   Compiling simd-adler32 v0.3.10
+   Compiling crc32fast v1.5.0
+   Compiling adler2 v2.0.1
+   Compiling miniz_oxide v0.8.9
+   Compiling num-bigint v0.4.8
+   Compiling toml_edit v0.25.13+spec-1.1.0
+   Compiling fdeflate v0.3.7
+   Compiling approx v0.5.1
+   Compiling matrixmultiply v0.3.11
+   Compiling rfd v0.17.2
+   Compiling dispatch2 v0.3.1
+   Compiling flate2 v1.1.9
+   Compiling objc2-app-kit v0.2.2
+   Compiling byteorder v1.5.0
+   Compiling png v0.18.1
+   Compiling heapless v0.8.0
+   Compiling bevy_macro_utils v0.19.0
+   Compiling rawpointer v0.2.1
+   Compiling objc2-metal v0.3.2
+   Compiling bevy_ecs_macro_logic v0.19.0
+   Compiling objc2-app-kit v0.3.2
+   Compiling serde_derive v1.0.228
+   Compiling bytemuck_derive v1.11.0
+   Compiling thiserror-impl v2.0.18
+   Compiling zerocopy-derive v0.8.54
+   Compiling foreign-types-macros v0.2.3
+   Compiling foreign-types v0.5.0
+   Compiling core-graphics v0.23.2
+   Compiling bytemuck v1.25.1
+   Compiling profiling-procmacros v1.0.18
+   Compiling profiling v1.0.18
+   Compiling font-types v0.11.3
+   Compiling derive_more-impl v2.1.1
+   Compiling bevy_ecs_macros v0.19.0
+   Compiling read-fonts v0.37.0
+   Compiling read-fonts v0.39.2
+   Compiling naga-types v30.0.0
+   Compiling wgpu-types v30.0.0
+   Compiling serde v1.0.228
+   Compiling variadics_please v1.1.0
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling meridian-core v0.1.0 (/Users/brooklyn/meridian/engine/meridian_core)
+   Compiling meridian-ui-core v0.1.0 (/Users/brooklyn/meridian/engine/meridian_ui_core)
+   Compiling meridian-assets v0.1.0 (/Users/brooklyn/meridian/engine/meridian_assets)
+   Compiling accesskit_macos v0.26.3
+   Compiling objc2-quartz-core v0.3.2
+   Compiling derive_more v2.1.1
+   Compiling meridian-diagnostics v0.1.0 (/Users/brooklyn/meridian/engine/meridian_diagnostics)
+   Compiling raw-window-metal v1.1.0
+   Compiling bevy_tasks v0.19.0
+   Compiling meridian-tasks v0.1.0 (/Users/brooklyn/meridian/engine/meridian_tasks)
+   Compiling bevy_ecs v0.19.0
+   Compiling meridian-input v0.1.0 (/Users/brooklyn/meridian/engine/meridian_input)
+   Compiling half v2.7.1
+   Compiling accesskit_winit v0.33.2
+   Compiling meridian-save v0.1.0 (/Users/brooklyn/meridian/engine/meridian_save)
+   Compiling zerofrom v0.1.8
+   Compiling meridian-alluvium v0.1.0 (/Users/brooklyn/meridian/engine/meridian_alluvium)
+   Compiling meridian-ui-semantics v0.1.0 (/Users/brooklyn/meridian/engine/meridian_ui_semantics)
+   Compiling meridian-platform v0.1.0 (/Users/brooklyn/meridian/engine/meridian_platform)
+   Compiling yoke v0.8.3
+   Compiling meridian-world v0.1.0 (/Users/brooklyn/meridian/engine/meridian_world)
+   Compiling harfrust v0.5.2
+   Compiling skrifa v0.42.1
+   Compiling skrifa v0.40.0
+   Compiling zerovec-derive v0.11.3
+   Compiling meridian-build v0.1.0 (/Users/brooklyn/meridian/editor/meridian_build)
+   Compiling zerovec v0.11.6
+   Compiling num-rational v0.4.2
+   Compiling displaydoc v0.2.6
+   Compiling meridian-modeler v0.1.0 (/Users/brooklyn/meridian/engine/meridian_modeler)
+   Compiling meridian-editor-core v0.1.0 (/Users/brooklyn/meridian/editor/meridian_editor_core)
+   Compiling swash v0.2.9
+   Compiling meridian-asset-tools v0.1.0 (/Users/brooklyn/meridian/editor/meridian_asset_tools)
+   Compiling tinystr v0.8.3
+   Compiling zerotrie v0.2.4
+   Compiling icu_locale_core v2.2.0
+   Compiling potential_utf v0.1.5
+   Compiling icu_collections v2.2.0
+   Compiling meridian-world-tools v0.1.0 (/Users/brooklyn/meridian/editor/meridian_world_tools)
+   Compiling meridian-streaming v0.1.0 (/Users/brooklyn/meridian/engine/meridian_streaming)
+   Compiling meridian-package v0.1.0 (/Users/brooklyn/meridian/engine/meridian_package)
+   Compiling wide v1.5.0
+   Compiling nalgebra-macros v0.3.0
+   Compiling icu_provider v2.2.0
+   Compiling ref-cast-impl v1.0.25
+   Compiling hash32 v0.3.1
+   Compiling glam v0.33.2
+   Compiling typenum v1.20.1
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling ref-cast v1.0.25
+   Compiling num-iter v0.1.46
+   Compiling fluent-uri v0.3.2
+   Compiling rstar v0.13.0
+   Compiling num v0.4.3
+   Compiling ahash v0.8.12
+   Compiling wgpu-naga-bridge v30.0.0
+   Compiling num-derive v0.4.2
+   Compiling ordered-float v5.3.0
+   Compiling ena v0.14.4
+   Compiling cosmic-text v0.19.0
+   Compiling downcast-rs v2.0.2
+   Compiling either v1.16.0
+   Compiling referencing v0.33.0
+   Compiling fraction v0.15.4
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling email_address v0.2.9
+   Compiling jsonschema v0.33.0
+   Compiling pulldown-cmark v0.13.4
+   Compiling meridian-shader-tools v0.1.0 (/Users/brooklyn/meridian/editor/meridian_shader_tools)
+   Compiling meridian-ui-text v0.1.0 (/Users/brooklyn/meridian/engine/meridian_ui_text)
+   Compiling simba v0.10.0
+   Compiling meridian-isobar v0.1.0 (/Users/brooklyn/meridian/engine/meridian_isobar)
+   Compiling wgpu-core-deps-apple v30.0.0
+   Compiling meridian-ui-render v0.1.0 (/Users/brooklyn/meridian/engine/meridian_ui_render)
+   Compiling meridian-ui-runtime v0.1.0 (/Users/brooklyn/meridian/engine/meridian_ui_runtime)
+   Compiling meridian-vegetation v0.1.0 (/Users/brooklyn/meridian/engine/meridian_vegetation)
+   Compiling meridian-audio v0.1.0 (/Users/brooklyn/meridian/engine/meridian_audio)
+   Compiling meridian-basalt v0.1.0 (/Users/brooklyn/meridian/engine/meridian_basalt)
+   Compiling meridian-ui v0.1.0 (/Users/brooklyn/meridian/engine/meridian_ui)
+   Compiling meridian-ui-editor v0.1.0 (/Users/brooklyn/meridian/editor/meridian_ui_editor)
+   Compiling meridian-spec v0.1.0 (/Users/brooklyn/meridian/editor/meridian_spec_tools)
+   Compiling nalgebra v0.35.0
+   Compiling meridian-rhi v0.1.0 (/Users/brooklyn/meridian/engine/meridian_rhi)
+   Compiling glamx v0.3.0
+   Compiling meridian-renderer v0.1.0 (/Users/brooklyn/meridian/engine/meridian_renderer)
+   Compiling meridian-benchmark v0.1.0 (/Users/brooklyn/meridian/editor/meridian_benchmark)
+   Compiling parry3d v0.29.0
+   Compiling meridian-ecs v0.1.0 (/Users/brooklyn/meridian/engine/meridian_ecs)
+   Compiling meridian-rt v0.1.0 (/Users/brooklyn/meridian/engine/meridian_rt)
+   Compiling meridian-editor v0.1.0 (/Users/brooklyn/meridian/editor/meridian_editor)
+   Compiling rapier3d v0.34.0
+   Compiling meridian-physics v0.1.0 (/Users/brooklyn/meridian/engine/meridian_physics)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3m 00s
+     Running unittests src/lib.rs (target/debug/deps/meridian_alluvium-db0333130a0d60cc)
+
+running 7 tests
+test tests::dirty_report_is_precise ... ok
+test tests::migration_is_explicit_and_license_audit_fails_closed ... ok
+test tests::budget_and_cancellation_are_typed_failures ... ok
+test tests::canonical_json_round_trips_and_preserves_extensions ... ok
+test tests::scalar_evaluation_is_deterministic_and_cacheable ... ok
+test tests::overrides_report_applied_conflicted_and_orphaned_without_deletion ... ok
+test tests::corrupted_cache_is_rejected_and_never_restored ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_asset_tools-903f33b9e0f81626)
+
+running 4 tests
+test tests::invalid_geometry_and_cache_authority_are_rejected ... ok
+test tests::deterministic_import_preserves_unknown_fields_and_separates_facets ... ok
+test tests::transaction_rejects_duplicates_cancel_and_escape_without_replacing_snapshot ... ok
+test tests::transaction_rejects_symlink_escape ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_assets-fa0441154081f582)
+
+running 20 tests
+test tests::load_request_rejects_pre_cancel_and_decoded_size_mismatch ... ok
+test tests::manifest_rejects_duplicate_names_and_mismatched_pack_identity ... ok
+test tests::failed_assets_expose_a_visible_placeholder ... ok
+test tests::asset_ids_are_stable_and_display_as_fixed_width_hex ... ok
+test tests::load_request_cancels_before_decode_and_during_decode ... ok
+test tests::load_request_reads_the_indexed_range_and_validates_decoded_bytes ... ok
+test tests::duplicate_ids_are_rejected_without_replacing_existing_metadata ... ok
+test tests::manifest_canonicalization_is_independent_of_input_order ... ok
+test tests::load_request_job_runs_on_a_worker_thread ... ok
+test tests::manifests_reject_duplicate_ids_across_packs ... ok
+test tests::manifests_validate_required_cross_pack_dependencies ... ok
+test tests::pack_index_is_deterministic_and_sorted_by_asset_id ... ok
+test tests::required_dependencies_gate_readiness ... ok
+test tests::residency_operations_report_unknown_assets ... ok
+test tests::residency_reaccounts_resizes_and_loading_transitions ... ok
+test tests::residency_tracks_budget_and_deterministic_eviction_candidates ... ok
+test tests::uncompressed_decoder_reports_unsupported_zstandard ... ok
+test tests::source_and_artifact_identity_are_deterministic_and_round_trip_hex ... ok
+test tests::file_pack_reader_loads_a_real_indexed_range ... ok
+test tests::runtime_loads_a_built_asset_by_id_and_rejects_unknown_ids ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_audio-32ee1b007c3e550a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_basalt-b1aaf4ad8c2ec16f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_benchmark-85db95a5874ddab9)
+
+running 2 tests
+test tests::raw_rgba_preserves_exact_capture_bytes ... ok
+test tests::png_and_metadata_preserve_dimensions_hash_source_and_nonuniform_pixels ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_build-8c7f8772735e294b)
+
+running 45 tests
+test tests::adapters_reject_a_mismatched_cargo_command ... ok
+test tests::cargo_environment_explicitly_admits_required_windows_roots ... ok
+test tests::cargo_environment_accepts_bounded_toolchain_search_paths ... ok
+test tests::cargo_environment_admits_explicit_windows_linker_context ... ok
+test tests::build_identity_is_order_independent_for_roots_and_environment ... ok
+test tests::cargo_output_budget_rejects_aggregate_bytes_and_lines ... ok
+test tests::cargo_message_requires_running_operation ... ok
+test tests::cargo_finished_result_must_match_terminal_phase_for_local_and_external_events ... ok
+test tests::cargo_worker_start_failure_maps_to_a_typed_build_error ... ok
+test tests::cargo_stderr_reuses_the_existing_service_bound ... ok
+test tests::durable_graph_provenance_must_match_the_canonical_contract ... ok
+test tests::cargo_process_failure_is_bounded_and_redacted ... ok
+test tests::artifact_store_qualifies_one_listed_executable_within_the_output_root ... ok
+test tests::artifact_store_reuses_matching_legacy_reference_without_upgrading_it ... ok
+test tests::durable_snapshot_rejects_cargo_finished_terminal_mismatch ... ok
+test tests::artifact_store_publishes_verified_content_and_rejects_reference_conflicts ... ok
+test tests::external_worker_events_revalidate_payloads_before_durable_acceptance ... ok
+test tests::artifact_store_detects_a_corrupted_existing_object ... ok
+test tests::graph_contract_changes_build_identity_and_request_provenance ... ok
+test tests::cargo_worker_supervisor_fails_a_contradictory_cargo_result ... ok
+test tests::graph_rejects_bad_edges_and_blocks_dependents_after_failure ... ok
+test tests::graph_schedules_dependencies_before_requested_roots ... ok
+test tests::identity_changes_when_an_allowlisted_environment_value_changes ... ok
+test tests::durable_store_rejects_missing_malformed_oversized_and_non_regular_state ... ok
+test tests::identity_changes_when_ordered_command_arguments_change ... ok
+test tests::identity_rejects_duplicate_roots_and_unallowlisted_environment ... ok
+test tests::durable_service_persists_recovery_before_exposing_worker_lost ... ok
+test tests::metadata_parser_preserves_workspace_package_and_target_contracts ... ok
+test tests::lifecycle_rejects_stale_events_and_post_cancel_success ... ok
+test tests::parser_maps_diagnostics_artifacts_and_redacts_assignments ... ok
+test tests::pre_cancelled_cargo_never_spawns_a_process ... ok
+test tests::parser_rejects_malformed_and_oversized_messages ... ok
+test tests::progress_is_bounded_for_local_and_external_events ... ok
+test tests::snapshot_rejects_invalid_identity_and_oversized_input ... ok
+test tests::structured_cargo_plan_clears_ambient_protocol_overrides ... ok
+test tests::snapshot_marks_interrupted_operations_worker_lost_and_rejects_late_results ... ok
+test tests::workspace_metadata_identity_rejects_missing_or_outside_members ... ok
+test tests::workspace_metadata_identity_ignores_checkout_root_but_tracks_contract_changes ... ok
+test tests::metadata_process_failure_returns_a_typed_diagnostic ... ok
+test tests::durable_service_preserves_state_when_an_external_event_is_rejected ... ok
+test tests::request_bound_artifact_reopens_with_its_canonical_graph_manifest ... ok
+test tests::verified_artifact_events_require_the_running_request_identity ... ok
+test tests::cargo_worker_supervisor_completes_and_cancels_durable_requests ... ok
+test tests::cancelling_cargo_terminates_an_inherited_build_script_child ... ok
+test tests::cargo_worker_supervisor_persists_a_successful_cargo_check ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.59s
+
+     Running unittests src/main.rs (target/debug/deps/meridian_build-4e48649f1368024b)
+
+running 2 tests
+test tests::cli_parser_preserves_an_explicit_caller_owned_state_path ... ok
+test tests::default_state_paths_are_unique_under_the_workspace_target_directory ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs (target/debug/deps/cli-c7a0bdfe1d506f76)
+
+running 2 tests
+test default_state_is_announced_before_work_and_removed_after_success ... ok
+test explicit_state_reports_worker_loss_uses_a_fresh_operation_and_is_retained ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.87s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_core-743dfd4126adecaa)
+
+running 5 tests
+test tests::fixed_clock_caps_catch_up_and_reports_dropped_time ... ok
+test tests::fixed_clock_preserves_fraction_for_interpolation ... ok
+test tests::frame_rate_rejects_zero ... ok
+test tests::reset_clears_accumulation_and_sets_tick ... ok
+test tests::one_second_produces_exactly_sixty_steps_without_period_rounding_drift ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_diagnostics-357821e041d3535e)
+
+running 12 tests
+test tests::classifies_sixty_fps_stutter_thresholds ... ok
+test tests::frame_samples_can_carry_optional_gpu_duration ... ok
+test tests::benchmark_result_serializes_required_fields_and_escapes_metadata ... ok
+test tests::benchmark_result_rejects_non_finite_metrics ... ok
+test tests::diagnostic_timeline_is_bounded_correlated_and_redacts_secrets ... ok
+test tests::history_aggregates_retained_gpu_timings_for_benchmark_metrics ... ok
+test tests::history_retains_pipeline_state_for_benchmark_export ... ok
+test tests::latest_gpu_duration_can_be_attached_after_frame_recording ... ok
+test tests::scales_stutter_thresholds_for_one_twenty_fps ... ok
+test tests::history_is_bounded_and_summarizes_retained_samples ... ok
+test tests::tracks_consecutive_misses_and_resets_on_budget ... ok
+test tests::typed_gpu_status_preserves_unavailable_outcomes_without_fake_duration ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_ecs-03021545db0f5bad)
+
+running 4 tests
+test tests::render_extraction_is_a_separate_explicit_phase ... ok
+test tests::duplicate_render_instance_ids_fail_the_whole_extraction ... ok
+test tests::built_in_extraction_copies_renderables_into_an_immutable_snapshot ... ok
+test tests::fixed_schedule_runs_exactly_requested_steps ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_editor-e97fed091a44641d)
+
+running 42 tests
+test tests::creator_hub_actions_are_bounded_and_unknown_actions_are_rejected ... ok
+test tests::argument_parser_accepts_bounded_smoke_configuration ... ok
+test tests::creator_hub_rejects_oversized_state_before_reading_it ... ok
+test tests::atomic_writer_does_not_reuse_a_predictable_temporary_path ... ok
+test tests::create_project_copies_only_public_creator_source_and_opens_it ... ok
+test tests::creator_terminal_errors_remain_typed_for_the_platform_runner ... ok
+test tests::creator_ui_review_workspace_arguments_are_scoped_and_bounded ... ok
+test tests::creator_scroll_routes_precise_and_discrete_deltas_without_double_smoothing ... ok
+test tests::explicit_smoke_evidence_path_remains_caller_owned ... ok
+test tests::creator_escape_and_focus_loss_use_unified_interaction_cancellation ... ok
+test tests::creator_pointer_move_routes_without_a_drag_and_uses_logical_coordinates ... ok
+test tests::fixture_source_hash_is_stable_across_checkout_line_endings ... ok
+test tests::host_bound_assistive_actions_keep_their_explicit_command ... ok
+test tests::implicit_smoke_evidence_paths_are_unique_per_run ... ok
+test tests::creator_pointer_routes_real_press_and_release ... ok
+test tests::creator_keyboard_space_activates_on_press ... ok
+test tests::failed_creator_build_worker_start_is_typed_and_does_not_publish_a_build ... ok
+test tests::creator_ui_review_uses_an_empty_ephemeral_hub ... ok
+test tests::public_creator_sample_source_matches_the_dat_import_authority ... ok
+test tests::active_build_cannot_be_dropped_by_returning_to_the_hub ... ok
+test tests::creator_reports_unavailable_clipboard_without_mutating_source ... ok
+test tests::secret_diagnostic_fields_are_redacted_in_bundle ... ok
+test tests::interactive_creator_lifetime_is_persistent_while_ui_smoke_is_bounded ... ok
+test tests::explicit_picker_cancellation_and_invalid_selection_stay_in_hub_remediation ... ok
+test tests::missing_recent_location_is_explicit_transactional_and_cancellable ... ok
+test tests::opening_the_public_creator_sample_keeps_workspace_preferences_outside_source ... ok
+test tests::recent_state_write_failure_does_not_block_an_authoritative_project_open ... ok
+test tests::suspended_project_builds_continue_through_settings ... ok
+test tests::project_settings_return_to_the_same_workspace_without_mutating_source ... ok
+test tests::corrupt_workspace_state_recovers_without_mutating_authoritative_project_source ... ok
+test tests::v1_hub_state_migrates_to_versioned_preference_state ... ok
+test tests::settings_keep_project_actions_bound_to_the_suspended_session ... ok
+test tests::zero_extent_creator_surface_skips_renderer_rebuild_until_restore ... ok
+test tests::settings_preferences_persist_locally_and_apply_to_retained_frames ... ok
+test tests::shell_panels_cycles_and_persists_the_active_workspace_pane ... ok
+test tests::repeated_model_actions_allocate_fresh_stable_source_ids ... ok
+test tests::headless_ms01_builds_streams_activates_and_recovers ... ok
+test tests::shell_settings_and_favorites_are_contextual_and_nonfatal_from_the_hub ... ok
+test tests::ui_headless_smoke_verifies_recovery_and_disabled_overlay ... ok
+test tests::typed_inspector_ui_edits_persist_and_reject_invalid_or_noop_source_changes ... ok
+test tests::shell_search_restores_focus_to_the_current_surface_search_control ... ok
+test tests::workspace_switches_are_typed_persisted_and_restore_their_focus_layout ... ok
+
+test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.70s
+
+     Running unittests src/main.rs (target/debug/deps/meridian-d32546bbff5fb398)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/alluvium_cli.rs (target/debug/deps/alluvium_cli-8ffee6a3dcaf2483)
+
+running 1 test
+test all_public_alluvium_commands_share_the_recipe_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.33s
+
+     Running tests/creator_alpha_smoke.rs (target/debug/deps/creator_alpha_smoke-8508d95aaa95b118)
+
+running 1 test
+test public_creator_alpha_journey_is_reproducible ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.56s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_editor_core-e7fe7ab0477b6042)
+
+running 17 tests
+test tests::play_isolated_then_explicitly_applies_or_discards ... ok
+test tests::generation_exhaustion_rolls_back_commit_undo_and_redo ... ok
+test tests::invalid_metadata_preserves_source_and_history ... ok
+test tests::checkpoint_is_retained_at_bounded_interval ... ok
+test tests::reimport_is_typed_and_undoable_without_changing_source_identity ... ok
+test tests::selection_is_generation_checked ... ok
+test tests::stable_identity_collision_is_rejected_before_mutation ... ok
+test tests::project_store_rolls_back_in_memory_mutation_when_source_write_fails ... ok
+test tests::project_store_create_does_not_replace_existing_authoritative_source ... ok
+test tests::transactions_preview_commit_and_inverse_round_trip ... ok
+test tests::recovery_round_trip_rebuilds_source_without_history ... ok
+test tests::recovery_discards_an_uncommitted_play_fork ... ok
+test tests::project_store_writes_canonical_source_and_resumes_matching_source ... ok
+test tests::project_store_rolls_back_session_when_mutation_closure_errors ... ok
+test tests::source_schema_rejects_unknown_fields_recursively_without_rewrite ... ok
+test tests::project_store_ignores_matching_forged_recovery_history ... ok
+test tests::project_store_restores_source_and_session_when_recovery_write_fails ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_input-3daabe8214d3fcbb)
+
+running 8 tests
+test tests::winit_adapter_maps_keyboard_mouse_and_raw_motion ... ok
+test winit_adapter::tests::scrolling_preserves_line_pixel_and_gesture_phase ... ok
+test tests::analog_dead_zone_and_clamping_are_applied ... ok
+test tests::remapping_changes_action_without_hardware_dependencies ... ok
+test tests::native_events_update_actions_and_focus_loss_releases_buttons ... ok
+test tests::opposing_bindings_cancel_axis_but_remain_active ... ok
+test tests::keyboard_action_edges_are_stable_across_frames ... ok
+test tests::gamepad_events_drive_bindings_and_disconnect_clears_state ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_isobar-312f649a04ab07f0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_modeler-7d7a33e0a671213c)
+
+running 10 tests
+test tests::invalid_face_boundary_is_rejected ... ok
+test tests::preview_is_derived_and_cannot_mutate_source ... ok
+test tests::split_edge_preserves_lineage_and_updates_face_boundary ... ok
+test tests::primitive_transform_and_stale_selection_are_typed ... ok
+test tests::split_override_conflict_is_retained_for_alluvium_resolution ... ok
+test tests::source_round_trips_to_canonical_json ... ok
+test tests::source_rejects_unknown_fields_instead_of_losing_them_on_canonical_write ... ok
+test tests::source_writes_atomically_to_a_regular_project_path ... ok
+test tests::recovery_rejects_history_that_cannot_replay_the_accepted_revision ... ok
+test tests::semantic_undo_redo_and_recovery_restore_accepted_revision ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_package-9cf6073841fc8d56)
+
+running 3 tests
+test tests::malformed_version_truncation_hash_and_duplicates_are_rejected ... ok
+test tests::deterministic_roundtrip_mount_and_pack_reader_range ... ok
+test tests::atomic_replacement_leaves_mountable_new_package ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_physics-92095f31ead37077)
+
+running 8 tests
+test tests::diagonal_input_is_clamped_and_steep_ground_is_not_walkable ... ok
+test tests::fixed_step_movement_accelerates_and_crouch_changes_camera_height ... ok
+test tests::airborne_gravity_is_deterministic_and_landing_clears_vertical_velocity ... ok
+test tests::invalid_delta_time_is_rejected ... ok
+test tests::rapier_world_rejects_invalid_step_time ... ok
+test tests::rapier_character_stops_on_ground_and_collider_handles_are_opaque ... ok
+test tests::rapier_world_applies_grounded_controller_correction ... ok
+test tests::controller_test_scene_moves_for_many_fixed_steps_without_penetrating_floor ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_platform-fca6f3d34760097c)
+
+running 20 tests
+test accessibility::tests::projection_uses_wide_arithmetic_for_large_finite_bounds ... ok
+test accessibility::tests::rejected_stale_unknown_and_malformed_actions_preserve_projected_focus ... ok
+test accessibility::tests::projection_maps_names_actions_values_live_regions_focus_order_and_state ... ok
+test accessibility::tests::projection_preserves_stable_identity_focus_children_and_actions ... ok
+test accessibility::tests::switch_projection_uses_toggled_while_selection_roles_remain_selected ... ok
+test accessibility::tests::context_menu_projects_and_routes_without_a_primary_command ... ok
+test accessibility::tests::recovery_reprojection_removes_stale_adapter_actions_and_keeps_current_focus ... ok
+test tests::application_failures_remain_typed_platform_errors ... ok
+test accessibility::tests::native_smoke_contract_routes_action_and_reactivates_with_latest_tree ... ok
+test tests::application_terminal_failure_is_returned_after_the_event_loop ... ok
+test accessibility::tests::reactivation_handler_returns_the_latest_complete_tree ... ok
+test tests::default_config_is_a_visible_resizable_waiting_window ... ok
+test accessibility::tests::failed_empty_projection_keeps_the_last_accepted_identity_and_action ... ok
+test tests::ime_cursor_area_rejects_untrusted_geometry_and_retains_logical_units ... ok
+test tests::lifecycle_covers_resize_suspend_surface_recovery_and_device_loss ... ok
+test tests::native_adapter_starts_without_a_redraw_before_window_creation ... ok
+test tests::platform_context_coalesces_delayed_redraw_without_blocking ... ok
+test tests::platform_context_records_redraw_and_exit_requests ... ok
+test tests::redraw_request_remains_durable_until_a_redraw_event_processes_it ... ok
+test tests::zero_size_is_detected_for_minimized_surface_handling ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_render_graph-c0182de5eb3fae84)
+
+running 5 tests
+test tests::rejects_unknown_resource_identifier ... ok
+test tests::detects_cycle_between_explicit_and_resource_dependencies ... ok
+test tests::rejects_duplicate_names_and_same_pass_read_write ... ok
+test tests::compiles_resource_hazards_and_lifetimes ... ok
+test tests::rejects_read_without_import_or_producer ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_renderer-a20d29fb1e35a6a2)
+
+running 89 tests
+test lighting::tests::environment_light_validates_diffuse_intensity ... ok
+test lighting::tests::cascade_layout_rejects_near_planes_outside_shadow_distance ... ok
+test camera::tests::frustum_culling_keeps_forward_spheres_and_rejects_outside_or_behind ... ok
+test camera::tests::projection_rejects_invalid_ranges_and_pose_is_orthonormalized ... ok
+test lighting::tests::cascade_layout_uses_monotonic_practical_splits_and_selects_ranges ... ok
+test lighting::tests::invalid_sun_and_shadow_values_are_rejected ... ok
+test lighting::tests::sun_normalizes_direction_and_defaults_to_stable_cascades ... ok
+test lighting::tests::shadows_can_be_disabled_without_disabling_the_sun ... ok
+test camera::tests::view_projection_matrix_is_finite_and_tracks_camera_translation ... ok
+test mesh::tests::mesh_upload_validation_accepts_a_tightly_packed_triangle ... ok
+test mesh::tests::mesh_upload_validation_rejects_mismatched_payloads_and_indices ... ok
+test resources::tests::registry_rejects_invalid_and_duplicate_resources ... ok
+test snapshot::tests::interpolation_is_clamped_and_snapshot_is_immutable ... ok
+test snapshot::tests::duplicate_instances_are_rejected ... ok
+test resources::tests::snapshot_validation_requires_built_mesh_and_material_handles ... ok
+test resources::tests::material_texture_references_must_resolve_to_built_metadata ... ok
+test tests::duplicate_names_are_rejected ... ok
+test snapshot::tests::snapshots_are_sorted_and_carry_frame_metadata ... ok
+test tests::warmed_pipeline_can_be_used_after_runtime_entry ... ok
+test tests::runtime_creation_is_rejected_and_counted ... ok
+test instance_buffer::tests::removal_clears_a_slot_and_next_insert_reuses_it ... ok
+test instance_buffer::tests::encodes_interpolated_transform_and_material_metadata ... ok
+test instance_buffer::tests::capacity_failure_does_not_mutate_existing_slots ... ok
+test instance_buffer::tests::slots_are_stable_and_reused_in_lowest_first_order ... ok
+test ui_direct::tests::authored_srgb_tokens_are_linearized_before_vertex_upload ... ok
+test ui_direct::tests::axis_aligned_geometry_snaps_to_physical_pixels ... ok
+test tests::warmup_report_requires_all_required_pipelines ... ok
+test ui_direct::tests::atlas_reuses_identical_content_without_growing_the_upload ... ok
+test ui_direct::tests::backdrop_padding_is_rejected_when_low_scale_expands_texel_reach ... ok
+test ui_direct::tests::backdrop_padding_is_revalidated_after_physical_edge_snapping ... ok
+test ui_direct::tests::device_and_surface_identity_recovery_preserves_frame_revision ... ok
+test ui_direct::tests::aggregate_layer_target_limit_rejects_and_preserves_last_accepted_revision ... ok
+test ui_direct::tests::diagonal_and_curved_path_strokes_emit_oriented_bounded_geometry ... ok
+test ui_direct::tests::empty_isolated_layer_remains_a_clear_only_composite_target ... ok
+test ui_direct::tests::empty_clip_scope_skips_children_and_resumes_after_pop ... ok
+test ui_direct::tests::fractional_scissors_and_hidpi_glyphs_preserve_logical_coverage ... ok
+test ui_direct::tests::fully_clipped_primitive_is_skipped_not_drawn_without_scissor ... ok
+test ui_direct::tests::first_backdrop_effect_uses_a_clear_only_root_source ... ok
+test ui_direct::tests::gpu_identity_rejects_same_revision_rect_payload_changes ... ok
+test ui_direct::tests::image_mesh_and_geometry_bounds_are_typed_before_growth ... ok
+test ui_direct::tests::gpu_identity_rejects_same_revision_image_payload_changes ... ok
+test ui_direct::tests::incomplete_text_rasters_are_rejected_before_frame_recovery ... ok
+test ui_direct::tests::insufficient_backdrop_padding_is_a_typed_direct_renderer_error ... ok
+test ui_direct::tests::layer_first_backdrop_uses_the_empty_parent_prefix ... ok
+test ui_direct::tests::layer_inside_empty_parent_clip_never_becomes_an_unscissored_composite ... ok
+test ui_direct::tests::layered_backdrop_reconstructs_the_parent_prefix_and_shares_target_budget ... ok
+test ui_direct::tests::layer_opacity_participates_in_uploaded_plan_identity ... ok
+test ui_direct::tests::missing_image_and_mesh_resources_are_typed_recoverable_errors ... ok
+test ui_direct::tests::atlas_uvs_use_final_height_and_half_texel_gutters ... ok
+test ui_direct::tests::negative_shadow_spread_is_rejected_before_direct_preparation ... ok
+test ui_direct::tests::non_srgb_surface_is_rejected_instead_of_silently_misencoding_ui_color ... ok
+test ui_direct::tests::offscreen_capture_copy_source_unavailability_is_typed_separately ... ok
+test ui_direct::tests::nested_layers_preserve_parent_order_and_reset_local_stencil ... ok
+test ui_direct::tests::path_joins_and_caps_use_declared_wedges_and_sectors ... ok
+test ui_direct::tests::prepared_rect_vertices_use_snapped_physical_edges_at_two_x ... ok
+test ui_direct::tests::rejected_frame_preserves_last_prepared_revision ... ok
+test ui_direct::tests::rhi_identity_changes_are_rejected_before_direct_submission ... ok
+test ui_direct::tests::rounded_rect_content_has_one_physical_pixel_alpha_fringe ... ok
+test ui_direct::tests::rounded_rect_tessellation_adapts_to_physical_radius ... ok
+test ui_direct::tests::opaque_backdrop_fallback_is_recorded_without_unsupported_category ... ok
+test ui_direct::tests::uploaded_gpu_identity_rejects_a_different_immutable_plan ... ok
+test ui_direct::tests::zero_area_whitespace_glyphs_preserve_text_without_atlas_geometry ... ok
+test ui_direct::tests::requested_backdrop_effect_builds_a_bounded_filter_source_pass ... ok
+test ui_direct_qualification::tests::qualification_corpus_hash_is_stable_and_input_sensitive ... ok
+test ui_direct::tests::shadow_spread_emits_bounded_outer_to_inner_alpha_falloff ... ok
+test ui_direct::tests::renderable_corpus_prepares_without_raster_bridge_fallback ... ok
+test ui_direct_qualification::tests::raw_rgba8_comparison_rejects_invalid_byte_layout_before_reading ... ok
+test ui_direct_qualification::tests::raw_rgba8_comparison_honors_explicit_tolerance ... ok
+test ui_direct_qualification::tests::raw_rgba8_comparison_rejects_mismatched_dimensions ... ok
+test ui_direct::tests::clip_depth_over_stencil_range_is_rejected_before_rhi_submission ... ok
+test ui_direct_qualification::tests::raw_rgba8_comparison_reports_exact_difference_location ... ok
+test ui_direct::tests::cache_key_changes_for_revision_surface_scale_contrast_and_assets ... ok
+test ui_overlay::tests::curved_path_is_flattened_with_bounded_structural_coverage ... ok
+test ui_overlay::tests::filled_open_subpath_is_rejected_instead_of_disappearing ... ok
+test ui_overlay::tests::linear_paths_fill_closed_geometry_and_stroke_open_segments ... ok
+test ui_overlay::tests::nested_clip_raster_rejects_pixels_outside_every_active_clip ... ok
+test ui_overlay::tests::qualification_corpus_covers_every_display_primitive_without_overclaiming_bridge_support ... ok
+test ui_overlay::tests::text_raster_is_clipped_to_its_retained_text_bounds ... ok
+test ui_overlay::tests::rounded_rect_raster_preserves_transparent_corners_and_filled_center ... ok
+test upload::tests::changed_and_removed_instances_emit_deterministic_operations ... ok
+test upload::tests::first_snapshot_uploads_sorted_instances_and_next_unchanged_frame_is_empty ... ok
+test upload::tests::stale_frames_are_rejected_without_mutating_tracker_state ... ok
+test ui_direct_qualification::tests::qualification_corpus_prepares_every_required_category ... ok
+test ui_direct::tests::concave_fill_uses_bounded_ear_clipping_and_degenerate_fill_is_rejected ... ok
+test ui_direct::tests::glyph_batches_are_bounded_independently_of_primitive_count ... ok
+test ui_overlay::tests::direct_renderer_state_drops_surface_caches_without_losing_snapshot_revision ... ok
+test ui_overlay::tests::direct_renderer_state_drops_all_caches_after_device_generation_change ... ok
+test ui_direct::tests::direct_glyph_corpus_keeps_locked_fonts_crisp_at_one_and_two_x ... ok
+test ui_overlay::tests::recovery_display_list_produces_rasterized_text_and_panel_geometry ... ok
+
+test result: ok. 89 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.12s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_rhi-1762a4925ac67bb8)
+
+running 33 tests
+test tests::buffer_usage_maps_to_backend_flags_without_exposing_them ... ok
+test tests::adapter_scoring_respects_power_and_backend_preferences ... ok
+test tests::capture_copy_timing_is_cpu_only_and_never_claims_gpu_measurement ... ok
+test tests::capture_target_usage_is_opt_in_and_rejection_is_typed ... ok
+test tests::capture_rows_strip_padding_and_convert_bgra_to_rgba ... ok
+test tests::depth_formats_and_stencil_contract_are_backend_neutral ... ok
+test tests::capture_generation_saturation_failures_and_result_overflow_stay_typed ... ok
+test tests::buffer_write_validation_rejects_misaligned_and_out_of_bounds_ranges ... ok
+test tests::capture_layout_enforces_alignment_dimensions_bytes_and_zero_extent ... ok
+test tests::frame_latency_is_clamped_to_a_small_runtime_window ... ok
+test tests::clear_graph_contains_one_clear_pass ... ok
+test tests::indexed_batch_bindings_reject_missing_and_conflicting_groups ... ok
+test tests::indexed_batch_count_cap_is_typed ... ok
+test tests::indexed_batch_ranges_scissors_and_stencil_refs_are_typed ... ok
+test tests::map_failure_is_inconclusive_without_disabling_future_queries ... ok
+test tests::metal_invalid_timestamps_disable_gpu_timing_for_the_rhi_lifetime ... ok
+test tests::missing_batch_scissor_resets_to_the_complete_target ... ok
+test tests::pipeline_blend_modes_preserve_straight_and_premultiplied_contracts ... ok
+test tests::pipeline_config_validates_stencil_and_depth_combinations ... ok
+test tests::raw_timestamps_reject_zero_reversed_and_equal_values ... ok
+test tests::render_target_load_policy_preserves_clear_values_and_load_intent ... ok
+test tests::render_target_size_and_surface_format_bounds_are_typed ... ok
+test tests::result_queue_is_bounded_and_tracks_latest_measurement ... ok
+test tests::stale_generation_does_not_release_active_slot ... ok
+test tests::structural_validation_target_derives_from_real_scissors ... ok
+test tests::surface_format_prefers_srgb ... ok
+test tests::texture_formats_and_mip_upload_validation_are_backend_neutral ... ok
+test tests::timestamp_duration_converts_ticks_and_rejects_invalid_periods ... ok
+test tests::timestamp_slot_selection_reports_saturation ... ok
+test tests::timing_sample_preserves_frame_submission_pass_and_device_loss ... ok
+test tests::unavailable_timing_states_keep_cpu_samples_typed ... ok
+test tests::vertex_layout_validation_accepts_position_and_rejects_bad_attributes ... ok
+test tests::zero_sized_depth_attachments_are_rejected_before_device_work ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_rt-da948839a7e7812b)
+
+running 4 tests
+test tests::runtime_records_frame_diagnostics_and_accepts_late_gpu_duration ... ok
+test tests::zero_delta_still_publishes_a_render_snapshot_for_the_frame ... ok
+test tests::runtime_reports_bounded_catch_up_and_keeps_frame_ids_monotonic ... ok
+test tests::advance_sequences_fixed_steps_before_one_render_extraction ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_save-a7dd60a4eea268b4)
+
+running 9 tests
+test tests::envelope_round_trips_and_detects_corruption ... ok
+test tests::duplicate_component_delta_is_rejected_without_mutating_state ... ok
+test tests::schema_aware_transaction_round_trips_and_applies_stable_component_delta ... ok
+test tests::missing_migration_is_reported_and_duplicate_steps_are_rejected ... ok
+test tests::older_save_can_be_migrated_one_version_at_a_time_without_rewrite ... ok
+test tests::version_mismatch_is_rejected_and_payload_limit_is_enforced ... ok
+test tests::journal_appends_in_order_and_repairs_a_partial_tail ... ok
+test tests::journal_rejects_complete_checksum_corruption_and_oversized_entries ... ok
+test tests::store_replaces_atomically_and_recovers_previous_save ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_shader_tools-4cccfb05eca2f414)
+
+running 4 tests
+test tests::shader_ids_are_stable ... ok
+test tests::invalid_wgsl_is_rejected_before_reflection ... ok
+test tests::missing_manifest_entry_point_is_actionable ... ok
+test tests::valid_manifest_returns_entry_points_and_bindings ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/meridian_spec-d8f529f1edf2204b)
+
+running 1 test
+test tests::civil_dates_match_unix_epoch_and_a_leap_day ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs (target/debug/deps/cli-faad361e4c2856ac)
+
+running 39 tests
+test duplicate_ids_are_rejected ... ok
+test implemented_without_evidence_is_rejected ... ok
+test expired_waivers_are_rejected ... ok
+test duplicate_marquee_maturity_records_are_rejected ... ok
+test ignored_website_tree_is_not_a_documentation_source ... ok
+test closed_waivers_do_not_expire ... ok
+test broken_links_and_fences_are_rejected ... ok
+test false_promotions_are_rejected ... ok
+test incomplete_or_cyclic_delivery_plans_are_rejected ... ok
+test marquee_requirements_need_the_registered_program ... ok
+test invalid_alluvium_package_dependencies_are_rejected ... ok
+test marquee_packages_cannot_activate_before_post_one_review ... ok
+test marquee_policy_requires_every_approval_invalidator ... ok
+test check_command_and_github_output_are_supported ... ok
+test marquee_programs_cannot_leak_into_milestones ... ok
+test list_unmapped_and_explain_use_registry_ids ... ok
+test missing_requirement_ids_are_rejected ... ok
+test missing_v05_migration_ledger_is_rejected ... ok
+test missing_adrs_are_rejected ... ok
+test missing_marquee_amendment_ledger_is_rejected ... ok
+test missing_marquee_maturity_record_is_rejected ... ok
+test missing_alluvium_report_provenance_is_rejected ... ok
+test missing_dependency_strategy_records_are_rejected ... ok
+test orphan_alluvium_ids_are_rejected ... ok
+test occluded_visual_evidence_is_rejected ... ok
+test post_one_programs_cannot_leak_into_milestones ... ok
+test orphan_requirements_are_rejected ... ok
+test private_workload_payload_fields_are_rejected ... ok
+test stale_phase_refs_are_rejected ... ok
+test missing_validation_projects_are_rejected ... ok
+test stale_current_suite_versions_are_rejected ... ok
+test stale_v04_suite_versions_are_rejected ... ok
+test ui_contracts_require_all_three_registries ... ok
+test bad_schemas_are_rejected ... ok
+test unknown_statuses_are_rejected ... ok
+test v1_staging_authority_is_not_scanned ... ok
+test ui_contracts_reject_palette_and_component_drift ... ok
+test valid_marquee_public_fixture_is_accepted ... ok
+test invalid_marquee_policy_and_evidence_fixtures_are_rejected ... ok
+
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.83s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_streaming-8a455d4b79185d61)
+
+running 8 tests
+test tests::residency_transitions_are_explicit_and_invalid_edges_are_rejected ... ok
+test tests::activation_queue_enforces_item_and_byte_budgets ... ok
+test tests::cancellation_removes_pending_work_and_eviction_order_is_deterministic ... ok
+test tests::activation_drain_is_priority_ordered_and_budgeted ... ok
+test tests::requests_are_bounded_prioritized_and_not_duplicated ... ok
+test tests::cell_loads_run_on_workers_and_return_pollable_results ... ok
+test tests::cell_loads_reject_duplicates_and_report_cancellation ... ok
+test tests::correlated_cell_load_preserves_operation_trace_and_epoch ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_tasks-249f630e18af0bea)
+
+running 5 tests
+test tests::dropping_pool_drains_submitted_work_before_shutdown ... ok
+test tests::correlated_submission_preserves_context_without_changing_simple_api ... ok
+test tests::typed_tasks_complete_on_fixed_workers ... ok
+test tests::panicking_tasks_report_their_id ... ok
+test tests::poll_is_non_blocking_until_completion ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_ui-db354dd353dd04f7)
+
+running 1 test
+test tests::compatibility_facade_preserves_owning_crate_types ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_ui_core-a0385c26586c247d)
+
+running 40 tests
+test tests::collection_cursor_keeps_hidden_identity_until_the_user_navigates ... ok
+test tests::command_ids_are_deterministic_and_reject_malformed_names ... ok
+test tests::basic_controls_have_named_typed_semantics ... ok
+test tests::authored_documents_report_the_source_node_and_missing_property_reference ... ok
+test tests::document_errors_expose_stable_authored_source_locations ... ok
+test tests::authored_image_requires_a_packaged_source_reference ... ok
+test tests::canvas_contract_bounds_navigation_and_stays_on_graph_or_canvas_nodes ... ok
+test tests::document_delta_uses_stable_identity_instead_of_row_position ... ok
+test tests::authored_delta_reports_style_component_and_source_changes_by_stable_identity ... ok
+test tests::authored_documents_resolve_locked_styles_components_and_assets ... ok
+test tests::host_assistive_bindings_are_explicit_bounded_and_role_validated ... ok
+test tests::huge_finite_icon_and_geometry_metrics_fall_back_to_registered_tokens ... ok
+test tests::interactive_nodes_must_be_keyboard_focusable ... ok
+test tests::invalid_constraints_and_tree_cycles_are_rejected_before_commit ... ok
+test tests::locked_theme_matches_registered_palette_geometry_and_typography ... ok
+test tests::malformed_drag_contracts_are_rejected_before_a_frame ... ok
+test tests::modifier_state_is_platform_neutral_and_preserves_independent_keys ... ok
+test tests::packaged_asset_references_reject_paths_and_executable_syntax ... ok
+test tests::mixed_state_is_reserved_for_unselected_toggle_controls ... ok
+test tests::malformed_semantic_relationships_and_collection_items_are_rejected ... ok
+test tests::presentation_and_password_semantic_contracts_reject_unsafe_source ... ok
+test tests::professional_controls_publish_roles_states_and_keyboard_drop_contracts ... ok
+test tests::retained_nodes_select_locked_typography_by_meridian_role_and_weight ... ok
+test tests::retained_documents_reject_malformed_command_names_before_runtime ... ok
+test tests::source_errors_expose_document_or_nested_authored_locations ... ok
+test tests::professional_component_families_publish_owned_semantics ... ok
+test tests::retained_semantic_metadata_preserves_descriptions_relations_and_virtual_items ... ok
+test tests::source_snapshot_rejects_duplicate_provenance_without_partial_recovery ... ok
+test tests::style_variants_and_legacy_requests_resolve_through_theme_tokens ... ok
+test tests::text_scale_is_typed_and_bounded_to_the_accessibility_contract ... ok
+test tests::timeline_contract_rejects_unbounded_or_misowned_interaction_state ... ok
+test tests::tree_branch_uses_the_registered_disclosure_icon_instead_of_label_glyphs ... ok
+test tests::virtual_range_realizes_only_a_bounded_visible_window ... ok
+test tests::visual_selector_resolution_is_stable_and_high_contrast_is_role_mapped ... ok
+test tests::virtual_collection_contract_validates_only_realized_source_rows ... ok
+test tests::transient_surface_contracts_are_typed_anchored_and_root_safe ... ok
+test tests::retained_tree_limit_is_derived_from_the_frame_primitive_bound ... ok
+test tests::legacy_source_snapshot_migrates_and_invalid_source_stays_atomic ... ok
+test tests::canonical_source_bytes_are_stable_recoverable_and_versioned ... ok
+test tests::canonical_source_encoding_rejects_oversized_payloads ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_ui_editor-3456ccf7ba8dbcbc)
+
+running 59 tests
+test tests::complete_panel_contract_has_unique_ids_and_accessible_commands ... ok
+test tests::code_pane_wraps_long_canonical_identifiers_without_changing_source ... ok
+test tests::creator_hub_exposes_named_create_open_and_recent_remediation_actions ... ok
+test tests::creator_shell_uses_flat_bands_and_a_single_navigation_tray ... ok
+test tests::creator_hub_contains_no_distribution_status_label ... ok
+test tests::creator_hub_uses_one_visible_parent_surface_without_nested_recent_cards ... ok
+test tests::creator_hub_pointer_reaches_the_visible_create_button ... ok
+test tests::bounded_recent_project_rows_keep_their_declared_height ... ok
+test tests::compact_code_context_yields_browser_before_source_or_world_preview ... ok
+test tests::compact_world_context_yields_rail_before_primary_work_surfaces ... ok
+test tests::creator_workspace_pointer_and_tab_order_reach_inspector_controls ... ok
+test tests::creator_source_browsers_keep_tree_rows_crisp_instead_of_card_like ... ok
+test tests::code_contextual_and_focused_layouts_keep_a_real_world_preview ... ok
+test tests::creator_workspace_uses_curated_copy_and_only_current_play_actions ... ok
+test tests::creator_workspace_renders_truthful_state_in_a_bounded_visible_shell ... ok
+test tests::creator_workspace_uses_the_locked_shell_and_world_width_priorities ... ok
+test tests::filtered_workspace_actions_keep_stable_node_identity ... ok
+test tests::creator_activity_rails_keep_full_icon_slots_inside_their_compact_surface ... ok
+test tests::inspector_and_history_actions_are_focusable_semantic_buttons ... ok
+test tests::model_inspector_exposes_keyboard_semantic_source_actions ... ok
+test tests::hub_host_status_appears_only_in_the_permanent_status_line ... ok
+test tests::recipe_inspector_is_keyboard_accessible_without_recipe_mutation ... ok
+test tests::secondary_creator_actions_have_quiet_bounded_control_faces ... ok
+test tests::domain_shelves_report_workspace_facts_without_repeating_host_activity ... ok
+test tests::domain_workspaces_use_the_permanent_shell_and_keep_unavailable_domains_truthful ... ok
+test tests::creator_workbenches_use_the_locked_eight_pixel_outer_gutter ... ok
+test tests::modeler_workspace_projects_only_the_current_derived_model_preview ... ok
+test tests::creator_source_trees_use_semantic_state_instead_of_faux_text_icons ... ok
+test tests::world_browser_anchors_source_facts_and_actions_at_its_bottom_edge ... ok
+test tests::world_inspector_keeps_editing_dense_and_its_source_action_contained ... ok
+test tests::world_selection_bounds_follow_the_source_placement_shape ... ok
+test tests::settings_surface_has_typed_preference_controls_without_project_authority ... ok
+test tests::world_tool_panel_headers_use_one_quiet_hairline_divider ... ok
+test tests::world_activity_shelf_keeps_one_active_tab_and_quiet_commands ... ok
+test tests::world_workbench_separates_the_deep_canvas_from_opaque_tool_chrome ... ok
+test workspace::tests::active_error_region_forces_controlled_overflow_instead_of_hiding_recovery ... ok
+test workspace::tests::companion_windows_share_session_and_redock_without_panel_loss ... ok
+test workspace::tests::corrupt_state_missing_panels_and_monitor_loss_recover_visibly ... ok
+test workspace::tests::invalid_tree_and_failed_mutation_roll_back_without_losing_panels ... ok
+test workspace::tests::legacy_state_migrates_explicitly_without_rewrite ... ok
+test workspace::tests::pane_cycle_preserves_focus_across_primary_and_companion_windows ... ok
+test workspace::tests::responsive_adaptation_tightens_then_shortens_before_collapsing ... ok
+test workspace::tests::responsive_priority_preserves_pins_canvas_and_accessible_minima ... ok
+test workspace::tests::singleton_branch_prunes_and_split_floating_redocks_without_panel_loss ... ok
+test workspace::tests::state_store_round_trips_and_recovers_previous_payload ... ok
+test workspace::tests::tabs_split_float_collapse_maximize_and_reset_are_transactional ... ok
+test workspace::tests::workspace_activation_toggles_focus_and_revision_overflow_rolls_back ... ok
+test workspace::tests::workspace_history_undo_redo_branch_and_reset_use_fresh_revisions ... ok
+test workspace::tests::workspace_history_uses_the_existing_aggregate_state_byte_bound ... ok
+test workspace::tests::workspace_json_preserves_compatible_extensions_and_rejects_structural_drift ... ok
+test tests::world_viewport_header_keeps_status_quiet_and_the_canvas_primary ... ok
+test tests::world_viewport_is_a_real_canvas_decorated_from_authoritative_source ... ok
+test tests::world_placement_scales_with_the_actual_canvas_at_desktop_width ... ok
+test tests::sparse_domain_states_are_optically_centred_in_their_work_surface ... ok
+test tests::all_declared_project_workspaces_keep_their_shell_rows_and_accessible_controls ... ok
+test tests::creator_surfaces_compile_from_recoverable_authored_source ... ok
+test tests::creator_text_buttons_are_optically_centered_at_normal_and_hidpi_scales ... ok
+test tests::creator_text_stays_within_its_authored_slots_at_normal_and_hidpi_scales ... ok
+test tests::ui_authoring_exposes_the_authored_document_and_a_derived_frame_preview ... ok
+
+test result: ok. 59 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.33s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_ui_render-9beb030a47485f39)
+
+running 13 tests
+test icons::tests::malformed_bounds_are_rejected_without_geometry ... ok
+test tests::negative_shadow_spread_is_rejected_as_invalid_geometry ... ok
+test tests::high_contrast_and_missing_effect_support_use_the_opaque_fallback ... ok
+test tests::mismatched_scope_and_unbounded_backdrop_are_rejected ... ok
+test tests::filled_paths_must_close_at_least_one_subpath ... ok
+test tests::nested_scopes_and_bounded_backdrop_validate ... ok
+test icons::tests::every_registered_icon_generates_bounded_runtime_geometry ... ok
+test tests::opaque_resolution_does_not_require_unused_effect_padding ... ok
+test tests::bounded_builder_rejects_path_complexity_without_mutation ... ok
+test tests::render_cache_key_changes_for_every_pixel_affecting_input ... ok
+test tests::resolved_effect_padding_tracks_physical_texel_reach ... ok
+test tests::resolved_effect_requires_fixed_kernel_padding_on_every_edge ... ok
+test tests::malformed_and_aggregate_text_rasters_are_rejected ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_ui_runtime-ea4a44bf93ce8998)
+
+running 122 tests
+test motion::tests::spatial_retarget_uses_current_presentation_and_immediate_hit_geometry ... ok
+test motion::tests::state_reversal_starts_current_and_duration_uses_locked_tokens ... ok
+test motion::tests::reduced_motion_snaps_spatial_and_state_presentation ... ok
+test tests::assistive_requests_reject_hidden_transient_children ... ok
+test tests::accepted_replacement_reports_incremental_identity_changes ... ok
+test tests::adjustable_controls_share_explicit_commands_across_input_sources ... ok
+test tests::assistive_actions_edit_named_controls_and_reject_nonfocusable_targets ... ok
+test tests::authored_assets_lower_only_through_a_private_process_local_adapter ... ok
+test tests::aggregate_event_rejection_preserves_private_state_and_revision ... ok
+test tests::aggregate_effect_bytes_roll_back_repeated_assistive_command_requests ... ok
+test tests::aggregate_effect_bytes_roll_back_repeated_large_commands ... ok
+test tests::active_theme_icon_tokens_control_size_stroke_and_text_gap ... ok
+test tests::aggregate_route_limit_rolls_back_deep_dispatch_state ... ok
+test tests::accepted_text_edit_remeasures_layout_before_the_same_frame_is_emitted ... ok
+test tests::assistive_scroll_into_view_does_not_overscroll_outer_containers ... ok
+test tests::assistive_scroll_into_view_moves_the_nearest_scroll_ancestor ... ok
+test tests::collection_navigation_typeahead_and_filtering_preserve_stable_identity ... ok
+test tests::collection_recovery_uses_declared_order_instead_of_numeric_identity ... ok
+test tests::collection_selection_is_retained_independently_per_container ... ok
+test tests::combo_transient_opens_on_activation_accepts_and_restores_focus ... ok
+test tests::compact_control_text_is_single_line_and_optically_centered ... ok
+test tests::command_palette_and_controller_share_collection_navigation ... ok
+test tests::compiler_replaces_canonical_source_atomically_and_preserves_it_on_decode_failure ... ok
+test tests::context_only_assistive_action_has_no_synthetic_primary_activation ... ok
+test tests::assistive_semantic_actions_are_exposed_and_routed_as_typed_requests ... ok
+test tests::disabled_professional_controls_reject_transient_timeline_and_canvas_interaction ... ok
+test tests::document_compiler_replaces_source_and_reports_authored_identity_changes ... ok
+test tests::disabled_selector_suppresses_selected_and_invalid_structural_treatments ... ok
+test tests::focus_order_follows_declared_tree_order_instead_of_stable_id_order ... ok
+test tests::document_compiler_resolves_assets_before_advancing_the_frame ... ok
+test tests::controller_release_and_cancellation_do_not_activate_a_control ... ok
+test tests::controller_navigation_uses_the_keyboard_focus_and_command_paths ... ok
+test tests::document_replacement_recovers_focus_inside_a_visible_transient ... ok
+test tests::document_replacement_recovers_removed_focus_in_declared_order ... ok
+test tests::explicit_text_style_inheritance_resolves_in_tree_order_without_inheriting_chrome ... ok
+test tests::flex_absolute_scroll_and_clipping_emit_stable_geometry_and_valid_scopes ... ok
+test tests::focus_owning_transient_cancels_background_pointer_capture ... ok
+test tests::focus_owning_transient_does_not_cancel_a_background_property_edit ... ok
+test tests::focus_owning_transient_does_not_scroll_a_background_container ... ok
+test tests::focus_owning_transient_rejects_host_value_edits_behind_the_surface ... ok
+test tests::focus_owning_transients_confine_keyboard_and_assistive_focus ... ok
+test tests::focused_host_actions_share_explicit_commands_across_input_sources ... ok
+test tests::flex_and_grid_honor_constraints_padding_gap_and_alignment ... ok
+test tests::frame_diagnostics_report_runtime_coverage_without_renderer_claims ... ok
+test tests::frame_rejects_over_limit_input_bytes_without_mutating_state ... ok
+test tests::frame_modifiers_are_immutable_and_rejection_preserves_the_accepted_state ... ok
+test tests::frame_motion_animates_state_color_and_reduced_motion_settles_it ... ok
+test tests::invalid_unnamed_focusable_node_is_rejected ... ok
+test tests::authored_document_compiles_to_the_same_runtime_frame_as_its_resolved_contract ... ok
+test tests::global_cancellation_discards_graph_connection_preview_without_request ... ok
+test tests::global_cancellation_releases_scroll_capture_without_text_noise ... ok
+test tests::malformed_command_name_becomes_a_diagnostic_without_emission ... ok
+test tests::focused_search_clear_is_contextual_routed_and_undoable ... ok
+test tests::icon_button_emits_owned_paths_and_preserves_accessible_name ... ok
+test tests::meridian_palette_tokens_match_the_website_contract ... ok
+test tests::global_pointer_cancel_releases_a_normalized_device_capture ... ok
+test tests::graph_canvas_pan_zoom_connection_preview_and_source_inspection_are_typed ... ok
+test tests::huge_finite_theme_metrics_emit_registered_fallback_geometry ... ok
+test tests::line_scroll_is_normalized_once_and_pixel_delta_remains_precise ... ok
+test tests::keyboard_activation_emits_declared_command ... ok
+test tests::malformed_event_timestamps_are_typed_and_preserve_durable_frame_state ... ok
+test tests::layout_cache_invalidates_for_every_external_geometry_input ... ok
+test tests::nested_scroll_hands_residual_to_ancestor_and_preserves_momentum_target ... ok
+test tests::nested_focus_surface_reparents_the_accessibility_subtree_to_the_root ... ok
+test tests::malformed_legacy_style_falls_back_to_tokens_before_emission ... ok
+test tests::normalized_pointer_capture_rejects_invalid_release_and_never_activates_early ... ok
+test tests::partially_timestamped_events_report_bounded_source_to_frame_latency ... ok
+test tests::high_dpi_and_contrast_preserve_semantics_and_scale_text_raster ... ok
+test tests::password_input_masks_rendering_and_denies_clipboard_output ... ok
+test tests::outside_pointer_press_dismisses_focus_surface_without_background_activation ... ok
+test tests::placeholder_renders_as_guidance_without_becoming_a_semantic_value ... ok
+test tests::physical_motion_retargeting_preserves_the_current_presentation ... ok
+test tests::pointer_activation_requires_release_over_the_captured_control ... ok
+test tests::pointer_canvas_pan_is_retained_and_never_emits_a_source_request ... ok
+test tests::overlay_and_absolute_honor_preferred_sizes_padding_and_alignment ... ok
+test tests::pointer_timeline_scrub_uses_capture_and_commits_only_on_release ... ok
+test tests::pointer_capture_cannot_be_stolen_by_a_different_device ... ok
+test tests::pointer_ignores_structural_groups_and_activates_the_visible_button ... ok
+test tests::pointer_device_cancel_releases_its_scroll_gesture_target ... ok
+test tests::pointer_press_starts_a_property_grid_edit_with_retained_rollback ... ok
+test tests::pointer_release_without_press_and_cancelled_press_do_not_activate ... ok
+test tests::post_event_validation_cannot_bypass_the_aggregate_effect_limit ... ok
+test tests::preferred_bounds_apply_constraints_before_parent_slot_alignment ... ok
+test tests::property_grid_edits_validate_commit_cancel_reset_and_inspect_as_typed_requests ... ok
+test tests::repeated_packaged_asset_references_share_one_derived_resolution ... ok
+test tests::property_grid_rejects_secret_or_out_of_grid_editors ... ok
+test tests::recovered_frame_diagnostics_keep_the_snapshot_layout_root ... ok
+test tests::preferred_stack_and_grid_keep_controls_in_distinct_visible_cells ... ok
+test tests::reduced_motion_snaps_physical_presentation_to_authoritative_geometry ... ok
+test tests::recovery_panel_emits_display_and_semantics ... ok
+test tests::rejected_document_update_preserves_runtime_state_and_snapshot_revision ... ok
+test tests::resolved_authored_image_handles_enter_the_renderer_neutral_frame ... ok
+test tests::removing_the_active_collection_recovers_to_a_valid_non_collection_control ... ok
+test tests::replacing_document_preserves_non_password_text_by_stable_id ... ok
+test tests::runtime_consumes_retargeted_physical_and_opacity_presentation_without_moving_hits ... ok
+test tests::runtime_hides_declared_error_relationship_until_the_frame_is_invalid ... ok
+test tests::retained_visual_states_resolve_selectors_and_non_color_indicators ... ok
+test tests::runtime_emits_declared_descriptions_relations_and_virtual_collection_positions ... ok
+test tests::secondary_pointer_release_routes_an_explicit_context_command ... ok
+test tests::runtime_overlay_has_no_focusable_nodes ... ok
+test tests::scroll_uses_resolved_child_extents_for_clamping ... ok
+test tests::retained_elevation_emits_a_bounded_shadow_and_high_contrast_omits_it ... ok
+test tests::pointer_and_keyboard_drag_emit_typed_proposals_with_cancel_and_rejection ... ok
+test tests::shared_element_motion_handoffs_between_distinct_cross_frame_nodes ... ok
+test tests::table_navigation_focuses_read_only_cells_in_declared_row_major_order ... ok
+test tests::semantic_rejection_rolls_back_focus_and_private_text_state ... ok
+test tests::text_input_edits_on_grapheme_boundaries_and_preserves_ime_composition ... ok
+test tests::text_layout_does_not_expose_adapter_glyphs ... ok
+test tests::text_undo_and_redo_follow_the_focused_private_editor ... ok
+test tests::timeline_scrub_range_zoom_cancel_and_accessible_step_are_bounded ... ok
+test tests::targeted_text_input_reset_uses_current_document_default_without_resetting_passwords ... ok
+test tests::toast_queue_expires_in_document_order_without_stealing_focus ... ok
+test tests::tree_branches_keep_dense_row_height_while_emitting_native_disclosure ... ok
+test tests::tooltip_delay_escape_and_hidden_relationships_preserve_anchor_focus ... ok
+test tests::typed_focus_restoration_accepts_only_enabled_focusable_identity ... ok
+test tests::text_validation_completion_cut_and_paste_remain_typed_and_password_safe ... ok
+test tests::unsatisfiable_constraints_recover_last_accepted_geometry_and_cycle_guard_rejects ... ok
+test tests::unchanged_frames_reuse_layout_and_changed_text_shaping ... ok
+test tests::one_to_four_x_frames_are_deterministic_for_identical_inputs ... ok
+test tests::virtual_navigation_requests_unrealized_rows_and_restores_stable_focus ... ok
+test tests::unified_cancellation_clears_preedit_and_controller_drag_state ... ok
+test tests::text_scale_reflows_intrinsic_layout_independently_from_physical_dpi ... ok
+
+test result: ok. 122 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.09s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_ui_semantics-b744b23ece036dec)
+
+running 7 tests
+test tests::semantic_tree_validates_reading_order_focus_and_actions ... ok
+test tests::semantic_tree_accepts_only_non_selected_mixed_toggles ... ok
+test tests::semantic_delta_replaces_the_tree_when_reading_order_changes ... ok
+test tests::semantic_delta_updates_only_changed_identity_and_reports_removal ... ok
+test tests::semantic_tree_rejects_untrusted_role_actions_and_disabled_authority ... ok
+test tests::semantic_tree_rejects_malformed_relationships ... ok
+test tests::semantic_tree_preserves_relationships_and_virtual_collection_metadata ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_ui_text-7da78a9eedd10895)
+
+running 14 tests
+test tests::cache_activity_accumulates_saturating_phase_durations ... ok
+test tests::preedit_cursor_uses_valid_utf8_byte_boundaries ... ok
+test tests::public_constructor_rejects_oversized_initial_values_and_redacts_passwords ... ok
+test tests::bounded_text_history_restores_value_and_selection_without_password_snapshots ... ok
+test tests::completion_prefix_stops_at_the_grapheme_cursor ... ok
+test tests::cut_and_validation_remain_grapheme_safe_and_password_private ... ok
+test tests::shaping_cache_evicts_fifo_within_shared_count_and_byte_bounds ... ok
+test tests::layout_rejects_oversized_text_before_shaping ... ok
+test tests::oversized_text_rejection_preserves_shaping_cache_state ... ok
+test tests::measurement_matches_layout_without_constructing_a_second_raster ... ok
+test tests::single_line_layout_truncates_at_a_grapheme_boundary ... ok
+test tests::shaping_cache_keys_every_geometry_font_and_weight_input ... ok
+test tests::text_history_never_exceeds_shared_count_or_byte_bounds ... ok
+test tests::bundled_locked_fonts_and_weights_shape_without_platform_substitution_at_1x_and_2x ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_vegetation-2084ea5ee433c5d2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_world-2882c96f2621e757)
+
+running 6 tests
+test tests::cell_membership_handles_boundaries_and_negative_coordinates ... ok
+test tests::rebasing_changes_local_coordinates_but_not_world_coordinates ... ok
+test tests::invalid_compiled_cell_never_partially_activates ... ok
+test tests::radius_queries_include_bounding_sphere_extent ... ok
+test tests::records_are_indexed_and_reindexed_when_moved ... ok
+test tests::compiled_cell_round_trip_and_activation_preserve_stable_identity ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/meridian_world_tools-aed64fb82c4314cf)
+
+running 2 tests
+test tests::source_compiles_deterministically_to_runtime_cell ... ok
+test tests::missing_visual_and_duplicate_stable_ids_are_rejected ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_alluvium
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_asset_tools
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_assets
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_audio
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_basalt
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_benchmark
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_build
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_diagnostics
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_ecs
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_editor
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_editor_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_input
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_isobar
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_modeler
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_package
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_physics
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_platform
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_render_graph
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_renderer
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_rhi
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_rt
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_save
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_shader_tools
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_streaming
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_tasks
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_ui
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_ui_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_ui_editor
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_ui_render
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_ui_runtime
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_ui_semantics
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_ui_text
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_vegetation
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_world
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests meridian_world_tools
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

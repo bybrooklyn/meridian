@@ -1,0 +1,25 @@
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 1 test
+closed_waivers_do_not_expire --- FAILED
+
+failures:
+
+---- closed_waivers_do_not_expire stdout ----
+
+thread 'closed_waivers_do_not_expire' (13141084) panicked at editor/meridian_spec_tools/tests/cli.rs:88:5:
+error [maturity:expired-waiver] tests/fixtures/closed_waiver/specs/registry/requirements.json: REQ-004 has expired waiver 2026-01-01
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    closed_waivers_do_not_expire
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 37 filtered out; finished in 0.48s
+
+error: test failed, to rerun pass `-p meridian-spec --test cli`

@@ -1,0 +1,29 @@
+error [docs:stale-phase-ref] ./.meridian/authority/MERIDIAN_SPECOMENT.original.md: active document contains a retired phase, v0.2 authority, crate name, or deleted file reference
+error [docs:stale-phase-ref] ./MERIDIAN_SPECOMENT.md: active document contains a retired phase, v0.2 authority, crate name, or deleted file reference
+error [list-unmapped:unmapped-id] ./.meridian/implementation/plans/PH-AUTH-001/WP-V1-BASE-002.md: PRG-RECON-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/implementation/plans/PH-AUTH-001/WP-V1-BASE-002.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/implementation/plans/PH-AUTH-001/WP-V1-BASE-002.md: REQ-004 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/implementation/plans/PH-AUTH-001/WP-V1-BASE-001.md: REQ-004 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/appendix_a.md: PRG-RECON-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/appendix_a.md: PRG-RECON-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/appendix_a.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/appendix_a.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/appendix_a.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/normative-language-audit.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/MERIDIAN_SPECOMENT.original.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/MERIDIAN_SPECOMENT.original.md: PRG-RECON-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/MERIDIAN_SPECOMENT.original.md: PRG-RECON-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/MERIDIAN_SPECOMENT.original.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/MERIDIAN_SPECOMENT.original.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/MERIDIAN_SPECOMENT.original.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./.meridian/authority/MERIDIAN_SPECOMENT.original.md: PRG-RECON-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./MERIDIAN_SPECOMENT.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./MERIDIAN_SPECOMENT.md: PRG-RECON-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./MERIDIAN_SPECOMENT.md: PRG-RECON-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./MERIDIAN_SPECOMENT.md: PRG-RECON-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./MERIDIAN_SPECOMENT.md: PRG-RECON-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./MERIDIAN_SPECOMENT.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./MERIDIAN_SPECOMENT.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./MERIDIAN_SPECOMENT.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] ./MERIDIAN_SPECOMENT.md: PRG-RECON-001 appears in docs but not specs/registry
+RED_EXIT=1
