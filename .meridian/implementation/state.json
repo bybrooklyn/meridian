@@ -255,8 +255,8 @@
         "Declare a new phase between PH-AUTH-005 and PH-AUTH-006 (specoment amendment)",
         "Assign to PH-AUTH-006 and widen its card to cover governance enforcement"
       ],
-      "blocks": "WP-V1-CENSUS-003 cannot set next_phase on the 8 retained rows. They carry retain with next_phase null, counted in the named residual PH-AUTH-005 closes with.",
-      "default": "Option 3 \u2014 widen PH-AUTH-006 to cover governance enforcement. Taken by inaction. It needs no authority change, keeps the work inside an open phase, and is the weakest of the three: PH-AUTH-006 is behavior-preserving structural decomposition, so governance enforcement sits oddly in it. Named as the default because a record with no default fails this package own stop rule, not because it is the best answer."
+      "blocks": "WP-V1-CENSUS-003 cannot set next_phase on the 8 retained rows. They carry retain with next_phase null, counted in the phase-pending residual count PH-AUTH-005 closes with.",
+      "default": "Option 3 \u2014 widen PH-AUTH-006 to cover governance enforcement. Taken by inaction. It needs no authority change, keeps the work inside an open phase, and is the weakest of the three: PH-AUTH-006 is behavior-preserving structural decomposition, so governance enforcement sits oddly in it. Named as the default because a record with no default fails this package's own stop rule, not because it is the best answer."
     }
   ],
   "review_rounds": [

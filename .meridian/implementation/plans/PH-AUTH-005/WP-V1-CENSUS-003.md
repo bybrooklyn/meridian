@@ -96,7 +96,8 @@ the plan alone would otherwise not know.
 - **Their `next_phase` stays null**, pending `OD-013`. No open phase owns validator work:
   `PH-AUTH-003` is the conceptual home and is closed, `PH-AUTH-006` is structural decomposition,
   `007`–`010` are runtime. Writing a work-package id into a phase field would be `SD-012`'s shape
-  a fourth time. These 8 rows are counted in the named residual this phase closes with.
+  a fourth time. These 8 rows are counted in the **phase-pending residual count**, the second of
+  the two counts this phase closes with.
 - **The escalation bucket shrinks.** "Tests whose behaviour no v1 requirement describes" reserved
   a record for the v0.5-validator tests as its largest candidate population. Eight of them now
   have a disposition, so that record covers less than planned.
@@ -266,9 +267,19 @@ see, which is what an external input is for.
 
 1. **Dispositioned** — a disposition and a next phase. The ordinary case.
 2. **Escalated** — a next phase and no disposition, naming an unresolved `OD-*`.
-3. **Dispositioned, phase pending** — a disposition and **no** next phase, naming an unresolved
-   `OD-*` whose question covers the missing phase. The eight `OD-010` rows: the ruling
-   established that the disposition is `retain`; only the owning phase is open.
+3. **Dispositioned, phase pending** — a disposition, **no** next phase, and a new field
+   **`phase_pending`** naming the unresolved `OD-*` that will supply the phase. The eight
+   `OD-010` rows: the ruling established that the disposition is `retain`; only the owning phase
+   is open.
+
+   The field is required because shape 3 was otherwise **unrepresentable**. A row has three
+   judgement fields and none could hold the id: `escalation` is forbidden by the XOR since
+   shape 3 sets `disposition`, using it anyway would restore the two-shape model this section
+   rejects, and `next_phase` is the field being left null. The validity rule would have had
+   nothing to read, and the eight rows would have shipped as `retain` with a null phase and no
+   recorded reason — the precise state the rule was written to prevent, arriving through its own
+   fix. `tests` rows carry no `next_phase` yet and step 6 already opens three sections, so the
+   field surface is open.
 
 Shape 3 is stated as a third interpretation of the card, not assumed — on the same footing as
 the other two. Giving those rows `escalation: OD-013` instead would keep the tidier two-shape
@@ -303,12 +314,28 @@ question.
 ## Tests and evidence
 
 - Every judgement-bearing row has **exactly** one of `disposition` / `escalation`, across all
-  ten sections.
-- **`next_phase` may be null only when the row names an unresolved `OD-*` whose question covers
-  the missing phase.** Without this, a null in a required field is `undecided` returning through
-  the one field the XOR never covered — a row declining to name a next phase with no record of
-  why. Enforced in the schema and machine-checked, not asserted. both-set, neither-set, out-of-vocabulary and unresolved-`OD-*` failures each
+  ten sections; both-set, neither-set, out-of-vocabulary and unresolved-`OD-*` failures are each
   rejected naming row and section.
+- **`next_phase` is null if and only if `phase_pending` names an unresolved `OD-*`.** A null in a
+  required field is otherwise `undecided` returning through the one field the XOR never covered —
+  a row declining to name a next phase with no record of why. Null `next_phase` with
+  `phase_pending` null, `phase_pending` naming a resolved record, and both fields set are each
+  rejected naming row and section.
+- The gate **will be** split across two mechanisms, and **activates with the XOR tightening, not
+  before**. The `if`/`then` binding `next_phase: null` to a non-null `phase_pending` is expressible
+  in JSON Schema; *unresolved in `state.json`* is not, and goes in Rust beside the existing `OD-*`
+  existence check.
+
+  Activating the conditional at plan stage was tried and **fails the measurement-phase census on
+  all 1,801 rows**, because every `next_phase` is legitimately null until assignment begins —
+  the same phasing the XOR already has, which is "never both" now and "exactly one" once
+  `-003` assigns. The conditional is therefore carried verbatim in the schema's `$comment`,
+  inert, with `phase_pending` defined as a property now so the field surface exists.
+
+  Stated as future work rather than present tense. An earlier draft of this bullet said "enforced
+  in the schema and machine-checked, not asserted" while the only schema change was prose in a
+  description — `-002` round 2's finding in a new place, where a doc comment claimed a glob
+  forwards the crate-root namespace while the code summed whole-tree counts.
 - The **on-disk** census is schema-validated, not only generator output.
 - Every retained test's owner is in the **611**-id mappable universe. `APP-003` (Rejected),
   `SRV-016` **and `SRV-022`** are rejected — the second proves range inheritance excludes
@@ -327,7 +354,8 @@ question.
 
 Set both judgement fields; set neither; name `OD-011` (resolved); name `OD-999`; assign outside
 the vocabulary; map a test to `APP-003` (Rejected), `SRV-016` and `SRV-022` (post-1.0,
-the second unlabelled); set `next_phase` null with no covering unresolved `OD-*`; delete a crate whose
+the second unlabelled); set `next_phase` null with `phase_pending` null; point `phase_pending`
+at a resolved record; set both `next_phase` and `phase_pending`; delete a crate whose
 disposition remains; insert a blank line and confirm no orphan; map every test in a crate to one
 id; push a family past the step-1 derived cap; use an id that appears in no audit row. Each must fail naming the row.
 

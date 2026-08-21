@@ -72,6 +72,18 @@
             "string",
             "null"
           ]
+        },
+        "phase_pending": {
+          "description": "The unresolved OD-* that will supply this row next phase. Shape 3 in WP-V1-CENSUS-003: a disposition whose owning phase is open. Required because no existing field could carry the id - escalation is forbidden by the XOR when disposition is set, and next_phase is the field being left null.",
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^OD-[0-9]{3}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "not": {
@@ -102,7 +114,8 @@
             ]
           }
         ]
-      }
+      },
+      "$comment": "WP-V1-CENSUS-003 activates this conditional when it tightens the XOR to exactly-one: {\"if\":{\"properties\":{\"next_phase\":{\"type\":\"null\"}},\"required\":[\"next_phase\"]},\"then\":{\"required\":[\"phase_pending\"]},\"else\":{\"properties\":{\"phase_pending\":{\"type\":\"null\"}}}}. It is inert during measurement because every next_phase is legitimately null until assignment begins - activating it now would fail the measurement-phase census on all 1801 rows. The unresolved half of the rule is not expressible in JSON Schema and goes in Rust beside the OD-* existence check."
     }
   },
   "properties": {
