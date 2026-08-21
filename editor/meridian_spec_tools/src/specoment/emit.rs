@@ -24,7 +24,7 @@ pub struct Stamp {
 }
 
 impl Stamp {
-    fn markdown(&self) -> String {
+    pub(super) fn markdown(&self) -> String {
         format!(
             "<!--\nGENERATED FILE - DO NOT EDIT.\nRegenerate with: cargo run -p meridian-spec -- project\n\
              canonical_path = {CANONICAL_PATH}\ncanonical_sha256 = {}\ngenerator_version = {GENERATOR_VERSION}\n\

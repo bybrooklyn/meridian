@@ -1,4 +1,174 @@
 {
-  "schema_version": 1,
-  "records": []
+  "schema": 1,
+  "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
+  "records": [
+    {
+      "id": "EV-V1-001",
+      "phase": "PH-AUTH-002",
+      "work_package": "WP-V1-BASE-001",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Pass",
+      "artifacts": [
+        "WP-V1-BASE-001-green.log"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-002",
+      "phase": "PH-AUTH-002",
+      "work_package": "WP-V1-BASE-001",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Fail",
+      "artifacts": [
+        "WP-V1-BASE-001-red.log"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-003",
+      "phase": "PH-AUTH-002",
+      "work_package": "WP-V1-BASE-002",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Pass",
+      "artifacts": [
+        "WP-V1-BASE-002-green.log"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-004",
+      "phase": "PH-AUTH-002",
+      "work_package": "WP-V1-BASE-002",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Fail",
+      "artifacts": [
+        "WP-V1-BASE-002-red.log"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-005",
+      "phase": "PH-AUTH-002",
+      "work_package": "WP-V1-BASE-002",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Fail",
+      "artifacts": [
+        "WP-V1-BASE-002-red2.log"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-006",
+      "phase": "PH-AUTH-001",
+      "work_package": "WP-V1-RESET-001",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Pass",
+      "artifacts": [
+        "WP-V1-RESET-001-clippy.log"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-007",
+      "phase": "PH-AUTH-001",
+      "work_package": "WP-V1-RESET-001",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Pass",
+      "artifacts": [
+        "WP-V1-RESET-001-tests.log"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-008",
+      "phase": "PH-AUTH-002",
+      "work_package": "WP-V1-RESET-002",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Pass",
+      "artifacts": [
+        "WP-V1-RESET-002-governance-exclusion-green.log"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-009",
+      "phase": "PH-AUTH-002",
+      "work_package": "WP-V1-RESET-002",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Fail",
+      "artifacts": [
+        "WP-V1-RESET-002-governance-exclusion-red.log"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-010",
+      "phase": "PH-AUTH-002",
+      "work_package": "WP-V1-RESET-002",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Fail",
+      "artifacts": [
+        "WP-V1-RESET-002-letter-suffix-red.log"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-011",
+      "phase": "PH-AUTH-002",
+      "work_package": "WP-V1-RESET-002",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Pass",
+      "artifacts": [
+        "WP-V1-RESET-002-port-results.md"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-012",
+      "phase": "PH-AUTH-002",
+      "work_package": "WP-V1-RESET-002",
+      "source_checkpoint": "14d3feb",
+      "class": "test",
+      "status": "Pass",
+      "artifacts": [
+        "WP-V1-RESET-002-source-diagnosis.md"
+      ],
+      "notes": "Registered during PH-AUTH-003 under SD-010; these artefacts predate the index conforming to Appendix H.4."
+    },
+    {
+      "id": "EV-V1-013",
+      "phase": "PH-AUTH-001",
+      "work_package": "WP-V1-RESET-001",
+      "source_checkpoint": "14d3feb",
+      "class": "platform",
+      "status": "Unsupported",
+      "artifacts": [
+        "smoke-clear_frame.log"
+      ],
+      "notes": "Apple M4 / Metal. GPU timestamps UnsupportedPlatform, surface SkippedOccluded. Structural validation only; no visible-quality claim."
+    },
+    {
+      "id": "EV-V1-014",
+      "phase": "PH-AUTH-001",
+      "work_package": "WP-V1-RESET-001",
+      "source_checkpoint": "14d3feb",
+      "class": "platform",
+      "status": "Unsupported",
+      "artifacts": [
+        "smoke-instance_upload.log"
+      ],
+      "notes": "Apple M4 / Metal. GPU timestamps UnsupportedPlatform, surface SkippedOccluded. Structural validation only; no visible-quality claim."
+    }
+  ]
 }

@@ -253,6 +253,21 @@ fn run(config: &Config) -> Result<Vec<Issue>, String> {
         }
         Command::ValidateAdrs => validate_adrs(&config.root, &context, &mut issues),
         Command::Project { check } => {
+            // Class (b) accumulated state is not emitted, so `project --check` cannot police
+            // it by regeneration. Conformance runs here instead, which is what keeps the
+            // evidence index honest between now and PH-AUTH-004's CI enforcement.
+            if let Ok(source) = fs::read_to_string(config.root.join("MERIDIAN_SPECOMENT.md")) {
+                let digest = specoment::sha256::hex(source.as_bytes());
+                for problem in specoment::accumulated::check_evidence_index(&config.root, &digest) {
+                    push(
+                        &mut issues,
+                        "evidence-index",
+                        "governance",
+                        Path::new(&problem.path),
+                        &problem.detail,
+                    );
+                }
+            }
             // Staleness must reach the exit code. Printing it and returning success is a
             // fail-open: CI goes green while the projections misrepresent the authority.
             for problem in specoment::run(&config.root, check)? {

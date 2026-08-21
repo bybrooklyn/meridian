@@ -11,6 +11,8 @@
 //! Nothing in this module interprets the specoment. It projects what the document states
 //! and refuses to invent a status, a disposition or an identity the root file does not carry.
 
+pub mod accumulated;
+pub mod coverage;
 pub mod emit;
 pub mod index;
 pub mod phases;
@@ -59,7 +61,24 @@ pub fn run(root: &Path, check_only: bool) -> Result<Vec<String>, String> {
         source_checkpoint: format!("specoment:{canonical_sha256}"),
     };
 
+    // The coverage matrix is extracted from the v0.5 validator's own source, so it is a
+    // derived artefact rather than restated prose.
+    let validator_source = fs::read_to_string(root.join("editor/meridian_spec_tools/src/main.rs"))
+        .map_err(|error| format!("failed to read the v0.5 validator: {error}"))?;
+    let units = coverage::extract_units(&validator_source);
+    let dispositions = units
+        .iter()
+        .filter(|unit| !unit.retained())
+        .filter_map(|unit| coverage::derive(unit).map(|d| (unit.clone(), d)))
+        .collect();
+    let matrix = coverage::Matrix::build(units, dispositions);
+
     let mut projections = emit::all(&source, &index, &stamp)?;
+    projections.push(emit::Projection {
+        relative_path: "governance/coverage-matrix.md".to_string(),
+        contents: coverage::render(&matrix, &stamp),
+    });
+    // The manifest hashes every other projection, so it must be built last.
     projections.push(emit::manifest(&projections, &stamp));
 
     let mut problems = Vec::new();

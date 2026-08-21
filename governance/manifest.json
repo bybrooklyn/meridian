@@ -9,6 +9,7 @@
     { "path": "governance/generated/identifiers.json", "sha256": "83d2704bb4ddaf37b2a3242d4093fbb6a29101464e606dc0a860ce2d548852c2" },
     { "path": "governance/generated/requirements.json", "sha256": "3d9cc92a8e61972aaaaef6ee13306e6e2dceca620abbd30d9cd2c3866be87a51" },
     { "path": "governance/generated/phases.json", "sha256": "ce07e39d12037ab0e0b0f0bb33d6dee3de0b05b117b27d176f70be3fbaebedde" },
-    { "path": "governance/generated/research-gates.json", "sha256": "ac0a7d1bdd969afdc99f6d6b91de5d9247f8290ca366dfc784e19f1a5ca34115" }
+    { "path": "governance/generated/research-gates.json", "sha256": "ac0a7d1bdd969afdc99f6d6b91de5d9247f8290ca366dfc784e19f1a5ca34115" },
+    { "path": "governance/coverage-matrix.md", "sha256": "4df3187b7b3cfe6e0fcfe11eff2cefb1b65b39ca1e9fec62ec67b671eea0ae11" }
   ]
 }
