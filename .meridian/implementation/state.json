@@ -1,13 +1,14 @@
 {
   "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
   "source_checkpoint": "d2408bf13b97a61fb87e8109f70e7e3282ae65f7",
-  "active_phase": "PH-AUTH-005",
-  "active_work_package": "WP-V1-CENSUS-003",
+  "active_phase": "PH-AUTH-006",
+  "active_work_package": null,
   "completed_phases": [
     "PH-AUTH-001",
     "PH-AUTH-002",
     "PH-AUTH-003",
-    "PH-AUTH-004"
+    "PH-AUTH-004",
+    "PH-AUTH-005"
   ],
   "completed_work_packages": [
     "WP-V1-BASE-001",
@@ -17,7 +18,8 @@
     "WP-V1-GOV-001",
     "WP-V1-RESET-003",
     "WP-V1-CENSUS-001",
-    "WP-V1-CENSUS-002"
+    "WP-V1-CENSUS-002",
+    "WP-V1-CENSUS-003"
   ],
   "blocked": [],
   "unsupported": [
