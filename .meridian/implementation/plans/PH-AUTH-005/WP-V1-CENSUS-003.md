@@ -156,7 +156,13 @@ disposition is orphaned.
 5. **Add `format_migrations` and edge reasons.** Every format not `retain` names its migration.
    `meridian-rhi → meridian-render-graph` is already *classified* (forward under the declared
    ordering); what it lacks is a **reason**, which is what `-001` promised.
-6. **Add `next_phase` to `tests`, `generated_files` and `ci_rows`.**
+6. **Emit all four judgement fields on every judgement-bearing row.** `next_phase` is missing
+   from `tests`, `generated_files` and `ci_rows`; **`phase_pending` is missing from all ten
+   sections and appears in zero of the 1,801 rows today.** Step 7 activates a block whose
+   `then` branch requires `phase_pending` present and well-formed for shape 3, so without this
+   step activation would reject the eight `OD-010` rows the gate exists to legalise — verified:
+   a shape-3 row with the key absent is rejected. This is the last step at which the field
+   surface can be opened before step 7 depends on it.
 7. **Activate the whole row-validity block.** The schema's `$comment` carries it drafted and
    verified; moving it into `$defs/judged` is a **deliverable of this step**, not a note. An
    inert rule in a comment with no step that turns it on is a deferred check with no owner.
@@ -202,7 +208,7 @@ Replaced by:
 
 ## Row validity, as one table
 
-Three consecutive blocking findings have landed in the row-shape rules, while the universe,
+Blocking findings landed in the row-shape rules for six consecutive rounds, while the universe,
 constraint regime, audit and owner-decision structure have been stable since round 3. Each was
 the consequence of getting the previous one right, and each was found one round at a time. The
 full rule set is therefore stated here as a single unit rather than assembled from six sections.
@@ -221,8 +227,9 @@ established for shape 3. Shape 2 assumes every escalated row has a knowable next
 decision a row escalates on may itself determine which phase acts. `meridian-physics` escalates
 because "is this crate in v1 scope" is open; writing `PH-AUTH-006` presumes the answer is
 "decompose it", which is one of several. Shape 4 needs no `phase_pending`, because `escalation`
-already names the unresolved record — which is why the gate's `then` branch is an `anyOf` over
-both fields rather than over `phase_pending` alone.
+already names the unresolved record — which is why the gate's `then` branch is a `oneOf` over
+both fields rather than over `phase_pending` alone. `oneOf`, not `anyOf`: `anyOf` also accepts
+both set, which lets a row name two different unresolved records.
 
 Every other combination is invalid. In particular:
 
@@ -363,7 +370,8 @@ defects in this area.
    knowable until it resolves. `meridian-physics` escalates on "is this crate in v1 scope";
    writing `PH-AUTH-006` would presume the answer is "decompose it", which is one of several.
    No extra field is needed because `escalation` already names the unresolved record, which is
-   why the gate's `then` branch is an `anyOf` over `escalation` and `phase_pending`.
+   why the gate's `then` branch is a `oneOf` over `escalation` and `phase_pending` — `oneOf`
+   because `anyOf` would also accept both, naming two different unresolved records.
 
    Shape 4 was accepted by the schema while the table declared it invalid — the schema and the
    prose disagreed, and the prose was wrong. Shape 2 had quietly assumed every escalated row has
@@ -404,15 +412,22 @@ question.
 - Every judgement-bearing row has **exactly** one of `disposition` / `escalation`, across all
   ten sections; both-set, neither-set, out-of-vocabulary and unresolved-`OD-*` failures are each
   rejected naming row and section.
-- **`next_phase` is null if and only if `phase_pending` names an unresolved `OD-*`.** A null in a
-  required field is otherwise `undecided` returning through the one field the XOR never covered —
-  a row declining to name a next phase with no record of why. Null `next_phase` with
-  `phase_pending` null, `phase_pending` naming a resolved record, and both fields set are each
-  rejected naming row and section.
+- **`next_phase` may be null only when exactly one of `phase_pending` or `escalation` names an
+  unresolved `OD-*`.** A null in a required field is otherwise `undecided` returning through the
+  one field the XOR never covered — a row declining to name a next phase with no record of why.
+  "Exactly one" rather than "at least one": the two may name **different** records, leaving the
+  row pointing at two decisions with no rule saying which governs its phase.
+
+  The rejection set is not listed here. It is the complement of the four table shapes, asserted
+  by the 16-combination cross-product in Failure injection, which subsumes any list and does not
+  depend on having thought of the right cases. An earlier version of this bullet enumerated
+  rejections, was written when three shapes existed, and survived the admission of the fourth
+  while asserting a rejection the verified block does not perform and must not — a stale **rule**
+  rather than a stale numeral.
 - The gate **will be** split across two mechanisms, and **activates with the XOR tightening, not
   before**. The `if`/`then` binding `next_phase: null` to a non-null `phase_pending` is expressible
-  in JSON Schema; *unresolved in `state.json`* is not, and goes in Rust beside the existing `OD-*`
-  existence check.
+  in JSON Schema — as a `oneOf` over `phase_pending` and `escalation`, not an `anyOf`; *unresolved
+  in `state.json`* is not, and goes in Rust beside the existing `OD-*` existence check.
 
   Activating the conditional at plan stage was tried and fails **998 of 1,801 rows** today. The
   other 803 — `tests` 791, `generated_files` 9, `ci_rows` 3 — pass only because they carry no
@@ -426,7 +441,7 @@ question.
   against `jsonschema` 0.33: the `required`-only form **accepted** `next_phase: null` with
   `phase_pending: null` — the exact state the gate exists to forbid — and accepted a malformed
   `OD-13`. Adding `properties: {phase_pending: {type: string, pattern: ^OD-[0-9]{3}$}}` rejects
-  both while leaving all three legal shapes accepted.
+  both while leaving all four legal shapes accepted.
 
   Stated as future work rather than present tense. An earlier draft of this bullet said "enforced
   in the schema and machine-checked, not asserted" while the only schema change was prose in a
@@ -463,39 +478,21 @@ None.
 
 ## LOC estimate
 
-| Area | Added | Removed |
-|---|---|---|
-| `dispositions.toml` — ~30 named rules plus ~150 exceptions | ~450 | 0 |
-| Input parsing, rule expansion, merge, constraint checks | ~520 | ~20 |
-| `format_migrations`, edge reasons, `next_phase` on three sections | ~180 | ~10 |
-| Schema tightening, on-disk validation, `OD-*` status scoping | ~150 | ~30 |
-| Tests | ~360 | 0 |
-| Regenerated `census.json` | ~+2,400 changed lines | 0 |
+Re-derived at round 11. The previous figures were byte-identical to the round-2 draft and had
+survived eight rounds of material change — a fourth judgement field across ten sections, two
+additional row shapes, the whole row-validity block, step 8 split out, the 16-combination test,
+on-disk validation, Rust unresolved-status scoping, the `OD-010` input and `OD-013`. It was the
+one artefact in this plan never re-derived, which `IMPL-WP-001` names directly: if scope
+materially changes, revise the plan and repeat independent review.
 
-## The sweep rule, generalised
-
-This lineage has hit one failure class five times in five disguises: the fix lands, an earlier
-sentence stays. Two passes exist and both have now been shown insufficient on their own.
-
-- `-001` adopted **grep for the term just retired**. It catches retired words. It cannot catch a
-  numeral that is spelled the same and has quietly become wrong.
-- `-002` adopted **re-derive every figure from source before writing prose**. It catches stale
-  measurements. It passed while four sites were stale, because those numbers were correct
-  against source and contradicted a rule the same document had withdrawn.
-- `-003` adopted **grep for the number a withdrawn rule contained**. It caught those four. It
-  could not catch "9 open records", because nothing in the document was retracted — a fact in
-  the accompanying `state.json` edit changed underneath a sentence that was true when written.
-
-**The rule is keyed to the commit, and covers every artefact the commit touches: for each fact a
-commit changes, grep both the plan and the changed artefact for the ids and counts that change
-touches.**
-
-Round 5 proved both halves necessary. It ran the plan grep for `OD-013` and `open records`,
-found the string, and judged it correct — the sweep looked directly at the defect and passed it,
-because `OD-013` had been added by the same commit and the sentence counting open records was
-stale by one. And `OD-010.resolved.rationale` kept "All ten" through a commit whose entire
-subject was that the number is nine, because only the plan was swept and the stale value sat in
-a sibling field of the record being corrected.
+| Area | Added | Removed | Change since round 2 |
+|---|---|---|---|
+| `dispositions.toml` — ~30 named rules plus ~150 exceptions | ~450 | 0 | unchanged; structure is the same |
+| Input parsing, rule expansion, merge, constraint checks | ~600 | ~20 | +80: four fields per row, not three |
+| Emit `next_phase` (3 sections) and `phase_pending` (10), `format_migrations`, edge reasons | ~260 | ~10 | +80: `phase_pending` had no step at all |
+| Row-validity block activation, on-disk validation, Rust unresolved scoping | ~280 | ~30 | +130: was one row covering a third of this |
+| Tests, including the 16-combination cross-product and four-field assertions | ~460 | 0 | +100 |
+| Regenerated `census.json` | ~+3,600 changed lines | 0 | +1,200: `phase_pending` on 1,801 rows |
 
 ## Stop / rollback rule
 
