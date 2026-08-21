@@ -157,3 +157,40 @@ immediately by a named test rather than by a lookahead's interaction with a cond
 829 lines against a ~820 estimate. The `+1316` figure `git diff --numstat` reports for
 `src/` includes 300 lines of inline test modules and 176 lines of comments. Only the
 infrastructure sub-bound was exceeded, not the package estimate.
+
+## Two defects found after the first commit, by the tests rather than by review
+
+The full `cargo test --workspace` run exited 101. Both failures were real and both were mine.
+
+**Circularity.** The Appendix H.5 stamp recorded repository HEAD as
+`generated_at_source_checkpoint`. HEAD moves for reasons unrelated to the specoment —
+including the very commit that lands the projections — so every projection was stale the
+instant it was committed, `project --check` could never pass, and the determinism test
+compared bytes that always differed. A check that can never pass trains people to ignore it,
+which is worse than not having one.
+
+Fixed by not stamping a volatile value. Appendix H.5 asks for
+`generated_at_source_checkpoint = <revision>`; in a single-root-authority repository the
+revision *of the source* is the specoment itself, so the stamp is now
+`specoment:<canonical digest>`.
+
+An intermediate fix — excluding the checkpoint line from the comparison — was written and
+then discarded. It removed the circularity but left a hole where a hand-edit to the excluded
+line would go undetected. Making the output genuinely deterministic is better on every axis:
+byte-identical regeneration holds literally, the comparison needs no exceptions, and
+staleness detection is exact.
+
+**Fail-open exit code.** `project --check` printed staleness and returned success. CI would
+have gone green while the projections misrepresented the authority — precisely the failure
+Appendix D requirement 7 exists to prevent. The problems now reach the issue list and the
+command exits 1.
+
+Verified end to end: clean tree exits 0; a one-line tamper exits **1** and reports
+`stale-projection` naming the file; regeneration is byte-identical across runs.
+
+**Worth recording about the process.** The first commit passed six gates — targeted tests,
+fmt, clippy, `spec check`, `project --check`, `git diff --check` — and still carried both
+defects. `project --check` passed only because it was run before the commit that
+invalidated it, and it could not have failed in any case. The workspace run caught it. This
+is the concrete argument for running proportional gates before closure rather than trusting
+targeted ones, and for the plan's insistence that a check which cannot fail is not evidence.

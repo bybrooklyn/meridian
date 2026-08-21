@@ -4,7 +4,7 @@ Regenerate with: cargo run -p meridian-spec -- project
 canonical_path = /MERIDIAN_SPECOMENT.md
 canonical_sha256 = 782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a
 generator_version = specoment-projection/1
-generated_at_source_checkpoint = 4e6bb2e072dc2362732230fb937bb95b86f24da2
+generated_at_source_checkpoint = specoment:782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a
 -->
 
 # Traceability index

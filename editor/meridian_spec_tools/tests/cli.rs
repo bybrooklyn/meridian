@@ -503,12 +503,38 @@ fn project_check_names_a_hand_edited_projection() {
     let mut tampered = original.clone();
     tampered.push_str("\nhand-edited\n");
     std::fs::write(&target, &tampered).expect("write tampered projection");
-    let (_, output) = run(&root, &["project", "--check"]);
+    let (ok, output) = run(&root, &["project", "--check"]);
     std::fs::write(&target, &original).expect("restore projection");
 
     assert!(
         output.contains("governance/generated/index.md"),
         "reconciliation must name the divergent file: {output}"
+    );
+    // The exit code matters more than the message. An earlier version of this command
+    // printed staleness and returned success, so CI would have gone green while the
+    // projections misrepresented the authority. Appendix D requirement 7 exists to
+    // prevent exactly that, and a check that cannot fail does not satisfy it.
+    assert!(
+        !ok,
+        "project --check must exit non-zero on a stale projection: {output}"
+    );
+}
+
+/// Regenerating without changing the specoment must produce byte-identical output.
+///
+/// This held only after the stamp stopped recording repository HEAD. HEAD moves for reasons
+/// unrelated to the specoment — including the commit that lands these very files — so a
+/// HEAD-stamped projection was stale the instant it was committed and `--check` could never
+/// pass. The fix was to stamp the source revision (the specoment digest) rather than the
+/// repository revision, which also removed the need to exclude any field from comparison.
+#[test]
+fn the_stamp_does_not_record_a_volatile_value() {
+    let _guard = projection_guard();
+    let manifest = std::fs::read_to_string(repo_root().join("governance/manifest.json"))
+        .expect("manifest exists");
+    assert!(
+        manifest.contains("\"generated_at_source_checkpoint\": \"specoment:"),
+        "the source checkpoint must identify the specoment, not the repository HEAD"
     );
 }
 

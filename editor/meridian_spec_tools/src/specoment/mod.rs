@@ -28,34 +28,58 @@ use std::path::Path;
 
 /// Generate every projection, or verify the checked-in ones match a fresh generation.
 ///
-/// `--check` never writes. It regenerates in memory and compares byte for byte, naming the
-/// first divergent file. That comparison — not the stamped digest — is the enforcement
-/// mechanism, which is why a defect in the hand-rolled digest fails closed.
+/// Returns the problems found. An empty vector means the projections are current.
+///
+/// `--check` never writes. It regenerates in memory and compares, naming every divergent
+/// file. That comparison — not the stamped digest — is the enforcement mechanism, which is
+/// why a defect in the hand-rolled digest fails closed.
+///
+/// The stamp is fully deterministic: regenerating without changing the specoment produces
+/// byte-identical output, so the comparison needs no ignored fields and therefore has no
+/// hole where a hand-edit goes undetected.
+///
+/// That required not stamping the repository HEAD. HEAD moves for reasons unrelated to the
+/// specoment — including the very commit that lands these projections — so a HEAD-stamped
+/// projection is stale the instant it is committed, and `--check` can never pass. A check
+/// that can never pass trains people to ignore it, which is worse than not having one.
+///
+/// Appendix H.5 asks for `generated_at_source_checkpoint = <revision>`. In a single-root-
+/// authority repository the revision *of the source* is the specoment itself, identified by
+/// its content digest. That is what is stamped.
 pub fn run(root: &Path, check_only: bool) -> Result<Vec<String>, String> {
     let source_path = root.join("MERIDIAN_SPECOMENT.md");
     let source = fs::read_to_string(&source_path)
         .map_err(|error| format!("failed to read {}: {error}", source_path.display()))?;
 
+    let canonical_sha256 = sha256::hex(source.as_bytes());
     let index = index::build(&source);
     let stamp = emit::Stamp {
-        canonical_sha256: sha256::hex(source.as_bytes()),
-        source_checkpoint: source_checkpoint(root),
+        canonical_sha256: canonical_sha256.clone(),
+        source_checkpoint: format!("specoment:{canonical_sha256}"),
     };
 
     let mut projections = emit::all(&source, &index, &stamp);
     projections.push(emit::manifest(&projections, &stamp));
 
-    let mut issues = Vec::new();
+    let mut problems = Vec::new();
     for projection in &projections {
         let target = root.join(&projection.relative_path);
         if check_only {
             match fs::read_to_string(&target) {
-                Ok(existing) if existing == projection.contents => {}
-                Ok(_) => issues.push(format!(
-                    "{} is stale or hand-edited; regenerate with `cargo run -p meridian-spec -- project`",
-                    projection.relative_path
-                )),
-                Err(_) => issues.push(format!("{} is missing", projection.relative_path)),
+                Ok(existing) => {
+                    if existing != projection.contents {
+                        problems.push(format!(
+                            "{} is stale or hand-edited; regenerate with `cargo run -p meridian-spec -- project`",
+                            projection.relative_path
+                        ));
+                    } else if !existing.contains(&canonical_sha256) {
+                        problems.push(format!(
+                            "{} stamps a specoment digest that is not the current one",
+                            projection.relative_path
+                        ));
+                    }
+                }
+                Err(_) => problems.push(format!("{} is missing", projection.relative_path)),
             }
             continue;
         }
@@ -68,7 +92,7 @@ pub fn run(root: &Path, check_only: bool) -> Result<Vec<String>, String> {
     }
 
     if !check_only {
-        issues.push(format!(
+        println!(
             "wrote {} projections: {} declared, {} undeclared, {} multiply-declared, {} retired-v0.5, {} families",
             projections.len(),
             index.declared_count(),
@@ -76,22 +100,7 @@ pub fn run(root: &Path, check_only: bool) -> Result<Vec<String>, String> {
             index.multiply_declared.len(),
             index.retired_v05.len(),
             index.families.len()
-        ));
+        );
     }
-    Ok(issues)
-}
-
-/// The source checkpoint for the Appendix H.5 stamp. Read from `.git/HEAD` rather than by
-/// running Git, since this tool takes no ambient process authority.
-fn source_checkpoint(root: &Path) -> String {
-    let head = root.join(".git/HEAD");
-    let Ok(contents) = fs::read_to_string(&head) else {
-        return "unknown".to_string();
-    };
-    let trimmed = contents.trim();
-    let Some(reference) = trimmed.strip_prefix("ref: ") else {
-        return trimmed.to_string();
-    };
-    fs::read_to_string(root.join(".git").join(reference))
-        .map_or_else(|_| "unknown".to_string(), |value| value.trim().to_string())
+    Ok(problems)
 }

@@ -253,8 +253,16 @@ fn run(config: &Config) -> Result<Vec<Issue>, String> {
         }
         Command::ValidateAdrs => validate_adrs(&config.root, &context, &mut issues),
         Command::Project { check } => {
-            for note in specoment::run(&config.root, check)? {
-                println!("{note}");
+            // Staleness must reach the exit code. Printing it and returning success is a
+            // fail-open: CI goes green while the projections misrepresent the authority.
+            for problem in specoment::run(&config.root, check)? {
+                push(
+                    &mut issues,
+                    "stale-projection",
+                    "governance",
+                    &config.root,
+                    &problem,
+                );
             }
         }
         Command::ListUnmapped => list_unmapped(&context, &mut issues),
