@@ -12,6 +12,6 @@
     { "path": "governance/generated/research-gates.json", "sha256": "ac0a7d1bdd969afdc99f6d6b91de5d9247f8290ca366dfc784e19f1a5ca34115" },
     { "path": "governance/generated/work-packages.json", "sha256": "70e7e307253732ca60b3ada416262e87a2de247859257c553bb68f6b7e181c21" },
     { "path": "governance/generated/maturity.json", "sha256": "b5aa5c6abcba06ce8068a1642e348b01c0a85748a1cb74bf2e041f06ae60e11f" },
-    { "path": "governance/coverage-matrix.md", "sha256": "621c3ff222b960d28a3df4fac0cd16cf95110e77cfa3d686d375d6200f673b28" }
+    { "path": "governance/coverage-matrix.md", "sha256": "c85a87a4cab16d88803033888a54a91e0beb042ba688180d9464e18ba3608cf3" }
   ]
 }

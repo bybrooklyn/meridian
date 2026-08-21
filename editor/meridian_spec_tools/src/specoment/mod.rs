@@ -12,6 +12,7 @@
 //! and refuses to invent a status, a disposition or an identity the root file does not carry.
 
 pub mod accumulated;
+pub mod census;
 pub mod coverage;
 pub mod emit;
 pub mod index;

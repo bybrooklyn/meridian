@@ -74,6 +74,7 @@ enum Command {
     ValidateWorkloads,
     ValidateAdrs,
     CheckV05Legacy,
+    Census,
     ListUnmapped,
     Explain,
     Project { check: bool },
@@ -186,6 +187,41 @@ fn check_v1(config: &Config, issues: &mut Vec<Issue>) -> Result<(), String> {
                     &problem.detail,
                 );
             }
+            // Class (c): derived from the source tree, so regeneration-and-compare is the
+            // enforcement and the checkpoint is provenance. Deliberately not in emit::all():
+            // a specoment-keyed stamp would report fresh after 37 crates changed. SD-013.
+            for problem in specoment::census::format_reconciliation(&config.root) {
+                push(
+                    issues,
+                    "format-enumeration",
+                    "governance",
+                    Path::new(".meridian/implementation/plans/PH-AUTH-005/KNOWN-FORMATS.md"),
+                    &problem,
+                );
+            }
+            match census_json(&config.root, &digest) {
+                Ok(rendered) => {
+                    let target = config.root.join(".meridian/implementation/census.json");
+                    match fs::read_to_string(&target) {
+                        Ok(existing) if existing == rendered => {}
+                        Ok(_) => push(
+                            issues,
+                            "stale-census",
+                            "governance",
+                            &target,
+                            "the census does not match the current source tree; regenerate it",
+                        ),
+                        Err(_) => push(
+                            issues,
+                            "missing-census",
+                            "governance",
+                            &target,
+                            "no census; PH-AUTH-005 requires one",
+                        ),
+                    }
+                }
+                Err(error) => push(issues, "census-error", "governance", &config.root, &error),
+            }
             for problem in
                 specoment::accumulated::v05_declarations(&config.root, &tracked_files(&config.root))
             {
@@ -242,6 +278,41 @@ fn tracked_files(root: &Path) -> Vec<String> {
     found
 }
 
+/// Write the census to `.meridian/implementation/census.json`.
+fn write_census(config: &Config) -> Result<(), String> {
+    let source = fs::read_to_string(config.root.join("MERIDIAN_SPECOMENT.md"))
+        .map_err(|error| format!("failed to read the specoment: {error}"))?;
+    let digest = specoment::sha256::hex(source.as_bytes());
+    let rendered = census_json(&config.root, &digest)?;
+    let target = config.root.join(".meridian/implementation/census.json");
+    fs::write(&target, &rendered)
+        .map_err(|error| format!("failed to write {}: {error}", target.display()))?;
+    println!("wrote {}", target.display());
+    Ok(())
+}
+
+/// Render the census from `cargo metadata` plus a source walk.
+///
+/// `--format-version 1` is explicit because `rust-toolchain.toml` pins a floating `stable`,
+/// and a routine toolchain bump changing the default format would otherwise break the gate on
+/// a day nobody touched the repository.
+fn census_json(root: &Path, specoment_sha256: &str) -> Result<String, String> {
+    let output = std::process::Command::new("cargo")
+        .args(["metadata", "--locked", "--no-deps", "--format-version", "1"])
+        .current_dir(root)
+        .output()
+        .map_err(|error| format!("cargo metadata failed: {error}"))?;
+    if !output.status.success() {
+        return Err("cargo metadata returned an error".to_string());
+    }
+    let metadata: Value = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("cargo metadata output is not JSON: {error}"))?;
+
+    let mut census = specoment::census::measure(root);
+    specoment::census::absorb_metadata(&mut census, root, &metadata);
+    Ok(specoment::census::render(&census, root, specoment_sha256))
+}
+
 fn parse_args(args: &[String]) -> Result<Config, String> {
     if args.is_empty() {
         return Err(usage());
@@ -270,6 +341,7 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
     let command = match positional.first().map(String::as_str) {
         Some("check") => Command::Check,
         Some("check-v05") => Command::CheckV05Legacy,
+        Some("census") => Command::Census,
         Some("validate") => match positional.get(1).map(String::as_str) {
             Some("docs") => Command::ValidateDocs,
             Some("schemas") => Command::ValidateSchemas,
@@ -322,6 +394,7 @@ fn run(config: &Config) -> Result<Vec<Issue>, String> {
         // an empty tree and report nothing. Nine of their rules police concepts that survive
         // into v1 with no successor yet — recorded as OD-010, not silently dropped.
         Command::Check => check_v1(config, &mut issues)?,
+        Command::Census => write_census(config)?,
         Command::CheckV05Legacy => {
             // Retained pending OD-010, but not runnable. `SPEC-001` forbids old and new
             // authority competing, and a v0.5 validator judging the v1 tree is that
