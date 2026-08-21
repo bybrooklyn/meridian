@@ -494,6 +494,43 @@ materially changes, revise the plan and repeat independent review.
 | Tests, including the 16-combination cross-product and four-field assertions | ~460 | 0 | +100 |
 | Regenerated `census.json` | ~+3,600 changed lines | 0 | +1,200: `phase_pending` on 1,801 rows |
 
+## The sweep rule, generalised
+
+This lineage has hit one failure class repeatedly — the fix lands, an earlier sentence stays.
+Documented instances: `undecided`, the `-002` numerals, the `25 %` pins, `96`/`OD-009`, "9 open
+records", "All ten", "the three shapes", the `next_phase` rule bullet, two `anyOf` sites, and
+this section's own deletion. A list rather than a count, because a count of how often counts go
+stale will itself go stale.
+
+Three passes exist and each has been shown insufficient alone.
+
+- `-001` adopted **grep for the term just retired**. It catches retired words. It cannot catch a
+  numeral that is spelled the same and has quietly become wrong.
+- `-002` adopted **re-derive every figure from source before writing prose**. It catches stale
+  measurements. It passed while four sites were stale, because those numbers were correct
+  against source and contradicted a rule the same document had withdrawn.
+- `-003` adopted **grep for the number a withdrawn rule contained**. It caught those four. It
+  could not catch "9 open records", because nothing in the document was retracted — a fact in
+  the accompanying `state.json` edit changed underneath a sentence that was true when written.
+
+**The rule is keyed to the commit, and covers every artefact the commit touches: for each fact a
+commit changes, grep both the plan and the changed artefact for the ids and counts that change
+touches.**
+
+Round 5 proved both halves necessary. It ran the plan grep for `OD-013` and `open records`,
+found the string, and judged it correct — the sweep looked directly at the defect and passed it,
+because `OD-013` had been added by the same commit and the sentence counting open records was
+stale by one. And `OD-010.resolved.rationale` kept "All ten" through a commit whose entire
+subject was that the number is nine, because only the plan was swept and the stale value sat in
+a sibling field of the record being corrected.
+
+**A fourth clause, earned by this section's own loss.** Round 11 replaced the LOC estimate by
+splicing from one heading to the next, and this section sat between them, so it was deleted
+entire and the round reported it as a conversion. Two earlier defects had the same shape — text
+inserted mid-sentence leaving `owner., and validate`, and an orphaned rejection clause. So:
+**after replacing a span, read what the span contained, not only what replaced it.** A range edit
+must state which headings it spans, and a deletion must be intended rather than incidental.
+
 ## Stop / rollback rule
 
 Stop if a crate is retained without all three pieces of evidence, or without one of its own
@@ -503,8 +540,10 @@ step-1 derived cap; if an id used appears in no audit row; if any row carries bo
 once assignment is complete; if an escalation names a resolved or non-covering `OD-*`; or if a
 new `OD-*` lacks options, `blocks` and a default.
 
-Stop also if the package ships with the `next_phase`/`phase_pending` conditional still inert in
-the schema's `$comment`, or if any row matches none of the four shapes in the table above.
+Stop also if the package ships with **any part of the row-validity block** still inert in the
+schema's `$comment` — the block is exactly-one, the `next_phase` gate and shape 4 together, and
+drafting only the newest rule is what left "neither set" accepted — or if any row matches none
+of the four shapes in the table above.
 
 The card's third stop condition — *"implementation maturity is promoted without new v1
 evidence"* — cannot fire here: `implementation_maturity` is null in all 37 crate rows per
@@ -512,7 +551,60 @@ evidence"* — cannot fire here: `implementation_maturity` is null in all 37 cra
 
 ## Independent Review
 
-_Pending._
+- Verdict: **accept**
+- Reviewer: fresh isolated same-model context. Eleven rounds: `rethink`, `revise` ×9, `accept`.
+- Both carry-ins were closed before this record was written, not deferred to it.
+
+### The three phases, and why each needed a different instrument
+
+The reviewer's closing observation, recorded because it was not visible from inside any single
+round:
+
+**Rounds 1–4 — scope and derivation.** The wrong requirement universe (`requirements.json`'s 527
+against `identifiers.json`'s 736, hiding every `ED-AOT-*` and `EDUX-VIS-*` that the editor tests
+actually assert); an escalation budget invented before any mapping; constraints satisfiable by a
+four-line round-robin script; an unstamped figure entering accumulated state 2.75× wrong.
+Instrument: **re-derive every figure from source.**
+
+**Rounds 5–10 — mechanism.** Six consecutive findings in the row-validity rules, each the
+consequence of getting the previous one right: shape 3 unrepresentable, `required` satisfied by a
+present null, exactly-one never expressed, a fourth shape the schema accepted and the prose
+denied, `anyOf` accepting both arms. The last two were found only by generating a closed state
+space. Instrument: **run the mechanism and read what it actually accepted.**
+
+**Round 11 — the rest of the document.** A field the schema requires that no step creates; a
+validity rule still describing the three-shape world; an LOC estimate byte-identical across eight
+rounds of material change. Instrument: **one complete sweep, not section by section.**
+
+Using the previous phase's instrument is what let each new phase's first defect through.
+
+### The pattern worth carrying
+
+Three consecutive rounds found the same asymmetry: **the English was right and the construct
+chosen to express it was one notch weaker**, always toward permissiveness. `required` where
+non-null was meant, `not both` where exactly-one was meant, `anyOf` where `oneOf` was meant. A
+gate that is too strict announces itself on the first run; a gate that is too loose announces
+nothing.
+
+### Carry-ins, both closed at this commit
+
+1. **The sweep-rule section was restored.** Round 11's LOC rewrite spliced from one heading to the
+   next and deleted it entire, and the round reported that as a conversion. It is the most
+   transferable output of eleven rounds and was briefly in no artefact, which would have left the
+   next package inheriting `-002`'s rule — the one this lineage proved insufficient three times.
+   Restored, and given a fourth clause earned by its own loss: **after replacing a span, read what
+   the span contained, not only what replaced it.**
+2. **The stop clause now names the whole row-validity block**, not the `next_phase` conditional
+   alone. Step 7 activates exactly-one, the gate and shape 4 together; drafting only the newest
+   rule is precisely what left "neither set" accepted.
+
+### What this review does not certify
+
+The plan only. The judgement work — 1,801 dispositions, the test map, the two-crate measured
+budget, the stratified audit — has not happened. The mechanisms that will police it are verified;
+whether the mappings are honest is decided by the audit and by the re-review that `IMPL-WP-001`'s
+re-entry clause triggers if a budget is exceeded or an audit row fails. That trigger is named and
+`review_rounds` is the ledger behind it.
 
 ## Completion record
 

@@ -386,10 +386,52 @@
     {
       "work_package": "WP-V1-CENSUS-003",
       "round": 5,
-      "verdict": "pending",
+      "verdict": "revise",
       "reviewer": "fresh isolated same-model context (Opus 5)",
       "date": "2026-08-21",
       "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 6,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21"
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 7,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21"
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 8,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21"
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 9,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21"
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 10,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21"
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 11,
+      "verdict": "accept",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21"
     }
   ],
   "specoment_defects_found": [
