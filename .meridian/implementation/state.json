@@ -355,6 +355,18 @@
       "blocks": "124 test rows carry escalation OD-021 rather than an owner that does not describe them.",
       "default": "None available. Every option changes either the specoment or the census rule.",
       "sibling": "OD-017 asks the adjacent question about 67 labelled headings that carry no identifier at all."
+    },
+    {
+      "id": "OD-022",
+      "question": "PH-AUTH-005's closure evidence requires every code area to have one disposition AND a next phase. 225 of 1,804 rows carry an escalation and a next phase but no disposition. Does the phase close with that named residual, or does closure wait on the escalations resolving?",
+      "detail": "Measured at commit 8166271. 1,579 rows carry a disposition; 1,789 carry a next phase; the 225 escalated rows have no disposition BY CONSTRUCTION - the XOR forbids a row carrying both, and WP-V1-CENSUS-001 argued at length that a disposition and an escalation are distinct judgements. Reading 'one disposition' as 'one recorded judgement' would satisfy the clause immediately, and this package's own plan explicitly rejected re-merging the two at closure. So the convenient reading is closed off by prior reasoning, and the clause is unmet as written.\n\nThis is not a defect to be fixed by more work. The 225 rows are escalated because eight genuine questions are open - whether meridian-physics and meridian-shader-tools are in v1 scope, whether the meridian-ui facade survives, 67 labelled normative headings that carry no identifier, and 16 requirement ids that are product-scope statements no unit test can serve. Disposing them without answers would be inventing the answers.\n\nThe classification itself is complete: every row has a recorded outcome, 87.5% dispositioned and 12.5% escalated to named decisions with next phases. What is open is whether that counts as the card's 'one disposition and next phase'.",
+      "options": [
+        "Close PH-AUTH-005 with the residual named in state.json, and amend the card's clause 4 to admit it",
+        "Hold PH-AUTH-005 open until the escalations resolve",
+        "Rule that an escalation satisfies 'one disposition' for closure purposes, withdrawing CENSUS-001's distinction at the closure boundary"
+      ],
+      "blocks": "PH-AUTH-005 closure. Nothing else; PH-AUTH-006 could begin on the 1,579 dispositioned rows.",
+      "default": "None taken. The agent that raised this question is the one that would benefit from closing, so it does not take its own default. Recorded for the owner."
     }
   ],
   "review_rounds": [
