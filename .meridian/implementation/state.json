@@ -257,6 +257,90 @@
       ],
       "blocks": "WP-V1-CENSUS-003 cannot set next_phase on the 8 retained rows. They carry retain with next_phase null, counted in the phase-pending residual count PH-AUTH-005 closes with.",
       "default": "Option 3 \u2014 widen PH-AUTH-006 to cover governance enforcement. Taken by inaction. It needs no authority change, keeps the work inside an open phase, and is the weakest of the three: PH-AUTH-006 is behavior-preserving structural decomposition, so governance enforcement sits oddly in it. Named as the default because a record with no default fails this package's own stop rule, not because it is the best answer."
+    },
+    {
+      "id": "OD-014",
+      "question": "Is meridian-physics in the Meridian 1.0 scope?",
+      "detail": "Zero dependents, no binary target, 8 tests, 14 public items. A rapier3d wrapper in the simulation layer. Fails retain-evidence part (ii): nothing depends on it and it is not an entry point. The phase that acts depends on the answer, so next_phase cannot be set.",
+      "options": [
+        "Retain for 1.0 and name the requirement it serves",
+        "Remove; physics returns post-1.0",
+        "Retain as an unqualified prototype, excluded from the 1.0 gate"
+      ],
+      "blocks": "8 test rows and 14 public_types rows carry escalation OD-014 instead of a disposition.",
+      "default": "Option 3 - retain unqualified. Taken by inaction; it preserves the code and the tests without asserting 1.0 readiness."
+    },
+    {
+      "id": "OD-015",
+      "question": "Is meridian-shader-tools in the Meridian 1.0 scope?",
+      "detail": "Zero dependents, no binary, 4 tests, 10 public items, tools layer. Same evidence failure as OD-014 and a different ruling: PEN-018's CMake/CPython-free shader-build contract and PEN-008's Rust-native shader authoring both bear on it, but nothing currently depends on this crate.",
+      "options": [
+        "Retain and wire it into the shader build path PEN-018 requires",
+        "Remove; the shader build contract is met elsewhere",
+        "Retain as an unqualified prototype"
+      ],
+      "blocks": "4 test rows and 10 public_types rows carry escalation OD-015.",
+      "default": "Option 3 - retain unqualified, by inaction."
+    },
+    {
+      "id": "OD-016",
+      "question": "Does the meridian-ui facade survive decomposition, and by when?",
+      "detail": "3 dependents, 1 test. Declares 0 public items and re-exports 214 - 202 through four globs plus 12 named from meridian_ui_text. Its own doc comment tells consumers to migrate incrementally to the owning crates, and no migration deadline is recorded. PH-AUTH-006 decomposes; a facade retained on that eve needs a ruling rather than a default.",
+      "options": [
+        "Keep the facade indefinitely as the supported import surface",
+        "Keep with a stated removal deadline tied to a phase",
+        "Remove in PH-AUTH-006; consumers import the owning crates directly"
+      ],
+      "blocks": "1 test row and the crate row carry escalation OD-016.",
+      "default": "Option 2 - keep with a deadline. Taken by inaction, the deadline is the close of PH-AUTH-006."
+    },
+    {
+      "id": "OD-017",
+      "question": "Accessibility output has no v1 requirement that describes it. Is the requirement missing, or is the behaviour out of 1.0 scope?",
+      "detail": "54 test rows across meridian-ui-semantics (7), meridian-platform accessibility projection (12), meridian-ui-runtime, meridian-ui-core, meridian-ui-editor and meridian-benchmark assert semantic-tree projection, reading order, live regions, focus order and roles. No declared identifier describes this. PROTECT-011 is about protection compatibility, SITE-007 about site qualification, PH-REL-002 is a phase not a requirement. This is the unmapped-behaviour class the plan predicted, and it is the largest single escalation.",
+      "options": [
+        "Add an accessibility requirement family to the specoment (amendment)",
+        "Rule the behaviour in scope under an existing id and name it",
+        "Rule accessibility out of the 1.0 gate; the tests become post-1.0"
+      ],
+      "blocks": "54 test rows and the meridian-ui-semantics crate row carry escalation OD-017.",
+      "default": "None available. Every option changes authority or scope; inaction leaves 54 rows escalated."
+    },
+    {
+      "id": "OD-018",
+      "question": "Do macro-generated public types get census rows?",
+      "detail": "Three public types are declared inside macro_rules! bodies - UiNodeId at meridian_ui_core/src/lib.rs:117 among them - and expand to real public API used by name in meridian-ui's own facade test. The column-0 pub predicate cannot see them, so they have no row, no owner and no disposition, which makes 'every public API has one owner' false by exactly three.",
+      "options": [
+        "Expand macros during measurement so the items get rows",
+        "Hand-list the three as census input rows",
+        "Accept the gap as a recorded limitation"
+      ],
+      "blocks": "Nothing today; recorded as census limitation 2.",
+      "default": "Option 3 - accept as a recorded limitation, by inaction."
+    },
+    {
+      "id": "OD-019",
+      "question": "Ratify the layer ordering the census judges dependency direction against.",
+      "detail": "census.json's layers array was emitted by WP-V1-CENSUS-001 as the census's own judgement, stating plainly that no ordering is declared anywhere in the specoment. Every reverse verdict, including the four currently flagged, is judged against it. Four crates - meridian-audio, -basalt, -isobar, -vegetation - are in no layer at all. PH-AUTH-006's 'dependency graph obeys new layer rules' inherits this as if it were authority.",
+      "options": [
+        "Ratify the eight-layer ordering as declared authority (amendment)",
+        "Declare a different ordering",
+        "Rule that layering is PH-AUTH-006's to define, and that the census array is advisory until then"
+      ],
+      "blocks": "Nothing today. PH-AUTH-006 would inherit an unratified ordering.",
+      "default": "Option 3 - advisory until PH-AUTH-006, by inaction."
+    },
+    {
+      "id": "OD-020",
+      "question": "85 declared identifiers carry no maturity label. Projection defect, specoment authoring gap, or intentional?",
+      "detail": "Measured after range inheritance recovers the labelled-range cases: 35 have a range parent that is itself unlabelled (NORM-MIG 12, EDUX-VIS 10, AI-POLICY 8, DIST 5), and 50 have no range parent at all (AI 26, SRV 5, TWO 5, MOD 4). They are legal owners in this census. OD-009 asks about normalising labels that exist and cannot reach these.",
+      "options": [
+        "Label the 35 unlabelled range parents; members inherit",
+        "Label all 85 individually",
+        "Rule unlabelled headings normative by default and say so in section 0.3"
+      ],
+      "blocks": "Nothing today; the 85 are mappable and recorded as a census limitation.",
+      "default": "Option 3 - normative by default, by inaction, which is how the census already treats them."
     }
   ],
   "review_rounds": [
@@ -432,6 +516,14 @@
       "verdict": "accept",
       "reviewer": "fresh isolated same-model context (Opus 5)",
       "date": "2026-08-21"
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 12,
+      "verdict": "pending",
+      "scope": "implementation review, triggered by IMPL-WP-001 re-entry: the plan capped new owner decisions at six and seven were created. OD-017 (accessibility has no v1 requirement) was not anticipated by the budget.",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21"
     }
   ],
   "specoment_defects_found": [
@@ -572,5 +664,22 @@
       "detail": "Reported 716 test functions. The summing pipeline was piped through 'tail -30', so it totalled only the last thirty files. Two independent counting methods now agree at 772. Third instance in this programme of a figure being wrong because a pipeline silently truncated its own input.",
       "disposition": "Corrected to 772; every figure in the census plan now names the command that produced it."
     }
-  ]
+  ],
+  "phase_residual": {
+    "PH-AUTH-005": {
+      "escalated_rows": 92,
+      "phase_pending_rows": 15,
+      "note": "PH-AUTH-005 closes with a residual of two named counts, not without one. Escalated rows carry no disposition and name an unresolved OD-*; phase-pending rows carry a disposition whose owning phase waits on OD-013.",
+      "decisions": [
+        "OD-013",
+        "OD-014",
+        "OD-015",
+        "OD-016",
+        "OD-017",
+        "OD-018",
+        "OD-019",
+        "OD-020"
+      ]
+    }
+  }
 }

@@ -40,7 +40,7 @@
       "pattern": "^OD-[0-9]{3}$"
     },
     "judged": {
-      "description": "A row that carries judgement. disposition and escalation are never both non-null: that is the XOR, and its absence would readmit 'undecided' under another name. Both-null is permitted only while WP-V1-CENSUS-001/-002 measure; WP-V1-CENSUS-003 tightens this to exactly-one when it assigns, and until it does this schema does NOT reject a row with no judgement at all. Applied to every section that carries these fields \u2014 all ten. The first draft of this schema omitted generated_files and ci_rows, which reproduced inside the artefact the very error it was written to fix: CENSUS-001 claimed 'every row' and was wrong for 104. next_phase may be null only when the row names an unresolved OD-* whose question covers the missing phase - WP-V1-CENSUS-003 shape 3, a disposition whose owning phase is open. Without that gate a null in a required field is undecided returning through the one field the XOR never covered.",
+      "description": "A row that carries judgement. disposition and escalation are never both non-null: that is the XOR, and its absence would readmit 'undecided' under another name. Both-null is permitted only while WP-V1-CENSUS-001/-002 measure; WP-V1-CENSUS-003 tightens this to exactly-one when it assigns, and until it does this schema does NOT reject a row with no judgement at all. Applied to every section that carries these fields \u2014 all ten. The first draft of this schema omitted generated_files and ci_rows, which reproduced inside the artefact the very error it was written to fix: CENSUS-001 claimed 'every row' and was wrong for 104. next_phase may be null only when the row names an unresolved OD-* whose question covers the missing phase - WP-V1-CENSUS-003 shape 3, a disposition whose owning phase is open. Without that gate a null in a required field is undecided returning through the one field the XOR never covered. ACTIVATED by WP-V1-CENSUS-003 step 7: exactly-one, the next_phase gate and shape 4 together. Verified by exhaustive cross-product over all 16 combinations of the four judgement fields - exactly 4 accepted, matching the four declared row shapes.",
       "type": "object",
       "required": [
         "disposition",
@@ -86,8 +86,33 @@
           ]
         }
       },
+      "anyOf": [
+        {
+          "properties": {
+            "disposition": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "disposition"
+          ]
+        },
+        {
+          "properties": {
+            "escalation": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "escalation"
+          ]
+        }
+      ],
       "not": {
-        "description": "Both set at once.",
         "allOf": [
           {
             "properties": {
@@ -115,7 +140,49 @@
           }
         ]
       },
-      "$comment": "WP-V1-CENSUS-003 step 7 activates the block below. It REPLACES the \"not\" key; \"description\", \"type\", \"required\" and \"properties\" survive unchanged, so this object keeps the 104-row exemption provenance and the measurement-phase reasoning recorded in description. Block: {\"anyOf\": [{\"properties\": {\"disposition\": {\"not\": {\"type\": \"null\"}}}, \"required\": [\"disposition\"]}, {\"properties\": {\"escalation\": {\"not\": {\"type\": \"null\"}}}, \"required\": [\"escalation\"]}], \"not\": {\"allOf\": [{\"properties\": {\"disposition\": {\"not\": {\"type\": \"null\"}}}, \"required\": [\"disposition\"]}, {\"properties\": {\"escalation\": {\"not\": {\"type\": \"null\"}}}, \"required\": [\"escalation\"]}]}, \"if\": {\"properties\": {\"next_phase\": {\"type\": \"null\"}}, \"required\": [\"next_phase\"]}, \"then\": {\"oneOf\": [{\"properties\": {\"phase_pending\": {\"type\": \"string\", \"pattern\": \"^OD-[0-9]{3}$\"}}, \"required\": [\"phase_pending\"]}, {\"properties\": {\"escalation\": {\"type\": \"string\", \"pattern\": \"^OD-[0-9]{3}$\"}}, \"required\": [\"escalation\"]}]}, \"else\": {\"properties\": {\"phase_pending\": {\"type\": \"null\"}}}} Verified against jsonschema 0.33 by exhaustive cross-product over all 16 combinations of the four judgement fields, not by enumerated cases: exactly 4 are accepted, matching the four declared row shapes, and a malformed OD-13 is rejected. All 1801 rows fail today by design, because every row is neither-set during measurement, which is the argument for activating at the end of the package. Three construction notes, each a defect found by running the block rather than reading it. anyOf plus not gives exactly-one; the not half alone accepted \"neither set\". Every branch constrains the VALUE, not the key, because required alone is satisfied by a present null and this generator emits every field. then is oneOf, not anyOf: anyOf accepted escalation and phase_pending both set, which lets a row name two DIFFERENT unresolved records with no rule saying which governs its phase, and both would pass the Rust existence check. The unresolved half - the named record must exist and be unresolved in state.json - is not expressible here and goes in Rust."
+      "if": {
+        "properties": {
+          "next_phase": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "next_phase"
+        ]
+      },
+      "then": {
+        "oneOf": [
+          {
+            "properties": {
+              "phase_pending": {
+                "type": "string",
+                "pattern": "^OD-[0-9]{3}$"
+              }
+            },
+            "required": [
+              "phase_pending"
+            ]
+          },
+          {
+            "properties": {
+              "escalation": {
+                "type": "string",
+                "pattern": "^OD-[0-9]{3}$"
+              }
+            },
+            "required": [
+              "escalation"
+            ]
+          }
+        ]
+      },
+      "else": {
+        "properties": {
+          "phase_pending": {
+            "type": "null"
+          }
+        }
+      }
     }
   },
   "properties": {

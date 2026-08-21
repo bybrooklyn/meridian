@@ -194,6 +194,222 @@ pub struct EvidenceRunnerRow {
     pub promoting: bool,
 }
 
+/// One row's judgement, resolved from `dispositions.json`.
+///
+/// Four fields, four legal shapes. See `WP-V1-CENSUS-003`'s row-validity table: exactly one of
+/// `disposition`/`escalation`, and `next_phase` null iff exactly one of `phase_pending`/
+/// `escalation` names an unresolved owner decision.
+#[derive(Debug, Clone, Default)]
+pub struct Judgement {
+    pub disposition: Option<String>,
+    pub escalation: Option<String>,
+    pub next_phase: Option<String>,
+    pub phase_pending: Option<String>,
+    /// Test rows only: the requirement id a retained test serves. The card requires each
+    /// retained test to have an owner AND every code area to have a next phase, so these are
+    /// two fields, not one.
+    pub owner: Option<String>,
+}
+
+impl Judgement {
+    fn render(&self) -> String {
+        let q = |v: &Option<String>| {
+            v.as_ref()
+                .map_or("null".to_string(), |s| format!("\"{}\"", escape(s)))
+        };
+        format!(
+            "\"disposition\": {}, \"next_phase\": {}, \"phase_pending\": {}, \"escalation\": {}",
+            q(&self.disposition),
+            q(&self.next_phase),
+            q(&self.phase_pending),
+            q(&self.escalation)
+        )
+    }
+}
+
+/// The checked-in assignment input.
+///
+/// Named rules plus an exception list, not ~1,800 opaque rows: a reviewer reads the rules and
+/// the exceptions, and bulk assignment is a statement the file makes about itself rather than a
+/// suspicion. Keyed by `(section, key)` where key is stable — `file::function` for tests,
+/// `crate::item` for public types, never a line number, because any unrelated source edit shifts
+/// lines and would orphan every disposition.
+///
+/// **Deviation from the accepted plan**, recorded rather than silent: the plan named
+/// `dispositions.toml`. This is `dispositions.json`. Adding a `toml` crate would add a direct
+/// third-party dependency to the very dependency census this package is dispositioning, and
+/// `serde_json` is already a direct dependency used throughout this module.
+#[derive(Debug, Default)]
+pub struct Dispositions {
+    /// section -> key -> judgement
+    rows: std::collections::BTreeMap<String, std::collections::BTreeMap<String, Judgement>>,
+    /// Named rules, evaluated in order against a row key.
+    matchers: Vec<Matcher>,
+    /// (id, rationale) for reporting.
+    pub rules: Vec<(String, String)>,
+}
+
+/// One named rule. Matching is substring containment on the row key, deliberately: the keys are
+/// `crate`, `crate::item` and `file::function`, and a rule that has to be read by a reviewer is
+/// better as "contains `meridian_ui_runtime` and contains `accessib`" than as a regex.
+#[derive(Debug, Clone)]
+struct Matcher {
+    section: String,
+    /// Exact key match. Required for crate rules: substring containment let a rule keyed on
+    /// `meridian-ui` swallow `meridian-ui-core`, `-editor`, `-render`, `-runtime`, `-semantics`
+    /// and `-text`, escalating six crates that had dispositions of their own.
+    key_equals: Option<String>,
+    key_contains: Vec<String>,
+    key_matches_any: Option<Vec<String>>,
+    key_excludes: Vec<String>,
+    judgement: Judgement,
+}
+
+impl Dispositions {
+    pub fn load(root: &Path) -> Self {
+        let path = root.join(".meridian/implementation/dispositions.json");
+        let Ok(text) = fs::read_to_string(&path) else {
+            return Self::default();
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+            return Self::default();
+        };
+        let mut out = Self::default();
+        if let Some(rules) = value.get("rules").and_then(serde_json::Value::as_array) {
+            for rule in rules {
+                let id = rule
+                    .get("id")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let why = rule
+                    .get("rationale")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                out.rules.push((id, why));
+            }
+        }
+        if let Some(items) = value.get("rules").and_then(serde_json::Value::as_array) {
+            for item in items {
+                let Some(section) = item.get("section").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                let list = |name: &str| -> Vec<String> {
+                    item.get(name)
+                        .and_then(serde_json::Value::as_array)
+                        .map(|l| {
+                            l.iter()
+                                .filter_map(|v| v.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                };
+                let any = item
+                    .get("key_matches_any")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|l| {
+                        l.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    });
+                out.matchers.push(Matcher {
+                    section: section.to_string(),
+                    key_equals: field(item, "key_equals"),
+                    key_contains: list("key_contains"),
+                    key_matches_any: any,
+                    key_excludes: list("key_excludes"),
+                    judgement: Judgement {
+                        disposition: field(item, "disposition"),
+                        escalation: field(item, "escalation"),
+                        next_phase: field(item, "next_phase"),
+                        phase_pending: field(item, "phase_pending"),
+                        owner: field(item, "owner"),
+                    },
+                });
+            }
+        }
+        for group in ["exceptions"] {
+            let Some(items) = value.get(group).and_then(serde_json::Value::as_array) else {
+                continue;
+            };
+            for item in items {
+                let Some(section) = item.get("section").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                let judgement = Judgement {
+                    disposition: field(item, "disposition"),
+                    escalation: field(item, "escalation"),
+                    next_phase: field(item, "next_phase"),
+                    phase_pending: field(item, "phase_pending"),
+                    owner: field(item, "owner"),
+                };
+                let keys: Vec<String> = item
+                    .get("keys")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|list| {
+                        list.iter()
+                            .filter_map(|k| k.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .or_else(|| {
+                        item.get("key")
+                            .and_then(serde_json::Value::as_str)
+                            .map(|k| vec![k.to_string()])
+                    })
+                    .unwrap_or_default();
+                let entry = out.rows.entry(section.to_string()).or_default();
+                for key in keys {
+                    // Exceptions are loaded after rules and overwrite them by design.
+                    entry.insert(key, judgement.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// Resolve one row: exact exception first, then the first matching rule.
+    ///
+    /// Rules are evaluated rather than expanded into rows. Materialising all ~1,800 judgements
+    /// produced a file that no one reads and that goes stale the moment the workspace gains a
+    /// public item or a test — including the ones this very module adds, which is how the
+    /// activated schema first failed on rows the census had just created about itself.
+    pub fn get(&self, section: &str, key: &str) -> Judgement {
+        if let Some(exact) = self.rows.get(section).and_then(|e| e.get(key)) {
+            return exact.clone();
+        }
+        for rule in &self.matchers {
+            if rule.section != section {
+                continue;
+            }
+            if let Some(exact) = &rule.key_equals {
+                if exact != key {
+                    continue;
+                }
+            }
+            if !rule.key_contains.iter().all(|needle| key.contains(needle)) {
+                continue;
+            }
+            if let Some(pattern) = &rule.key_matches_any {
+                if !pattern.iter().any(|needle| key.contains(needle)) {
+                    continue;
+                }
+            }
+            if rule.key_excludes.iter().any(|needle| key.contains(needle)) {
+                continue;
+            }
+            return rule.judgement.clone();
+        }
+        Judgement::default()
+    }
+}
+
+fn field(item: &serde_json::Value, name: &str) -> Option<String> {
+    item.get(name)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
 /// The measured census.
 #[derive(Debug, Default)]
 pub struct Census {
@@ -1346,13 +1562,29 @@ pub fn schema_problems(root: &Path, rendered: &str) -> Vec<String> {
         Err(error) => problems.push(format!("census schema does not compile: {error}")),
     }
 
+    // UNRESOLVED records only, scoped to open_owner_decisions. An escalation naming a settled
+    // decision would otherwise pass a check this package calls machine-checkable: OD-007 and
+    // OD-011 both carry `resolved`, and the earlier harvester accepted any 6-character OD- string
+    // anywhere in the file.
     let known: Vec<String> = fs::read_to_string(root.join(".meridian/implementation/state.json"))
         .ok()
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
         .map(|state| {
-            let mut ids = Vec::new();
-            collect_od_ids(&state, &mut ids);
-            ids
+            state
+                .get("open_owner_decisions")
+                .and_then(serde_json::Value::as_array)
+                .map(|list| {
+                    list.iter()
+                        .filter(|entry| entry.get("resolved").is_none())
+                        .filter_map(|entry| {
+                            entry
+                                .get("id")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_string)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
         })
         .unwrap_or_default();
     for (section, rows) in value.as_object().into_iter().flatten() {
@@ -1360,12 +1592,22 @@ pub fn schema_problems(root: &Path, rendered: &str) -> Vec<String> {
             continue;
         };
         for row in rows {
+            for name in ["escalation", "phase_pending"] {
+                let Some(id) = row.get(name).and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                if !known.iter().any(|k| k == id) {
+                    problems.push(format!(
+                        "{section}: {name} {id} names no unresolved OD-* record in state.json"
+                    ));
+                }
+            }
             let Some(id) = row.get("escalation").and_then(serde_json::Value::as_str) else {
                 continue;
             };
             if !known.iter().any(|k| k == id) {
                 problems.push(format!(
-                    "{section}: escalation {id} names no OD-* record in state.json"
+                    "{section}: escalation {id} names no unresolved OD-* record in state.json"
                 ));
             }
         }
@@ -1373,31 +1615,85 @@ pub fn schema_problems(root: &Path, rendered: &str) -> Vec<String> {
     problems
 }
 
-fn collect_od_ids(value: &serde_json::Value, out: &mut Vec<String>) {
-    match value {
-        serde_json::Value::String(text) => {
-            if text.len() == 6 && text.starts_with("OD-") {
-                out.push(text.clone());
-            }
-        }
-        serde_json::Value::Array(items) => items.iter().for_each(|v| collect_od_ids(v, out)),
-        serde_json::Value::Object(map) => {
-            for (key, v) in map {
-                if key == "id" {
-                    if let Some(text) = v.as_str() {
-                        if text.starts_with("OD-") {
-                            out.push(text.to_string());
-                        }
-                    }
-                }
-                collect_od_ids(v, out);
-            }
-        }
-        _ => {}
+/// The assignment constraints `WP-V1-CENSUS-003` declares, as live rules rather than prose.
+///
+/// A budget with no mechanism is decoration, and a ceiling with no floor punishes only honesty:
+/// bulk-assigning every test to a plausible id produces zero escalations and passes a ceiling
+/// comfortably. These are the constraints that fail the build.
+pub fn assignment_problems(rendered: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(rendered) else {
+        return problems;
+    };
+    let tests = value
+        .get("tests")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if tests.is_empty() {
+        return problems;
     }
+
+    let owner_of = |row: &serde_json::Value| {
+        row.get("owner")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+    };
+    let mapped: Vec<String> = tests.iter().filter_map(owner_of).collect();
+    if mapped.is_empty() {
+        return problems;
+    }
+
+    // Per-family cap, derived in step 1 from the measured meridian-spec and meridian-ui-editor
+    // mappings rather than pre-set. The UI family is the binding one at 35.3%; 45% is the
+    // measured maximum plus headroom, and a pre-set 25% would have failed before any judgement.
+    let mut families: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for id in &mapped {
+        let family = id.rsplit_once('-').map_or(id.as_str(), |(head, _)| head);
+        *families.entry(family.to_string()).or_default() += 1;
+    }
+    for (family, count) in &families {
+        // Integer arithmetic: a percentage of a row count needs no float, and the cast lint is
+        // a real signal on a value derived from `usize`.
+        if count * 100 > mapped.len() * 45 {
+            problems.push(format!(
+                "requirement family {family} owns {count} of {} mapped tests ({}%), over the derived 45% cap",
+                mapped.len(),
+                count * 100 / mapped.len()
+            ));
+        }
+    }
+
+    // No crate with five or more mapped tests may map them all to one id.
+    let mut by_crate: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+        std::collections::BTreeMap::new();
+    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for row in &tests {
+        let (Some(file), Some(owner)) = (
+            row.get("file").and_then(serde_json::Value::as_str),
+            owner_of(row),
+        ) else {
+            continue;
+        };
+        // `engine/meridian_foo/src/...` -> `meridian_foo`
+        let krate = file.split('/').nth(1).unwrap_or("?").to_string();
+        by_crate.entry(krate.clone()).or_default().insert(owner);
+        *counts.entry(krate).or_default() += 1;
+    }
+    for (krate, ids) in &by_crate {
+        let n = counts.get(krate).copied().unwrap_or(0);
+        if n >= 5 && ids.len() == 1 {
+            problems.push(format!(
+                "{krate} maps all {n} of its mapped tests to one id ({}); a crate that large serves more than one requirement",
+                ids.iter().next().map_or("?", String::as_str)
+            ));
+        }
+    }
+    problems
 }
 
 pub fn render(census: &Census, root: &Path, specoment_sha256: &str) -> String {
+    let judged = Dispositions::load(root);
     let mut out = String::new();
     out.push_str("{\n");
     let _ = writeln!(out, "  \"schema\": 1,");
@@ -1456,20 +1752,20 @@ pub fn render(census: &Census, root: &Path, specoment_sha256: &str) -> String {
     }
     out.push_str("\n  ],\n");
 
-    render_crates(&mut out, census);
-    render_public_types(&mut out, census);
-    render_dependencies(&mut out, census);
-    render_features(&mut out, census);
-    render_examples(&mut out, census);
-    render_evidence_runners(&mut out, census);
-    render_formats(&mut out, census);
+    render_crates(&mut out, census, &judged);
+    render_public_types(&mut out, census, &judged);
+    render_dependencies(&mut out, census, &judged);
+    render_features(&mut out, census, &judged);
+    render_examples(&mut out, census, &judged);
+    render_evidence_runners(&mut out, census, &judged);
+    render_formats(&mut out, census, &judged);
     render_edges(&mut out, census);
-    render_lists(&mut out, census);
-    render_tests(&mut out, census);
+    render_lists(&mut out, census, &judged);
+    render_tests(&mut out, census, &judged);
     out
 }
 
-fn render_crates(out: &mut String, census: &Census) {
+fn render_crates(out: &mut String, census: &Census, judged: &Dispositions) {
     out.push_str("  \"crates\": [\n");
     for (i, c) in census.crates.iter().enumerate() {
         if i > 0 {
@@ -1489,9 +1785,7 @@ fn render_crates(out: &mut String, census: &Census) {
                 "      \"test_functions\": {tests},\n",
                 "      \"implementation_maturity\": null,\n",
                 "      \"card_disposition\": \"ExistingUnqualified\",\n",
-                "      \"disposition\": null,\n",
-                "      \"next_phase\": null,\n",
-                "      \"escalation\": null\n",
+                "      {judgement}\n",
                 "    }}"
             ),
             name = c.name,
@@ -1501,13 +1795,14 @@ fn render_crates(out: &mut String, census: &Census) {
             bytes = c.source_bytes,
             pub_ = c.declared_public_items,
             reexp = c.reexported_public_items,
-            tests = c.test_functions
+            tests = c.test_functions,
+            judgement = judged.get("crates", &c.name).render()
         );
     }
     out.push_str("\n  ],\n");
 }
 
-fn render_public_types(out: &mut String, census: &Census) {
+fn render_public_types(out: &mut String, census: &Census, judged: &Dispositions) {
     out.push_str("  \"public_types\": [\n");
     for (i, t) in census.public_types.iter().enumerate() {
         if i > 0 {
@@ -1515,18 +1810,19 @@ fn render_public_types(out: &mut String, census: &Census) {
         }
         let _ = write!(
             out,
-            "    {{ \"crate\": \"{}\", \"item\": \"{}\", \"kind\": \"{}\", \"file\": \"{}\", \"line\": {}, \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
+            "    {{ \"crate\": \"{}\", \"item\": \"{}\", \"kind\": \"{}\", \"file\": \"{}\", \"line\": {}, {} }}",
             t.krate,
             escape(&t.item),
             t.kind,
             escape(&t.file),
-            t.line
+            t.line,
+            judged.get("public_types", &format!("{}::{}", t.krate, t.item)).render()
         );
     }
     out.push_str("\n  ],\n");
 }
 
-fn render_dependencies(out: &mut String, census: &Census) {
+fn render_dependencies(out: &mut String, census: &Census, judged: &Dispositions) {
     out.push_str("  \"dependencies\": [\n");
     for (i, d) in census.dependencies.iter().enumerate() {
         if i > 0 {
@@ -1534,15 +1830,16 @@ fn render_dependencies(out: &mut String, census: &Census) {
         }
         let _ = write!(
             out,
-            "    {{ \"name\": \"{}\", \"direct\": {}, \"licence\": null, \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
+            "    {{ \"name\": \"{}\", \"direct\": {}, \"licence\": null, {} }}",
             escape(&d.name),
-            d.direct
+            d.direct,
+            judged.get("dependencies", &d.name).render()
         );
     }
     out.push_str("\n  ],\n");
 }
 
-fn render_features(out: &mut String, census: &Census) {
+fn render_features(out: &mut String, census: &Census, judged: &Dispositions) {
     out.push_str("  \"features\": [\n");
     for (i, f) in census.features.iter().enumerate() {
         if i > 0 {
@@ -1555,16 +1852,19 @@ fn render_features(out: &mut String, census: &Census) {
             .collect();
         let _ = write!(
             out,
-            "    {{ \"crate\": \"{}\", \"feature\": \"{}\", \"enables\": [{}], \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
+            "    {{ \"crate\": \"{}\", \"feature\": \"{}\", \"enables\": [{}], {} }}",
             f.krate,
             escape(&f.feature),
-            enables.join(", ")
+            enables.join(", "),
+            judged
+                .get("features", &format!("{}::{}", f.krate, f.feature))
+                .render()
         );
     }
     out.push_str("\n  ],\n");
 }
 
-fn render_examples(out: &mut String, census: &Census) {
+fn render_examples(out: &mut String, census: &Census, judged: &Dispositions) {
     out.push_str("  \"examples\": [\n");
     for (i, e) in census.examples.iter().enumerate() {
         if i > 0 {
@@ -1572,15 +1872,18 @@ fn render_examples(out: &mut String, census: &Census) {
         }
         let _ = write!(
             out,
-            "    {{ \"crate\": \"{}\", \"name\": \"{}\", \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
+            "    {{ \"crate\": \"{}\", \"name\": \"{}\", {} }}",
             e.krate,
-            escape(&e.name)
+            escape(&e.name),
+            judged
+                .get("examples", &format!("{}::{}", e.krate, e.name))
+                .render()
         );
     }
     out.push_str("\n  ],\n");
 }
 
-fn render_evidence_runners(out: &mut String, census: &Census) {
+fn render_evidence_runners(out: &mut String, census: &Census, judged: &Dispositions) {
     out.push_str("  \"evidence_runners\": [\n");
     for (i, r) in census.evidence_runners.iter().enumerate() {
         if i > 0 {
@@ -1588,20 +1891,21 @@ fn render_evidence_runners(out: &mut String, census: &Census) {
         }
         let _ = write!(
             out,
-            "    {{ \"crate\": \"{}\", \"target\": \"{}\", \"evidence_path\": {}, \"wired_in_ci\": {}, \"promoting\": {}, \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
+            "    {{ \"crate\": \"{}\", \"target\": \"{}\", \"evidence_path\": {}, \"wired_in_ci\": {}, \"promoting\": {}, {} }}",
             escape(&r.krate),
             escape(&r.target),
             r.evidence_path
                 .as_ref()
                 .map_or("null".to_string(), |p| format!("\"{}\"", escape(p))),
             r.wired_in_ci,
-            r.promoting
+            r.promoting,
+            judged.get("evidence_runners", &r.target).render()
         );
     }
     out.push_str("\n  ],\n");
 }
 
-fn render_formats(out: &mut String, census: &Census) {
+fn render_formats(out: &mut String, census: &Census, judged: &Dispositions) {
     out.push_str("  \"formats\": [\n");
     for (i, f) in census.formats.iter().enumerate() {
         if i > 0 {
@@ -1617,8 +1921,8 @@ fn render_formats(out: &mut String, census: &Census) {
             .map_or("null".into(), |v| format!("\"{v}\""));
         let _ = write!(
             out,
-            "    {{ \"name\": \"{}\", \"magic\": {magic}, \"version_constant\": {version}, \"owning_crate\": \"{}\", \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
-            f.name, f.owning_crate
+            "    {{ \"name\": \"{}\", \"magic\": {magic}, \"version_constant\": {version}, \"owning_crate\": \"{}\", {} }}",
+            f.name, f.owning_crate, judged.get("formats", &f.name).render()
         );
     }
     out.push_str("\n  ],\n");
@@ -1639,7 +1943,7 @@ fn render_edges(out: &mut String, census: &Census) {
     out.push_str("\n  ],\n");
 }
 
-fn render_lists(out: &mut String, census: &Census) {
+fn render_lists(out: &mut String, census: &Census, judged: &Dispositions) {
     for (key, items) in [
         ("generated_files", &census.generated_files),
         ("ci_rows", &census.ci_rows),
@@ -1651,27 +1955,36 @@ fn render_lists(out: &mut String, census: &Census) {
             }
             let _ = write!(
                 out,
-                "    {{ \"id\": \"{}\", \"disposition\": null, \"escalation\": null }}",
-                escape(item)
+                "    {{ \"id\": \"{}\", {} }}",
+                escape(item),
+                judged.get(key, item).render()
             );
         }
         out.push_str("\n  ],\n");
     }
 }
 
-fn render_tests(out: &mut String, census: &Census) {
+fn render_tests(out: &mut String, census: &Census, judged: &Dispositions) {
     out.push_str("  \"tests\": [\n");
     for (i, t) in census.tests.iter().enumerate() {
         if i > 0 {
             out.push_str(",\n");
         }
+        let key = format!("{}::{}", t.file, t.function);
+        let j = judged.get("tests", &key);
         let _ = write!(
             out,
-            "    {{ \"file\": \"{}\", \"line\": {}, \"module\": \"{}\", \"function\": \"{}\", \"disposition\": null, \"owner\": null, \"escalation\": null }}",
+            "    {{ \"file\": \"{}\", \"line\": {}, \"module\": \"{}\", \"function\": \"{}\", \"owner\": {}, {} }}",
             escape(&t.file),
             t.line,
             escape(&t.module),
-            t.function
+            t.function,
+            // `owner` on a test row means the requirement id it serves - the third meaning the
+            // field carries, disambiguated in WP-V1-CENSUS-002 and kept here.
+            j.owner
+                .as_ref()
+                .map_or("null".to_string(), |o| format!("\"{o}\"")),
+            j.render()
         );
     }
     out.push_str("\n  ]\n}\n");
@@ -2051,17 +2364,15 @@ mod tests {
         }
     }
 
-    /// Failure injection for the schema, across every judgement-bearing section.
+    /// Row validity, by exhaustive cross-product rather than enumerated cases.
     ///
-    /// Both-set, out-of-vocabulary and a non-existent `OD-*` are rejected. Neither-set is NOT
-    /// rejected and is enumerated here to make that deliberate: it is the measurement-phase
-    /// state of all ~2,000 rows, and `WP-V1-CENSUS-003` tightens the rule when it assigns.
-    ///
-    /// The loop runs over every section rather than `crates` alone: the first draft injected
-    /// only into `crates` and so did not notice that the schema left `generated_files` and
-    /// `ci_rows` entirely unconstrained.
+    /// Four judgement fields give sixteen states — fewer than the number of cases anyone would
+    /// think to write, and it does not depend on thinking of the right ones. Two blocking
+    /// review findings were combinations the plan declared invalid and the schema accepted;
+    /// both were found by generating the space. This subsumes the individual both-set,
+    /// neither-set, malformed and double-naming cases rather than listing them beside it.
     #[test]
-    fn schema_rejects_invalid_judgement() {
+    fn exactly_four_of_sixteen_row_shapes_are_legal() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let sections = [
             "crates",
@@ -2075,41 +2386,55 @@ mod tests {
             "generated_files",
             "ci_rows",
         ];
-        let template = r#"{"schema":1,"source_tree_checkpoint":"x","specoment_sha256":"x","measurements":[],"layers":[],"crates":[],"public_types":[],"dependencies":[],"features":[],"examples":[],"evidence_runners":[],"formats":[],"edges":[],"tests":[],"generated_files":[],"ci_rows":[]}"#;
-        for (label, row) in [
-            (
-                "both set",
-                r#"{"disposition":"retain","escalation":"OD-001"}"#,
-            ),
-            ("neither set", r#"{"disposition":null,"escalation":null}"#),
-            (
-                "outside vocabulary",
-                r#"{"disposition":"undecided","escalation":null}"#,
-            ),
-            (
-                "nonexistent OD",
-                r#"{"disposition":null,"escalation":"OD-999"}"#,
-            ),
-        ] {
-            for section in sections {
+        let template = r#"{"schema":1,"source_tree_checkpoint":"x","specoment_sha256":"x","limitations":[],"measurements":[],"layers":[],"crates":[],"public_types":[],"dependencies":[],"features":[],"examples":[],"evidence_runners":[],"formats":[],"edges":[],"tests":[],"generated_files":[],"ci_rows":[]}"#;
+        // The four legal shapes, as WP-V1-CENSUS-003's row-validity table declares them.
+        let legal = [
+            (true, false, true, false),
+            (false, true, true, false),
+            (true, false, false, true),
+            (false, true, false, false),
+        ];
+        for section in sections {
+            let mut accepted = Vec::new();
+            for bits in 0..16u8 {
+                let (d, e, n, p) = (bits & 1 != 0, bits & 2 != 0, bits & 4 != 0, bits & 8 != 0);
+                let row = format!(
+                    r#"{{"disposition":{},"escalation":{},"next_phase":{},"phase_pending":{}}}"#,
+                    if d { "\"retain\"" } else { "null" },
+                    if e { "\"OD-005\"" } else { "null" },
+                    if n { "\"PH-AUTH-006\"" } else { "null" },
+                    if p { "\"OD-013\"" } else { "null" }
+                );
                 let rendered = template.replace(
                     &format!("\"{section}\":[]"),
                     &format!("\"{section}\":[{row}]"),
                 );
-                let problems = super::schema_problems(&root, &rendered);
-                if label == "neither set" {
-                    assert!(
-                        problems.is_empty(),
-                        "{section}: neither-set must stay legal while measuring"
-                    );
-                    continue;
+                if super::schema_problems(&root, &rendered).is_empty() {
+                    accepted.push((d, e, n, p));
                 }
+            }
+            assert_eq!(
+                accepted.len(),
+                4,
+                "{section}: {} of 16 combinations accepted, expected exactly 4",
+                accepted.len()
+            );
+            for shape in legal {
                 assert!(
-                    !problems.is_empty(),
-                    "{section}: schema accepted a row that is {label}"
+                    accepted.contains(&shape),
+                    "{section}: legal shape {shape:?} was rejected"
                 );
             }
         }
+        // A malformed decision id must not pass the shape-3 branch.
+        let bad = template.replace(
+            "\"crates\":[]",
+            r#""crates":[{"disposition":"retain","escalation":null,"next_phase":null,"phase_pending":"OD-13"}]"#,
+        );
+        assert!(
+            !super::schema_problems(&root, &bad).is_empty(),
+            "a malformed OD id was accepted"
+        );
     }
 
     /// The assertion whose absence let a fully zeroed census ship.

@@ -151,6 +151,59 @@ fn main() {
 /// them once `OD-010` is ruled. They no longer run by default because `PH-AUTH-004` deleted the
 /// authority they policed; nine of their rules police concepts that survive into v1 with no
 /// successor yet, and leaving the code in place keeps that ruling from being made by deletion.
+/// Census generation, schema validation on both the generated string and the on-disk file, and
+/// the byte-identity comparison. Split out of `check_v1` for length.
+fn census_issues(config: &Config, digest: &str, issues: &mut Vec<Issue>) {
+    match census_json(&config.root, digest) {
+        Ok(rendered) => {
+            let target = config.root.join(".meridian/implementation/census.json");
+            // Shape, against the checked-in schema. WP-V1-CENSUS-001 promised this
+            // and shipped without it, leaving the XOR invariant asserted only in
+            // prose — which is how a wholly zeroed census passed every gate.
+            for problem in specoment::census::schema_problems(&config.root, &rendered) {
+                push(issues, "census-schema", "governance", &target, &problem);
+            }
+            for problem in specoment::census::assignment_problems(&rendered) {
+                push(issues, "census-assignment", "governance", &target, &problem);
+            }
+            // WP-V1-CENSUS-003 step 8, and WP-V1-CENSUS-002 carry-in 7. Validating only
+            // the generator's output leaves a hand-edited census reported as generic
+            // staleness rather than as the schema violation it is, naming no row.
+            if let Ok(on_disk) = fs::read_to_string(&target) {
+                if on_disk != rendered {
+                    for problem in specoment::census::schema_problems(&config.root, &on_disk) {
+                        push(
+                            issues,
+                            "census-schema-on-disk",
+                            "governance",
+                            &target,
+                            &problem,
+                        );
+                    }
+                }
+            }
+            match fs::read_to_string(&target) {
+                Ok(existing) if existing == rendered => {}
+                Ok(_) => push(
+                    issues,
+                    "stale-census",
+                    "governance",
+                    &target,
+                    "the census does not match the current source tree; regenerate it",
+                ),
+                Err(_) => push(
+                    issues,
+                    "missing-census",
+                    "governance",
+                    &target,
+                    "no census; PH-AUTH-005 requires one",
+                ),
+            }
+        }
+        Err(error) => push(issues, "census-error", "governance", &config.root, &error),
+    }
+}
+
 fn check_v1(config: &Config, issues: &mut Vec<Issue>) -> Result<(), String> {
     let source_path = config.root.join("MERIDIAN_SPECOMENT.md");
     match fs::read_to_string(&source_path) {
@@ -199,35 +252,7 @@ fn check_v1(config: &Config, issues: &mut Vec<Issue>) -> Result<(), String> {
                     &problem,
                 );
             }
-            match census_json(&config.root, &digest) {
-                Ok(rendered) => {
-                    let target = config.root.join(".meridian/implementation/census.json");
-                    // Shape, against the checked-in schema. WP-V1-CENSUS-001 promised this
-                    // and shipped without it, leaving the XOR invariant asserted only in
-                    // prose — which is how a wholly zeroed census passed every gate.
-                    for problem in specoment::census::schema_problems(&config.root, &rendered) {
-                        push(issues, "census-schema", "governance", &target, &problem);
-                    }
-                    match fs::read_to_string(&target) {
-                        Ok(existing) if existing == rendered => {}
-                        Ok(_) => push(
-                            issues,
-                            "stale-census",
-                            "governance",
-                            &target,
-                            "the census does not match the current source tree; regenerate it",
-                        ),
-                        Err(_) => push(
-                            issues,
-                            "missing-census",
-                            "governance",
-                            &target,
-                            "no census; PH-AUTH-005 requires one",
-                        ),
-                    }
-                }
-                Err(error) => push(issues, "census-error", "governance", &config.root, &error),
-            }
+            census_issues(config, &digest, issues);
             for problem in
                 specoment::accumulated::v05_declarations(&config.root, &tracked_files(&config.root))
             {

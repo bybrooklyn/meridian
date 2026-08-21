@@ -608,4 +608,91 @@ re-entry clause triggers if a budget is exceeded or an audit row fails. That tri
 
 ## Completion record
 
-_Pending._
+Landed at the commit carrying this record. Implementation followed the accepted plan; two
+deviations and one budget breach are reported below rather than left to be discovered.
+
+### Result
+
+All **1,804** judgement-bearing rows carry a judgement. Nothing is unjudged.
+
+The plan says 1,801 throughout and is not stale: implementing this package added public items
+and tests to `meridian-spec`, which the census measures. A census that measures the workspace
+containing its own source moves when that source moves. That property has now produced a wrong
+`#[test]` count, a phantom re-export count, a stale headline figure, and — during this
+implementation — a newly activated schema failing on rows the census had just created about
+itself. It is permanent, and the rules-not-rows structure is what makes it harmless.
+
+| Section | Rows | Outcome |
+|---|---|---|
+| crates | 37 | 29 retain, 4 remove (the markers), 4 escalated |
+| public types | 904 | 637 retain, 229 refactor, 4 remove, 34 escalated |
+| tests | 791 | 737 retain across 49 requirement ids, 54 escalated |
+| dependencies, features, examples, evidence runners, formats, generated files, CI rows | 72 | retain |
+
+**Residual, as two named counts** — the phase closes with these, not without them:
+92 escalated rows, and 15 dispositioned rows whose next phase is pending `OD-013`.
+
+Constraints, all live rules in `check` rather than prose: 49 distinct requirement ids; largest
+family `UI` at 35.3 % against a cap of 45 % derived in step 1 from the measured `meridian-spec`
+(115 tests, 3 ids, 0 escalations) and `meridian-ui-editor` (59 tests, 6 ids, 7 escalations)
+mappings; zero crates with five or more mapped tests sharing a single id.
+
+### Budget breach, reported
+
+The plan capped new owner decisions at six. **Seven were created**: `OD-014` `meridian-physics`,
+`OD-015` `meridian-shader-tools`, `OD-016` the `meridian-ui` facade, `OD-017` accessibility,
+`OD-018` macro-generated public types, `OD-019` the unratified layer ordering, `OD-020` the 85
+unlabelled identifiers.
+
+`OD-017` is the one the budget did not anticipate. Applying retain-evidence part (i) to
+`meridian-ui-semantics` showed that **accessibility output has no v1 requirement that describes
+it** — `PROTECT-011` is about protection compatibility, `SITE-007` about site qualification,
+`PH-REL-002` is a phase. It is the largest single escalation at 54 test rows plus a crate, and
+folding it into another record would have asked an owner two questions in one.
+
+Per the plan's own re-entry trigger, exceeding a budget re-opens independent review under
+`IMPL-WP-001`, and the reviewer — not the author — accepts the written reason. That is this
+paragraph, and the review round is recorded in `state.json`.
+
+### Deviations from the accepted plan
+
+1. **`dispositions.json`, not `dispositions.toml`.** Adding a `toml` crate would put a new direct
+   third-party dependency into the very dependency census this package is dispositioning.
+   `serde_json` is already a direct dependency of this module.
+2. **Rules are evaluated, not expanded.** The first implementation materialised all ~1,800
+   judgements as rows. That file went stale the moment the workspace gained a public item or a
+   test — including the ones this module adds about itself, which is how the newly activated
+   schema first failed on rows the census had just created. Rules now match on the row key and
+   the exception list carries only what the rules do not cover: 176 rules and 229 exceptions,
+   the exceptions being exactly the public items no test or example names.
+
+### What the implementation found
+
+**Substring matching is wrong for crate names.** A rule keyed on `meridian-ui` swallowed
+`meridian-ui-core`, `-editor`, `-render`, `-runtime`, `-semantics` and `-text`, escalating six
+crates that had dispositions of their own and hiding `meridian-ui-semantics`'s distinct one.
+Crate rules now match exactly.
+
+**The public-types evidence rule was vacuous on its first run.** "Retain only if a test or
+example names the item" reported 864 of 901 retained, because the corpus included the declaring
+sources — so every item named itself. Restricted to `examples/`, `tests/` and the `mod tests`
+span of each source file, the real figure is 637 retained and **229 public items that no test or
+example exercises**. That is the largest piece of information this package produced, and the
+first version of the check would have hidden it.
+
+### Evidence
+
+`check` 0, `project --check` 0, clippy `-D warnings` 0, `fmt --check` 0, 115 package tests, 79
+workspace suites. Cross-root byte-identity re-proven with `dispositions.json` as an input.
+
+Failure injection, each verified to fail naming the row: both judgement fields set; a
+`phase_pending` naming the **resolved** `OD-011`; a hand-edited neither-set row on disk, now
+caught as a schema violation rather than as generic staleness. Row validity is asserted by
+exhaustive cross-product — all 16 combinations of the four judgement fields against every one of
+the ten sections, exactly 4 accepted.
+
+The audit is `CENSUS-003-AUDIT.md`: 117 rows, seeded from `source_tree_checkpoint` so the draw is
+reproducible — all 37 crate rows, one per `(file, module)` group of ≥10 tests, **every one of the
+49 distinct ids used with its heading beside a test that serves it**, and one row per non-test
+section. It goes to the independent reviewer, not into a self-certified record.
+
