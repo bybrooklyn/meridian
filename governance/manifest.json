@@ -5,7 +5,7 @@
   "generator_version": "specoment-projection/1",
   "generated_at_source_checkpoint": "specoment:782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
   "projections": [
-    { "path": "governance/generated/index.md", "sha256": "5b89f81234574bd46f177c9e53ceecf0fd3b8315835c97a6141db375a64b9323" },
+    { "path": "governance/generated/index.md", "sha256": "84f34b9c5cc811ec2616e626d89f7d179ff3c52d0d121a16c28ea8a3e8d83c81" },
     { "path": "governance/generated/identifiers.json", "sha256": "83d2704bb4ddaf37b2a3242d4093fbb6a29101464e606dc0a860ce2d548852c2" },
     { "path": "governance/generated/requirements.json", "sha256": "3d9cc92a8e61972aaaaef6ee13306e6e2dceca620abbd30d9cd2c3866be87a51" },
     { "path": "governance/generated/phases.json", "sha256": "ce07e39d12037ab0e0b0f0bb33d6dee3de0b05b117b27d176f70be3fbaebedde" },

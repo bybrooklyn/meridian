@@ -23,15 +23,20 @@ use super::scan::{self, Placement};
 /// Identifier families belonging to the frozen v0.5 authority. These appear only as
 /// migration history and must never be re-entered into v1 registries as live contracts.
 ///
-/// `RG` is deliberately **absent**, unlike the reference generator's list. `RG-TOR-001` is
-/// the only `RG-*` identifier in the document, and it is cited in a live v1 section —
-/// "Torsant implementation research and evidence — *Open implementation research*" — as a
-/// currently open gate, not as history. Classifying it as retired v0.5 on the bare prefix
-/// hid a genuinely undeclared v1 identifier inside a category that is exempt from the
-/// undeclared count, which is what made "0 undeclared" read as true. Recorded as SD-006.
+/// `RG` belongs here, and an earlier revision of this module wrongly removed it. The
+/// reasoning was that `RG-TOR-001` is cited in a live v1 section — "Still open under
+/// `RG-TOR-001` and implementation research" — and so could not be history. Checking the
+/// frozen baseline settles it: `RG-TOR-001` is a complete v0.5 research-gate record in
+/// `specs/registry/research-gates.json`, carrying a domain, owner, stable seams, required
+/// workloads and a decision rule, and it is referenced across five v0.5 specification
+/// documents. It is a v0.5 identifier that the v1 document cites, exactly like `WP-UI-006`.
+///
+/// That a live v1 section still points at a retired v0.5 gate is a real problem, but it is a
+/// **migration** problem for `PH-AUTH-004`, whose stop condition is that old IDs must not
+/// still control implementation status. It is not an indexing defect for `PH-AUTH-002`.
 const RETIRED_V05_PREFIXES: &[&str] = &[
-    "WP-UI", "WP-REL", "WP-EDT", "WP-BLD", "WP-PRC", "WP-MDL", "WP-GAM", "MS", "WVR", "REQ", "DEP",
-    "VAL", "PRG",
+    "WP-UI", "WP-REL", "WP-EDT", "WP-BLD", "WP-PRC", "WP-MDL", "WP-GAM", "MS", "RG", "WVR", "REQ",
+    "DEP", "VAL", "PRG",
 ];
 
 /// Where an identifier was declared.
@@ -301,14 +306,15 @@ mod tests {
         );
     }
 
-    /// SD-006. A live v1 identifier must not be absorbed into the retired-v0.5 category
-    /// by a bare prefix match, because that category is exempt from the undeclared count
-    /// and absorbing it there manufactures a clean "0 undeclared".
+    /// SD-006, corrected. `RG-TOR-001` reads like live v1 content because a v1 section says
+    /// the question is still open under it, but the frozen baseline holds a complete v0.5
+    /// research-gate record for that identifier. It is history the v1 document cites, and
+    /// resolving the citation belongs to `PH-AUTH-004`, not to the index.
     #[test]
-    fn a_live_v1_research_gate_is_undeclared_not_retired() {
+    fn a_v05_research_gate_cited_by_v1_prose_is_retired_not_undeclared() {
         let index = build("Still open under `RG-TOR-001` and implementation research.\n");
-        assert_eq!(index.undeclared, vec!["RG-TOR-001".to_string()]);
-        assert!(index.retired_v05.is_empty(), "{:?}", index.retired_v05);
+        assert_eq!(index.retired_v05, vec!["RG-TOR-001".to_string()]);
+        assert!(index.undeclared.is_empty(), "{:?}", index.undeclared);
     }
 
     #[test]

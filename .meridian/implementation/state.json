@@ -36,7 +36,16 @@
     }
   ],
   "research_decisions": [],
-  "migrations": [],
+  "migrations": [
+    {
+      "id": "MIG-001",
+      "subject": "live v1 prose cites the retired v0.5 research gate RG-TOR-001",
+      "detail": "MERIDIAN_SPECOMENT.md line 19086 reads 'Still open under `RG-TOR-001` and implementation research.' RG-TOR-001 is a v0.5 research-gate record that PH-AUTH-004 retires along with the rest of the v0.5 suite.",
+      "owning_phase": "PH-AUTH-004",
+      "why": "PH-AUTH-004's stop condition is that old IDs must not still control implementation status. A v1 sentence deferring an open question to a retired v0.5 gate does exactly that.",
+      "options": "Re-declare the gate as v1 content with an owning heading, or restate the sentence to defer to Appendix B's research register without naming a v0.5 identifier."
+    }
+  ],
   "evidence_index": "evidence/index.json",
   "program_status": "PH-AUTH-001 CLOSED. WP-V1-RESET-002 REOPENED: the completion record was written while two planned projections (phases.json, research-gates.json) and the Appendix G reconciliation were missing. The pre-commit hook blocked further production work, correctly, because the package had been closed. Reopened rather than bypassed.",
   "process_deviations": [
@@ -174,12 +183,6 @@
       ],
       "ruled_out": "Tracking the preimage as a working-tree path. That reinstates the second full-length document named as authority that PH-AUTH-002 exists to prevent.",
       "blocks": "nothing now; must resolve at PH-AUTH-004, where DEV-003's residual exposure is scheduled to close"
-    },
-    {
-      "id": "OD-008",
-      "question": "RG-TOR-001 is cited as a live open research gate but no heading declares it. Give it an owning contract, or remove the identifier and refer to the research gate by heading alone.",
-      "context": "It is the only RG-* identifier in the specoment. Appendix B holds the research register and most of its gates carry no identifier at all, so 'remove it' is consistent with the surrounding convention. The generated index states the requirement verbatim: each undeclared identifier MUST either receive an owning contract or be removed before PH-AUTH-002 can claim every canonical identifier is indexable exactly once.",
-      "blocks": "PH-AUTH-002 closure row 'every canonical identifier is indexable exactly once'"
     }
   ],
   "review_rounds": [
@@ -258,10 +261,10 @@
     {
       "id": "SD-006",
       "subject": "RG-TOR-001 is an undeclared v1 identifier masked by a retired-v0.5 prefix rule",
-      "detail": "gen_appendix_a.py classifies identifiers as retired v0.5 by bare prefix, and its list includes 'RG'. RG-TOR-001 is the only RG-* identifier in the document and is cited at line 19086 inside 'Torsant implementation research and evidence - *Open implementation research*', a live v1 section, as a currently open research gate rather than migration history. Because the retired-v0.5 category is exempt from the undeclared count, absorbing it there is what made '0 undeclared' read as true.",
+      "detail": "RETRACTED. The claim was that RG-TOR-001 is live v1 content wrongly absorbed into the retired-v0.5 category. Checking the frozen baseline settles it the other way: RG-TOR-001 is a complete v0.5 research-gate record in specs/registry/research-gates.json with domain, owner, stable seams, required workloads and a decision rule, and it is referenced across five v0.5 specification documents. The reference generator's prefix classification was correct and the agent's reclassification was the error.",
       "found": "during implementation of the Rust port, not by review",
-      "severity": "blocking for the PH-AUTH-002 closure row 'every canonical identifier is indexable exactly once'",
-      "disposition": "The port drops RG from the retired prefix list, so RG-TOR-001 is now reported honestly as undeclared. Giving it an owning contract is a specoment amendment and therefore an owner decision, recorded as OD-008."
+      "severity": "not blocking for PH-AUTH-002; carried to PH-AUTH-004 as MIG-001",
+      "disposition": "Reverted. RG is restored to the retired-v0.5 prefix list. The real finding is narrower and belongs to a different phase: a live v1 section still cites a retired v0.5 gate, which PH-AUTH-004 must resolve under its stop condition that old IDs must not still control implementation status. Recorded as MIG-001."
     }
   ],
   "corrections": [
@@ -276,6 +279,12 @@
       "subject": "dependency reasoning in WP-V1-RESET-002 revision 3",
       "detail": "Argued against taking regex and sha2 by citing LEGAL-005's provenance burden. LEGAL-006 (line 15824) states Meridian 'does not pursue dependency elimination as a goal in itself' and closes \"'We could write it ourselves' is not sufficient justification for replacement.\" Citing the paperwork clause to avoid a dependency while omitting its immediate neighbour forbidding that posture was a one-sided reading of the governing authority. Argument withdrawn; both decisions re-derived on LEGAL-006's own grounds. The conclusions did not change, the reasoning did.",
       "surfaced_by": "independent review round 2"
+    },
+    {
+      "id": "CORR-003",
+      "subject": "SD-006 and the RG prefix",
+      "detail": "Removed RG from the retired-v0.5 prefix list on the reasoning that RG-TOR-001 appears in a live v1 section, and reported it as an undeclared identifier blocking PH-AUTH-002's closure row. That was wrong and was escalated to the owner as OD-008 before being checked against the frozen baseline, which holds a complete v0.5 record for the identifier. Reverted; OD-008 withdrawn.",
+      "lesson": "The escalation was premature. The check that settled it - grep the frozen v0.5 registry - was available the whole time and took one command."
     }
   ]
 }

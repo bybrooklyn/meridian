@@ -754,18 +754,17 @@ Identifiers cited but never declared are listed under *Referenced but never decl
 
 ## Referenced but never declared
 
-Each of these MUST either receive an owning contract or be removed before `PH-AUTH-002` can claim that every canonical identifier is indexable exactly once.
-
-- `RG-TOR-001` — cited in: *Torsant implementation research and evidence — *Open implementation research** (line 19084)
+None. Every cited identifier has an owning heading.
 
 ## Retired v0.5 identifiers cited as history
 
 These belong to the frozen v0.5 authority. They appear only as migration history and MUST NOT be treated as live contracts or re-entered into v1 registries.
 
+- `RG-TOR-001` — cited in: *Torsant implementation research and evidence — *Open implementation research** (line 19084)
 - `WP-UI-006` — cited in: *Executive decision* (line 28447); *Immediate recommendation* (line 30250)
 
 ## Identifiers declared by more than one heading
 
 None. No identifier is declared by two headings.
 
-**Index totals:** 736 declared, 1 undeclared, 0 multiply-declared, 1 retired-v0.5, 117 identifier families.
+**Index totals:** 736 declared, 0 undeclared, 0 multiply-declared, 2 retired-v0.5, 117 identifier families.
