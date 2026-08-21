@@ -227,7 +227,8 @@ from the doc comment on the function doing the counting.
 
 ## Owner decisions
 
-**8 open records, not 11.** `OD-007`, `OD-010` and `OD-011` carry `resolved`. The existence check must be
+**9 unresolved of 12 entries.** `OD-007`, `OD-010` and `OD-011` carry `resolved`; `OD-013`
+was added by the same commit that resolved `OD-010`. The existence check must be
 scoped to unresolved entries in `open_owner_decisions` — `collect_od_ids` currently harvests any
 6-character `OD-` string anywhere in `state.json` (census limitation 7), so an escalation naming
 the resolved `OD-011` would pass a check this package calls machine-checkable.
@@ -259,8 +260,22 @@ The card requires *"every code area has one disposition and next phase."* An esc
 disposition — that is the point of the XOR. The previous draft asserted both halves in
 consecutive sentences and they cannot both be true.
 
-**Resolved explicitly:** an escalated row carries a `next_phase` and no disposition, and
-`PH-AUTH-005` closes with a **named residual** — the escalation count recorded in `state.json`
+**Resolved explicitly.** Three row shapes exist, and the third was found by the `OD-010`
+ruling rather than by this plan — an external input locating a seam the internal work could not
+see, which is what an external input is for.
+
+1. **Dispositioned** — a disposition and a next phase. The ordinary case.
+2. **Escalated** — a next phase and no disposition, naming an unresolved `OD-*`.
+3. **Dispositioned, phase pending** — a disposition and **no** next phase, naming an unresolved
+   `OD-*` whose question covers the missing phase. The eight `OD-010` rows: the ruling
+   established that the disposition is `retain`; only the owning phase is open.
+
+Shape 3 is stated as a third interpretation of the card, not assumed — on the same footing as
+the other two. Giving those rows `escalation: OD-013` instead would keep the tidier two-shape
+model and discard what the ruling actually settled, so it is rejected.
+
+`PH-AUTH-005` therefore closes with a **residual of two named counts** — escalated rows, and
+dispositioned rows whose next phase is pending — recorded separately in `state.json`
 and in the closure record. This is stated as an interpretation of the card, not assumed. The
 alternative reading — that "one disposition" means "one judgement, disposition or escalation" —
 is rejected here because `-001` argued at length that the two are distinct, and re-merging them
@@ -288,7 +303,11 @@ question.
 ## Tests and evidence
 
 - Every judgement-bearing row has **exactly** one of `disposition` / `escalation`, across all
-  ten sections; both-set, neither-set, out-of-vocabulary and unresolved-`OD-*` failures each
+  ten sections.
+- **`next_phase` may be null only when the row names an unresolved `OD-*` whose question covers
+  the missing phase.** Without this, a null in a required field is `undecided` returning through
+  the one field the XOR never covered — a row declining to name a next phase with no record of
+  why. Enforced in the schema and machine-checked, not asserted. both-set, neither-set, out-of-vocabulary and unresolved-`OD-*` failures each
   rejected naming row and section.
 - The **on-disk** census is schema-validated, not only generator output.
 - Every retained test's owner is in the **611**-id mappable universe. `APP-003` (Rejected),
@@ -308,7 +327,7 @@ question.
 
 Set both judgement fields; set neither; name `OD-011` (resolved); name `OD-999`; assign outside
 the vocabulary; map a test to `APP-003` (Rejected), `SRV-016` and `SRV-022` (post-1.0,
-the second unlabelled); delete a crate whose
+the second unlabelled); set `next_phase` null with no covering unresolved `OD-*`; delete a crate whose
 disposition remains; insert a blank line and confirm no orphan; map every test in a crate to one
 id; push a family past the step-1 derived cap; use an id that appears in no audit row. Each must fail naming the row.
 
@@ -341,9 +360,16 @@ sentence stays. Two passes exist and both have now been shown insufficient on th
   could not catch "9 open records", because nothing in the document was retracted — a fact in
   the accompanying `state.json` edit changed underneath a sentence that was true when written.
 
-**The rule is therefore keyed to the commit, not the document: for every fact a commit changes,
-grep the plan for the ids and counts that change touches.** Here that is one grep for `OD-010`
-and one for `open records`; both would have fired.
+**The rule is keyed to the commit, and covers every artefact the commit touches: for each fact a
+commit changes, grep both the plan and the changed artefact for the ids and counts that change
+touches.**
+
+Round 5 proved both halves necessary. It ran the plan grep for `OD-013` and `open records`,
+found the string, and judged it correct — the sweep looked directly at the defect and passed it,
+because `OD-013` had been added by the same commit and the sentence counting open records was
+stale by one. And `OD-010.resolved.rationale` kept "All ten" through a commit whose entire
+subject was that the number is nine, because only the plan was swept and the stale value sat in
+a sibling field of the record being corrected.
 
 ## Stop / rollback rule
 

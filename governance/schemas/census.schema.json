@@ -40,7 +40,7 @@
       "pattern": "^OD-[0-9]{3}$"
     },
     "judged": {
-      "description": "A row that carries judgement. disposition and escalation are never both non-null: that is the XOR, and its absence would readmit 'undecided' under another name. Both-null is permitted only while WP-V1-CENSUS-001/-002 measure; WP-V1-CENSUS-003 tightens this to exactly-one when it assigns, and until it does this schema does NOT reject a row with no judgement at all. Applied to every section that carries these fields \u2014 all ten. The first draft of this schema omitted generated_files and ci_rows, which reproduced inside the artefact the very error it was written to fix: CENSUS-001 claimed 'every row' and was wrong for 104.",
+      "description": "A row that carries judgement. disposition and escalation are never both non-null: that is the XOR, and its absence would readmit 'undecided' under another name. Both-null is permitted only while WP-V1-CENSUS-001/-002 measure; WP-V1-CENSUS-003 tightens this to exactly-one when it assigns, and until it does this schema does NOT reject a row with no judgement at all. Applied to every section that carries these fields \u2014 all ten. The first draft of this schema omitted generated_files and ci_rows, which reproduced inside the artefact the very error it was written to fix: CENSUS-001 claimed 'every row' and was wrong for 104. next_phase may be null only when the row names an unresolved OD-* whose question covers the missing phase - WP-V1-CENSUS-003 shape 3, a disposition whose owning phase is open. Without that gate a null in a required field is undecided returning through the one field the XOR never covered.",
       "type": "object",
       "required": [
         "disposition",

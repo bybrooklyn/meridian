@@ -207,12 +207,12 @@
       "question": "Ten v0.5 enforcement rules police concepts that survive into v1 but have no v1 successor. Build v1 rules for them, or rule the enforcement no longer required.",
       "detail": "Marked no-v1-analogue in governance/coverage-matrix.md, which escalates rather than resolving inside a data file. They are: missing-adr (0.5 still ranks adopted ADRs below the specoment), bad-fence (Appendix F's synthesis gate requires balanced fences), broken-link (Appendix D requires projection source links to resolve), stale-phase-ref x2 (v1 has phases so stale refs remain possible), implemented-without-evidence (IMPL-WP-003 item 6), occluded-visual-evidence (0.4 defines Occluded and forbids reading it as visible quality), expired-waiver (waivers survive and a v1 schema is shipped, but nothing checks expiry), false-promotion (0.4 forbids promoting a status without evidence).",
       "why_this_matters": "An earlier derivation answered the disposition question per CHECK - does this check read specs/? - and dropped 64 of 66 units as v05-authority-retired. That was wrong for fourteen of them: the registry retires, the concept does not. Deleting the v0.5 validator on that basis would have caused exactly the silent enforcement loss the matrix exists to prevent.",
-      "blocks": "PH-AUTH-004 deletion of the v0.5 validator. Seven units now carry fixture-backed supersessions; these ten do not.",
+      "blocks": "PH-AUTH-004 deletion of the v0.5 validator. Seven units carry fixture-backed supersessions; these nine do not. (Was \"these ten\" as authored pre-ruling; corrected with the rest of the record.)",
       "resolved": {
         "date": "2026-08-21",
         "ruling": "Option A: build v1 successors for the nine no-v1-analogue units. The enforcement is required.",
         "ruled_by": "owner",
-        "rationale": "The v0.5 registry retired; the concepts did not. All ten police behaviour v1 still requires, so the enforcement is rebuilt against v1 structures rather than dropped.",
+        "rationale": "The v0.5 registry retired; the concepts did not. All nine units police behaviour v1 still requires, so the enforcement is rebuilt against v1 structures rather than dropped. (Corrected from \"ten\": see scope_correction. This sibling field kept the retired number through the commit whose subject was that the number is nine, which is why the sweep rule now covers the changed artefact and not only the plan.)",
         "consequences": [
           "8 test rows reference these rules by slug and take retain, not remove. Command: scan #[test] spans in editor/meridian_spec_tools/tests/cli.rs for the eight rule slugs. CORRECTION: the first draft of this ruling said 22, an unstamped figure produced by a loose regex (waiver|adr|alluvium|delivery_plan) that matched unrelated tests. It was 2.75x the measured count and entered accumulated state without a producing command.",
           "Their next_phase cannot be set yet: no open phase owns validator work. PH-AUTH-003 is the conceptual home and is closed; PH-AUTH-006 is structural decomposition and 007-010 are runtime. Recorded as OD-013 rather than writing a closed or nonexistent phase id.",
@@ -256,7 +256,7 @@
         "Assign to PH-AUTH-006 and widen its card to cover governance enforcement"
       ],
       "blocks": "WP-V1-CENSUS-003 cannot set next_phase on the 8 retained rows. They carry retain with next_phase null, counted in the named residual PH-AUTH-005 closes with.",
-      "default": "None. Leaving it unanswered keeps 8 rows in the residual."
+      "default": "Option 3 \u2014 widen PH-AUTH-006 to cover governance enforcement. Taken by inaction. It needs no authority change, keeps the work inside an open phase, and is the weakest of the three: PH-AUTH-006 is behavior-preserving structural decomposition, so governance enforcement sits oddly in it. Named as the default because a record with no default fails this package own stop rule, not because it is the best answer."
     }
   ],
   "review_rounds": [
