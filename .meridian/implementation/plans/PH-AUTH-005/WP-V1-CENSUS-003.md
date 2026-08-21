@@ -157,7 +157,9 @@ disposition is orphaned.
    `meridian-rhi → meridian-render-graph` is already *classified* (forward under the declared
    ordering); what it lacks is a **reason**, which is what `-001` promised.
 6. **Add `next_phase` to `tests`, `generated_files` and `ci_rows`.**
-7. **Tighten the XOR to exactly-one**, and validate the **on-disk** file, so a hand-edit reports
+7. **Tighten the XOR to exactly-one, and activate the `next_phase` conditional.** Moving it out
+   of the schema's `$comment` and into `$defs/judged` is a deliverable of this step, not a note.
+   An inert rule in a comment with no step that turns it on is a deferred check with no owner., and validate the **on-disk** file, so a hand-edit reports
    as a schema violation naming the row rather than as generic staleness.
 
 ## Constraint regime — rebuilt
@@ -192,6 +194,39 @@ Replaced by:
 - **Every distinct id used appears in the audit sample at least once**, with its heading text
   quoted beside one test's assertion. This is the control that kills round-robin: a script
   producing *n* ids must then defend *n* id-to-assertion pairs in prose.
+
+## Row validity, as one table
+
+Three consecutive blocking findings have landed in the row-shape rules, while the universe,
+constraint regime, audit and owner-decision structure have been stable since round 3. Each was
+the consequence of getting the previous one right, and each was found one round at a time. The
+full rule set is therefore stated here as a single unit rather than assembled from six sections.
+
+Four judgement fields: `disposition`, `escalation`, `next_phase`, `phase_pending`.
+
+| Shape | `disposition` | `escalation` | `next_phase` | `phase_pending` |
+|---|---|---|---|---|
+| 1 dispositioned | set | null | set | null |
+| 2 escalated | null | set | set | null |
+| 3 dispositioned, phase pending | set | null | **null** | **set** |
+
+Every other combination is invalid. In particular:
+
+- both `disposition` and `escalation` set — the XOR, rejected today
+- neither set — legal during measurement, rejected once step 6 tightens to exactly-one
+- `next_phase` null with `phase_pending` null — the state the gate exists to forbid
+- `next_phase` set and `phase_pending` set — a row claiming both a phase and a pending decision
+- `phase_pending` naming a **resolved** record, or one that does not exist
+
+Split across two mechanisms, because JSON Schema cannot express the last one:
+
+- **Schema:** the XOR, the closed disposition vocabulary, the `OD-*` shape, and the
+  `next_phase`/`phase_pending` conditional including its value constraint.
+- **Rust:** every `escalation` and every `phase_pending` names a record that exists **and is
+  unresolved** in `state.json`, scoped to `open_owner_decisions` and filtered by status.
+
+Sections carrying no judgement fields — `edges`, `layers` — are exempt by construction and
+declared exempt in the schema rather than silently omitted.
 
 ## The audit
 
@@ -326,11 +361,19 @@ question.
   in JSON Schema; *unresolved in `state.json`* is not, and goes in Rust beside the existing `OD-*`
   existence check.
 
-  Activating the conditional at plan stage was tried and **fails the measurement-phase census on
-  all 1,801 rows**, because every `next_phase` is legitimately null until assignment begins —
-  the same phasing the XOR already has, which is "never both" now and "exactly one" once
-  `-003` assigns. The conditional is therefore carried verbatim in the schema's `$comment`,
-  inert, with `phase_pending` defined as a property now so the field surface exists.
+  Activating the conditional at plan stage was tried and fails **998 of 1,801 rows** today. The
+  other 803 — `tests` 791, `generated_files` 9, `ci_rows` 3 — pass only because they carry no
+  `next_phase` field at all, and **step 6 adds it to exactly those three sections**, after which
+  the figure is 1,801. That progression is the argument for activating at the end of the package
+  rather than the start, and it is the same phasing the XOR already has.
+
+  The `then` branch must constrain the **value**, not only the key. `required: ["phase_pending"]`
+  alone is satisfied by a key that is present and null, and this generator emits every field
+  explicitly, so `phase_pending: null` sits on every row and the branch is vacuous. Verified
+  against `jsonschema` 0.33: the `required`-only form **accepted** `next_phase: null` with
+  `phase_pending: null` — the exact state the gate exists to forbid — and accepted a malformed
+  `OD-13`. Adding `properties: {phase_pending: {type: string, pattern: ^OD-[0-9]{3}$}}` rejects
+  both while leaving all three legal shapes accepted.
 
   Stated as future work rather than present tense. An earlier draft of this bullet said "enforced
   in the schema and machine-checked, not asserted" while the only schema change was prose in a
@@ -407,6 +450,9 @@ if the measured budget from step 1 is exceeded without a written reason; if any 
 step-1 derived cap; if an id used appears in no audit row; if any row carries both or neither judgement field
 once assignment is complete; if an escalation names a resolved or non-covering `OD-*`; or if a
 new `OD-*` lacks options, `blocks` and a default.
+
+Stop also if the package ships with the `next_phase`/`phase_pending` conditional still inert in
+the schema's `$comment`, or if any row matches none of the three shapes in the table above.
 
 The card's third stop condition — *"implementation maturity is promoted without new v1
 evidence"* — cannot fire here: `implementation_maturity` is null in all 37 crate rows per
