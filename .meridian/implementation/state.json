@@ -1,14 +1,13 @@
 {
   "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
   "source_checkpoint": "d2408bf13b97a61fb87e8109f70e7e3282ae65f7",
-  "active_phase": "PH-AUTH-006",
-  "active_work_package": null,
+  "active_phase": "PH-AUTH-005",
+  "active_work_package": "WP-V1-CENSUS-003",
   "completed_phases": [
     "PH-AUTH-001",
     "PH-AUTH-002",
     "PH-AUTH-003",
-    "PH-AUTH-004",
-    "PH-AUTH-005"
+    "PH-AUTH-004"
   ],
   "completed_work_packages": [
     "WP-V1-BASE-001",
@@ -18,8 +17,7 @@
     "WP-V1-GOV-001",
     "WP-V1-RESET-003",
     "WP-V1-CENSUS-001",
-    "WP-V1-CENSUS-002",
-    "WP-V1-CENSUS-003"
+    "WP-V1-CENSUS-002"
   ],
   "blocked": [],
   "unsupported": [
@@ -298,15 +296,16 @@
     },
     {
       "id": "OD-017",
-      "question": "Accessibility output has no v1 requirement that describes it. Is the requirement missing, or is the behaviour out of 1.0 scope?",
-      "detail": "54 test rows across meridian-ui-semantics (7), meridian-platform accessibility projection (12), meridian-ui-runtime, meridian-ui-core, meridian-ui-editor and meridian-benchmark assert semantic-tree projection, reading order, live regions, focus order and roles. No declared identifier describes this. PROTECT-011 is about protection compatibility, SITE-007 about site qualification, PH-REL-002 is a phase not a requirement. This is the unmapped-behaviour class the plan predicted, and it is the largest single escalation.",
+      "question": "Sixty-seven labelled normative headings carry no identifier, so nothing they require can own a test under this census's rule that an owner must be a declared id. Is that a projection defect, a specoment authoring gap, or intentional?",
+      "detail": "CORRECTED. The original question asserted that accessibility output has no v1 requirement describing it. That premise is FALSE and was falsifiable in one grep: MERIDIAN_SPECOMENT.md:25991 carries '### Accessibility, localization and navigation - *Derived normative contract*', whose clauses are exactly what meridian-ui-semantics implements - focusable controls expose role/name/state/value/actions, missing semantics produce actionable diagnostics, semantics inspectable without rendering pixels. One escalated test is literally host_assistive_bindings_are_explicit_bounded_and_role_validated. The original record surveyed PROTECT-011, SITE-007 and PH-REL-002 and missed the contract that does describe it. What is true is larger and different: that contract carries no backticked identifier, so it is absent from identifiers.json and unmappable. Measured, 67 headings share that shape - 'General scene model - *Normative direction*', 'Typography - *Normative direction*', 'Wavefront qualification obligations - *Normative*'. This is the third universe error in this package: requirements.json (527) to identifiers.json (736) to labelled headings with no id at all. Accessibility is the worked instance, not the subject.",
       "options": [
-        "Add an accessibility requirement family to the specoment (amendment)",
-        "Rule the behaviour in scope under an existing id and name it",
-        "Rule accessibility out of the 1.0 gate; the tests become post-1.0"
+        "Assign identifiers to the 67 labelled headings (amendment)",
+        "Rule that a labelled heading without an identifier cannot own a test, and escalate all such behaviour",
+        "Allow headings to own tests by line reference where no identifier exists"
       ],
-      "blocks": "54 test rows and the meridian-ui-semantics crate row carry escalation OD-017.",
-      "default": "None available. Every option changes authority or scope; inaction leaves 54 rows escalated."
+      "blocks": "52 rows - 41 tests, 10 public types, 1 crate - carry escalation OD-017. The record previously said 54 test rows; the true figure is 41 tests of 54 escalated tests in total across four decisions.",
+      "default": "None available. Every option changes authority or the census rule.",
+      "sibling": "OD-020 asks the adjacent question about declared identifiers that carry no maturity label."
     },
     {
       "id": "OD-018",
@@ -343,6 +342,19 @@
       ],
       "blocks": "Nothing today; the 85 are mappable and recorded as a census limitation.",
       "default": "Option 3 - normative by default, by inaction, which is how the census already treats them."
+    },
+    {
+      "id": "OD-021",
+      "question": "Sixteen requirement ids the census mapped tests to are product-scope statements, not behavioural contracts. Is a derived-contract layer owed between them and the code, or should unit tests never own a scope-level requirement?",
+      "detail": "Found by independent audit of the CENSUS-003 test map. The ids: UI-002 and UI-SRC-001 (a .mui source grammar that does not exist in the repository), UI-011 (nine-slice rendering with zero lines of implementation - grep returns 0), RUNTIME-003/005/006/008, PEN-021, EXEC-009, EDUX-001/002, SAVE-001, AUTHOR-010, WORLD-001, PLATFORM-001, MODELER-001 ('Product direction'). 124 of 737 mapped tests, 16%, were assigned to them by name-substring rules that matched VOCABULARY rather than subject - 22 tests about world browsers and inspectors were filed under a source-syntax requirement because their names contain the word 'source'. Two icon-geometry tests claimed coverage of an unimplemented requirement, which is worse than no coverage because it reports a gap as filled. The mismatch is granularity: the specoment is written at product-direction level and the tests at unit level, and nothing bridges them.",
+      "options": [
+        "Author derived normative contracts under each scope requirement, as MUI-SRC-* already does for UI-*",
+        "Rule that scope-level requirements cannot own tests; such tests carry no owner and are tracked separately",
+        "Accept unit tests owning scope requirements, and drop the claim that an owner describes the test"
+      ],
+      "blocks": "124 test rows carry escalation OD-021 rather than an owner that does not describe them.",
+      "default": "None available. Every option changes either the specoment or the census rule.",
+      "sibling": "OD-017 asks the adjacent question about 67 labelled headings that carry no identifier at all."
     }
   ],
   "review_rounds": [
@@ -683,5 +695,10 @@
         "OD-020"
       ]
     }
+  },
+  "closure_withdrawn": {
+    "phase": "PH-AUTH-005",
+    "date": "2026-08-21",
+    "reason": "Independent review rejected the closure. The card's clause 4 - every code area has one disposition and next phase - is unmet for 107 of 1804 rows (92 escalated carry neither, 15 carry a disposition with a null next_phase). The residual was disclosed honestly; the closure was not, because 107 rows without a disposition are what clause 4 forbids and no amendment was sought. Clause 3 is met textually and not substantively: 16 of 49 requirement ids have no test that serves them."
   }
 }

@@ -1,141 +1,159 @@
-# WP-V1-CENSUS-003 audit sample
+# WP-V1-CENSUS-003 audit sample (round 2)
 
-Seed: `source_tree_checkpoint` = `source-tree:a24a...` — the draw is reproducible, so a sample
-chosen after the mapping cannot be passed off as a sample.
+Seed: `source-tree:e41e665ddb78` from `source_tree_checkpoint`. Regenerated after the review escalated 124
+mappings; the previous sample certified 49 ids of which 16 had no test that served them.
 
 ## Stratum A — all 37 crate rows
 
-| crate | disposition | owner / escalation | next phase |
-|---|---|---|---|
-| `meridian-alluvium` | retain | — | PH-AUTH-006 |
-| `meridian-asset-tools` | retain | — | PH-AUTH-006 |
-| `meridian-assets` | retain | — | PH-AUTH-006 |
-| `meridian-audio` | remove | — | PH-AUTH-006 |
-| `meridian-basalt` | remove | — | PH-AUTH-006 |
-| `meridian-benchmark` | retain | — | PH-AUTH-006 |
-| `meridian-build` | retain | — | PH-AUTH-006 |
-| `meridian-core` | retain | — | PH-AUTH-006 |
-| `meridian-diagnostics` | retain | — | PH-AUTH-006 |
-| `meridian-ecs` | retain | — | PH-AUTH-006 |
-| `meridian-editor` | retain | — | PH-AUTH-006 |
-| `meridian-editor-core` | retain | — | PH-AUTH-006 |
-| `meridian-input` | retain | — | PH-AUTH-006 |
-| `meridian-isobar` | remove | — | PH-AUTH-006 |
-| `meridian-modeler` | retain | — | PH-AUTH-006 |
-| `meridian-package` | retain | — | PH-AUTH-006 |
-| `meridian-physics` | — | OD-014 | — |
-| `meridian-platform` | retain | — | PH-AUTH-006 |
-| `meridian-render-graph` | retain | — | PH-AUTH-006 |
-| `meridian-renderer` | retain | — | PH-AUTH-006 |
-| `meridian-rhi` | retain | — | PH-AUTH-006 |
-| `meridian-rt` | retain | — | PH-AUTH-006 |
-| `meridian-save` | retain | — | PH-AUTH-006 |
-| `meridian-shader-tools` | — | OD-015 | — |
-| `meridian-spec` | retain | — | PH-AUTH-006 |
-| `meridian-streaming` | retain | — | PH-AUTH-006 |
-| `meridian-tasks` | retain | — | PH-AUTH-006 |
-| `meridian-ui` | — | OD-016 | — |
-| `meridian-ui-core` | retain | — | PH-AUTH-006 |
-| `meridian-ui-editor` | retain | — | PH-AUTH-006 |
-| `meridian-ui-render` | retain | — | PH-AUTH-006 |
-| `meridian-ui-runtime` | retain | — | PH-AUTH-006 |
-| `meridian-ui-semantics` | — | OD-017 | — |
-| `meridian-ui-text` | retain | — | PH-AUTH-006 |
-| `meridian-vegetation` | remove | — | PH-AUTH-006 |
-| `meridian-world` | retain | — | PH-AUTH-006 |
-| `meridian-world-tools` | retain | — | PH-AUTH-006 |
-
-## Stratum B — one row per (file, module) group of ≥10 tests (23 groups)
-
-| test | owner | requirement heading |
+| crate | disposition | owner / escalation |
 |---|---|---|
-| `nearest_rank_is_deterministic_for_small_samples` | UI-008 | UI renderer qualification `UI-008` — *Normative* |
-| `fixture_profile_key_is_stable_and_path_safe` | UI-008 | UI renderer qualification `UI-008` — *Normative* |
-| `cargo_stderr_reuses_the_existing_service_bound` | BUILD-001 | Build experience `BUILD-001` — *Normative* |
-| `headless_ms01_builds_streams_activates_and_recovers` | EDUX-001 | Curated task workspaces with optional freeform customization `EDUX-001 |
-| `reimport_is_typed_and_undoable_without_changing_source_i` | AUTHOR-001 | Stable source and recovery `AUTHOR-001` — *Normative* |
-| `every_test_row_has_a_module` | SPEC-003 | Existing code treatment `SPEC-003` — *Normative* |
-| `a_v05_research_gate_cited_by_v1_prose_is_retired_not_und` | SPEC-002 | Single-root specoment plus derived projections `SPEC-002` — *Normative |
-| `a_longer_number_does_not_yield_a_shorter_identifier` | SPEC-002 | Single-root specoment plus derived projections `SPEC-002` — *Normative |
-| `stale_v04_suite_versions_are_rejected` | SPEC-002 | Single-root specoment plus derived projections `SPEC-002` — *Normative |
-| `all_declared_project_workspaces_keep_their_shell_rows_an` | ESC OD-017 | — |
-| `invalid_tree_and_failed_mutation_roll_back_without_losin` | ED-AOT-003 | Three-column World workspace with viewport priority `ED-AOT-003` |
-| `failed_assets_expose_a_visible_placeholder` | AUTHOR-003 | Central authoritative asset catalog `AUTHOR-003` — *Normative* |
-| `scales_stutter_thresholds_for_one_twenty_fps` | PROTECT-014 | Diagnostics and explainability `PROTECT-014` — *Normative* |
-| `source_writes_atomically_to_a_regular_project_path` | MODELER-003 | Exact source and game mesh `MODELER-003` — *Normative* |
-| `reactivation_handler_returns_the_latest_complete_tree` | ESC OD-017 | — |
-| `ime_cursor_area_rejects_untrusted_geometry_and_retains_l` | PLATFORM-001 | Meridian 1.0 required platform floor `PLATFORM-001` — *Normative* |
-| `empty_clip_scope_skips_children_and_resumes_after_pop` | UI-008 | UI renderer qualification `UI-008` — *Normative* |
-| `direct_renderer_state_drops_surface_caches_without_losin` | UI-006 | Game UI `UI-006` — *Normative* |
-| `depth_formats_and_stencil_contract_are_backend_neutral` | PEN-007 | Backend portfolio and Vulkan requirement `PEN-007` — *Normative* |
-| `retained_nodes_select_locked_typography_by_meridian_role` | UI-004 | Components and binding `UI-004` — *Normative* |
-| `nested_scopes_and_bounded_backdrop_validate` | UI-005 | Layout `UI-005` — *Normative direction* |
-| `post_event_validation_cannot_bypass_the_aggregate_effect` | UI-004 | Components and binding `UI-004` — *Normative* |
-| `shaping_cache_evicts_fifo_within_shared_count_and_byte_b` | UI-002 | `.mui` source `UI-002` — *Normative* |
+| `meridian-alluvium` | retain | — |
+| `meridian-asset-tools` | retain | — |
+| `meridian-assets` | retain | — |
+| `meridian-audio` | remove | — |
+| `meridian-basalt` | remove | — |
+| `meridian-benchmark` | retain | — |
+| `meridian-build` | retain | — |
+| `meridian-core` | retain | — |
+| `meridian-diagnostics` | retain | — |
+| `meridian-ecs` | — | OD-021 |
+| `meridian-editor` | — | OD-021 |
+| `meridian-editor-core` | — | OD-021 |
+| `meridian-input` | retain | — |
+| `meridian-isobar` | remove | — |
+| `meridian-modeler` | — | OD-021 |
+| `meridian-package` | retain | — |
+| `meridian-physics` | — | OD-014 |
+| `meridian-platform` | — | OD-021 |
+| `meridian-render-graph` | retain | — |
+| `meridian-renderer` | retain | — |
+| `meridian-rhi` | retain | — |
+| `meridian-rt` | retain | — |
+| `meridian-save` | — | OD-021 |
+| `meridian-shader-tools` | — | OD-015 |
+| `meridian-spec` | retain | — |
+| `meridian-streaming` | — | OD-021 |
+| `meridian-tasks` | retain | — |
+| `meridian-ui` | — | OD-016 |
+| `meridian-ui-core` | retain | — |
+| `meridian-ui-editor` | retain | — |
+| `meridian-ui-render` | retain | — |
+| `meridian-ui-runtime` | retain | — |
+| `meridian-ui-semantics` | — | OD-017 |
+| `meridian-ui-text` | — | OD-021 |
+| `meridian-vegetation` | remove | — |
+| `meridian-world` | — | OD-021 |
+| `meridian-world-tools` | retain | — |
 
-## Stratum C — id coverage: every one of the 49 distinct ids used, with one assertion
+## Stratum B — one row per (file, module) group of ≥10 tests (23)
 
-| requirement | heading | a test that serves it |
+| test | owner |
+|---|---|
+| `evidence_status_is_non_promoting_for_declared_source_prove` | PROTECT-009 |
+| `fixture_manifest_rejects_duplicate_cases_and_invalid_metad` | UI-008 |
+| `metadata_process_failure_returns_a_typed_diagnostic` | BUILD-001 |
+| `argument_parser_accepts_bounded_smoke_configuration` | ESC OD-021 |
+| `recovery_round_trip_rebuilds_source_without_history` | AUTHOR-001 |
+| `every_test_row_has_a_module` | SPEC-003 |
+| `retired_v05_identifiers_are_segregated` | SPEC-002 |
+| `one_heading_can_declare_a_stem_and_its_letter_suffixed_sib` | SPEC-002 |
+| `stale_phase_refs_are_rejected` | SPEC-003 |
+| `world_placement_scales_with_the_actual_canvas_at_desktop_w` | UI-005 |
+| `invalid_tree_and_failed_mutation_roll_back_without_losing_` | ED-AOT-003 |
+| `load_request_cancels_before_decode_and_during_decode` | AUTHOR-003 |
+| `history_retains_pipeline_state_for_benchmark_export` | PROTECT-014 |
+| `split_edge_preserves_lineage_and_updates_face_boundary` | ESC OD-021 |
+| `rejected_stale_unknown_and_malformed_actions_preserve_proj` | ESC OD-017 |
+| `platform_context_coalesces_delayed_redraw_without_blocking` | ESC OD-021 |
+| `atlas_uvs_use_final_height_and_half_texel_gutters` | UI-008 |
+| `curved_path_is_flattened_with_bounded_structural_coverage` | UI-006 |
+| `capture_layout_enforces_alignment_dimensions_bytes_and_zer` | PEN-007 |
+| `professional_controls_publish_roles_states_and_keyboard_dr` | UI-004 |
+| `nested_scopes_and_bounded_backdrop_validate` | UI-005 |
+| `focus_owning_transient_does_not_cancel_a_background_proper` | UI-004 |
+| `cache_activity_accumulates_saturating_phase_durations` | ESC OD-021 |
+
+## Stratum C — every one of the 33 surviving ids, with the heading and a test
+
+| id | heading | test |
 |---|---|---|
-| `ALLU-001` | Task-first normal authoring with graph/source underneath | `budget_and_cancellation_are_typed_failures` |
-| `ALLU-002` | Manual edits automatically become non-destructive overri | `overrides_report_applied_conflicted_and_orphaned_wit` |
-| `AUTHOR-001` | Stable source and recovery `AUTHOR-001` — *Normative* | `reimport_is_typed_and_undoable_without_changing_sour` |
-| `AUTHOR-003` | Central authoritative asset catalog `AUTHOR-003` — *Norm | `manifest_canonicalization_is_independent_of_input_or` |
-| `AUTHOR-004` | Isolated importer execution `AUTHOR-004` — *Normative* | `transaction_rejects_duplicates_cancel_and_escape_wit` |
-| `AUTHOR-005` | Artifact and blob identity `AUTHOR-005` — *Normative* | `artifact_store_detects_a_corrupted_existing_object` |
-| `AUTHOR-010` | Automatic stable scene partitioning `AUTHOR-010` — *Norm | `activation_queue_enforces_item_and_byte_budgets` |
-| `BUILD-001` | Build experience `BUILD-001` — *Normative* | `cargo_worker_start_failure_maps_to_a_typed_build_err` |
-| `BUILD-002` | Toolchain acquisition and provenance `BUILD-002` — *Norm | `cargo_environment_accepts_bounded_toolchain_search_p` |
-| `ED-AOT-002` | Persistent top workspace strip `ED-AOT-002` | `shell_panels_cycles_and_persists_the_active_workspac` |
-| `ED-AOT-003` | Three-column World workspace with viewport priority `ED- | `creator_shell_uses_flat_bands_and_a_single_navigatio` |
-| `EDUX-001` | Curated task workspaces with optional freeform customiza | `headless_ms01_builds_streams_activates_and_recovers` |
-| `EDUX-002` | Baseline schema Inspector plus deliberate task interface | `project_store_create_does_not_replace_existing_autho` |
-| `EXEC-009` | Debugger and profiler contract `EXEC-009` — *Normative d | `history_aggregates_retained_gpu_timings_for_benchmar` |
-| `IMPL-STATE-001` | Persistent implementation state `IMPL-STATE-001` — *Norm | `a_missing_source_digest_is_reported` |
-| `INP-001` | Constrained input semantics; gameplay stays out of Input | `scrolling_preserves_line_pixel_and_gesture_phase` |
-| `INP-007` | Portable player binding profile plus optional device-loc | `opposing_bindings_cancel_axis_but_remain_active` |
-| `MODELER-001` | Product direction `MODELER-001` — *Normative* | `semantic_undo_redo_and_recovery_restore_accepted_rev` |
-| `MODELER-003` | Exact source and game mesh `MODELER-003` — *Normative* | `preview_is_derived_and_cannot_mutate_source` |
-| `PEN-002` | Primary 3D architecture `PEN-002` — *Normative* | `compiles_resource_hazards_and_lifetimes` |
-| `PEN-006` | Extension seams `PEN-006` — *Normative* | `rejects_duplicate_names_and_same_pass_read_write` |
-| `PEN-007` | Backend portfolio and Vulkan requirement `PEN-007` — *No | `pipeline_config_validates_stencil_and_depth_combinat` |
-| `PEN-021` | Visual-quality acceptance and vertical-slice doctrine `P | `timing_sample_preserves_frame_submission_pass_and_de` |
-| `PKG-001` | Small platform-native built product `PKG-001` — *Normati | `malformed_version_truncation_hash_and_duplicates_are` |
-| `PLATFORM-001` | Meridian 1.0 required platform floor `PLATFORM-001` — *N | `zero_size_is_detected_for_minimized_surface_handling` |
-| `PROTECT-009` | Behavioral and impossible-state evidence `PROTECT-009` — | `failure_detail_is_bounded_and_path_safe` |
-| `PROTECT-014` | Diagnostics and explainability `PROTECT-014` — *Normativ | `classifies_sixty_fps_stutter_thresholds` |
-| `RUNTIME-001` | Renderer-free architecture `RUNTIME-001` — *Normative* | `one_second_produces_exactly_sixty_steps_without_peri` |
-| `RUNTIME-002` | Aggressively automatic async `RUNTIME-002` — *Normative* | `panicking_tasks_report_their_id` |
-| `RUNTIME-003` | Interactive-first startup contract `RUNTIME-003` — *Norm | `platform_context_records_redraw_and_exit_requests` |
-| `RUNTIME-005` | One task contract with specialized executors `RUNTIME-00 | `duplicate_render_instance_ids_fail_the_whole_extract` |
-| `RUNTIME-006` | Executor selection is automatic `RUNTIME-006` — *Normati | `fixed_schedule_runs_exactly_requested_steps` |
-| `RUNTIME-007` | Structured concurrency `RUNTIME-007` — *Normative* | `dropping_pool_drains_submitted_work_before_shutdown` |
-| `RUNTIME-008` | Deterministic gameplay-result barriers `RUNTIME-008` — * | `reset_clears_accumulation_and_sets_tick` |
-| `SAVE-001` | Per-game Player Preferences/Profile is separate from gam | `version_mismatch_is_rejected_and_payload_limit_is_en` |
-| `SAVE-003` | Typed language-neutral persistence schemas `SAVE-003` —  | `schema_aware_transaction_round_trips_and_applies_sta` |
-| `SPEC-002` | Single-root specoment plus derived projections `SPEC-002 | `a_v05_research_gate_cited_by_v1_prose_is_retired_not` |
-| `SPEC-003` | Existing code treatment `SPEC-003` — *Normative* | `every_axis_meets_its_floor` |
-| `UI-002` | `.mui` source `UI-002` — *Normative* | `text_validation_completion_cut_and_paste_remain_type` |
-| `UI-003` | Styling `UI-003` — *Normative direction* | `creator_activity_rails_keep_full_icon_slots_inside_t` |
-| `UI-004` | Components and binding `UI-004` — *Normative* | `post_event_validation_cannot_bypass_the_aggregate_ef` |
-| `UI-005` | Layout `UI-005` — *Normative direction* | `preferred_stack_and_grid_keep_controls_in_distinct_v` |
-| `UI-006` | Game UI `UI-006` — *Normative* | `text_raster_is_clipped_to_its_retained_text_bounds` |
-| `UI-007` | UI animation `UI-007` — *Normative* | `shared_element_motion_handoffs_between_distinct_cros` |
-| `UI-008` | UI renderer qualification `UI-008` — *Normative* | `prepared_rect_vertices_use_snapped_physical_edges_at` |
-| `UI-011` | Native nine-slice / nine-patch rendering `UI-011` — *Nor | `every_registered_icon_generates_bounded_runtime_geom` |
-| `UI-SRC-001` | Compact brace/block `.mui` syntax `UI-SRC-001` — *Normat | `virtual_collection_contract_validates_only_realized_` |
-| `WORLD-001` | World environment, terrain, weather, water, vegetation,  | `cell_membership_handles_boundaries_and_negative_coor` |
-| `WORLD-002` | Unified World Environment authoring `WORLD-002` — *Norma | `missing_visual_and_duplicate_stable_ids_are_rejected` |
+| `ALLU-001` | Task-first normal authoring with graph/source unde | `scalar_evaluation_is_deterministic_and_cacheab` |
+| `ALLU-002` | Manual edits automatically become non-destructive  | `overrides_report_applied_conflicted_and_orphan` |
+| `AUTHOR-001` | Stable source and recovery `AUTHOR-001` — *Normati | `checkpoint_is_retained_at_bounded_interval` |
+| `AUTHOR-003` | Central authoritative asset catalog `AUTHOR-003` — | `file_pack_reader_loads_a_real_indexed_range` |
+| `AUTHOR-004` | Isolated importer execution `AUTHOR-004` — *Normat | `invalid_geometry_and_cache_authority_are_rejec` |
+| `AUTHOR-005` | Artifact and blob identity `AUTHOR-005` — *Normati | `source_and_artifact_identity_are_deterministic` |
+| `BUILD-001` | Build experience `BUILD-001` — *Normative* | `cargo_process_failure_is_bounded_and_redacted` |
+| `BUILD-002` | Toolchain acquisition and provenance `BUILD-002` — | `cargo_environment_accepts_bounded_toolchain_se` |
+| `ED-AOT-002` | Persistent top workspace strip `ED-AOT-002` | `shell_settings_and_favorites_are_contextual_an` |
+| `ED-AOT-003` | Three-column World workspace with viewport priorit | `workspace_history_undo_redo_branch_and_reset_u` |
+| `IMPL-STATE-001` | Persistent implementation state `IMPL-STATE-001` — | `a_stale_digest_is_reported_with_both_values` |
+| `INP-001` | Constrained input semantics; gameplay stays out of | `scrolling_preserves_line_pixel_and_gesture_pha` |
+| `INP-007` | Portable player binding profile plus optional devi | `gamepad_events_drive_bindings_and_disconnect_c` |
+| `MODELER-003` | Exact source and game mesh `MODELER-003` — *Normat | `preview_is_derived_and_cannot_mutate_source` |
+| `PEN-002` | Primary 3D architecture `PEN-002` — *Normative* | `environment_light_validates_diffuse_intensity` |
+| `PEN-006` | Extension seams `PEN-006` — *Normative* | `rejects_duplicate_names_and_same_pass_read_wri` |
+| `PEN-007` | Backend portfolio and Vulkan requirement `PEN-007` | `buffer_write_validation_rejects_misaligned_and` |
+| `PKG-001` | Small platform-native built product `PKG-001` — *N | `malformed_version_truncation_hash_and_duplicat` |
+| `PROTECT-009` | Behavioral and impossible-state evidence `PROTECT- | `review_case_has_exact_bounded_two_x_surface` |
+| `PROTECT-014` | Diagnostics and explainability `PROTECT-014` — *No | `history_is_bounded_and_summarizes_retained_sam` |
+| `RUNTIME-001` | Renderer-free architecture `RUNTIME-001` — *Normat | `runtime_records_frame_diagnostics_and_accepts_` |
+| `RUNTIME-002` | Aggressively automatic async `RUNTIME-002` — *Norm | `panicking_tasks_report_their_id` |
+| `RUNTIME-007` | Structured concurrency `RUNTIME-007` — *Normative* | `correlated_submission_preserves_context_withou` |
+| `SAVE-003` | Typed language-neutral persistence schemas `SAVE-0 | `schema_aware_transaction_round_trips_and_appli` |
+| `SPEC-002` | Single-root specoment plus derived projections `SP | `check_command_and_github_output_are_supported` |
+| `SPEC-003` | Existing code treatment `SPEC-003` — *Normative* | `broken_links_and_fences_are_rejected` |
+| `UI-003` | Styling `UI-003` — *Normative direction* | `authored_delta_reports_style_component_and_sou` |
+| `UI-004` | Components and binding `UI-004` — *Normative* | `aggregate_route_limit_rolls_back_deep_dispatch` |
+| `UI-005` | Layout `UI-005` — *Normative direction* | `recovered_frame_diagnostics_keep_the_snapshot_` |
+| `UI-006` | Game UI `UI-006` — *Normative* | `text_raster_is_clipped_to_its_retained_text_bo` |
+| `UI-007` | UI animation `UI-007` — *Normative* | `shared_element_motion_handoffs_between_distinc` |
+| `UI-008` | UI renderer qualification `UI-008` — *Normative* | `preflight_failure_keeps_output_paths_relative` |
+| `WORLD-002` | Unified World Environment authoring `WORLD-002` —  | `missing_visual_and_duplicate_stable_ids_are_re` |
 
-## Stratum D — one row per non-test judgement-bearing section
+## Stratum D — sections with more than one outcome
+
+The previous sample drew one row from each of eight sections that are 100% `retain`; a draw from
+a uniform section cannot fail. These are the sections that can discriminate.
 
 | section | row | disposition |
 |---|---|---|
-| `public_types` | `DropReason` | retain |
-| `dependencies` | `wgpu` | retain |
-| `features` | `None` | retain |
-| `examples` | `ui_direct_qualification` | retain |
-| `evidence_runners` | `ci.yml:73` | retain |
-| `formats` | `ui-source` | retain |
-| `generated_files` | `governance/generated/index.md` | retain |
-| `ci_rows` | `ci.yml:governance` | retain |
+| `public_types` | `UiTextInputState` | retain |
+| `public_types` | `AssetDatabaseSnapshot` | retain |
+| `public_types` | `scan` | refactor |
+| `public_types` | `MAX_ASSISTIVE_ACTION_BINDINGS` | refactor |
+| `crates` | `meridian-modeler` | ESC OD-021 |
+| `crates` | `meridian-rt` | retain |
+| `crates` | `meridian-rhi` | retain |
+| `crates` | `meridian-physics` | ESC OD-014 |
+| `tests` | `secondary_pointer_release_routes_an_explicit` | ESC OD-021 |
+| `tests` | `nested_layers_preserve_parent_order_and_rese` | retain |
+| `tests` | `duplicate_render_instance_ids_fail_the_whole` | ESC OD-021 |
+| `tests` | `first_snapshot_uploads_sorted_instances_and_` | retain |
+
+## Stratum E — seeded random remainder (20 rows)
+
+The previous sample quoted a seed and drew nothing from it.
+
+| test | owner |
+|---|---|
+| `reduced_motion_snaps_physical_presentation_to_authoritativ` | UI-007 |
+| `settings_preferences_persist_locally_and_apply_to_retained` | ESC OD-021 |
+| `cascade_layout_uses_monotonic_practical_splits_and_selects` | PEN-002 |
+| `missing_recent_location_is_explicit_transactional_and_canc` | ESC OD-021 |
+| `rejects_unknown_resource_identifier` | PEN-002 |
+| `invalid_unnamed_focusable_node_is_rejected` | UI-004 |
+| `aggregate_effect_bytes_roll_back_repeated_large_commands` | UI-004 |
+| `zero_delta_still_publishes_a_render_snapshot_for_the_frame` | RUNTIME-001 |
+| `image_mesh_and_geometry_bounds_are_typed_before_growth` | UI-008 |
+| `duplicate_ids_are_rejected_without_replacing_existing_meta` | AUTHOR-003 |
+| `a_longer_number_does_not_yield_a_shorter_identifier` | SPEC-002 |
+| `root_declared_items_exclude_impl_methods_and_private_modul` | SPEC-003 |
+| `duplicate_component_delta_is_rejected_without_mutating_sta` | ESC OD-021 |
+| `complete_panel_contract_has_unique_ids_and_accessible_comm` | ESC OD-017 |
+| `a_stale_digest_is_reported_with_both_values` | IMPL-STATE-001 |
+| `airborne_gravity_is_deterministic_and_landing_clears_verti` | ESC OD-014 |
+| `assistive_scroll_into_view_moves_the_nearest_scroll_ancest` | UI-004 |
+| `compact_world_context_yields_rail_before_primary_work_surf` | ESC OD-021 |
+| `layer_inside_empty_parent_clip_never_becomes_an_unscissore` | UI-008 |
+| `failed_empty_projection_keeps_the_last_accepted_identity_a` | ESC OD-017 |

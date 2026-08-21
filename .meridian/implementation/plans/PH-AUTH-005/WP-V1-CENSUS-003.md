@@ -608,6 +608,75 @@ re-entry clause triggers if a budget is exceeded or an audit row fails. That tri
 
 ## Completion record
 
+**The first closure was withdrawn.** Independent review rejected it, and the review was right on
+every count I could verify from source. This record replaces the one that claimed closure.
+
+### What the review found
+
+**The test map was substring matching on function names, and roughly a sixth of it was wrong.**
+The rules matched *vocabulary* rather than subject. Twenty-two tests about world browsers,
+inspectors and viewports were filed under `UI-SRC-001` — "Compact brace/block `.mui` syntax` —
+because their names contain the word "source". No `.mui` grammar exists anywhere in the
+repository. Two icon-geometry tests claimed `UI-011`, "Native nine-slice / nine-patch rendering",
+for which `grep` returns **zero** lines of implementation: the census reported an unimplemented
+requirement as covered, which is worse than reporting nothing.
+
+Sixteen ids turned out to be **product-scope statements rather than behavioural contracts** —
+`MODELER-001` is literally "Product direction", `PLATFORM-001` is "Meridian 1.0 required platform
+floor", `WORLD-001` names a whole programme. Nothing at unit-test granularity can honestly serve
+them. 124 of 737 mapped tests, 16 %, are now escalated to `OD-021` rather than carrying an owner
+that does not describe them. **33 requirement ids survive**, down from 49.
+
+**`OD-017`'s premise was false, and falsifiable in one grep.** It asserted that accessibility
+output has no v1 requirement describing it. `MERIDIAN_SPECOMENT.md:25991` carries "Accessibility,
+localization and navigation — *Derived normative contract*", whose clauses are exactly what
+`meridian-ui-semantics` implements. The original record surveyed three unrelated ids and missed
+the contract that does describe it. What is true is larger: that contract carries **no backticked
+identifier**, so it is invisible to `identifiers.json` and unmappable — and **67 labelled
+normative headings share that shape**. This is the third universe error in this package, after
+`requirements.json` → `identifiers.json` and the `SRV-016..022` range leak. `OD-017` is restated
+as the class question with accessibility as its worked instance.
+
+### Result after correction
+
+All **1804** judgement-bearing rows carry a judgement.
+
+| Section | Rows | Outcome |
+|---|---|---|
+| crates | 37 | 29 retain, 4 remove, 4 escalated |
+| public types | 904 | 637 retain, 229 refactor, 4 remove, 34 escalated |
+| tests | 791 | 613 retain across **33** ids, 178 escalated |
+
+**Residual: 225 escalated rows and 15 phase-pending rows.** The residual more than doubled,
+because the correction moved work out of the "mapped" column and into the "no honest owner"
+column. That is the point of it.
+
+### Corrections to the withdrawn record
+
+- "zero crates with five or more mapped tests sharing a single id" was false as worded; the rule
+  the code enforces is that no such crate maps them **all** to one id. Restated, and amended: a
+  crate with escalated tests demonstrably serves a second subject, recorded better by an
+  escalation than by a second plausible id.
+- `OD-017` was "54 test rows"; it is **41** tests, 10 public types and 1 crate. 54 was the total
+  escalated-test count across four decisions.
+- `census.json`'s `assignment` string still said every judgement field was null. Corrected.
+- Four `limitations` entries were stale or contradicted by what shipped. Corrected, and one added:
+  the public-types evidence rule is a string proxy that misses inference-bound return types,
+  literal-asserted constants, trait bounds and error payloads — about a quarter of the 229
+  `refactor` rows are consumed by another crate in the workspace.
+
+### Still owed, carried with owners rather than silently
+
+`format_migrations` and forbidden-edge reasons remain absent — plan step 5, and a card scope item.
+All 15 formats are `retain` so no migration is owed, but the four reverse edges carry no reason
+and the ordering they are judged against is unratified (`OD-019`). The public-types rule needs to
+become reachability-based and recomputed in `check` rather than frozen as 229 static rows.
+
+### Evidence
+
+`check` 0, `project --check` 0, clippy `-D warnings` 0, `fmt` 0, 115 package tests. Row validity
+by exhaustive cross-product: 16 combinations against each of ten sections, exactly 4 accepted.
+
 Landed at the commit carrying this record. Implementation followed the accepted plan; two
 deviations and one budget breach are reported below rather than left to be discovered.
 

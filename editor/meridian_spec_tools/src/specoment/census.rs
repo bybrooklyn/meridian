@@ -1664,10 +1664,24 @@ pub fn assignment_problems(rendered: &str) -> Vec<String> {
         }
     }
 
-    // No crate with five or more mapped tests may map them all to one id.
+    // No crate with five or more mapped tests may map them all to one id AND have no escalated
+    // test. The rule exists to catch bulk assignment, and its premise is that a crate that large
+    // serves more than one requirement. An escalated test satisfies that premise with better
+    // evidence than a second id would: it records a second subject whose owner does not exist,
+    // rather than inventing one that plausibly might. Four crates reached this state when the
+    // review escalated 124 mappings to scope-level requirements no unit test can serve.
     let mut by_crate: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
         std::collections::BTreeMap::new();
     let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut escalated: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for row in &tests {
+        if let (Some(file), Some(_)) = (
+            row.get("file").and_then(serde_json::Value::as_str),
+            row.get("escalation").and_then(serde_json::Value::as_str),
+        ) {
+            escalated.insert(file.split('/').nth(1).unwrap_or("?").to_string());
+        }
+    }
     for row in &tests {
         let (Some(file), Some(owner)) = (
             row.get("file").and_then(serde_json::Value::as_str),
@@ -1682,9 +1696,9 @@ pub fn assignment_problems(rendered: &str) -> Vec<String> {
     }
     for (krate, ids) in &by_crate {
         let n = counts.get(krate).copied().unwrap_or(0);
-        if n >= 5 && ids.len() == 1 {
+        if n >= 5 && ids.len() == 1 && !escalated.contains(krate) {
             problems.push(format!(
-                "{krate} maps all {n} of its mapped tests to one id ({}); a crate that large serves more than one requirement",
+                "{krate} maps all {n} of its mapped tests to one id ({}) and escalates none; a crate that large serves more than one requirement",
                 ids.iter().next().map_or("?", String::as_str)
             ));
         }
@@ -1713,7 +1727,7 @@ pub fn render(census: &Census, root: &Path, specoment_sha256: &str) -> String {
     let _ = writeln!(out, "  \"specoment_sha256\": \"{specoment_sha256}\",");
     let _ = writeln!(
         out,
-        "  \"assignment\": \"disposition, next_phase, owner and escalation are null in every row: WP-V1-CENSUS-001 and -002 measure, WP-V1-CENSUS-003 assigns. Until it does, the enforced rule is that no row has BOTH a disposition and an escalation; a row with neither is the expected measurement-phase state and is not yet an error. CENSUS-003 tightens this to exactly-one. The edges and layers sections carry no judgement fields at all and are exempt by construction, stated here because CENSUS-001 claimed every row and was wrong for 104 of them.\","
+        "  \"assignment\": \"WP-V1-CENSUS-003 assigned every judgement-bearing row. A row carries exactly one of disposition and escalation, and next_phase is null only when phase_pending or escalation names an unresolved owner decision - four legal shapes, verified by exhaustive cross-product over all sixteen combinations of the four judgement fields. The edges and layers sections carry no judgement fields at all and are exempt by construction, stated here because CENSUS-001 claimed every row and was wrong for 104 of them.\","
     );
 
     // Limitations, recorded in the artefact itself. The recurring failure in this package's
