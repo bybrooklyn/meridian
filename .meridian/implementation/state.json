@@ -1,19 +1,21 @@
 {
   "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
-  "source_checkpoint": "9d486dd832e70059bd1432cfaf654310f643e0c0",
-  "active_phase": "PH-AUTH-004",
-  "active_work_package": "WP-V1-RESET-003",
+  "source_checkpoint": "e9a7ff6f7c0f41a34250c197e6c8db3e11eda16e",
+  "active_phase": "PH-AUTH-005",
+  "active_work_package": null,
   "completed_phases": [
     "PH-AUTH-001",
     "PH-AUTH-002",
-    "PH-AUTH-003"
+    "PH-AUTH-003",
+    "PH-AUTH-004"
   ],
   "completed_work_packages": [
     "WP-V1-BASE-001",
     "WP-V1-BASE-002",
     "WP-V1-RESET-001",
     "WP-V1-RESET-002",
-    "WP-V1-GOV-001"
+    "WP-V1-GOV-001",
+    "WP-V1-RESET-003"
   ],
   "blocked": [],
   "unsupported": [
@@ -43,10 +45,18 @@
       "owning_phase": "PH-AUTH-004",
       "why": "PH-AUTH-004's stop condition is that old IDs must not still control implementation status. A v1 sentence deferring an open question to a retired v0.5 gate does exactly that.",
       "options": "Re-declare the gate as v1 content with an owning heading, or restate the sentence to defer to Appendix B's research register without naming a v0.5 identifier."
+    },
+    {
+      "id": "MIG-002",
+      "subject": "v1 authority cutover",
+      "merged": "e9a7ff6",
+      "frozen_v05_sha": "ddbacd34361c302e72ed2accefd59fe7567b28fe",
+      "removed": "90 files, 15,448 lines",
+      "ledger": "docs/migrations/v1-reset-ledger.md"
     }
   ],
   "evidence_index": "evidence/index.json",
-  "program_status": "PH-AUTH-001, 002 and 003 CLOSED. PH-AUTH-004 in implementation on v1-authority-reset; the cutover is prepared but the closure row is not yet satisfied and merge authorization is NOT held.",
+  "program_status": "PH-AUTH-001 through PH-AUTH-004 CLOSED. The v1 authority cutover is merged to main at e9a7ff6. Next: PH-AUTH-005 / WP-V1-CENSUS-001.",
   "process_deviations": [
     {
       "id": "DEV-001",

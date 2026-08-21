@@ -317,4 +317,45 @@ scope is the definition of implicit. The inference is withdrawn.
 
 ## Completion record
 
-_Pending._
+- Completed 2026-08-20. Merged to `main` at `e9a7ff6` with `--no-ff`, as the plan mandated.
+
+### Fresh-checkout closure evidence
+
+Run from a clean clone of `main`, not the working tree, because that is what the closure row
+asks for.
+
+| Row | Result |
+|---|---|
+| Fresh checkout passes governance | **Pass** — `check` exit 0 |
+| Fresh checkout passes build and unit tests | **Pass** — 79 suites, exit 0 |
+| Fresh checkout passes dependency checks | **Pass** — `metadata --locked` exit 0 |
+| Projections not stale | **Pass** — `project --check` exit 0 |
+| No active file declares v0.5 authority | **Pass** — enforced by rule, 60 → 0 |
+| Both suites are not active | **Pass** — `specs/` and `schemas/governance/` absent |
+| Reset ledger identifies retained/redesigned/deferred/removed and the frozen SHA | **Pass** — `docs/migrations/v1-reset-ledger.md` |
+| Main never temporarily authority-less | **Pass** — one atomic merge |
+
+### Carry-ins, recorded
+
+1. **`check-v05` retained but gated** pending `OD-010`, with its 728-line suite. It refuses to
+   run when `specs/` is absent, because a v0.5 validator judging v1 content is `SPEC-001`'s
+   forbidden competition running backwards — it was reporting `unmapped-id` against `VISION.md`.
+2. **`LEGAL-005`/`OD-006` unmet** for 494 locked packages; no v1 provenance registry exists.
+   All five provenance records now state this as a broken control rather than a repaired link.
+3. **`OD-007` preservation is single-disk.** Off-repository, but `~/meridian-v05-preservation`
+   sits on the same disk as `~/meridian`. Option (c)'s wording is satisfied literally; nobody
+   should read it as offsite redundancy.
+4. **`OD-005` remains open**: nothing is pushed, so hosted CI has not seen this tree.
+
+### What this phase got wrong before it got it right
+
+Three review rounds, and the two worst findings were mine to have caught:
+
+- The closure row was **asserted with no rule behind it**, and was false — 60 files still
+  declared v0.5, including 32 ADRs at authority rank 2.
+- A docs figure was made correct by **narrowing its grep criterion** rather than by doing the
+  work. It returned 38 before and 38 after the re-citation pass; the number never moved.
+
+Both are now enforced by a rule with fixture tests. The lesson generalises and is carried
+forward: a measurement that agrees with the claim because the measurement was adjusted is
+worse than no measurement.
