@@ -26,7 +26,7 @@ judgement-bearing rows.** Every judgement field is null. Ten limitations recorde
 The first draft used `requirements.json` (527 ids) and declared 522 mappable. That was the
 wrong projection. `requirements.json` is the subset of declared identifiers whose heading ends
 in `— *Label*`; `identifiers.json` holds **736**, so 209 declared identifiers are invisible to
-it, of which 96 are product requirements — including `ED-AOT-001..005` and `EDUX-VIS-001..010`,
+it, of which 96 are product requirements before range inheritance and 85 after — including `ED-AOT-001..005` and `EDUX-VIS-001..010`,
 which are exactly what `meridian-ui-editor`'s 59 tests assert
 (`creator_workspace_uses_the_locked_shell_and_world_width_priorities`). Under that draft their
 honest owners did not exist, so ~120 editor tests would have become escalations manufactured by
@@ -156,10 +156,13 @@ Replaced by:
 - **Per-family cap, derived in step 1 — not pre-set.** A family cap is the right shape: spreading
   within a family does not evade it, and genuine clustering is not punished. But any number
   chosen before the mapping repeats the failure this plan diagnoses two sections earlier. A
-  worked check shows why 25 % would have been wrong: the six `meridian-ui-*` crates hold **256**
-  tests and `meridian-renderer/src/ui_direct*.rs` adds **51** more that plausibly serve `UI-008`,
-  giving ~307 against a 25 % ceiling of 197.75. The `UI` family breaches it before a single
-  judgement is made. The cap is therefore set from the measured `meridian-spec` and
+  worked check shows why any pre-set number would have been wrong. The `UI` **requirement
+  family** load is 197 — six `meridian-ui-*` crates, excluding `meridian-ui-editor`, whose 59
+  tests this plan argues are asserted by `ED-AOT` and `EDUX-VIS` — plus 51 in
+  `meridian_renderer/src/ui_direct.rs` (45) and `ui_direct_qualification.rs` (6), giving **248**
+  against a 25 % ceiling of 197.75. Breached before a single judgement is made. The seven
+  `meridian-ui-*` crates together hold 256 tests, but that is a crate-name prefix and not the
+  family load; conflating the two would contradict this plan's own universe argument. The cap is therefore set from the measured `meridian-spec` and
   `meridian-ui-editor` mappings and recorded as measured.
 - **No crate with ≥ 5 tests maps entirely to one id.** Retained — it does honest work.
 - **The distinct-id count is recorded, not gated.** With ~30 named rules covering ~1,650 rows
@@ -168,7 +171,7 @@ Replaced by:
   in the completion record so "the map got coarser" is visible without re-deriving it.
 - **Every distinct id used appears in the audit sample at least once**, with its heading text
   quoted beside one test's assertion. This is the control that kills round-robin: a script
-  producing 66 ids must then defend 66 id-to-assertion pairs in prose.
+  producing *n* ids must then defend *n* id-to-assertion pairs in prose.
 
 ## The audit
 
@@ -188,7 +191,7 @@ is reproducible and a sample chosen after the mapping is not passed off as a sam
 Arithmetic, stated rather than assumed: at *n* = 30 of *N* = 791 with 100 wrong, P(catch ≥ 1) =
 98.4 %. So 30 detects a gross error — but a **clean** 30-row audit certifies only that fewer
 than ~74 rows (9.4 %) are wrong at 95 %, a blind spot larger than any plausible escalation
-budget. 60 stratified rows across all sections is the smallest honest instrument.
+budget. Instrument (b) below is sized accordingly.
 
 **Routing, with a mechanism rather than an intention.** `IMPL-WP-001` mandates review *before*
 implementation and defines no post-implementation step, so "goes to the reviewer" would in
@@ -248,8 +251,8 @@ at closure would undo that.
 
 - No re-measurement. `-002`'s output is the frozen base.
 - No decomposition, crate removal or migration execution — `PH-AUTH-006`.
-- No specoment edits. In particular this package does **not** fix the 96 unlabelled ids; that is
-  `OD-009`.
+- No specoment edits. In particular this package does **not** fix the 85 unlabelled ids; that is
+  the new owner-decision record above, not `OD-009`, whose question cannot reach them.
 - The 476 transitive dependencies stay a recorded limitation and an `OD-006` escalation.
 
 ## Compatibility / migration / authority effects
@@ -287,7 +290,7 @@ question.
 Set both judgement fields; set neither; name `OD-011` (resolved); name `OD-999`; assign outside
 the vocabulary; map a test to `APP-003` (Rejected), `SRV-016` and `SRV-022` (post-1.0, the second unlabelled); delete a crate whose
 disposition remains; insert a blank line and confirm no orphan; map every test in a crate to one
-id; push a family past 25 %; use an id that appears in no audit row. Each must fail naming the row.
+id; push a family past the step-1 derived cap; use an id that appears in no audit row. Each must fail naming the row.
 
 ## Research candidates and selection metrics
 
@@ -308,8 +311,8 @@ None.
 
 Stop if a crate is retained without all three pieces of evidence, or without one of its own
 tests mapped to the id it names; if a test is mapped to a requirement that does not describe it;
-if the measured budget from step 1 is exceeded without a written reason; if any family exceeds
-25 %; if an id used appears in no audit row; if any row carries both or neither judgement field
+if the measured budget from step 1 is exceeded without a written reason; if any family exceeds the
+step-1 derived cap; if an id used appears in no audit row; if any row carries both or neither judgement field
 once assignment is complete; if an escalation names a resolved or non-covering `OD-*`; or if a
 new `OD-*` lacks options, `blocks` and a default.
 

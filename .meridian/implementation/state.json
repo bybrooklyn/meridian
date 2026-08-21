@@ -207,7 +207,29 @@
       "question": "Ten v0.5 enforcement rules police concepts that survive into v1 but have no v1 successor. Build v1 rules for them, or rule the enforcement no longer required.",
       "detail": "Marked no-v1-analogue in governance/coverage-matrix.md, which escalates rather than resolving inside a data file. They are: missing-adr (0.5 still ranks adopted ADRs below the specoment), bad-fence (Appendix F's synthesis gate requires balanced fences), broken-link (Appendix D requires projection source links to resolve), stale-phase-ref x2 (v1 has phases so stale refs remain possible), implemented-without-evidence (IMPL-WP-003 item 6), occluded-visual-evidence (0.4 defines Occluded and forbids reading it as visible quality), expired-waiver (waivers survive and a v1 schema is shipped, but nothing checks expiry), false-promotion (0.4 forbids promoting a status without evidence).",
       "why_this_matters": "An earlier derivation answered the disposition question per CHECK - does this check read specs/? - and dropped 64 of 66 units as v05-authority-retired. That was wrong for fourteen of them: the registry retires, the concept does not. Deleting the v0.5 validator on that basis would have caused exactly the silent enforcement loss the matrix exists to prevent.",
-      "blocks": "PH-AUTH-004 deletion of the v0.5 validator. Seven units now carry fixture-backed supersessions; these ten do not."
+      "blocks": "PH-AUTH-004 deletion of the v0.5 validator. Seven units now carry fixture-backed supersessions; these ten do not.",
+      "resolved": {
+        "date": "2026-08-21",
+        "ruling": "Option A: build v1 successors for all ten rules. The enforcement is required.",
+        "ruled_by": "owner",
+        "rationale": "The v0.5 registry retired; the concepts did not. All ten police behaviour v1 still requires, so the enforcement is rebuilt against v1 structures rather than dropped.",
+        "consequences": [
+          "The 22 census test rows policing these rules take disposition retain, not remove.",
+          "Their next_phase is the package that builds the v1 successors, not PH-AUTH-006.",
+          "The v0.5 validator code stays until its v1 successors exist; PH-AUTH-004 cleanup of it remains deferred and is now deferred by a ruling rather than by an open question.",
+          "A new work package is owed: ten v1 rules plus fixtures."
+        ],
+        "rules": [
+          "missing-adr",
+          "bad-fence",
+          "broken-link",
+          "stale-phase-ref (x2)",
+          "implemented-without-evidence",
+          "occluded-visual-evidence",
+          "expired-waiver",
+          "false-promotion"
+        ]
+      }
     },
     {
       "id": "OD-011",
