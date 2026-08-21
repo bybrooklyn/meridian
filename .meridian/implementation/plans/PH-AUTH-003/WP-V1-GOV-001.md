@@ -1,6 +1,6 @@
 # WP-V1-GOV-001 — v1 governance schemas and validator
 
-Revision 3. Revision 1 received `rethink`; revision 2 received `revise`. See Independent Review.
+Revision 4. Revision 1 received `rethink`; revisions 2 and 3 received `revise`. See Independent Review.
 
 **Every figure below is stamped with the command that produced it, at `14d3feb`.** Two figures
 in revision 2 were wrong because they originated in the reviewer's own findings and were
@@ -15,7 +15,16 @@ adopted verbatim on the strength of their source. A reviewer's number is not evi
   1-8), Appendix H.4 (evidence index shape), Appendix H.5 (projection stamp)
 - Depends on: `PH-AUTH-001`, `PH-AUTH-002` — both closed
 - Branch: `v1-authority-reset` at `14d3feb`
-- Primary semantic seam: **what the v1 validator considers authority, and what it refuses.**
+- Primary semantic seam, **compound and deliberately named**: *the v1 governance authority
+  boundary, and the evidence that licenses retiring v0.5.*
+
+  Revision 3 declared a single seam — what the validator considers authority — then made the
+  coverage matrix the primary artefact. The matrix asserts nothing about what counts as
+  authority; it licenses a deletion. That is a migration seam, and disguising two seams as one
+  makes the package less reviewable, not more. Named rather than split: the matrix is only
+  derivable once the v1 rules exist, so splitting would put it in a package depending on the
+  first, with `PH-AUTH-004` blocking on the second — a serial dependency in front of the
+  cutover for no reviewability gain.
 
 ## User-visible / operational result
 
@@ -99,8 +108,33 @@ because two figures adopted from that reviewer in revision 2 proved wrong. The e
 not load-bearing; the matrix is generated from the extracted set, so whatever the set contains
 is what must be mapped.
 
+**Partitioned by owning command.** The 65-id set is *not* a subset of what `check` runs:
+`stale-projection` is emitted from `Command::Project` (`main.rs:259`), which `PH-AUTH-004`
+does not delete. Demanding a successor for every id would conflate "enforcement being deleted,
+needs a successor" with "enforcement being retained, needs nothing". The matrix therefore
+partitions the extracted set by owning command and requires a successor or drop reason **only
+for ids emitted by code the cutover removes**, recording the remainder as retained.
+
 Deliver `governance/coverage-matrix.md`, **generated** by extracting the issue-id set from the
-v0.5 validator and requiring each id to carry either a `v1_rule` or a `dropped_because`. Being
+v0.5 validator and requiring each deleted-scope id to carry either a `v1_rule` or a
+`dropped_because`.
+
+**Every `v1_rule` row must name the fixture test that demonstrates the successor catches it,
+and an unbacked row is a validation failure.** This is what keeps the mapping file from
+becoming a second normative specification. The discriminator is falsifiability, not "tool
+rules versus product requirements": *"v0.5 rule X is superseded by v1 rule Y"* is falsifiable
+by fixture — take the input that tripped X, assert Y reports it. Unbacked, each row is an
+unverified equivalence claim asserting coverage nothing checks, which is exactly what the
+v0.5 deletion would be resting on.
+
+**`dropped_because` is the genuine hazard and is constrained to a closed set.** A drop reason
+claims enforcement is no longer required — a normative judgement, unfalsifiable by
+construction, and the place where scope shrinks silently. Permitted values:
+
+- `v05-authority-retired` — the rule policed `specs/`, which `PH-AUTH-004` deletes;
+- `subsumed-by-root-structure` — the root makes the condition unrepresentable;
+- `no-v1-analogue` — **escalates to the owner** as an open decision alongside `OD-009`, and is
+  not resolvable inside a data file. Being
 generated from the code it is a derived artefact, not restated prose, so the stop condition on
 prose duplication is not tripped — hand-writing 65 rows of English would trip it.
 
@@ -115,42 +149,52 @@ this — is **already shipped** as `project --check` and is cited, not rebuilt.
 Inverting revision 1's `validate-v1`. At `PH-AUTH-004` the v0.5 command is deleted and the
 surviving command needs no rename, so no v1 name ever carries a migration-era suffix.
 
-### 3. Ten chartered registries, honestly
+### 3. Ten chartered registries, split by class
+
+The ten do not share a source, and treating them as one class would destroy data.
+
+**Class (a) — root projections.** Derived from `MERIDIAN_SPECOMENT.md`, emitted by
+`emit::all()`, policed by `project --check` byte-identity.
 
 | Registry | Disposition |
 |---|---|
 | requirements | shipped at `PH-AUTH-002` |
 | phases | shipped at `PH-AUTH-002` |
 | research gates | shipped at `PH-AUTH-002` |
-| near-term work packages | **new** — 12 `WP-V1-*` declarations under `# Near-term work-package decomposition` (line 30138), spanning lines 30142-30219.<br>`grep -c '^## WP-V1-' MERIDIAN_SPECOMENT.md` → 12 |
+| near-term work packages | **new** — 12 `WP-V1-*` declarations under `# Near-term work-package decomposition` (line 30138), spanning 30142-30219. `grep -c '^## WP-V1-' MERIDIAN_SPECOMENT.md` → 12 |
 | dependencies | **new** — 98 of 99 phase cards carry `depends_on` |
 | maturity | **new** — verbatim labels plus the §0.3/§0.4/§0.7 axis content |
-| evidence | **new** — Appendix H.4 shape, with the 15 existing artefacts registered |
-| waivers | schema, plus a **generated** registry that currently emits zero rows |
-| releases | schema, plus a **generated** registry that currently emits zero rows |
-| compatibility | schema, plus a **generated** registry that currently emits zero rows |
 
-**Referents declared, because an undeclared referent cannot have a rule that fails.**
+**Class (b) — accumulated state.** Sourced from test runs, approvals and shipped artefacts —
+**not** from the root, and not derivable from it. Shipped as a **schema plus a conformance and
+completeness rule**, and deliberately kept **outside `emit::all()`**.
 
-- **waivers** — records of granted scoped expiring waivers. `grep` for a `WVR-*`/`WAIVER-*`
-  identifier family in the root returns nothing, so the root declares no waiver today.
-- **releases** — records of **shipped immutable releases**, in §0.5 item 5's sense. This is
-  *not* the 15 `RELEASE-001..010` and `RELEASE-SUP-001..005` identifiers, which are
-  requirements *about* the release system and are already among the 527 records in
-  `requirements.json`. Revision 2 said "empty" without stating which referent it meant; under
-  the other reading the registry would have duplicated `requirements.json`.
-- **compatibility** — records of declared compatibility windows. No `COMPAT-*` family exists
-  in the root.
+| Registry | Disposition |
+|---|---|
+| evidence | schema (Appendix H.4) + conformance rule + registration of the 14 existing artefacts |
+| waivers | **schema only.** No instance until a waiver exists |
+| releases | **schema only.** No instance until a release exists |
+| compatibility | **schema only.** No instance until a window is declared |
 
-**They are generated, not hand-placed.** Everything under `governance/generated/` carries
-`DO NOT EDIT. Regenerate with: cargo run -p meridian-spec -- project`, and `project --check`
-enforces byte-identity by regenerating. A hand-created empty file there regenerates to nothing,
-so `project --check` could not police it and its own header would instruct the reader to do
-something that does not work. Emitting them from a root query that presently returns zero rows
-makes them derived like every sibling, policed by the same check, and self-populating the
-moment the root declares a waiver. That is what distinguishes a load-bearing empty registry
-from `IMPL-WP-003`'s "empty crate": a schema constrains future writes, a stamp ties it to the
-canonical digest, and a rule fails when it drifts.
+**Why the split is not a technicality: emitting class (b) would destroy data.**
+`specoment::run` writes every projection unconditionally — `fs::write(&target, &projection.contents)`
+at `mod.rs:91`, with no merge and no read-back. Putting the evidence index into `emit::all()`,
+as revision 3 directed, means the next `cargo run -p meridian-spec -- project` **overwrites
+`.meridian/implementation/evidence/index.json` with an empty regeneration, destroying every
+registered record** — the exact inverse of this package's goal. `project --check` would then
+report correctly-registered evidence as "stale or hand-edited".
+
+Revision 3's further claim that these would be "self-populating the moment the root declares a
+waiver" is also false for class (b): a waivers query over the root returns zero rows *forever*,
+because the root is a design document and cannot contain an approver, an expiry or a CI run id.
+
+**Evidence from the frozen baseline.** `specs/registry/` holds `evidence.json` (**52** records,
+with fields like `source` naming gate invocations and `limits` naming NotRun rows) and
+`waivers.json` (records carrying `approver`, `approval_role`, `expires`, `blocked_milestone`).
+None of that content exists anywhere in the specoment and none of it could. And after a
+complete milestone programme through MS-02, v0.5 created **no releases and no compatibility
+registry at all** — which is evidence those two are not registry-shaped, and that the honest
+deliverable for them is the schema alone.
 
 ### 4. Rules
 
@@ -227,11 +271,14 @@ licenses removing the former.
 
 No runtime, UI or dependency surface. Offline; reads and writes inside the repository.
 Provenance improves: prose rules become executable, and the evidence index stops claiming zero
-records while fifteen artefacts exist.
+records while fourteen artefacts exist.
 
 **Appendix D obligations.** Rule 7 (fail CI when misleadingly stale) is **Deferred to
-`PH-AUTH-004`**, which owns CI; between now and then nothing enforces staleness in CI, and
-that is stated rather than left silent. Rule 8 (distinguish user documentation from governance
+`PH-AUTH-004`**, which owns CI. The gap is wider than revision 3 stated: class (b) registries
+are outside `emit::all()` and therefore have no `project --check` protection either, so
+between now and 004 nothing at all would catch an evidence index drifting out of conformance.
+Closed locally by running the class (b) conformance rule inside `check`, so local gates catch
+it even though CI does not yet. Rule 8 (distinguish user documentation from governance
 authority) holds across every artefact this package writes, which needs saying because two of
 them are not obvious: `governance/coverage-matrix.md` is Markdown but is **generated
 governance**, not documentation, and `.meridian/implementation/evidence/` is derived
@@ -273,15 +320,18 @@ worth far more. Restated with the basis shown so it can be audited rather than b
 
 | Area | Added | Removed | Basis |
 |---|---|---|---|
-| Registries in `emit.rs` | ~460 | 0 | `wc -l emit.rs` = 398 for 5 projections + manifest ≈ **66 per output** × 7 new |
+| Class (a) registries in `emit.rs` | ~200 | 0 | `wc -l emit.rs` = 398 for 5 projections + manifest ≈ **66 per output** × **3** new (work packages, dependencies, maturity) |
+| Class (b) registrar — conformance and completeness, outside `emit::all()` | ~180 | 0 | schema validation, directory scan, registration; no emitter analogue |
 | Appendix A reconciliation | ~250 | 0 | its structural analogue `phases.rs` is 314 lines; Appendix A is larger (700 entries across A.1/A.2/A.2b/A.3) but reuses `index.rs` |
 | Coverage-matrix generator, DAG cycle check, axis-tagged enum check, evidence-index conformance | ~250 | 0 | four rules, no existing analogue |
 | `main.rs` command rename and dispatch | ~15 | ~10 | |
-| **Production total** | **~975** | ~10 | |
+| **Production total** | **~895** | ~10 | |
 | Tests and fixtures, incl. synthetic violating specoments | ~500 | 0 | |
 | Schemas, hand-written | ~350 | 0 | 10 registries, shape-only |
 
-**~975 production, not ~500.** If that is too large for one package the honest response is to
+**~895 production, not ~500.** Revision 3 said ~975 on a basis of 66 × 7, but at most **3**
+of the 7 new registries are `emit.rs` projections; the other four are class (b) and need a
+different, separately costed mechanism. The total moved little; the basis is now auditable. If that is too large for one package the honest response is to
 split the Appendix A reconciliation into its own package, not to shrink the number — a scope
 signal pointing the wrong way is worse than none, and revision 2's stop rule would have fired
 immediately and pointlessly.
@@ -315,7 +365,7 @@ delivered none of its chartered purpose.
 | 3 | Maturity table is an owner decision, contradicting this plan's own diagnosis | Table deleted |
 | 4 | §0.4 enum rule cannot pass: four-way vocabulary conflict | Scoped to axis-tagged fields; `SD-008` |
 | 5 | 10 chartered registries, revision 1 delivered 3 | All ten named |
-| 6 | Evidence index broken and unregistered | **Confirmed**: `schema_version` not `schema`, no digest, 0 records vs 15 artefacts |
+| 6 | Evidence index broken and unregistered | **Confirmed**: `schema_version` not `schema`, no digest, 0 records vs 14 artefacts |
 | 7 | Root Appendix A is the defective 700-entry output | **Confirmed**: 700 vs 736, 36 absent incl. all `AI-POLICY-*` |
 | 8 | `DEV-007` not mechanically decidable; amends H.3; `state.json` cannot enlarge phase scope | Dropped |
 | 9 | `validate-v1` guarantees rename churn | `check` / `check-v05` |
@@ -391,7 +441,74 @@ ids, the artefact count, and the per-projection basis for the estimate.
 
 ### Disposition — revision 2
 
-All six findings and all four factual corrections adopted. Returned for re-review.
+All six findings and four factual corrections adopted.
+
+---
+
+## Independent Review — revision 3
+
+- Verdict: **revise**. One blocking data-destruction hazard that revision 3 actively directed,
+  one wrong basis line, and a correction that propagated to two of five sites.
+
+### The 64/65 reconciliation, and what it exposed
+
+The reviewer's extraction required the literal token `issues` as the first argument; one call
+site passes `&mut issues` — `main.rs:259`, inside `Command::Project`, emitting
+`("governance", "stale-projection")`. Their pattern dropped it: 76 sites / 64 ids / 66 pairs.
+The broader pattern gives **77 / 65 / 67**. The stamped figure was right.
+
+But that site carries a consequence worth more than the count. **`stale-projection` is emitted
+from `Command::Project`, not `Command::Check`** — so the 65-id set spans commands the cutover
+does **not** delete. Demanding a successor for all 65 would treat retained enforcement as
+deleted. The matrix is now partitioned by owning command.
+
+### Blocking finding — verified, and it would have destroyed data
+
+**Four of the ten registries are accumulated state, not root projections.** Revision 3's
+"they are generated, not hand-placed" directed emitting all of them, and
+`specoment::run` writes unconditionally (`fs::write` at `mod.rs:91`, no merge, no read-back).
+The next `cargo run -p meridian-spec -- project` would have **overwritten
+`.meridian/implementation/evidence/index.json` with an empty regeneration**, destroying every
+registered record, after which `project --check` would report correctly-registered evidence as
+hand-edited.
+
+Confirmed against the frozen baseline: `specs/registry/evidence.json` holds **52** records
+sourced from gate invocations; `waivers.json` holds `approver`, `approval_role`, `expires`,
+`blocked_milestone`. None of that content is in the specoment and none of it could be — a
+design document cannot contain who approved a waiver or how a test run ended. And after a
+complete milestone programme through MS-02, v0.5 created **no** releases or compatibility
+registry, which is evidence those two are not registry-shaped.
+
+Revision 3's "self-populating the moment the root declares a waiver" was also false: a waivers
+query over the root returns zero rows forever.
+
+### Findings accepted
+
+| # | Finding | Disposition |
+|---|---|---|
+| 2 | The second seam is the coverage matrix, not Appendix A | Seam re-declared as compound and named; Appendix A stays in; package not split |
+| 3 | The mapping file is safe only if falsifiable; `dropped_because` is the real hazard | Every `v1_rule` row must name its backing fixture; `dropped_because` constrained to three categories with `no-v1-analogue` escalating to the owner |
+| 4 | Partition the id set by owning command | Done |
+| 5 | Appendix D rule 7's gap is wider once class (b) leaves `emit::all()` | Conformance rule runs inside `check` locally |
+
+### Factual errors corrected
+
+- **The 14-artefact correction reached 2 of 5 sites.** Lines 128, 230 and 318 still said 15 or
+  "fifteen", including the deliverable specification itself and a row recording as *Confirmed*
+  a number revision 3 withdrew elsewhere.
+- **The `~460 = 66 × 7` basis was wrong**: at most **3** of the 7 new registries are `emit.rs`
+  projections. Restated at ~895 with class (b) costed separately.
+
+### Process note, adopted
+
+Stamping caught every fresh measurement error but not figures appearing in more than one
+place. The discipline is extended: **after correcting a number, grep for every occurrence of
+both the old and the new value and confirm the count.** That grep found lines 128, 230 and 318
+mechanically, and is re-run after each edit to this plan.
+
+### Disposition — revision 3
+
+All findings and both factual corrections adopted. Returned for re-review.
 
 ## Completion record
 

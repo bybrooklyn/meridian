@@ -294,6 +294,14 @@
       "detail": ".meridian/implementation/evidence/index.json is {\"schema_version\": 1, \"records\": []}. Appendix H.4 mandates {\"schema\": 1, \"specoment_sha256\": \"...\", \"records\": [...]}. The key is misnamed, the mandatory digest is absent, and records is empty while 14 artefacts sit in the same directory (15 files, one being index.json itself) and four work packages are recorded complete. IMPL-WP-003 item 6 requires fresh evidence to be registered.",
       "severity": "live instance of the phase card's chartered 'stale evidence' failure class",
       "disposition": "WP-V1-GOV-001 adds the H.4 schema, fixes the shape and registers the existing artefacts."
+    },
+    {
+      "id": "SD-011",
+      "subject": "registry class confusion would destroy accumulated evidence",
+      "detail": "WP-V1-GOV-001 revision 3 directed emitting all ten chartered registries from emit::all(). specoment::run writes every projection unconditionally (fs::write at mod.rs:91, no merge, no read-back), so the next `project` run would overwrite .meridian/implementation/evidence/index.json with an empty regeneration and destroy every registered record. Four registries - evidence, waivers, releases, compatibility - are accumulated state sourced from test runs, approvals and shipped artefacts, not projections of the root. Confirmed against the frozen baseline: specs/registry/evidence.json holds 52 records with gate-invocation sources; waivers.json holds approver, approval_role, expires and blocked_milestone. None of that content is derivable from a design document. v0.5 created no releases or compatibility registry at all after a full milestone programme.",
+      "found": "independent review of WP-V1-GOV-001 revision 3",
+      "severity": "would have destroyed data on the next generator run",
+      "disposition": "Registry table split by class. Class (a) projections are emitted and policed by project --check byte-identity; class (b) accumulated state gets a schema plus a conformance and completeness rule and is kept outside emit::all(). Releases and compatibility ship as schema only, with no instance until one exists."
     }
   ],
   "corrections": [
