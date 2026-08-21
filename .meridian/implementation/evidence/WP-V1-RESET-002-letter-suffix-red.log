@@ -1,0 +1,22 @@
+
+thread 'specoment::scan::tests::one_heading_can_declare_a_stem_and_its_letter_suffixed_sibling' (16766365) panicked at editor/meridian_spec_tools/src/specoment/scan.rs:239:9:
+assertion `left == right` failed
+  left: [("SCM-010", Backticked)]
+ right: [("SCM-010", Backticked), ("SCM-010A", Backticked)]
+
+---- specoment::scan::tests::letter_suffixed_identifier_is_distinct_from_its_stem stdout ----
+
+thread 'specoment::scan::tests::letter_suffixed_identifier_is_distinct_from_its_stem' (16766364) panicked at editor/meridian_spec_tools/src/specoment/scan.rs:225:9:
+assertion `left == right` failed
+  left: []
+ right: [("NETPROJ-006A", Backticked)]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    specoment::scan::tests::letter_suffixed_identifier_is_distinct_from_its_stem
+    specoment::scan::tests::one_heading_can_declare_a_stem_and_its_letter_suffixed_sibling
+
+test result: FAILED. 13 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p meridian-spec --bin meridian-spec`

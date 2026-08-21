@@ -33,7 +33,7 @@
   "research_decisions": [],
   "migrations": [],
   "evidence_index": "evidence/index.json",
-  "program_status": "PH-AUTH-001 CLOSED. PH-AUTH-002 ACTIVE: WP-V1-RESET-002 accepted after four independent review rounds (revise/revise/revise/accept) with five carry-in items. Implementation started.",
+  "program_status": "PH-AUTH-001 CLOSED. PH-AUTH-002 ACTIVE: WP-V1-RESET-002 implemented. Projections generate at 736 declared / 736 indexed / 0 multiply-declared, matching the predicted total through an independent implementation. One canonical identifier (RG-TOR-001) is undeclared, so the phase does not close; recorded as SD-006 / OD-008 rather than hidden.",
   "process_deviations": [
     {
       "id": "DEV-001",
@@ -160,6 +160,12 @@
       ],
       "ruled_out": "Tracking the preimage as a working-tree path. That reinstates the second full-length document named as authority that PH-AUTH-002 exists to prevent.",
       "blocks": "nothing now; must resolve at PH-AUTH-004, where DEV-003's residual exposure is scheduled to close"
+    },
+    {
+      "id": "OD-008",
+      "question": "RG-TOR-001 is cited as a live open research gate but no heading declares it. Give it an owning contract, or remove the identifier and refer to the research gate by heading alone.",
+      "context": "It is the only RG-* identifier in the specoment. Appendix B holds the research register and most of its gates carry no identifier at all, so 'remove it' is consistent with the surrounding convention. The generated index states the requirement verbatim: each undeclared identifier MUST either receive an owning contract or be removed before PH-AUTH-002 can claim every canonical identifier is indexable exactly once.",
+      "blocks": "PH-AUTH-002 closure row 'every canonical identifier is indexable exactly once'"
     }
   ],
   "review_rounds": [
@@ -234,6 +240,14 @@
       "detail": "Line 14869 '### Source-control CLI family `SCM-010` `SCM-010A`' declares both on one line. The letter-blind guard matches both as SCM-010; the duplicate check requires differing line numbers, so no duplicate is reported and SCM-010A is silently overwritten. A distinct failure shape from NETPROJ-006A..D, which surface as a false duplicate. Exhaustive scan confirms exactly five letter-suffixed identifiers exist, all heading-declared; there is no sixth.",
       "severity": "blocking, same closure row",
       "disposition": "fixed by WP-V1-RESET-002; corrected total is 736; fidelity rule converted from an enumerated constant to four derived invariants because the enumeration was incomplete twice"
+    },
+    {
+      "id": "SD-006",
+      "subject": "RG-TOR-001 is an undeclared v1 identifier masked by a retired-v0.5 prefix rule",
+      "detail": "gen_appendix_a.py classifies identifiers as retired v0.5 by bare prefix, and its list includes 'RG'. RG-TOR-001 is the only RG-* identifier in the document and is cited at line 19086 inside 'Torsant implementation research and evidence - *Open implementation research*', a live v1 section, as a currently open research gate rather than migration history. Because the retired-v0.5 category is exempt from the undeclared count, absorbing it there is what made '0 undeclared' read as true.",
+      "found": "during implementation of the Rust port, not by review",
+      "severity": "blocking for the PH-AUTH-002 closure row 'every canonical identifier is indexable exactly once'",
+      "disposition": "The port drops RG from the retired prefix list, so RG-TOR-001 is now reported honestly as undeclared. Giving it an owning contract is a specoment amendment and therefore an owner decision, recorded as OD-008."
     }
   ],
   "corrections": [

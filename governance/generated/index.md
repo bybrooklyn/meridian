@@ -1,0 +1,771 @@
+<!--
+GENERATED FILE - DO NOT EDIT.
+Regenerate with: cargo run -p meridian-spec -- project
+canonical_path = /MERIDIAN_SPECOMENT.md
+canonical_sha256 = 782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a
+generator_version = specoment-projection/1
+generated_at_source_checkpoint = 4e6bb2e072dc2362732230fb937bb95b86f24da2
+-->
+
+# Traceability index
+
+An identifier is listed against the heading that **declares** it. A heading declares an identifier if the identifier is backticked in it, or if the heading text begins with it; a bare, non-initial identifier in a heading is a reference. A heading declaring a range declares its members weakly, and a later single-identifier heading supersedes that.
+
+Identifiers cited but never declared are listed under *Referenced but never declared* rather than attributed to their first mention.
+
+## Declared identifiers
+
+- `AAA-001` — owned by *AAA games `AAA-001` — *Normative** (line 14537)
+- `AGENT-SEM-001` — owned by *Plan approval is a bounded semantic change contract `AGENT-SEM-001` — *Normative** (line 26924)
+- `AGENT-SEM-002` — owned by *Autonomous execution inside the approved reversible boundary `AGENT-SEM-002` — *Normative** (line 26930)
+- `AGENT-SEM-003` — owned by *Independent semantic review for substantial plans `AGENT-SEM-003` — *Normative** (line 26936)
+- `AGENT-SEM-004` — owned by *Zero duplicated truth; abstract only real shared semantics `AGENT-SEM-004` — *Normative** (line 26953) — also referenced in: *One documentation knowledge graph, many surfaces `PONDER-IMPL-001` — *Derived normative contract**; *Governance validation and user documentation remain separate authorities `PONDER-IMPL-008` — *Derived normative contract**
+- `AGENT-SEM-005` — owned by *Honest regression-first evidence `AGENT-SEM-005` — *Normative** (line 26961)
+- `AI-001` — owned by *Optional accelerator, never product authority `AI-001` — *Normative** (line 2593)
+- `AI-002` — owned by *Automatic operation policy `AI-002` — *Normative** (line 2607)
+- `AI-003` — owned by *`.mui` logic refactoring `AI-003` — *Normative direction** (line 2618)
+- `AI-004` — owned by *No AI-generated game assets `AI-004` — *Normative** (line 2624)
+- `AI-005` — owned by *AI 12. Task Controller `AI-005`* (line 3142)
+- `AI-006` — owned by *AI 14. Context Engine `AI-006`* (line 3219)
+- `AI-007` — owned by *AI 16. One-million-token working context `AI-007`* (line 3321)
+- `AI-008` — owned by *AI 17. Persistent knowledge and memory `AI-008`* (line 3352)
+- `AI-009` — owned by *AI 20. Agent-computer interface `AI-009`* (line 3470)
+- `AI-010` — owned by *AI 24. Experiments `AI-010`* (line 3600)
+- `AI-011` — owned by *AI 26. No direct Git access `AI-011`* (line 3667)
+- `AI-012` — owned by *AI 29. Action Governor `AI-012`* (line 3782)
+- `AI-013` — owned by *AI 31. `AGENTS.md` `AI-013`* (line 3868)
+- `AI-014` — owned by *AI 36. Self-configuration `AI-014`* (line 4020)
+- `AI-015` — owned by *AI 39. Subagents `AI-015`* (line 4118)
+- `AI-016` — owned by *AI 43. Planning architecture `AI-016`* (line 4243)
+- `AI-017` — owned by *AI 47. Meridian engine limitations `AI-017`* (line 4356)
+- `AI-018` — owned by *AI 53. MCP and interoperability `AI-018`* (line 4554)
+- `AI-019` — owned by *AI 54. TemperTally model baseline `AI-019`* (line 4568)
+- `AI-020` — owned by *AI 55. Language specialization `AI-020`* (line 4592)
+- `AI-021` — owned by *AI 63. TQF runtime goals `AI-021`* (line 4788)
+- `AI-022` — owned by *AI 84. SSD-first low-memory training `AI-022`* (line 5463)
+- `AI-023` — owned by *AI 93. Training-data contribution `AI-023`* (line 5741)
+- `AI-024` — owned by *AI 88. Meridian-Gym `AI-024`* (line 5626)
+- `AI-025` — owned by *AI 101. UI architecture `AI-025`* (line 6002)
+- `AI-026` — owned by *AI 105. Whole-project capability `AI-026`* (line 6120)
+- `AI-027` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-028` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-029` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-030` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-034` — owned by *Contextual and pinnable editor presence `AI-034` — *Normative** (line 2665)
+- `AI-035` — owned by *First-party vision is architecture-supported but not a first-release blocker `AI-035` — *Normative** (line 2669)
+- `AI-MASTER-001` — owned by *Integrated Meridian AI, TemperTally, and TQF authority `AI-MASTER-001`* (line 2631)
+- `AI-POLICY-001` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-POLICY-002` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-POLICY-003` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-POLICY-004` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-POLICY-005` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-POLICY-006` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-POLICY-007` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-POLICY-008` — owned by *Latest locked/derived product policies `AI-POLICY-001..008` `AI-027..030`* (line 2643) — declared as a range member
+- `AI-PROGRAM-001` — owned by *Program policy `AI-PROGRAM-001`* (line 30259)
+- `AI-TEACH-001` — owned by *Current teacher policy `AI-TEACH-001`* (line 2656)
+- `ALLU-001` — owned by *Task-first normal authoring with graph/source underneath `ALLU-001` — *Normative** (line 18350)
+- `ALLU-002` — owned by *Manual edits automatically become non-destructive overrides `ALLU-002` — *Normative** (line 18403)
+- `ALLU-003` — owned by *Bake by default; bounded runtime-safe evaluation is explicit opt-in `ALLU-003` — *Normative** (line 18449)
+- `ALLU-004` — owned by *Semantic stable generated identity with explicit ephemeral modes `ALLU-004` — *Normative** (line 18482)
+- `ALLU-005` — owned by *Composable subrecipes and shared semantic fields `ALLU-005` — *Normative** (line 18503)
+- `ALLU-006` — owned by *World-first 1.0 product scope; broader general authoring experimental later `ALLU-006` — *Normative** (line 18530)
+- `ALLU-007` — owned by *Adaptive, cancellable progressive live preview `ALLU-007` — *Normative** (line 18564)
+- `ALLU-008` — owned by *Cross-subsystem integration contract for Alluvium `ALLU-008` — *Normative** (line 18595)
+- `APP-001` — owned by *Product shape `APP-001` — *Normative** (line 811)
+- `APP-002` — owned by *Editor sequencing `APP-002` — *Normative** (line 834)
+- `APP-003` — owned by *No TUI `APP-003` — *Rejected** (line 851)
+- `APP-004` — owned by *Professional-software editor UX quality bar `APP-004` — *Normative** (line 456) — also referenced in: *Task-first normal authoring with graph/source underneath `ALLU-001` — *Normative**; *Weather Profile / World Environment is the normal authoring surface `ISO-001` — *Normative**
+- `ARTUS-001` — owned by *Automatic-first semantic rig import and qualification `ARTUS-001` — *Normative** (line 14210)
+- `ARTUS-002` — owned by *Motion Profiles as the ordinary authoring workflow `ARTUS-002` — *Normative** (line 14246)
+- `ARTUS-003` — owned by *Unified composable Motion Source contract `ARTUS-003` — *Normative** (line 14292)
+- `ARTUS-004` — owned by *Production motion matching and pose search in the Artus 1.0 floor `ARTUS-004` — *Normative** (line 14342)
+- `ARTUS-005` — owned by *First-party Smart Interactions `ARTUS-005` — *Normative** (line 14380)
+- `ARTUS-006` — owned by *Continuous region-specific physical-animation composition `ARTUS-006` — *Normative** (line 14427)
+- `ARTUS-007` — owned by *Unified gameplay/cinematic performance runtime `ARTUS-007` — *Normative** (line 14472)
+- `ARTUS-008` — owned by *Production hybrid hand and finger system `ARTUS-008` — *Normative** (line 17003)
+- `ARTUS-009` — owned by *Layered production facial-performance stack `ARTUS-009` — *Normative** (line 17029)
+- `ARTUS-010` — owned by *Automatic multi-tier character-motion representation `ARTUS-010` — *Normative** (line 17057)
+- `ARTUS-011` — owned by *Semantic Artus networking with authority tiers `ARTUS-011` — *Normative** (line 17085)
+- `ARTUS-012` — owned by *Error-bounded semantics-aware animation compilation and compression `ARTUS-012` — *Normative** (line 17107)
+- `ARTUS-013` — owned by *CPU-authoritative hybrid CPU/GPU Artus execution `ARTUS-013` — *Normative** (line 17131)
+- `ARTUS-014` — owned by *Full Artus motion causality, timeline, and explanation suite `ARTUS-014` — *Normative** (line 17159)
+- `AUTHOR-001` — owned by *Stable source and recovery `AUTHOR-001` — *Normative** (line 876)
+- `AUTHOR-002` — owned by *Project capabilities `AUTHOR-002` — *Normative** (line 890)
+- `AUTHOR-003` — owned by *Central authoritative asset catalog `AUTHOR-003` — *Normative** (line 907) — also referenced in: *Asset Catalog, compiler, and CAS closure `AUTHOR-DER-002` — *Normative**
+- `AUTHOR-004` — owned by *Isolated importer execution `AUTHOR-004` — *Normative** (line 927)
+- `AUTHOR-005` — owned by *Artifact and blob identity `AUTHOR-005` — *Normative** (line 945)
+- `AUTHOR-006` — owned by *Layered reimport and protected authoring work `AUTHOR-006` — *Normative** (line 967) — also referenced in: *Prefab and scene composition `AUTHOR-DER-001` — *Derived normative contract**
+- `AUTHOR-007` — owned by *Local-first and trusted shared caches `AUTHOR-007` — *Normative** (line 985) — also referenced in: *Asset Catalog, compiler, and CAS closure `AUTHOR-DER-002` — *Normative**
+- `AUTHOR-008` — owned by *Shared authoring graph with explicit roles `AUTHOR-008` — *Normative** (line 1003) — also referenced in: *Prefab and scene composition `AUTHOR-DER-001` — *Derived normative contract**
+- `AUTHOR-009` — owned by *Incremental compilation into subsystem-owned runtime products `AUTHOR-009` — *Normative** (line 1059)
+- `AUTHOR-010` — owned by *Automatic stable scene partitioning `AUTHOR-010` — *Normative** (line 1092)
+- `AUTHOR-011` — owned by *Smart source editing and runtime-tweak capture during Play `AUTHOR-011` — *Normative direction** (line 1121) — also referenced in: *Prefab and scene composition `AUTHOR-DER-001` — *Derived normative contract**
+- `AUTHOR-DER-001` — owned by *Prefab and scene composition `AUTHOR-DER-001` — *Derived normative contract** (line 1174)
+- `AUTHOR-DER-002` — owned by *Asset Catalog, compiler, and CAS closure `AUTHOR-DER-002` — *Normative** (line 1194)
+- `BEAR-001` — owned by *Hybrid goals/utility plus bounded planning `BEAR-001` — *Normative** (line 17725) — also referenced in: *Boundary*
+- `BEAR-002` — owned by *Per-agent knowledge with explicit provenance/confidence and optional shared layers `BEAR-002` — *Normative** (line 17766)
+- `BEAR-003` — owned by *First-party extensible perception framework `BEAR-003` — *Normative** (line 17806)
+- `BEAR-004` — owned by *Bounded hierarchical planning `BEAR-004` — *Normative** (line 17840) — also referenced in: *Hybrid goals/utility plus bounded planning `BEAR-001` — *Normative**
+- `BEAR-005` — owned by *Optional hierarchical agents for squads/groups/organizations `BEAR-005` — *Normative** (line 17870)
+- `BEAR-006` — owned by *Rich first-party semantic action library plus project-defined actions `BEAR-006` — *Normative** (line 17897)
+- `BEAR-007` — owned by *Explicit determinism profiles; Stable is the default `BEAR-007` — *Normative** (line 17927)
+- `BEAR-008` — owned by *Profile-first NPC authoring that remains directly editable `BEAR-008` — *Normative** (line 17970)
+- `BEAR-009` — owned by *Semantic fact memory with confidence, age, decay and controlled sharing `BEAR-009` — *Normative** (line 17978)
+- `BEAR-010` — owned by *One typed asynchronous semantic action lifecycle `BEAR-010` — *Normative** (line 17986)
+- `BEAR-011` — owned by *Automatic cognition tiers for scale `BEAR-011` — *Normative** (line 17994)
+- `BEAR-012` — owned by *Multiplayer Bearings profiles, hidden behind advanced controls `BEAR-012` — *Normative** (line 18002) — also referenced in: *Integration-matrix highlights*
+- `BEAR-013` — owned by *Bounded decision-causality timeline and explanation suite `BEAR-013` — *Normative** (line 18010)
+- `BEAR-014` — owned by *Typed semantic context/fact ingress from the rest of Meridian `BEAR-014` — *Normative** (line 18018)
+- `BUILD-001` — owned by *Build experience `BUILD-001` — *Normative** (line 2048)
+- `BUILD-002` — owned by *Toolchain acquisition and provenance `BUILD-002` — *Normative** (line 2073)
+- `BUILD-003` — owned by *Reload `BUILD-003` — *Normative direction** (line 2088)
+- `BUILD-004` — owned by *Unified debugger `BUILD-004` — *Normative** (line 2100)
+- `BUILD-005` — owned by *Web compilation and browser runtime `BUILD-005` — *Normative** (line 2115)
+- `BUILD-006` — owned by *Canonical web artifact and deployment `BUILD-006` — *Normative** (line 2278)
+- `BUILD-007` — owned by *Target-specific source and capability adaptation `BUILD-007` — *Normative model; syntax research-gated** (line 2297)
+- `CAIRN-001` — owned by *Cairn physics architecture `CAIRN-001` — *Normative ambition and core architecture** (line 12751)
+- `CAIRN-002` — owned by *Shared vocabulary, dimension-specific physics `CAIRN-002` — *Normative** (line 12757)
+- `CAIRN-003` — owned by *Universal hierarchical coordinate model `CAIRN-003` — *Normative** (line 12787)
+- `CAIRN-004` — owned by *First-party controller packages `CAIRN-004` — *Normative** (line 12803)
+- `CAIRN-005` — owned by *Typed fields and force providers `CAIRN-005` — *Normative** (line 12852)
+- `CAIRN-006` — owned by *Hybrid structural destruction `CAIRN-006` — *Normative** (line 12886)
+- `CAIRN-007` — owned by *Deformable ownership and coupling `CAIRN-007` — *Normative** (line 12918)
+- `CAIRN-008` — owned by *Layered first-party vehicle framework `CAIRN-008` — *Normative** (line 12958)
+- `CAIRN-009` — owned by *Coordinated specialized solver portfolio `CAIRN-009` — *Normative** (line 12992)
+- `CAIRN-010` — owned by *Qualified hybrid CPU/GPU physics `CAIRN-010` — *Normative** (line 13020)
+- `CAIRN-011` — owned by *Intent-first automatic collision cooking `CAIRN-011` — *Normative** (line 13049)
+- `CAIRN-012` — owned by *Rich typed physical materials `CAIRN-012` — *Normative** (line 13084)
+- `CAIRN-013` — owned by *Unified immediate, snapshot, and batched queries `CAIRN-013` — *Normative** (line 13107)
+- `CAIRN-014` — owned by *Stable simulation clock and automatic refinement `CAIRN-014` — *Normative** (line 13139)
+- `CAIRN-015` — owned by *Cairn explanation and observability suite `CAIRN-015` — *Normative** (line 13167)
+- `CAM-001` — owned by *Camellia owns shared world time and optional celestial state `CAM-001` — *Normative** (line 18713)
+- `CAM-002` — owned by *Camellia capability depth `CAM-002` — *Normative** (line 18854)
+- `CLI-001` — owned by *Rich CLI `CLI-001` — *Normative** (line 15008)
+- `CLI-002` — owned by *CLI scripting `CLI-002` — *Normative direction** (line 15025)
+- `CLI-003` — owned by *Persistent headless sessions `CLI-003` — *Normative direction** (line 15040)
+- `CLI-004` — owned by *Extension surface `CLI-004` — *Normative** (line 15053)
+- `CODEHEALTH-001` — owned by *Code health and architectural decomposition `CODEHEALTH-001..004` — *Normative** (line 27832) — declared as a range member
+- `CODEHEALTH-002` — owned by *Code health and architectural decomposition `CODEHEALTH-001..004` — *Normative** (line 27832) — declared as a range member
+- `CODEHEALTH-003` — owned by *Code health and architectural decomposition `CODEHEALTH-001..004` — *Normative** (line 27832) — declared as a range member
+- `CODEHEALTH-004` — owned by *Code health and architectural decomposition `CODEHEALTH-001..004` — *Normative** (line 27832) — declared as a range member
+- `COLLECTIVE-001` — owned by *Collective ownership `COLLECTIVE-001` — *Normative** (line 15179)
+- `DET-001` — owned by *Global determinism UX simplification `DET-001` — *Normative** (line 18837)
+- `DEVLANG-001` — owned by *Meridian 1.0 first-class language floor `DEVLANG-001` — *Normative** (line 26710) — also referenced in: *Incremental multi-root Multiplayer Product Set `NETPROJ-005` — *Normative**
+- `DEVLANG-002` — owned by *Built-in Code workspace is a professional primary IDE `DEVLANG-002` — *Normative** (line 26714)
+- `DEVLANG-003` — owned by *Remote development is architecture-now, polish-later `DEVLANG-003` — *Normative** (line 26718)
+- `DEVLANG-004` — owned by *Unified debugging experience without fake universal stepping `DEVLANG-004` — *Normative** (line 26722)
+- `DEVLANG-005` — owned by *Safe idiomatic analysis defaults `DEVLANG-005` — *Normative** (line 26751)
+- `DEVLANG-006` — owned by *Broad practical Meridian Python feature floor `DEVLANG-006` — *Normative** (line 26755)
+- `DEVLANG-007` — owned by *C/C++ native project role `DEVLANG-007` — *Normative** (line 26766)
+- `DEVLANG-008` — owned by *`Meridian Python` public name `DEVLANG-008` — *Normative** (line 26770) — also referenced in: *Incremental multi-root Multiplayer Product Set `NETPROJ-005` — *Normative**
+- `DEVLANG-QUAL-001` — owned by *Later Developer Ergonomics & Language Experience requirements added from this audit `DEVLANG-QUAL-001` — *Normative** (line 26674) — also referenced in: *Project, directory, and build derived closure `PRJ-DER-001..005` — *Derived normative contract**; *Retained modding and package contracts*
+- `DIST-001` — owned by *Global distribution rule — MULTI-PROVIDER / NO STORE AS CENTER `DIST-001`* (line 21950)
+- `DIST-002` — owned by *Platform target and distributor are separate axes `DIST-002`* (line 21986)
+- `DIST-003` — owned by *Provider adapter contract `DIST-003`* (line 22110)
+- `DIST-004` — owned by *Store SDK/service independence `DIST-004`* (line 22217)
+- `DIST-005` — owned by *Breadth without fake support `DIST-005` — *Normative** (line 22021)
+- `DIST-006` — owned by *Built product and distribution contract `DIST-006..010`* (line 22287) — declared as a range member
+- `DIST-007` — owned by *Built product and distribution contract `DIST-006..010`* (line 22287) — declared as a range member
+- `DIST-008` — owned by *Built product and distribution contract `DIST-006..010`* (line 22287) — declared as a range member
+- `DIST-009` — owned by *Built product and distribution contract `DIST-006..010`* (line 22287) — declared as a range member
+- `DIST-010` — owned by *Built product and distribution contract `DIST-006..010`* (line 22287) — declared as a range member
+- `ED-AOT-001` — owned by *Moderate professional density `ED-AOT-001`* (line 19472) — also referenced in: *Planning closure and implementation authorization `SPEC-ROOT-001` — *Normative**
+- `ED-AOT-002` — owned by *Persistent top workspace strip `ED-AOT-002`* (line 19487) — also referenced in: *Planning closure and implementation authorization `SPEC-ROOT-001` — *Normative**
+- `ED-AOT-003` — owned by *Three-column World workspace with viewport priority `ED-AOT-003`* (line 19499) — also referenced in: *Planning closure and implementation authorization `SPEC-ROOT-001` — *Normative**
+- `ED-AOT-004` — owned by *Contextual and pinnable Meridian AI `ED-AOT-004`* (line 19512) — also referenced in: *Planning closure and implementation authorization `SPEC-ROOT-001` — *Normative**
+- `ED-AOT-005` — owned by *Vision architecture now; qualification later `ED-AOT-005`* (line 19518) — also referenced in: *Planning closure and implementation authorization `SPEC-ROOT-001` — *Normative**
+- `EDUX-001` — owned by *Curated task workspaces with optional freeform customization `EDUX-001` — *Normative** (line 19112)
+- `EDUX-002` — owned by *Baseline schema Inspector plus deliberate task interfaces `EDUX-002` — *Normative** (line 19130)
+- `EDUX-003` — owned by *Universal ultra-fast launcher / command-discovery surface `EDUX-003` — *Normative** (line 19152)
+- `EDUX-004` — owned by *Deep layout customization with excellent recovery `EDUX-004` — *Normative** (line 19226) — also referenced in: *Curated task workspaces with optional freeform customization `EDUX-001` — *Normative**
+- `EDUX-005` — owned by *Stable transform fundamentals plus contextual direct manipulation `EDUX-005` — *Normative** (line 19252)
+- `EDUX-006` — owned by *Search/index architecture `EDUX-006` — *Normative product direction** (line 19174) — also referenced in: *Hybrid physical-source + semantic asset organization `EDUX-007` — *Normative**
+- `EDUX-007` — owned by *Hybrid physical-source + semantic asset organization `EDUX-007` — *Normative** (line 19304)
+- `EDUX-008` — owned by *Meridian-first keymap with maintained familiarity presets `EDUX-008` — *Normative** (line 19344)
+- `EDUX-009` — owned by *One project session, many windows; many sessions without ambiguous authority `EDUX-009` — *Normative** (line 19364)
+- `EDUX-010` — owned by *One typed Activity/Job system with contextual progress `EDUX-010` — *Normative** (line 19392)
+- `EDUX-011` — owned by *Ponder-backed contextual learning; self-explanatory UI remains the first line `EDUX-011` — *Normative** (line 19430) — also referenced in: *Ponder local-first documentation and contextual learning `PONDER-001` — *Normative**
+- `EDUX-VIS-001` — owned by *Ahead-of-Time Meridian Editor visual and interaction target `EDUX-VIS-001..010`* (line 19526) — declared as a range member — also referenced in: *Typography — *Normative direction**
+- `EDUX-VIS-002` — owned by *Ahead-of-Time Meridian Editor visual and interaction target `EDUX-VIS-001..010`* (line 19526) — declared as a range member — also referenced in: *Typography — *Normative direction**
+- `EDUX-VIS-003` — owned by *Ahead-of-Time Meridian Editor visual and interaction target `EDUX-VIS-001..010`* (line 19526) — declared as a range member — also referenced in: *Typography — *Normative direction**
+- `EDUX-VIS-004` — owned by *Ahead-of-Time Meridian Editor visual and interaction target `EDUX-VIS-001..010`* (line 19526) — declared as a range member — also referenced in: *Typography — *Normative direction**
+- `EDUX-VIS-005` — owned by *Ahead-of-Time Meridian Editor visual and interaction target `EDUX-VIS-001..010`* (line 19526) — declared as a range member — also referenced in: *Typography — *Normative direction**
+- `EDUX-VIS-006` — owned by *Ahead-of-Time Meridian Editor visual and interaction target `EDUX-VIS-001..010`* (line 19526) — declared as a range member — also referenced in: *Typography — *Normative direction**
+- `EDUX-VIS-007` — owned by *Ahead-of-Time Meridian Editor visual and interaction target `EDUX-VIS-001..010`* (line 19526) — declared as a range member — also referenced in: *Typography — *Normative direction**
+- `EDUX-VIS-008` — owned by *Ahead-of-Time Meridian Editor visual and interaction target `EDUX-VIS-001..010`* (line 19526) — declared as a range member — also referenced in: *Typography — *Normative direction**
+- `EDUX-VIS-009` — owned by *Ahead-of-Time Meridian Editor visual and interaction target `EDUX-VIS-001..010`* (line 19526) — declared as a range member — also referenced in: *Typography — *Normative direction**
+- `EDUX-VIS-010` — owned by *Ahead-of-Time Meridian Editor visual and interaction target `EDUX-VIS-001..010`* (line 19526) — declared as a range member — also referenced in: *Typography — *Normative direction**
+- `EXEC-000` — owned by *Internal adaptive execution is deliberately unnamed `EXEC-000` — *Normative** (line 27001)
+- `EXEC-001` — owned by *No supported language requires runtime code generation for correctness `EXEC-001` — *Normative** (line 27025)
+- `EXEC-002` — owned by *Portable execution-plan model `EXEC-002` — *Normative direction** (line 27040)
+- `EXEC-003` — owned by *Preserve language ownership `EXEC-003` — *Normative** (line 27073)
+- `EXEC-004` — owned by *Generic path, specialization, guards, and deoptimization `EXEC-004` — *Normative** (line 27088)
+- `EXEC-005` — owned by *Optional native JIT tier `EXEC-005` — *Normative direction** (line 27116)
+- `EXEC-006` — owned by *Build-time profile promotion `EXEC-006` — *Normative direction** (line 27132)
+- `EXEC-007` — owned by *Platform consequences `EXEC-007` — *Normative** (line 27145)
+- `EXEC-008` — owned by *Security, authority, determinism, and stripping `EXEC-008` — *Normative** (line 27153)
+- `EXEC-009` — owned by *Debugger and profiler contract `EXEC-009` — *Normative direction** (line 27168)
+- `EXEC-010` — owned by *Implementation research `EXEC-010` — *Research/prototype gate** (line 27183)
+- `EXEC-011` — owned by *Qualification gates `EXEC-011` — *Normative** (line 27205)
+- `EXEC-INT-001` — owned by *Internal adaptive execution remains unnamed `EXEC-INT-001` — *Normative** (line 27932)
+- `EXEC-NAME-001` — owned by *Adaptive JIT-like execution machinery is deliberately unnamed `EXEC-NAME-001` — *Normative** (line 27660)
+- `FWK-001` — owned by *Official framework package contract `FWK-001..003` — *Normative** (line 2524) — declared as a range member
+- `FWK-002` — owned by *Official framework package contract `FWK-001..003` — *Normative** (line 2524) — declared as a range member
+- `FWK-003` — owned by *Official framework package contract `FWK-001..003` — *Normative** (line 2524) — declared as a range member
+- `GAMEPLAY-001` — owned by *Strong official systems `GAMEPLAY-001` — *Normative** (line 2507)
+- `GAMEPLAY-002` — owned by *Shared IR boundary `GAMEPLAY-002` — *Normative** (line 2577)
+- `GOV-COVERAGE-002` — owned by *No silent architecture gaps `GOV-COVERAGE-002` — *Normative** (line 27953)
+- `IMPL-AGENT-001` — owned by *Autonomous implementation operating contract `IMPL-AGENT-001`* (line 28241) — also referenced in: *Source-grounded planning before owner questions `RESEARCH-006` — *Normative**
+- `IMPL-BOOTSTRAP-001` — owned by *Authority bootstrap during the reset `IMPL-BOOTSTRAP-001` — *Normative** (line 28557)
+- `IMPL-SCM-001` — owned by *Source-control and publication behavior `IMPL-SCM-001` — *Normative** (line 28423)
+- `IMPL-START-001` — owned by *Immediate implementation start order `IMPL-START-001` — *Normative** (line 28620)
+- `IMPL-STATE-001` — owned by *Persistent implementation state `IMPL-STATE-001` — *Normative derived tooling contract** (line 28387)
+- `IMPL-WP-001` — owned by *Work-package planning, independent review and execution protocol `IMPL-WP-001` — *Normative** (line 28263) — also referenced in: *Independent semantic review*; *Execution capacity and what a phase is — *Non-normative clarification**
+- `IMPL-WP-002` — owned by *Definition of Ready `IMPL-WP-002`* (line 28360)
+- `IMPL-WP-003` — owned by *Definition of Done `IMPL-WP-003`* (line 28372)
+- `INP-001` — owned by *Constrained input semantics; gameplay stays out of Input `INP-001` — *Normative** (line 20384)
+- `INP-002` — owned by *Small standard device vocabulary + typed capability facets `INP-002` — *Normative** (line 20402) — also referenced in: *Sensors and output capabilities*
+- `INP-003` — owned by *Generated controls UI is an editable project starting point, not a permanent Meridian overlay `INP-003` — *Normative** (line 20408)
+- `INP-004` — owned by *Simultaneous input with meaningful-origin prompt resolution `INP-004` — *Normative** (line 20416)
+- `INP-005` — owned by *Broad device architecture, selective qualification `INP-005` — *Normative** (line 20422)
+- `INP-006` — owned by *One primary action context plus a bounded ordered overlay set `INP-006` — *Normative** (line 20453)
+- `INP-007` — owned by *Portable player binding profile plus optional device-local calibration/overrides `INP-007` — *Normative** (line 20471)
+- `INP-008` — owned by *Optional first-party Player Join / local assignment service `INP-008` — *Normative** (line 20505) — also referenced in: *Player/profile portability remains provider-neutral `SAVE-DER-005` — *Derived normative contract**
+- `INP-009` — owned by *One canonical timestamped input stream with purpose-specific immutable views `INP-009` — *Normative** (line 20532)
+- `INP-010` — owned by *Small semantic haptic/feedback layer plus advanced capability facets `INP-010` — *Normative** (line 20576)
+- `ISO-001` — owned by *Weather Profile / World Environment is the normal authoring surface `ISO-001` — *Normative** (line 18657)
+- `ISO-002` — owned by *Directed / Guided / Simulated authored-intent modes; Guided default `ISO-002` — *Normative** (line 18663)
+- `ISO-003` — owned by *Rich common Field contract with representation portfolio `ISO-003` — *Normative** (line 18673)
+- `ISO-006` — owned by *Low/zero-configuration procedural weather is first-class `ISO-006` — *Normative** (line 18689)
+- `ISO-007` — owned by *One logical atmosphere; finest active representation is local truth `ISO-007` — *Normative** (line 18731)
+- `ISO-008` — owned by *Selective fine-to-coarse feedback `ISO-008` — *Normative** (line 18779)
+- `ISO-009` — owned by *Reduced Atmosphere is still rich weather simulation `ISO-009` — *Normative** (line 18800)
+- `ISO-010` — owned by *Criticality-aware atmospheric persistence `ISO-010` — *Normative** (line 18820)
+- `ISO-011` — owned by *Simple Weather surface + advanced Atmosphere/Simulation workspace `ISO-011` — *Normative** (line 18877)
+- `LANG-001` — owned by *Mixed-language projects `LANG-001` — *Normative** (line 1278) — also referenced in: *Incremental multi-root Multiplayer Product Set `NETPROJ-005` — *Normative**
+- `LANG-002` — owned by *User-facing source model `LANG-002` — *Normative** (line 1296)
+- `LANG-003` — owned by *Language-neutral interface schema `LANG-003` — *Normative** (line 1325)
+- `LANG-004` — owned by *Export ergonomics `LANG-004` — *Normative model; syntax research-gated** (line 1347)
+- `LANG-005` — owned by *Language roadmap and 1.0 floor `LANG-005` — *Normative** (line 1360)
+- `LANG-006` — owned by *First-class language contract `LANG-006` — *Normative** (line 1383) — also referenced in: *Language roadmap and 1.0 floor `LANG-005` — *Normative**
+- `LANG-007` — owned by *Rust `LANG-007` — *Normative** (line 1407)
+- `LANG-008` — owned by *Luau `LANG-008` — *Normative direction** (line 1421)
+- `LANG-009` — owned by *TypeScript `LANG-009` — *Normative direction** (line 1437)
+- `LANG-010` — owned by *Meridian Python (`.mpy`) `LANG-010` — *Normative language contract; implementation research-gated** (line 1448)
+- `LANG-011` — owned by *C# `LANG-011` — *Normative 1.0 floor** (line 1952)
+- `LANG-012` — owned by *V `LANG-012` — *Normative long-term direction** (line 1956)
+- `LANG-013` — owned by *Anorak `LANG-013` — *Normative long-term direction** (line 1994)
+- `LANG-014` — owned by *Ruby `LANG-014` — *Normative development policy** (line 2010) — also referenced in: *Incremental multi-root Multiplayer Product Set `NETPROJ-005` — *Normative**
+- `LANG-015` — owned by *Polyglot runtime placement `LANG-015` — *Normative direction** (line 2028)
+- `LEGAL-001` — owned by *Engine license and relicensing `LEGAL-001` — *Normative** (line 15626)
+- `LEGAL-002` — owned by *Ownership path `LEGAL-002` — *Normative direction** (line 15634)
+- `LEGAL-003` — owned by *CLA replaces DCO `LEGAL-003` — *Normative** (line 15641)
+- `LEGAL-004` — owned by *AI-assisted contributions `LEGAL-004` — *Normative** (line 15667)
+- `LEGAL-005` — owned by *Relicensing envelope and third-party intake `LEGAL-005` — *Normative** (line 15687) — also referenced in: *Loss-aware optional 2D tool interchange `TWO-011` — *Normative**; *Provider candidates and licensing*; *Dependency strategy*
+- `LEGAL-006` — owned by *Useful dependency adoption versus implementation mining `LEGAL-006` — *Normative** (line 15824)
+- `LEGAL-MIG-001` — owned by *CLA repository migration `LEGAL-MIG-001` — *Required migration** (line 27886)
+- `LIBRARY-001` — owned by *Provider-neutral library `LIBRARY-001` — *Normative** (line 14643) — also referenced in: *One canonical mod package, optional UGC providers `MOD-DER-005` — *Normative**
+- `LIBRARY-002` — owned by *Godot provider `LIBRARY-002` — *Normative direction** (line 14654)
+- `MOD-002` — owned by *Package Lab `MOD-002` — *Normative direction** (line 22356) — also referenced in: *Package drop opens by user intent `MOD-DER-001` — *Derived normative contract**
+- `MOD-003` — owned by *Recovery fidelity contract `MOD-003`* (line 22454) — also referenced in: *Recovery is best-effort and fidelity-labeled, never fake source `MOD-DER-002` — *Normative**
+- `MOD-004` — owned by *Mod Workspace — non-destructive development model `MOD-004`* (line 22499) — also referenced in: *Normal mod projects are read-only base + writable overlay `MOD-DER-003` — *Derived normative contract**
+- `MOD-005` — owned by *Publisher-supplied ModKit facets `MOD-005`* (line 22566)
+- `MOD-006` — owned by *Research/Recover mode `MOD-006`* (line 22588) — also referenced in: *Recovery is best-effort and fidelity-labeled, never fake source `MOD-DER-002` — *Normative**
+- `MOD-DER-001` — owned by *Package drop opens by user intent `MOD-DER-001` — *Derived normative contract** (line 23067)
+- `MOD-DER-002` — owned by *Recovery is best-effort and fidelity-labeled, never fake source `MOD-DER-002` — *Normative** (line 23081)
+- `MOD-DER-003` — owned by *Normal mod projects are read-only base + writable overlay `MOD-DER-003` — *Derived normative contract** (line 23085)
+- `MOD-DER-004` — owned by *Technical inspection and publisher-supported stable mod APIs are separate `MOD-DER-004` — *Derived normative contract** (line 23091)
+- `MOD-DER-005` — owned by *One canonical mod package, optional UGC providers `MOD-DER-005` — *Normative** (line 23097)
+- `MODELER-001` — owned by *Product direction `MODELER-001` — *Normative** (line 14562)
+- `MODELER-002` — owned by *Workspaces `MODELER-002` — *Normative direction** (line 14576)
+- `MODELER-003` — owned by *Exact source and game mesh `MODELER-003` — *Normative** (line 14606)
+- `MODELER-004` — owned by *OpenCADStudio boundary `MODELER-004` — *Normative** (line 14624)
+- `MODELER-005` — owned by *Bounded serious CAD is part of the Meridian 1.0 product floor `MODELER-005` — *Normative** (line 26501)
+- `MODELER-DER-001` — owned by *Representation follows authoring meaning `MODELER-DER-001` — *Derived normative contract** (line 26403)
+- `MODELER-DER-002` — owned by *Game-production DCC boundary `MODELER-DER-002` — *Derived normative contract** (line 26426)
+- `MODELER-DER-003` — owned by *Assembly semantics do not secretly become runtime physics `MODELER-DER-003` — *Derived normative contract** (line 26445) — also referenced in: *Practical Assembly 1.0 floor*
+- `MODELER-DER-004` — owned by *CAD is source/editor capability, not player baggage `MODELER-DER-004` — *Derived normative contract** (line 26461)
+- `MODELER-RES-001` — owned by *Kernel, solver and tessellation implementation `MODELER-RES-001` — *Research/prototype gate** (line 26469) — also referenced in: *Evidence-only implementation work*
+- `MPY-001` — owned by *No user-facing dunder protocol as a core language model `MPY-001` — *Normative** (line 26866)
+- `MPY-002` — owned by *Reject Python meta-object baggage by default `MPY-002` — *Normative** (line 26872)
+- `MPY-003` — owned by *Preserve the good Python surface `MPY-003` — *Normative** (line 26889)
+- `MPY-004` — owned by *Intentional divergence must be explicit and versioned `MPY-004` — *Normative** (line 26907)
+- `MPY-PHIL-001` — owned by *Python-family familiarity without compatibility captivity `MPY-PHIL-001` — *Normative** (line 26779)
+- `MPY-PHIL-002` — owned by *What qualifies as a justified Meridian improvement `MPY-PHIL-002` — *Normative** (line 26789) — also referenced in: *Architecture status*
+- `MPY-PHIL-003` — owned by *Previously discussed Python/CPython baggage Meridian is not obligated to copy `MPY-PHIL-003` — *Normative** (line 26808) — also referenced in: *Architecture status*
+- `MPY-PHIL-004` — owned by *Honest divergence and migration `MPY-PHIL-004` — *Normative** (line 26825) — also referenced in: *Architecture status*
+- `MUI-SRC-001` — owned by *Source-language architecture `MUI-SRC-001` — *Derived normative contract** (line 25521)
+- `MUI-SRC-002` — owned by *Language scope `MUI-SRC-002` — *Derived normative contract** (line 25543)
+- `MUI-SRC-003` — owned by *Reactive property expressions `MUI-SRC-003` — *Derived normative contract** (line 25717)
+- `MUI-SRC-004` — owned by *Explicit two-way editing `MUI-SRC-004` — *Derived normative contract** (line 25742)
+- `MUI-SRC-005` — owned by *Commands, actions and events `MUI-SRC-005` — *Derived normative contract** (line 25765)
+- `MUI-SRC-006` — owned by *Structural conditions and repeaters `MUI-SRC-006` — *Derived normative contract** (line 25826)
+- `MUI-SRC-007` — owned by *Components, properties and slots `MUI-SRC-007` — *Derived normative contract** (line 25857)
+- `MUI-SRC-008` — owned by *Styling, tokens and themes `MUI-SRC-008` — *Derived normative contract** (line 25915)
+- `MUI-SRC-009` — owned by *Formatting and source preservation `MUI-SRC-009` — *Derived normative contract** (line 26065)
+- `NAV-001` — owned by *Multiple first-party navigation representations under common semantics `NAV-001` — *Normative** (line 17197)
+- `NAV-002` — owned by *Automatic-first navigation generation with explicit override `NAV-002` — *Normative** (line 17271)
+- `NAV-003` — owned by *Incremental versioned navigation updates with immediate obstacle overlays `NAV-003` — *Normative** (line 17331)
+- `NAV-004` — owned by *Shared world data plus agent capability profiles `NAV-004` — *Normative** (line 17399)
+- `NAV-005` — owned by *Hierarchical long-distance path planning for streamed worlds `NAV-005` — *Normative** (line 17448)
+- `NAV-006` — owned by *NAV owns local geometric avoidance; Bearings owns tactical choice `NAV-006` — *Normative** (line 17495)
+- `NAV-007` — owned by *First-class oriented-surface and volumetric navigation in the complete architecture `NAV-007` — *Normative** (line 17552)
+- `NAV-008` — owned by *Unified semantic query API over versioned snapshots `NAV-008` — *Normative** (line 17639)
+- `NAV-009` — owned by *Typed semantic cost layers `NAV-009` — *Normative** (line 17647)
+- `NAV-010` — owned by *Semantic Traversal Links `NAV-010` — *Normative** (line 17655)
+- `NAV-011` — owned by *Navigation regions with moving/local reference frames `NAV-011` — *Normative** (line 17663)
+- `NAV-012` — owned by *Multiplayer navigation authority profiles `NAV-012` — *Normative** (line 17671)
+- `NAV-013` — owned by *Staged first-party crowd-routing toolkit `NAV-013` — *Normative** (line 17679)
+- `NAV-014` — owned by *NAV path-causality and explanation suite `NAV-014` — *Normative** (line 17687)
+- `NET-001` — owned by *Gameplay networking, P2P, sessions, and Collective `NET-001` — *Normative direction** (line 15127)
+- `NET-002` — owned by *First-party topology profiles `NET-002` — *Normative** (line 15237)
+- `NET-003` — owned by *Complete Steam friend-session provider `NET-003` — *Normative** (line 15273)
+- `NET-004` — owned by *Canonical cross-provider identities `NET-004` — *Normative** (line 15309)
+- `NET-005` — owned by *Privacy-first Internet routing `NET-005` — *Normative** (line 15337)
+- `NET-006` — owned by *Built-in host migration `NET-006` — *Normative** (line 15362)
+- `NETPROJ-001` — owned by *One authored game, multiple product projections `NETPROJ-001` — *Normative** (line 25345) — also referenced in: *One portable Authority rules path across topologies `NETPROJ-009` — *Derived contract; prototype-gated**
+- `NETPROJ-002` — owned by *Composable Role Contract `NETPROJ-002` — *Normative** (line 25349) — also referenced in: *Qualified Authority + Prediction implementation sharing `NETPROJ-007` — *Derived contract; prototype-gated**; *One portable Authority rules path across topologies `NETPROJ-009` — *Derived contract; prototype-gated**
+- `NETPROJ-003` — owned by *Schema-generated networking, explicit game meaning `NETPROJ-003` — *Normative** (line 25364) — also referenced in: *Qualified Authority + Prediction implementation sharing `NETPROJ-007` — *Derived contract; prototype-gated**
+- `NETPROJ-004` — owned by *One authored world, role-specific semantic facet closure `NETPROJ-004` — *Normative** (line 25370)
+- `NETPROJ-005` — owned by *Incremental multi-root Multiplayer Product Set `NETPROJ-005` — *Normative** (line 25376)
+- `NETPROJ-006` — owned by *Bounded explicit compatibility windows `NETPROJ-006` — *Normative** (line 25468)
+- `NETPROJ-006A` — owned by *Prediction-safe code sharing `NETPROJ-006A` — *Normative** (line 25396)
+- `NETPROJ-006B` — owned by *Server-only secrecy and artifact closure `NETPROJ-006B` — *Normative** (line 25412)
+- `NETPROJ-006C` — owned by *Unified portable Authority path `NETPROJ-006C` — *Normative** (line 25426)
+- `NETPROJ-006D` — owned by *External services and authoritative barriers `NETPROJ-006D` — *Normative** (line 25448)
+- `NETPROJ-007` — owned by *Qualified Authority + Prediction implementation sharing `NETPROJ-007` — *Derived contract; prototype-gated** (line 25485)
+- `NETPROJ-008` — owned by *Honest server-only secrecy and integrity boundary `NETPROJ-008` — *Derived contract; prototype-gated** (line 25493)
+- `NETPROJ-009` — owned by *One portable Authority rules path across topologies `NETPROJ-009` — *Derived contract; prototype-gated** (line 25501)
+- `NETPROJ-010` — owned by *Typed async external-service/persistence bridge `NETPROJ-010` — *Derived contract; prototype-gated** (line 25509)
+- `NORM-MIG-001` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `NORM-MIG-002` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `NORM-MIG-003` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `NORM-MIG-004` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `NORM-MIG-005` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `NORM-MIG-006` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `NORM-MIG-007` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `NORM-MIG-008` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `NORM-MIG-009` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `NORM-MIG-010` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `NORM-MIG-011` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `NORM-MIG-012` — owned by *Normative contradiction and migration map `NORM-MIG-001..012`* (line 27902) — declared as a range member
+- `OPEN-001` — owned by *Open source, not open core `OPEN-001..004` — *Normative** (line 27874) — declared as a range member
+- `OPEN-002` — owned by *Open source, not open core `OPEN-001..004` — *Normative** (line 27874) — declared as a range member
+- `OPEN-003` — owned by *Open source, not open core `OPEN-001..004` — *Normative** (line 27874) — declared as a range member
+- `OPEN-004` — owned by *Open source, not open core `OPEN-001..004` — *Normative** (line 27874) — declared as a range member
+- `PEN-001` — owned by *Penumbra `PEN-001` — *Normative ambition and architecture** (line 12319)
+- `PEN-002` — owned by *Primary 3D architecture `PEN-002` — *Normative** (line 12350)
+- `PEN-003` — owned by *Geometry evolution `PEN-003` — *Normative direction** (line 12354)
+- `PEN-004` — owned by *Cohesive global illumination portfolio `PEN-004` — *Normative** (line 12370)
+- `PEN-005` — owned by *Automatic scalability `PEN-005` — *Normative** (line 12385)
+- `PEN-006` — owned by *Extension seams `PEN-006` — *Normative** (line 12391)
+- `PEN-007` — owned by *Backend portfolio and Vulkan requirement `PEN-007` — *Normative** (line 12407)
+- `PEN-008` — owned by *Rust-native shader authoring and language roadmap `PEN-008` — *Normative** (line 12434)
+- `PEN-009` — owned by *WGSL, WESL, and easy development `PEN-009` — *Normative direction** (line 12451)
+- `PEN-010` — owned by *Deterministic shader autogeneration `PEN-010` — *Normative direction** (line 12494)
+- `PEN-011` — owned by *Source authority and specialized products `PEN-011` — *Normative** (line 12513)
+- `PEN-012` — owned by *Intent-first material workflow `PEN-012` — *Normative** (line 12532)
+- `PEN-013` — owned by *Generated-product ownership `PEN-013` — *Normative** (line 12546)
+- `PEN-014` — owned by *Typed custom-shader hooks `PEN-014` — *Normative** (line 12552)
+- `PEN-015` — owned by *Automatic variant planner `PEN-015` — *Normative** (line 12564)
+- `PEN-016` — owned by *Asynchronous last-known-good compilation `PEN-016` — *Normative** (line 12570)
+- `PEN-017` — owned by *Why Meridian does not clone Slang before 1.0 `PEN-017` — *Normative** (line 12630)
+- `PEN-018` — owned by *CMake/CPython-free shader-build contract `PEN-018` — *Normative** (line 12644)
+- `PEN-019` — owned by *Direct WGSL path and Shape of Down proving workload `PEN-019` — *Normative** (line 12659)
+- `PEN-020` — owned by *Post-1.0 Meridian Shader Language `PEN-020` — *Normative** (line 12686)
+- `PEN-021` — owned by *Visual-quality acceptance and vertical-slice doctrine `PEN-021` — *Normative** (line 12327)
+- `PH-AI-001` — owned by *PH-AI-001 — Provider-neutral Meridian AI product closure* (line 30269) — also referenced in: *PH-AI-002 — Deep engine introspection and verification integration*; *PH-AI-003 — TQF v1 reference runtime implementation*; *PH-AI-005 — Training framework and Training Observatory*
+- `PH-AI-002` — owned by *PH-AI-002 — Deep engine introspection and verification integration* (line 30280) — also referenced in: *PH-AI-006 — Teacher, curriculum, provenance, and contribution pipeline*; *PH-AI-007 — Meridian-Gym and MeridianBench*
+- `PH-AI-003` — owned by *PH-AI-003 — TQF v1 reference runtime implementation* (line 30291) — also referenced in: *PH-AI-004 — Exact 1,048,576-token TemperTally runtime profile*; *PH-AI-005 — Training framework and Training Observatory*
+- `PH-AI-004` — owned by *PH-AI-004 — Exact 1,048,576-token TemperTally runtime profile* (line 30302) — also referenced in: *PH-AI-010 — Quantization recovery and production runtime selection*
+- `PH-AI-005` — owned by *PH-AI-005 — Training framework and Training Observatory* (line 30313) — also referenced in: *PH-AI-006 — Teacher, curriculum, provenance, and contribution pipeline*; *PH-AI-007 — Meridian-Gym and MeridianBench*; *PH-AI-008 — TemperTally Full continued/domain/tool training*
+- `PH-AI-006` — owned by *PH-AI-006 — Teacher, curriculum, provenance, and contribution pipeline* (line 30324) — also referenced in: *PH-AI-007 — Meridian-Gym and MeridianBench*; *PH-AI-008 — TemperTally Full continued/domain/tool training*
+- `PH-AI-007` — owned by *PH-AI-007 — Meridian-Gym and MeridianBench* (line 30335) — also referenced in: *PH-AI-008 — TemperTally Full continued/domain/tool training*
+- `PH-AI-008` — owned by *PH-AI-008 — TemperTally Full continued/domain/tool training* (line 30346) — also referenced in: *PH-AI-009 — Routing specialization and compression research*
+- `PH-AI-009` — owned by *PH-AI-009 — Routing specialization and compression research* (line 30359) — also referenced in: *PH-AI-010 — Quantization recovery and production runtime selection*
+- `PH-AI-010` — owned by *PH-AI-010 — Quantization recovery and production runtime selection* (line 30370) — also referenced in: *PH-AI-011 — Dogfood, self-teaching, and harness/model co-optimization*
+- `PH-AI-011` — owned by *PH-AI-011 — Dogfood, self-teaching, and harness/model co-optimization* (line 30381) — also referenced in: *PH-AI-012 — TemperTally/TQF public release and model channel*
+- `PH-AI-012` — owned by *PH-AI-012 — TemperTally/TQF public release and model channel* (line 30392)
+- `PH-AUTH-001` — owned by *PH-AUTH-001 — Freeze the v0.5 baseline* (line 28645) — also referenced in: *Authority bootstrap during the reset `IMPL-BOOTSTRAP-001` — *Normative**; *PH-AUTH-002 — Install the root specoment and generate validated projections*; *PH-AUTH-003 — Build the v1 governance schemas and validator*; +2 more
+- `PH-AUTH-002` — owned by *PH-AUTH-002 — Install the root specoment and generate validated projections* (line 28662) — also referenced in: *PH-AUTH-003 — Build the v1 governance schemas and validator*; *PH-AUTH-004 — Atomic v1 authority cutover*; *WP-V1-RESET-002 — Canonical suite split*
+- `PH-AUTH-003` — owned by *PH-AUTH-003 — Build the v1 governance schemas and validator* (line 28679) — also referenced in: *PH-AUTH-004 — Atomic v1 authority cutover*; *WP-V1-GOV-001 — Registry/schema/tool v1*
+- `PH-AUTH-004` — owned by *PH-AUTH-004 — Atomic v1 authority cutover* (line 28696) — also referenced in: *Authority bootstrap during the reset `IMPL-BOOTSTRAP-001` — *Normative**; *PH-AUTH-005 — Requalify and classify the existing implementation*; *PH-PLAY-001 — Project create/open and pinned toolchain*; +2 more
+- `PH-AUTH-005` — owned by *PH-AUTH-005 — Requalify and classify the existing implementation* (line 28713) — also referenced in: *PH-AUTH-006 — Behavior-preserving structural decomposition and dependency gates*; *WP-V1-CENSUS-001 — Crate and API disposition inventory*
+- `PH-AUTH-006` — owned by *PH-AUTH-006 — Behavior-preserving structural decomposition and dependency gates* (line 28730) — also referenced in: *Execution capacity and what a phase is — *Non-normative clarification**; *PH-AUTH-007 — Core semantic kernel: identity, schema, commands, capabilities, and transactions*; *PH-CREATOR-001 — Meridian UI decomposition and direct renderer stabilization*; +5 more
+- `PH-AUTH-007` — owned by *PH-AUTH-007 — Core semantic kernel: identity, schema, commands, capabilities, and transactions* (line 28747) — also referenced in: *PH-AUTH-008 — Service lifecycle and structured task runtime*; *PH-AUTH-010 — Authoritative content catalog, compiler graph, and content-addressed store*; *PH-PLAY-001 — Project create/open and pinned toolchain*; +8 more
+- `PH-AUTH-008` — owned by *PH-AUTH-008 — Service lifecycle and structured task runtime* (line 28764) — also referenced in: *PH-AUTH-009 — Renderer-free runtime and presentation snapshot boundary*; *PH-AUTH-010 — Authoritative content catalog, compiler graph, and content-addressed store*; *PH-PLAY-009 — Early Web architecture and build spike*; +3 more
+- `PH-AUTH-009` — owned by *PH-AUTH-009 — Renderer-free runtime and presentation snapshot boundary* (line 28781) — also referenced in: *PH-PLAY-003 — Rust gameplay module and Meridian-owned runtime API*; *PH-PLAY-005 — Minimal Penumbra frame under the new boundaries*; *PH-PLAY-008 — Headless and dedicated-server product projection*; +4 more
+- `PH-AUTH-010` — owned by *PH-AUTH-010 — Authoritative content catalog, compiler graph, and content-addressed store* (line 28798) — also referenced in: *Immediate implementation start order `IMPL-START-001` — *Normative**; *PH-PLAY-001 — Project create/open and pinned toolchain*; *PH-PLAY-002 — Scenes and prefabs as canonical source*; +12 more
+- `PH-CONTENT-001` — owned by *PH-CONTENT-001 — Alluvium visual graph and incremental production evaluator* (line 29624) — also referenced in: *PH-CONTENT-006 — Vegetation and ecosystem authoring/runtime tiers*; *PH-CONTENT-007 — Isobar weather/atmosphere and Camellia world-time foundation*; *PH-CONTENT-010 — Production content vertical project*
+- `PH-CONTENT-002` — owned by *PH-CONTENT-002 — Modeler production mesh, UV, modifier, collision, LOD, and interchange tools* (line 29641) — also referenced in: *PH-CONTENT-003 — CAD sketches, constraints, parameters, and feature-history parts*; *PH-CONTENT-010 — Production content vertical project*
+- `PH-CONTENT-003` — owned by *PH-CONTENT-003 — CAD sketches, constraints, parameters, and feature-history parts* (line 29658) — also referenced in: *PH-CONTENT-004 — CAD assemblies, STEP/DXF, interference, and game derivation*; *PH-CONTENT-010 — Production content vertical project*
+- `PH-CONTENT-004` — owned by *PH-CONTENT-004 — CAD assemblies, STEP/DXF, interference, and game derivation* (line 29675) — also referenced in: *PH-CONTENT-010 — Production content vertical project*
+- `PH-CONTENT-005` — owned by *PH-CONTENT-005 — Basalt terrain, partition, HLOD, and world streaming foundation* (line 29692) — also referenced in: *PH-CONTENT-006 — Vegetation and ecosystem authoring/runtime tiers*; *PH-CONTENT-007 — Isobar weather/atmosphere and Camellia world-time foundation*; *PH-CONTENT-008 — Torsant production fire, smoke, thermal, water, and phase-change floor*; +2 more
+- `PH-CONTENT-006` — owned by *PH-CONTENT-006 — Vegetation and ecosystem authoring/runtime tiers* (line 29709) — also referenced in: *PH-CONTENT-010 — Production content vertical project*; *PH-SCALE-006 — Large-world streaming, HLOD, durable patches, and multi-user scale*
+- `PH-CONTENT-007` — owned by *PH-CONTENT-007 — Isobar weather/atmosphere and Camellia world-time foundation* (line 29726) — also referenced in: *PH-CONTENT-008 — Torsant production fire, smoke, thermal, water, and phase-change floor*; *PH-CONTENT-010 — Production content vertical project*; *PH-SCALE-005 — GI, shadow, reflection, volumetric, and reference portfolio*
+- `PH-CONTENT-008` — owned by *PH-CONTENT-008 — Torsant production fire, smoke, thermal, water, and phase-change floor* (line 29743) — also referenced in: *PH-CONTENT-010 — Production content vertical project*; *PH-SCALE-005 — GI, shadow, reflection, volumetric, and reference portfolio*
+- `PH-CONTENT-009` — owned by *PH-CONTENT-009 — Artus production motion matching, grip, sequencing, and cinematics floor* (line 29760) — also referenced in: *PH-CONTENT-010 — Production content vertical project*
+- `PH-CONTENT-010` — owned by *PH-CONTENT-010 — Production content vertical project* (line 29777) — also referenced in: *PH-SCALE-012 — AAA integration corpus and automatic-optimization closure*; *PH-REL-002 — Accessibility, localization, and inclusive workflow qualification*; *PH-REL-005 — Canonical Ponder, public Web docs, tutorials, API reference, and executable examples*; +1 more
+- `PH-CREATOR-001` — owned by *PH-CREATOR-001 — Meridian UI decomposition and direct renderer stabilization* (line 28989) — also referenced in: *PH-CREATOR-002 — `.mui` lossless syntax, CST, parser, and source identity*
+- `PH-CREATOR-002` — owned by *PH-CREATOR-002 — `.mui` lossless syntax, CST, parser, and source identity* (line 29006) — also referenced in: *PH-CREATOR-003 — `.mui` compiler, components, bindings, styles, and hot reload*
+- `PH-CREATOR-003` — owned by *PH-CREATOR-003 — `.mui` compiler, components, bindings, styles, and hot reload* (line 29023) — also referenced in: *PH-CREATOR-004 — Permanent application shell, hub, and workspace framework*; *PH-CREATOR-008 — Visual `.mui` designer with source-preserving round trip*
+- `PH-CREATOR-004` — owned by *PH-CREATOR-004 — Permanent application shell, hub, and workspace framework* (line 29040) — also referenced in: *PH-CREATOR-005 — World workspace: hierarchy, viewport, inspector, and direct manipulation*; *PH-CREATOR-006 — Asset Browser, import, reimport, provenance, and build explanation*; *PH-CREATOR-008 — Visual `.mui` designer with source-preserving round trip*; +1 more
+- `PH-CREATOR-005` — owned by *PH-CREATOR-005 — World workspace: hierarchy, viewport, inspector, and direct manipulation* (line 29057) — also referenced in: *PH-CREATOR-007 — Semantic undo, crash recovery, history, and Play-tweak capture*; *PH-CREATOR-010 — Creator Alpha qualification*
+- `PH-CREATOR-006` — owned by *PH-CREATOR-006 — Asset Browser, import, reimport, provenance, and build explanation* (line 29074) — also referenced in: *PH-CREATOR-007 — Semantic undo, crash recovery, history, and Play-tweak capture*; *PH-CREATOR-010 — Creator Alpha qualification*
+- `PH-CREATOR-007` — owned by *PH-CREATOR-007 — Semantic undo, crash recovery, history, and Play-tweak capture* (line 29091) — also referenced in: *PH-CREATOR-010 — Creator Alpha qualification*
+- `PH-CREATOR-008` — owned by *PH-CREATOR-008 — Visual `.mui` designer with source-preserving round trip* (line 29108) — also referenced in: *PH-CREATOR-010 — Creator Alpha qualification*
+- `PH-CREATOR-009` — owned by *PH-CREATOR-009 — Ponder contextual documentation and local search foundation* (line 29125) — also referenced in: *PH-CREATOR-010 — Creator Alpha qualification*; *PH-REL-005 — Canonical Ponder, public Web docs, tutorials, API reference, and executable examples*
+- `PH-CREATOR-010` — owned by *PH-CREATOR-010 — Creator Alpha qualification* (line 29142) — also referenced in: *PH-LANG-001 — Meridian Interface Schema and binding generator*; *PH-LANG-005 — Professional built-in IDE core*; *PH-LANG-009 — Meridian semantic source control and `mvs` foundation*; +14 more
+- `PH-GAME-001` — owned by *PH-GAME-001 — Production clustered Forward+ Penumbra baseline* (line 29384) — also referenced in: *PH-GAME-002 — Material/ShaderIr and first-party shader authoring*; *PH-GAME-003 — Automatic performance and scalability governor foundation*; *PH-GAME-004 — First-class 2D runtime and editor floor*; +7 more
+- `PH-GAME-002` — owned by *PH-GAME-002 — Material/ShaderIr and first-party shader authoring* (line 29401) — also referenced in: *PH-SCALE-005 — GI, shadow, reflection, volumetric, and reference portfolio*
+- `PH-GAME-003` — owned by *PH-GAME-003 — Automatic performance and scalability governor foundation* (line 29418) — also referenced in: *PH-CONTENT-001 — Alluvium visual graph and incremental production evaluator*; *PH-SCALE-004 — GPU scene, indirect work, virtual geometry, and residency*; *PH-REL-004 — Performance, memory, stability, recovery, and lower-tier qualification*
+- `PH-GAME-004` — owned by *PH-GAME-004 — First-class 2D runtime and editor floor* (line 29435) — also referenced in: *PH-GAME-013 — Selected official gameplay framework foundations*; *PH-GAME-014 — Breadth integration: mixed-language 2D and multiplayer proving projects*; *PH-SCALE-010 — Production Web runtime, artifact, offline update, and deployment*; +1 more
+- `PH-GAME-005` — owned by *PH-GAME-005 — Cairn rigid-body, query, controller, and field foundation* (line 29452) — also referenced in: *PH-GAME-009 — Artus rig, animation graph, retargeting, contacts, and physical handoff baseline*; *PH-GAME-010 — NAV traversability, artifacts, links, and query baseline*; *PH-GAME-013 — Selected official gameplay framework foundations*; +5 more
+- `PH-GAME-006` — owned by *PH-GAME-006 — Wavefront audio, music, spatial, and recovery floor* (line 29469) — also referenced in: *PH-GAME-013 — Selected official gameplay framework foundations*; *PH-CONTENT-007 — Isobar weather/atmosphere and Camellia world-time foundation*; *PH-CONTENT-008 — Torsant production fire, smoke, thermal, water, and phase-change floor*; +2 more
+- `PH-GAME-007` — owned by *PH-GAME-007 — Save, player profile, replay, migration, and recovery system* (line 29486) — also referenced in: *PH-GAME-008 — Visual gameplay and Behavior IR*; *PH-GAME-011 — Bearings game-agent intelligence foundation*; *PH-GAME-012 — Client/server roles, replication, prediction, and Multiplayer Product Set*; +4 more
+- `PH-GAME-008` — owned by *PH-GAME-008 — Visual gameplay and Behavior IR* (line 29503)
+- `PH-GAME-009` — owned by *PH-GAME-009 — Artus rig, animation graph, retargeting, contacts, and physical handoff baseline* (line 29520) — also referenced in: *PH-GAME-013 — Selected official gameplay framework foundations*; *PH-CONTENT-009 — Artus production motion matching, grip, sequencing, and cinematics floor*; *PH-REL-002 — Accessibility, localization, and inclusive workflow qualification*
+- `PH-GAME-010` — owned by *PH-GAME-010 — NAV traversability, artifacts, links, and query baseline* (line 29537) — also referenced in: *PH-GAME-011 — Bearings game-agent intelligence foundation*; *PH-GAME-013 — Selected official gameplay framework foundations*; *PH-CONTENT-005 — Basalt terrain, partition, HLOD, and world streaming foundation*
+- `PH-GAME-011` — owned by *PH-GAME-011 — Bearings game-agent intelligence foundation* (line 29554)
+- `PH-GAME-012` — owned by *PH-GAME-012 — Client/server roles, replication, prediction, and Multiplayer Product Set* (line 29571) — also referenced in: *PH-GAME-014 — Breadth integration: mixed-language 2D and multiplayer proving projects*; *PH-SCALE-008 — Dedicated Server Minting and production operation*; *PH-SCALE-009 — Package Lab, mod development, plugins, and UGC providers*; +1 more
+- `PH-GAME-013` — owned by *PH-GAME-013 — Selected official gameplay framework foundations* (line 29588) — also referenced in: *PH-GAME-014 — Breadth integration: mixed-language 2D and multiplayer proving projects*
+- `PH-GAME-014` — owned by *PH-GAME-014 — Breadth integration: mixed-language 2D and multiplayer proving projects* (line 29605) — also referenced in: *PH-SCALE-012 — AAA integration corpus and automatic-optimization closure*; *PH-REL-007 — End-to-end validation portfolio closure*
+- `PH-LANG-001` — owned by *PH-LANG-001 — Meridian Interface Schema and binding generator* (line 29161) — also referenced in: *PH-LANG-002 — First-class Luau host*; *PH-LANG-003 — First-class C# host*; *PH-LANG-008 — Package and extension ABI with trust tiers*; +9 more
+- `PH-LANG-002` — owned by *PH-LANG-002 — First-class Luau host* (line 29178) — also referenced in: *PH-LANG-004 — Mixed-language calls, events, debugging, saves, networking, and replay parity*
+- `PH-LANG-003` — owned by *PH-LANG-003 — First-class C# host* (line 29195) — also referenced in: *PH-LANG-004 — Mixed-language calls, events, debugging, saves, networking, and replay parity*; *PH-GAME-004 — First-class 2D runtime and editor floor*
+- `PH-LANG-004` — owned by *PH-LANG-004 — Mixed-language calls, events, debugging, saves, networking, and replay parity* (line 29212) — also referenced in: *PH-LANG-006 — Unified debugger, profiler, test runner, and source attribution*; *PH-GAME-012 — Client/server roles, replication, prediction, and Multiplayer Product Set*; *PH-GAME-014 — Breadth integration: mixed-language 2D and multiplayer proving projects*
+- `PH-LANG-005` — owned by *PH-LANG-005 — Professional built-in IDE core* (line 29229) — also referenced in: *PH-LANG-006 — Unified debugger, profiler, test runner, and source attribution*; *PH-LANG-007 — Managed toolchains, build graph, artifact service, and remote-ready boundaries*; *PH-LANG-010 — AI-neutral semantic agent API, Planning boundary, and Action Governor foundation*; +4 more
+- `PH-LANG-006` — owned by *PH-LANG-006 — Unified debugger, profiler, test runner, and source attribution* (line 29246) — also referenced in: *PH-GAME-003 — Automatic performance and scalability governor foundation*
+- `PH-LANG-007` — owned by *PH-LANG-007 — Managed toolchains, build graph, artifact service, and remote-ready boundaries* (line 29263) — also referenced in: *PH-LANG-008 — Package and extension ABI with trust tiers*; *PH-LANG-011 — TypeScript first-class candidate lane*; *PH-LANG-012 — Meridian Python compiler/runtime candidate lane*; +4 more
+- `PH-LANG-008` — owned by *PH-LANG-008 — Package and extension ABI with trust tiers* (line 29280) — also referenced in: *PH-LANG-013 — C/C++ native extension and project-language path*; *PH-SCALE-009 — Package Lab, mod development, plugins, and UGC providers*; *PH-REL-003 — Security, signing, updates, supply chain, and privacy qualification*
+- `PH-LANG-009` — owned by *PH-LANG-009 — Meridian semantic source control and `mvs` foundation* (line 29297) — also referenced in: *PH-LANG-010 — AI-neutral semantic agent API, Planning boundary, and Action Governor foundation*; *PH-SCALE-007 — Distributed build/cache and remote development*; *PH-AI-001 — Provider-neutral Meridian AI product closure*
+- `PH-LANG-010` — owned by *PH-LANG-010 — AI-neutral semantic agent API, Planning boundary, and Action Governor foundation* (line 29314) — also referenced in: *Program policy `AI-PROGRAM-001`*; *PH-AI-001 — Provider-neutral Meridian AI product closure*
+- `PH-LANG-011` — owned by *PH-LANG-011 — TypeScript first-class candidate lane* (line 29331)
+- `PH-LANG-012` — owned by *PH-LANG-012 — Meridian Python compiler/runtime candidate lane* (line 29348)
+- `PH-LANG-013` — owned by *PH-LANG-013 — C/C++ native extension and project-language path* (line 29365)
+- `PH-PLAY-001` — owned by *PH-PLAY-001 — Project create/open and pinned toolchain* (line 28817) — also referenced in: *PH-PLAY-002 — Scenes and prefabs as canonical source*; *PH-PLAY-004 — Input actions, devices, prompts, and player preferences foundation*; *PH-PLAY-007 — One-button desktop Build and packaged artifact*; +1 more
+- `PH-PLAY-002` — owned by *PH-PLAY-002 — Scenes and prefabs as canonical source* (line 28834) — also referenced in: *PH-PLAY-003 — Rust gameplay module and Meridian-owned runtime API*; *PH-PLAY-005 — Minimal Penumbra frame under the new boundaries*; *PH-PLAY-007 — One-button desktop Build and packaged artifact*; +1 more
+- `PH-PLAY-003` — owned by *PH-PLAY-003 — Rust gameplay module and Meridian-owned runtime API* (line 28851) — also referenced in: *PH-PLAY-006 — Isolated Play session, reload, and safe restart*; *PH-PLAY-007 — One-button desktop Build and packaged artifact*; *PH-PLAY-008 — Headless and dedicated-server product projection*; +4 more
+- `PH-PLAY-004` — owned by *PH-PLAY-004 — Input actions, devices, prompts, and player preferences foundation* (line 28868) — also referenced in: *PH-PLAY-010 — Public first playable proving project*; *PH-GAME-004 — First-class 2D runtime and editor floor*
+- `PH-PLAY-005` — owned by *PH-PLAY-005 — Minimal Penumbra frame under the new boundaries* (line 28885) — also referenced in: *PH-PLAY-006 — Isolated Play session, reload, and safe restart*; *PH-PLAY-007 — One-button desktop Build and packaged artifact*; *PH-CREATOR-005 — World workspace: hierarchy, viewport, inspector, and direct manipulation*; +1 more
+- `PH-PLAY-006` — owned by *PH-PLAY-006 — Isolated Play session, reload, and safe restart* (line 28902) — also referenced in: *PH-PLAY-010 — Public first playable proving project*; *PH-CREATOR-007 — Semantic undo, crash recovery, history, and Play-tweak capture*; *PH-LANG-002 — First-class Luau host*; +1 more
+- `PH-PLAY-007` — owned by *PH-PLAY-007 — One-button desktop Build and packaged artifact* (line 28919) — also referenced in: *PH-PLAY-008 — Headless and dedicated-server product projection*; *PH-PLAY-010 — Public first playable proving project*; *PH-LANG-002 — First-class Luau host*; +2 more
+- `PH-PLAY-008` — owned by *PH-PLAY-008 — Headless and dedicated-server product projection* (line 28936) — also referenced in: *PH-PLAY-010 — Public first playable proving project*; *PH-GAME-012 — Client/server roles, replication, prediction, and Multiplayer Product Set*; *PH-SCALE-008 — Dedicated Server Minting and production operation*
+- `PH-PLAY-009` — owned by *PH-PLAY-009 — Early Web architecture and build spike* (line 28953) — also referenced in: *PH-PLAY-010 — Public first playable proving project*; *PH-SCALE-010 — Production Web runtime, artifact, offline update, and deployment*
+- `PH-PLAY-010` — owned by *PH-PLAY-010 — Public first playable proving project* (line 28970) — also referenced in: *PH-CREATOR-001 — Meridian UI decomposition and direct renderer stabilization*; *PH-CREATOR-004 — Permanent application shell, hub, and workspace framework*; *PH-REL-007 — End-to-end validation portfolio closure*
+- `PH-REL-001` — owned by *PH-REL-001 — Platform, architecture, and product-profile qualification* (line 30002) — also referenced in: *PH-REL-004 — Performance, memory, stability, recovery, and lower-tier qualification*; *PH-REL-007 — End-to-end validation portfolio closure*
+- `PH-REL-002` — owned by *PH-REL-002 — Accessibility, localization, and inclusive workflow qualification* (line 30019) — also referenced in: *PH-REL-007 — End-to-end validation portfolio closure*
+- `PH-REL-003` — owned by *PH-REL-003 — Security, signing, updates, supply chain, and privacy qualification* (line 30036) — also referenced in: *PH-REL-006 — Compatibility, migration, deprecation, and support manifest*; *PH-REL-007 — End-to-end validation portfolio closure*
+- `PH-REL-004` — owned by *PH-REL-004 — Performance, memory, stability, recovery, and lower-tier qualification* (line 30053) — also referenced in: *PH-REL-007 — End-to-end validation portfolio closure*
+- `PH-REL-005` — owned by *PH-REL-005 — Canonical Ponder, public Web docs, tutorials, API reference, and executable examples* (line 30070) — also referenced in: *PH-REL-007 — End-to-end validation portfolio closure*
+- `PH-REL-006` — owned by *PH-REL-006 — Compatibility, migration, deprecation, and support manifest* (line 30087) — also referenced in: *PH-REL-007 — End-to-end validation portfolio closure*
+- `PH-REL-007` — owned by *PH-REL-007 — End-to-end validation portfolio closure* (line 30104) — also referenced in: *PH-REL-008 — Release candidate, reproducible artifacts, Stable 1.0, and support readiness*
+- `PH-REL-008` — owned by *PH-REL-008 — Release candidate, reproducible artifacts, Stable 1.0, and support readiness* (line 30121)
+- `PH-SCALE-001` — owned by *PH-SCALE-001 — Native Metal backend qualification* (line 29796) — also referenced in: *PH-SCALE-002 — Native Vulkan backend qualification*; *PH-SCALE-003 — Native Direct3D 12 backend qualification*; *PH-SCALE-004 — GPU scene, indirect work, virtual geometry, and residency*; +2 more
+- `PH-SCALE-002` — owned by *PH-SCALE-002 — Native Vulkan backend qualification* (line 29813) — also referenced in: *PH-SCALE-004 — GPU scene, indirect work, virtual geometry, and residency*; *PH-SCALE-011 — ARM64, mobile, handheld, and lifecycle expansion*; *PH-REL-001 — Platform, architecture, and product-profile qualification*
+- `PH-SCALE-003` — owned by *PH-SCALE-003 — Native Direct3D 12 backend qualification* (line 29830) — also referenced in: *PH-SCALE-004 — GPU scene, indirect work, virtual geometry, and residency*; *PH-SCALE-011 — ARM64, mobile, handheld, and lifecycle expansion*; *PH-REL-001 — Platform, architecture, and product-profile qualification*
+- `PH-SCALE-004` — owned by *PH-SCALE-004 — GPU scene, indirect work, virtual geometry, and residency* (line 29847) — also referenced in: *PH-SCALE-005 — GI, shadow, reflection, volumetric, and reference portfolio*; *PH-SCALE-006 — Large-world streaming, HLOD, durable patches, and multi-user scale*; *PH-SCALE-012 — AAA integration corpus and automatic-optimization closure*
+- `PH-SCALE-005` — owned by *PH-SCALE-005 — GI, shadow, reflection, volumetric, and reference portfolio* (line 29864) — also referenced in: *PH-SCALE-012 — AAA integration corpus and automatic-optimization closure*
+- `PH-SCALE-006` — owned by *PH-SCALE-006 — Large-world streaming, HLOD, durable patches, and multi-user scale* (line 29881) — also referenced in: *PH-SCALE-012 — AAA integration corpus and automatic-optimization closure*
+- `PH-SCALE-007` — owned by *PH-SCALE-007 — Distributed build/cache and remote development* (line 29898) — also referenced in: *PH-SCALE-012 — AAA integration corpus and automatic-optimization closure*
+- `PH-SCALE-008` — owned by *PH-SCALE-008 — Dedicated Server Minting and production operation* (line 29915) — also referenced in: *PH-SCALE-012 — AAA integration corpus and automatic-optimization closure*; *PH-REL-003 — Security, signing, updates, supply chain, and privacy qualification*
+- `PH-SCALE-009` — owned by *PH-SCALE-009 — Package Lab, mod development, plugins, and UGC providers* (line 29932) — also referenced in: *PH-REL-003 — Security, signing, updates, supply chain, and privacy qualification*
+- `PH-SCALE-010` — owned by *PH-SCALE-010 — Production Web runtime, artifact, offline update, and deployment* (line 29949) — also referenced in: *PH-SCALE-011 — ARM64, mobile, handheld, and lifecycle expansion*; *PH-REL-001 — Platform, architecture, and product-profile qualification*
+- `PH-SCALE-011` — owned by *PH-SCALE-011 — ARM64, mobile, handheld, and lifecycle expansion* (line 29966) — also referenced in: *Breadth without fake support `DIST-005` — *Normative**; *PH-REL-001 — Platform, architecture, and product-profile qualification*
+- `PH-SCALE-012` — owned by *PH-SCALE-012 — AAA integration corpus and automatic-optimization closure* (line 29983) — also referenced in: *PH-REL-004 — Performance, memory, stability, recovery, and lower-tier qualification*; *PH-REL-007 — End-to-end validation portfolio closure*
+- `PKG-001` — owned by *Small platform-native built product `PKG-001` — *Normative** (line 21657)
+- `PKG-002` — owned by *C# deployment is player-runtime-free by default `PKG-002` — *Normative** (line 21708)
+- `PKG-003` — owned by *Automatic package portfolio with semantic owner intent `PKG-003` — *Normative** (line 21745)
+- `PKG-004` — owned by *Development and Release share runtime shape; debug companions stay separate `PKG-004` — *Normative** (line 21803)
+- `PKG-005` — owned by *Logical user-data stores with platform/provider ownership `PKG-005` — *Normative** (line 21841)
+- `PKG-006` — owned by *`.gay` is an official fun package-extension alias `PKG-006` — *Normative** (line 21912)
+- `PLATFORM-001` — owned by *Meridian 1.0 required platform floor `PLATFORM-001` — *Normative** (line 26989)
+- `PLATFORM-002` — owned by *Bounded legacy support `PLATFORM-002` — *Normative** (line 26993)
+- `PLATFORM-003` — owned by *x86_64 + arm64 are normal architecture dimensions `PLATFORM-003` — *Normative** (line 26997)
+- `PLATSVC-001` — owned by *Three separate product domains `PLATSVC-001` — *Normative direction** (line 15079)
+- `PLATSVC-002` — owned by *Runtime platform-service contract `PLATSVC-002` — *Normative direction** (line 15106)
+- `PLAY-001` — owned by *Vertical playable results `PLAY-001` — *Normative** (line 1204)
+- `PLAY-002` — owned by *First creator-loop proof `PLAY-002` — *Normative** (line 1222)
+- `PLAY-003` — owned by *Generality validation portfolio `PLAY-003` — *Normative** (line 1256)
+- `PONDER-001` — owned by *Ponder local-first documentation and contextual learning `PONDER-001` — *Normative** (line 12281)
+- `PONDER-IMPL-001` — owned by *One documentation knowledge graph, many surfaces `PONDER-IMPL-001` — *Derived normative contract** (line 27226)
+- `PONDER-IMPL-002` — owned by *Stable DocId coverage becomes a product invariant `PONDER-IMPL-002` — *Derived normative contract** (line 27254)
+- `PONDER-IMPL-003` — owned by *Interface Schema generates reference facts; humans own explanations `PONDER-IMPL-003` — *Derived normative contract** (line 27273)
+- `PONDER-IMPL-004` — owned by *Examples and tutorials are executable evidence `PONDER-IMPL-004` — *Derived contract; prototype-gated** (line 27292)
+- `PONDER-IMPL-005` — owned by *Semantic stale-documentation invalidation `PONDER-IMPL-005` — *Derived normative contract** (line 27310)
+- `PONDER-IMPL-006` — owned by *Local search remains deterministic and useful without AI `PONDER-IMPL-006` — *Normative** (line 27318)
+- `PONDER-IMPL-007` — owned by *Versioned offline bundles are first-class build products `PONDER-IMPL-007` — *Normative** (line 27338)
+- `PONDER-IMPL-008` — owned by *Governance validation and user documentation remain separate authorities `PONDER-IMPL-008` — *Derived normative contract** (line 27346)
+- `PONDER-IMPL-009` — owned by *Explain This becomes a universal product gesture `PONDER-IMPL-009` — *Derived normative contract** (line 27364)
+- `PONDER-IMPL-010` — owned by *Shipping-product boundary `PONDER-IMPL-010` — *Derived normative contract** (line 27384)
+- `PRG-RECON-001` — owned by *Deferred Penumbra reconstruction framework `PRG-RECON-001` — *Post-1.0 planning seed; not a 1.0 requirement** (line 28191)
+- `PRJ-001` — owned by *Tiny project root, flexible contents `PRJ-001` — *Normative** (line 21335) — also referenced in: *Project, directory, and build derived closure `PRJ-DER-001..005` — *Derived normative contract**
+- `PRJ-002` — owned by *Project-owned content organization `PRJ-002` — *Normative** (line 21349)
+- `PRJ-003` — owned by *One derived-state boundary `PRJ-003` — *Normative** (line 21353)
+- `PRJ-004` — owned by *Simple ordinary Play, Build, and Release workflow `PRJ-004` — *Normative** (line 21359)
+- `PRJ-005` — owned by *The game is one codebase; language is an implementation property `PRJ-005` — *Normative** (line 21374)
+- `PRJ-006` — owned by *Generated native toolchain projections are the preferred architecture `PRJ-006` — *Normative direction** (line 21416) — also referenced in: *External IDE/CLI use remains real `PRJ-DER-004` — *Normative**; *Incremental multi-root Multiplayer Product Set `NETPROJ-005` — *Normative**
+- `PRJ-007` — owned by *Native-tooling escape hatch and R2 fallback are mandatory `PRJ-007` — *Normative** (line 21459) — also referenced in: *External IDE/CLI use remains real `PRJ-DER-004` — *Normative**; *Incremental multi-root Multiplayer Product Set `NETPROJ-005` — *Normative**
+- `PRJ-008` — owned by *Project root anti-complexity contract `PRJ-008` — *Normative** (line 21511)
+- `PRJ-009` — owned by *Build and Release are distinct product intents `PRJ-009` — *Normative** (line 21539) — also referenced in: *Project, directory, and build derived closure `PRJ-DER-001..005` — *Derived normative contract**
+- `PRJ-DER-001` — owned by *Templates are small starting configurations, not permanent project species `PRJ-DER-001` — *Derived normative contract** (line 21625)
+- `PRJ-DER-002` — owned by *Runnable products are progressively disclosed build roots `PRJ-DER-002` — *Derived normative contract** (line 21631)
+- `PRJ-DER-003` — owned by *Source configuration and secrets are different authorities `PRJ-DER-003` — *Derived normative contract** (line 21635)
+- `PRJ-DER-004` — owned by *External IDE/CLI use remains real `PRJ-DER-004` — *Normative** (line 21643)
+- `PRJ-DER-005` — owned by *One project per repository is the simplest default, not a restriction `PRJ-DER-005` — *Derived normative contract** (line 21647)
+- `PRODUCT-001` — owned by *The old ten pillars survive `PRODUCT-001` — *Normative** (line 277)
+- `PRODUCT-002` — owned by *Ease contract `PRODUCT-002` — *Normative** (line 305) — also referenced in: *Ease-of-use condition inherited from PRODUCT-002 — *Normative**; *Task-first normal authoring with graph/source underneath `ALLU-001` — *Normative**; *Package drop opens by user intent `MOD-DER-001` — *Derived normative contract**
+- `PRODUCT-003` — owned by *Creator joy contract `PRODUCT-003` — *Normative** (line 354)
+- `PRODUCT-004` — owned by *Automatic performance contract `PRODUCT-004` — *Normative** (line 539) — also referenced in: *Performance and lower-tier behavior*; *Developer optimization-burden minimization `PRODUCT-006` — *Normative**
+- `PRODUCT-005` — owned by *Breath-of-Fresh-Air product doctrine `PRODUCT-005` — *Normative** (line 373) — also referenced in: *Task-first normal authoring with graph/source underneath `ALLU-001` — *Normative**
+- `PRODUCT-006` — owned by *Developer optimization-burden minimization `PRODUCT-006` — *Normative** (line 558) — also referenced in: *Performance and lower-tier behavior*; *Promotion contract*; *Isobar automatic-optimization contract — DEEPENED*; +2 more
+- `PRODUCT-007` — owned by *Visual excellence from the start `PRODUCT-007` — *Normative** (line 485) — also referenced in: *High-end dedicated 2D graphics from the production start `TWO-007`*
+- `PRODUCT-008` — owned by *Capability without clutter `PRODUCT-008` — *Normative** (line 431) — also referenced in: *Qualification*; *Prefab and scene composition `AUTHOR-DER-001` — *Derived normative contract**; *Compact contextual 2D product surface `TWO-014` — *Normative**; +2 more
+- `PRODUCT-009` — owned by *Comparative ease acceptance target `PRODUCT-009` — *Normative** (line 332)
+- `PROTECT-001` — owned by *Purpose and product boundary `PROTECT-001` — *Normative** (line 18035) — also referenced in: *Ordinary saves are not secret stores or magical anti-cheat cryptography `SAVE-DER-004` — *Derived normative contract**
+- `PROTECT-002` — owned by *Permanent exclusions `PROTECT-002` — *Normative** (line 18049) — also referenced in: *Ordinary saves are not secret stores or magical anti-cheat cryptography `SAVE-DER-004` — *Derived normative contract**
+- `PROTECT-003` — owned by *Capability profiles `PROTECT-003` — *Normative** (line 18066)
+- `PROTECT-004` — owned by *Authority boundaries `PROTECT-004` — *Normative** (line 18097)
+- `PROTECT-005` — owned by *Threat model and honesty `PROTECT-005` — *Normative** (line 18113)
+- `PROTECT-006` — owned by *Signed content and approved-module policy `PROTECT-006` — *Normative** (line 18131)
+- `PROTECT-007` — owned by *Runtime integrity and challenge/response `PROTECT-007` — *Normative direction** (line 18145)
+- `PROTECT-008` — owned by *Server-authoritative validation `PROTECT-008` — *Normative** (line 18168)
+- `PROTECT-009` — owned by *Behavioral and impossible-state evidence `PROTECT-009` — *Normative direction** (line 18187)
+- `PROTECT-010` — owned by *Protective actions `PROTECT-010` — *Normative** (line 18215)
+- `PROTECT-011` — owned by *Modding, development, and accessibility compatibility `PROTECT-011` — *Normative** (line 18231)
+- `PROTECT-012` — owned by *Privacy, transparency, and retention `PROTECT-012` — *Normative** (line 18244)
+- `PROTECT-013` — owned by *Platform and product-profile behavior `PROTECT-013` — *Normative** (line 18259)
+- `PROTECT-014` — owned by *Diagnostics and explainability `PROTECT-014` — *Normative** (line 18268)
+- `PROTECT-015` — owned by *Failure and recovery `PROTECT-015` — *Normative** (line 18285)
+- `PROTECT-016` — owned by *Zero-baggage disabled behavior `PROTECT-016` — *Normative** (line 18291)
+- `PROTECT-017` — owned by *Meridian 1.0 floor and later expansion `PROTECT-017` — *Normative** (line 18308)
+- `PROTECT-018` — owned by *Qualification portfolio `PROTECT-018` — *Normative** (line 18322)
+- `PURPOSE-001` — owned by *Meridian’s north star `PURPOSE-001` — *Normative** (line 207)
+- `PURPOSE-002` — owned by *Existing purpose is preserved `PURPOSE-002` — *Normative** (line 240)
+- `PURPOSE-003` — owned by *Full ambition remains active `PURPOSE-003` — *Normative** (line 258)
+- `QUALITY-001` — owned by *Governing quality rule `QUALITY-001` — *Normative** (line 27686) — also referenced in: *Language roadmap and 1.0 floor `LANG-005` — *Normative**
+- `QUALITY-002` — owned by *Quality is not unlimited feature accumulation `QUALITY-002` — *Normative** (line 27700)
+- `QUALITY-003` — owned by *Release maturity and claim states `QUALITY-003` — *Normative** (line 27710)
+- `QUALITY-004` — owned by *End-to-end qualification portfolio `QUALITY-004` `VAL-PORTFOLIO-001` — *Normative** (line 27734)
+- `QUALITY-005` — owned by *Consumer-project independence `QUALITY-005` — *Normative** (line 27753)
+- `QUALITY-006` — owned by *Cross-contract compatibility manifest `QUALITY-006` — *Normative** (line 27812)
+- `QUALITY-007` — owned by *Deferred boundaries remain real `QUALITY-007`* (line 27938)
+- `RELEASE-001` — owned by *Release adapter and provider model `RELEASE-001` — *Normative direction** (line 15419) — also referenced in: *Release and support model `RELEASE-SUP-001..005` — *Normative**
+- `RELEASE-002` — owned by *Release state machine and immutable record `RELEASE-002` — *Normative direction** (line 15436) — also referenced in: *Release and support model `RELEASE-SUP-001..005` — *Normative**
+- `RELEASE-003` — owned by *Canonical metadata compiler `RELEASE-003` — *Normative direction** (line 15471) — also referenced in: *Release and support model `RELEASE-SUP-001..005` — *Normative**
+- `RELEASE-004` — owned by *Secrets, signing, and supply-chain handling `RELEASE-004` — *Normative direction** (line 15490) — also referenced in: *Release and support model `RELEASE-SUP-001..005` — *Normative**
+- `RELEASE-005` — owned by *Release and web CLI `RELEASE-005` — *Normative direction** (line 15496) — also referenced in: *Release and support model `RELEASE-SUP-001..005` — *Normative**
+- `RELEASE-006` — owned by *Reproducibility, content addressing, compression, and patches `RELEASE-006` — *Normative direction** (line 15523) — also referenced in: *Release and support model `RELEASE-SUP-001..005` — *Normative**
+- `RELEASE-007` — owned by *Safety and human/vendor gates `RELEASE-007` — *Normative** (line 15579)
+- `RELEASE-008` — owned by *QA channels, validation, and crash identity `RELEASE-008` — *Normative direction** (line 15591) — also referenced in: *Meridian has real releases; web docs are release products `WEBDOC-004` — *Normative**
+- `RELEASE-009` — owned by *Local, CI, and distributed execution `RELEASE-009` — *Normative direction** (line 15612)
+- `RELEASE-010` — owned by *Explicitly excluded game-specific material `RELEASE-010` — *Normative scope boundary** (line 15618)
+- `RELEASE-SUP-001` — owned by *Release channels `RELEASE-SUP-001` — *Normative** (line 27773)
+- `RELEASE-SUP-002` — owned by *Release identity `RELEASE-SUP-002` — *Normative** (line 27785)
+- `RELEASE-SUP-003` — owned by *Release artifacts `RELEASE-SUP-003` — *Normative** (line 27800)
+- `RELEASE-SUP-004` — owned by *Support windows `RELEASE-SUP-004` — *Normative** (line 27804)
+- `RELEASE-SUP-005` — owned by *Documentation routing `RELEASE-SUP-005` — *Normative** (line 27808)
+- `RESEARCH-001` — owned by *Research breadth `RESEARCH-001` — *Normative** (line 16589)
+- `RESEARCH-002` — owned by *Research doctrine and clean implementation `RESEARCH-002` — *Normative** (line 16651)
+- `RESEARCH-003` — owned by *Intentional divergences from Godot `RESEARCH-003` — *Normative** (line 16831)
+- `RESEARCH-004` — owned by *Unreal + Godot comparative role `RESEARCH-004` — *Normative** (line 16859)
+- `RESEARCH-005` — owned by *Relicensing-safe permissive Rust-engine and subsystem reuse program `RESEARCH-005` — *Normative** (line 16880) — also referenced in: *Mandatory donor/reuse classification*; *Loss-aware optional 2D tool interchange `TWO-011` — *Normative**; *Provider candidates and licensing*; +1 more
+- `RESEARCH-006` — owned by *Source-grounded planning before owner questions `RESEARCH-006` — *Normative** (line 16845)
+- `RESEARCH-007` — owned by *Current external systems, papers, tools and Rust donor research `RESEARCH-007` — *Normative** (line 16692) — also referenced in: *Comprehensive prior-art sweep for every meaningful Meridian design area `RESEARCH-008` — *Normative**; *Dependency strategy*
+- `RESEARCH-008` — owned by *Comprehensive prior-art sweep for every meaningful Meridian design area `RESEARCH-008` — *Normative** (line 16738)
+- `ROADMAP-001` — owned by *Minimum phase count, no maximum `ROADMAP-001` — *Normative** (line 16527)
+- `ROADMAP-002` — owned by *Phase structure `ROADMAP-002` — *Normative** (line 16541)
+- `ROADMAP-003` — owned by *Implementation order principles `ROADMAP-003` — *Normative** (line 16571)
+- `RUNTIME-001` — owned by *Renderer-free architecture `RUNTIME-001` — *Normative** (line 2314)
+- `RUNTIME-002` — owned by *Aggressively automatic async `RUNTIME-002` — *Normative** (line 2340)
+- `RUNTIME-003` — owned by *Interactive-first startup contract `RUNTIME-003` — *Normative** (line 2358)
+- `RUNTIME-004` — owned by *Service-level typed lifecycle graph `RUNTIME-004` — *Normative direction** (line 2386)
+- `RUNTIME-005` — owned by *One task contract with specialized executors `RUNTIME-005` — *Normative** (line 2415)
+- `RUNTIME-006` — owned by *Executor selection is automatic `RUNTIME-006` — *Normative** (line 2444)
+- `RUNTIME-007` — owned by *Structured concurrency `RUNTIME-007` — *Normative** (line 2470)
+- `RUNTIME-008` — owned by *Deterministic gameplay-result barriers `RUNTIME-008` — *Normative** (line 2486)
+- `SAVE-001` — owned by *Per-game Player Preferences/Profile is separate from gameplay saves `SAVE-001` — *Normative** (line 20915) — also referenced in: *Generated controls UI is an editable project starting point, not a permanent Meridian overlay `INP-003` — *Normative**; *Cross-system consequences — *Normative**; *Authority map*; +1 more
+- `SAVE-002` — owned by *Small semantic persistence-scope model `SAVE-002` — *Normative** (line 20961) — also referenced in: *Ordinary saves are not secret stores or magical anti-cheat cryptography `SAVE-DER-004` — *Derived normative contract**; *Player/profile portability remains provider-neutral `SAVE-DER-005` — *Derived normative contract**
+- `SAVE-003` — owned by *Typed language-neutral persistence schemas `SAVE-003` — *Normative** (line 21035) — also referenced in: *Streamed/huge-world persistence uses semantic incremental state, not giant whole-world rewrites `SAVE-DER-001` — *Derived normative contract**; *Version migration is explicit, typed and recoverable `SAVE-DER-002` — *Derived normative contract**; *Missing DLC/mod/content never triggers a destructive fake load `SAVE-DER-003` — *Derived normative contract**
+- `SAVE-004` — owned by *Optional Save Profile and generated editable save UI `SAVE-004` — *Normative** (line 21089) — also referenced in: *Streamed/huge-world persistence uses semantic incremental state, not giant whole-world rewrites `SAVE-DER-001` — *Derived normative contract**
+- `SAVE-005` — owned by *Local-first, provider-neutral, scope-aware cloud synchronization `SAVE-005` — *Normative** (line 21137) — also referenced in: *Player/profile portability remains provider-neutral `SAVE-DER-005` — *Derived normative contract**
+- `SAVE-006` — owned by *Rich bounded recovery, quiet normal UX `SAVE-006` — *Normative** (line 21182) — also referenced in: *Streamed/huge-world persistence uses semantic incremental state, not giant whole-world rewrites `SAVE-DER-001` — *Derived normative contract**; *Version migration is explicit, typed and recoverable `SAVE-DER-002` — *Derived normative contract**; *Missing DLC/mod/content never triggers a destructive fake load `SAVE-DER-003` — *Derived normative contract**
+- `SAVE-DER-001` — owned by *Streamed/huge-world persistence uses semantic incremental state, not giant whole-world rewrites `SAVE-DER-001` — *Derived normative contract** (line 21279)
+- `SAVE-DER-002` — owned by *Version migration is explicit, typed and recoverable `SAVE-DER-002` — *Derived normative contract** (line 21287)
+- `SAVE-DER-003` — owned by *Missing DLC/mod/content never triggers a destructive fake load `SAVE-DER-003` — *Derived normative contract** (line 21299)
+- `SAVE-DER-004` — owned by *Ordinary saves are not secret stores or magical anti-cheat cryptography `SAVE-DER-004` — *Derived normative contract** (line 21305)
+- `SAVE-DER-005` — owned by *Player/profile portability remains provider-neutral `SAVE-DER-005` — *Derived normative contract** (line 21317)
+- `SCM-001` — owned by *Own VCS identity with Git compatibility `SCM-001` — *Normative** (line 14673)
+- `SCM-002` — owned by *Change and operation model `SCM-002` — *Normative** (line 14703)
+- `SCM-003` — owned by *Authoritative source, large assets, and derived data `SCM-003` — *Normative** (line 14718)
+- `SCM-004` — owned by *Semantic diff, merge, and review `SCM-004` — *Normative** (line 14736) — also referenced in: *Prefab and scene composition `AUTHOR-DER-001` — *Derived normative contract**
+- `SCM-005` — owned by *Smart locks and reservations `SCM-005` — *Normative** (line 14761)
+- `SCM-006` — owned by *`.gitignore`, local excludes, and `.meridianignore` `SCM-006` — *Normative** (line 14783)
+- `SCM-007` — owned by *Forge and review-provider integration `SCM-007` — *Normative** (line 14814)
+- `SCM-008` — owned by *`meridian-sync` transport `SCM-008` — *Normative** (line 14827)
+- `SCM-009` — owned by *Collaboration ambition `SCM-009` — *Normative direction** (line 14851)
+- `SCM-010` — owned by *Source-control CLI family `SCM-010` `SCM-010A` — *Normative** (line 14869)
+- `SCM-010A` — owned by *Source-control CLI family `SCM-010` `SCM-010A` — *Normative** (line 14869)
+- `SCM-011` — owned by *Rich GitHub/`gh` integration `SCM-011` — *Normative direction** (line 14896)
+- `SCM-012` — owned by *Jujutsu fork and upstream policy `SCM-012` — *Normative direction** (line 14929)
+- `SCM-013` — owned by *Zstandard compression strategy `SCM-013` — *Normative direction** (line 14952)
+- `SCM-014` — owned by *Source-control validation `SCM-014` — *Normative** (line 14984)
+- `SIM-001` — owned by *Management/simulation foundation `SIM-001` — *Normative** (line 12736)
+- `SITE-001` — owned by *Public-source status `SITE-001` — *Normative** (line 15858)
+- `SITE-002` — owned by *Improvement-in-place visual and implementation boundaries `SITE-002` — *Normative** (line 15864)
+- `SITE-003` — owned by *Transitions `SITE-003` — *Normative** (line 15877)
+- `SITE-004` — owned by *Documentation rewrite `SITE-004` — *Normative** (line 15892)
+- `SITE-005` — owned by *Human voice and anti-AI-copy standard `SITE-005` — *Normative** (line 15915)
+- `SITE-006` — owned by *Expandable multi-project information architecture `SITE-006` — *Normative direction** (line 15932)
+- `SITE-007` — owned by *Transition, accessibility, and quality qualification `SITE-007` — *Normative direction** (line 15940)
+- `SITE-008` — owned by *Separate website/documentation improvement specification `SITE-008` — *Normative** (line 15958)
+- `SITE-009` — owned by *Creator-led technical voice `SITE-009` — *Normative** (line 15976)
+- `SITE-010` — owned by *Honest maturity and live status labels `SITE-010` — *Normative** (line 15982)
+- `SITE-011` — owned by *Projects-first homepage priority `SITE-011` — *Normative** (line 15997)
+- `SITE-012` — owned by *Shared project facts with custom composition `SITE-012` — *Normative** (line 16003)
+- `SITE-013` — owned by *Dedicated functional documentation shell `SITE-013` — *Normative** (line 16009)
+- `SITE-014` — owned by *Narrow copy-quality linter `SITE-014` — *Normative** (line 16015)
+- `SITE-015` — owned by *Typed Git-tracked content authority `SITE-015` — *Normative** (line 16021)
+- `SITE-016` — owned by *Preserve Astro, Bun, and the current island architecture `SITE-016` — *Normative** (line 16027)
+- `SITE-017` — owned by *Typed Astro project registry `SITE-017` — *Normative** (line 16077)
+- `SITE-018` — owned by *Transition controller refactor without visual redesign `SITE-018` — *Normative** (line 16168)
+- `SITE-019` — owned by *Canonical project facts plus hand-written prose `SITE-019` — *Normative** (line 16255)
+- `SITE-020` — owned by *Controlled homepage evolution in place `SITE-020` — *Normative** (line 16302)
+- `SITE-021` — owned by *Meridian docs remain in the same Astro site `SITE-021` — *Normative** (line 16344)
+- `SITE-022` — owned by *Incremental route-by-route rollout `SITE-022` — *Normative** (line 16402)
+- `SPEC-001` — owned by *Complete replacement `SPEC-001` — *Normative** (line 16463)
+- `SPEC-002` — owned by *Single-root specoment plus derived projections `SPEC-002` — *Normative** (line 16478)
+- `SPEC-003` — owned by *Existing code treatment `SPEC-003` — *Normative** (line 16496)
+- `SPEC-004` — owned by *Canonical specification completeness gate `SPEC-004` — *Normative** (line 16509)
+- `SPEC-ROOT-001` — owned by *Planning closure and implementation authorization `SPEC-ROOT-001` — *Normative** (line 17) — also referenced in: *Source-grounded planning before owner questions `RESEARCH-006` — *Normative**; *Approval rule inside this specoment*
+- `SRV-001` — owned by *Server Minting global product requirement `SRV-001`* (line 22766) — also referenced in: *Research and dependency disposition*
+- `SRV-002` — owned by *Server Product semantic contract `SRV-002`* (line 22786)
+- `SRV-003` — owned by *Generated Dockerfile/container defaults `SRV-003`* (line 22855)
+- `SRV-004` — owned by *Docker Compose generation `SRV-004`* (line 22875)
+- `SRV-005` — owned by *Local Server Test Lab `SRV-005`* (line 22928)
+- `SRV-006` — owned by *One-session/process default with explicit high-density mode `SRV-006` — *Normative** (line 24113) — also referenced in: *Research and dependency disposition*
+- `SRV-007` — owned by *Meridian-owned portable production semantics; infrastructure remains adapter-owned `SRV-007` — *Normative** (line 24149)
+- `SRV-008` — owned by *Warm-capacity-SLO autoscaling `SRV-008` — *Normative** (line 24169)
+- `SRV-009` — owned by *Latency/fairness-first global session placement `SRV-009` — *Normative** (line 24194)
+- `SRV-010` — owned by *Sticky active sessions; drain instead of generic live migration `SRV-010` — *Normative** (line 24211) — also referenced in: *Bounded explicit compatibility windows `NETPROJ-006` — *Normative**
+- `SRV-011` — owned by *Coordinator durability and HA `SRV-011` — *Normative** (line 24249)
+- `SRV-012` — owned by *Multi-region and multi-provider placement `SRV-012` — *Normative** (line 24268)
+- `SRV-013` — owned by *Stateful ingress and protected routing `SRV-013` — *Normative** (line 24285)
+- `SRV-014` — owned by *Server persistence, checkpointing and recovery `SRV-014` — *Normative** (line 24322)
+- `SRV-015` — owned by *Operator SLOs, budgets and overload protection `SRV-015` — *Normative** (line 24339) — also referenced in: *Research and dependency disposition*
+- `SRV-016` — owned by *Deferred first-party self-hosted game-server orchestrator `SRV-016..022` — *Post-1.0 normative direction; separate product** (line 28108) — declared as a range member
+- `SRV-017` — owned by *Game-server-specific control plane `SRV-017`* (line 28114) — also referenced in: *Deferred programs*; *Deferred first-party self-hosted game-server orchestrator `SRV-016..022` — *Post-1.0 normative direction; separate product**
+- `SRV-018` — owned by *Outbound node agent and desired-state reconciliation `SRV-018`* (line 28136) — also referenced in: *Deferred programs*
+- `SRV-019` — owned by *Native-process and OCI parity `SRV-019`* (line 28150) — also referenced in: *Deferred programs*
+- `SRV-020` — owned by *Bounded capacity-provider adapters `SRV-020`* (line 28161) — also referenced in: *Deferred programs*
+- `SRV-021` — owned by *Standalone headless service and stable API/CLI `SRV-021`* (line 28167) — also referenced in: *Deferred programs*
+- `SRV-022` — owned by *AGPL service boundary `SRV-022`* (line 28173) — also referenced in: *Deferred programs*; *Deferred first-party self-hosted game-server orchestrator `SRV-016..022` — *Post-1.0 normative direction; separate product**
+- `STEAM-001` — owned by *Steam Auto-Cloud first-class zero-code save-sync path `STEAM-001` — *Normative** (line 21872)
+- `SUBSYS-001` — owned by *Names and authority survive `SUBSYS-001` — *Normative** (line 638)
+- `SUBSYS-002` — owned by *User-facing naming `SUBSYS-002` — *Normative** (line 670)
+- `SUBSYS-003` — owned by *Built-ins must be excellent `SUBSYS-003` — *Normative** (line 695)
+- `SUBSYS-004` — owned by *Automatic subsystem coupling `SUBSYS-004` — *Normative** (line 710)
+- `SUBSYS-005` — owned by *Systematic subsystem interoperability coverage `SUBSYS-005` — *Normative** (line 725) — also referenced in: *Coherent end-to-end subsystem cooperation `SUBSYS-006` — *Normative**; *Cross-subsystem integration*; *Integration-matrix highlights*
+- `SUBSYS-006` — owned by *Coherent end-to-end subsystem cooperation `SUBSYS-006` — *Normative** (line 755) — also referenced in: *Typed semantic context/fact ingress from the rest of Meridian `BEAR-014` — *Normative**
+- `TOR-001` — owned by *Production Torsant belongs in Meridian 1.0 `TOR-001` — *Normative** (line 18953) — also referenced in: *Torsant automatic-optimization and cross-subsystem contract*
+- `TOR-002` — owned by *Effect-first semantic authoring `TOR-002` — *Normative** (line 18961)
+- `TOR-003` — owned by *Multiresolution finest-useful-representation simulation `TOR-003` — *Normative** (line 18981)
+- `TOR-004` — owned by *Rich game combustion by default; deep combustion experimental `TOR-004` — *Normative** (line 18996)
+- `TOR-005` — owned by *Automatic specialized liquid portfolio `TOR-005` — *Normative** (line 19014)
+- `TOR-006` — owned by *First-class practical phase/material transitions; generalized matter experimental `TOR-006` — *Normative** (line 19028)
+- `TOR-007` — owned by *One source across preview, bake/cache and runtime `TOR-007` — *Normative** (line 19045) — also referenced in: *Torsant automatic-optimization and cross-subsystem contract*
+- `TQF-MASTER-001` — owned by *TurboQwenFare integrated runtime master contract `TQF-MASTER-001`* (line 6470) — also referenced in: *PH-AI-003 — TQF v1 reference runtime implementation*
+- `TWO-004` — owned by *Continuous source/world coordinates with explicit pixel profiles `TWO-004`* (line 20228)
+- `TWO-005` — owned by *Common tile topology portfolio `TWO-005`* (line 20234)
+- `TWO-006` — owned by *Raster and vector/shape content are both first-class 2D sources `TWO-006`* (line 20245)
+- `TWO-007` — owned by *High-end dedicated 2D graphics from the production start `TWO-007`* (line 20251)
+- `TWO-008` — owned by *Mixed 2D/3D uses explicit dimensional bridges `TWO-008`* (line 20270)
+- `TWO-009` — owned by *Two natural 2D animation levels `TWO-009` — *Normative** (line 20288)
+- `TWO-010` — owned by *Semantic TileSets and visual/rule layers `TWO-010` — *Normative** (line 20294)
+- `TWO-011` — owned by *Loss-aware optional 2D tool interchange `TWO-011` — *Normative** (line 20300)
+- `TWO-012` — owned by *First-party editable 2D Camera Profiles `TWO-012` — *Normative** (line 20306)
+- `TWO-013` — owned by *Huge 2D worlds are author-natural and compiler-partitioned `TWO-013` — *Normative** (line 20312)
+- `TWO-014` — owned by *Compact contextual 2D product surface `TWO-014` — *Normative** (line 20318)
+- `TWO-015` — owned by *Clean-room Celeste-like C# proving project `TWO-015` — *Normative** (line 20332) — also referenced in: *Cross-system consequences — *Normative**
+- `UI-001` — owned by *Current implementation is not sacred `UI-001` — *Normative** (line 12032)
+- `UI-002` — owned by *`.mui` source `UI-002` — *Normative** (line 12071) — also referenced in: *Source-language architecture `MUI-SRC-001` — *Derived normative contract**
+- `UI-003` — owned by *Styling `UI-003` — *Normative direction** (line 12089)
+- `UI-004` — owned by *Components and binding `UI-004` — *Normative** (line 12103)
+- `UI-005` — owned by *Layout `UI-005` — *Normative direction** (line 12120)
+- `UI-006` — owned by *Game UI `UI-006` — *Normative** (line 12135)
+- `UI-007` — owned by *UI animation `UI-007` — *Normative** (line 12160)
+- `UI-008` — owned by *UI renderer qualification `UI-008` — *Normative** (line 12177)
+- `UI-009` — owned by *UI acceptance sequence `UI-009` — *Normative** (line 12196)
+- `UI-010` — owned by *Visual `.mui` editor `UI-010` — *Normative** (line 12208)
+- `UI-011` — owned by *Native nine-slice / nine-patch rendering `UI-011` — *Normative** (line 12228)
+- `UI-SRC-001` — owned by *Compact brace/block `.mui` syntax `UI-SRC-001` — *Normative** (line 26350)
+- `UNSAFE-001` — owned by *Audited unsafe boundary `UNSAFE-001` — *Normative** (line 27858)
+- `VAL-PORTFOLIO-001` — owned by *End-to-end qualification portfolio `QUALITY-004` `VAL-PORTFOLIO-001` — *Normative** (line 27734)
+- `VISUAL-001` — owned by *Visual/no-code gameplay `VISUAL-001` — *Normative** (line 2556)
+- `WAVE-001` — owned by *Wavefront audio, music, acoustics, and web runtime `WAVE-001` — *Normative ambition and initial architecture** (line 13876)
+- `WAVE-002` — owned by *Competing bounded implementation prototypes `WAVE-002` — *Normative** (line 13897)
+- `WAVE-003` — owned by *Immutable compiled real-time graph `WAVE-003` — *Normative** (line 13949)
+- `WAVE-004` — owned by *Simple bus inspector and expert typed graph `WAVE-004` — *Normative** (line 13992)
+- `WAVE-005` — owned by *Complete spatial-audio portfolio for 1.0 `WAVE-005` — *Normative** (line 14028)
+- `WAVE-006` — owned by *Production adaptive-music transport for 1.0 `WAVE-006` — *Normative** (line 14063)
+- `WAVE-007` — owned by *Cohesive tiered acoustics `WAVE-007` — *Normative** (line 14087)
+- `WAVE-008` — owned by *Dedicated Web AudioWorklet product `WAVE-008` — *Normative** (line 14126)
+- `WEB-001` — owned by *First-class web distribution `WEB-001` — *Normative direction** (line 15544)
+- `WEBDOC-001` — owned by *Meridian repository owns technical documentation authority `WEBDOC-001` — *Normative** (line 27435)
+- `WEBDOC-002` — owned by *One canonical documentation model, multiple renderers `WEBDOC-002` — *Normative** (line 27462)
+- `WEBDOC-003` — owned by *Generated facts; authored explanation `WEBDOC-003` — *Normative** (line 27491)
+- `WEBDOC-004` — owned by *Meridian has real releases; web docs are release products `WEBDOC-004` — *Normative** (line 27509)
+- `WEBDOC-005` — owned by *Release-pinned source import and provenance `WEBDOC-005` — *Normative** (line 27584)
+- `WEBDOC-006` — owned by *Navigation, search and reference scale from metadata `WEBDOC-006` — *Normative** (line 27605)
+- `WEBDOC-007` — owned by *Executable examples and polyglot semantic reference `WEBDOC-007` — *Normative** (line 27623)
+- `WEBDOC-008` — owned by *Status/maturity is explicit `WEBDOC-008` — *Normative** (line 27633)
+- `WEBDOC-009` — owned by *Current website source-visibility drift `WEBDOC-009` — *Derived normative contract** (line 27648)
+- `WEBDOC-MIG-001` — owned by *Public website factual drift `WEBDOC-MIG-001` — *Required migration** (line 27921)
+- `WORLD-001` — owned by *World environment, terrain, weather, water, vegetation, and ecosystems `WORLD-001` — *Normative architecture** (line 13217)
+- `WORLD-002` — owned by *Unified World Environment authoring `WORLD-002` — *Normative** (line 13221)
+- `WORLD-003` — owned by *Basalt multi-representation terrain and world geometry `WORLD-003` — *Normative** (line 13265)
+- `WORLD-004` — owned by *Isobar layered authored-and-simulated weather `WORLD-004` — *Normative** (line 13301)
+- `WORLD-005` — owned by *Water, snow, ice, mud, and flooding ownership handoff `WORLD-005` — *Normative** (line 13318)
+- `WORLD-006` — owned by *Tiered vegetation and ecosystem runtime `WORLD-006` — *Normative** (line 13368)
+- `WORLD-007` — owned by *Built-in plant profile and example library `WORLD-007` — *Normative** (line 13414)
+- `WORLD-008` — owned by *Example ecosystems, templates, and teaching content `WORLD-008` — *Normative** (line 13520)
+- `WORLD-009` — owned by *Performance and correctness rules `WORLD-009` — *Normative direction** (line 13551)
+- `WORLD-010` — owned by *Plant-library packaging `WORLD-010` — *Normative** (line 13567)
+- `WORLD-011` — owned by *Hybrid plant geometry `WORLD-011` — *Normative** (line 13593)
+- `WORLD-012` — owned by *Selectable growth tiers `WORLD-012` — *Normative** (line 13606)
+- `WORLD-013` — owned by *Soil and groundwater ownership `WORLD-013` — *Normative** (line 13627)
+- `WORLD-014` — owned by *Aggregate ecosystem simulation `WORLD-014` — *Normative** (line 13638)
+- `WORLD-015` — owned by *One-button Vegetation & Ecosystems capability `WORLD-015` — *Normative** (line 13656)
+- `WORLD-016` — owned by *Basalt world scale, partitioning, publication, HLOD, and persistence `WORLD-016` — *Normative** (line 13718)
+- `WORLD-017` — owned by *Predictive residency, seamless editing, multiplayer authority, recovery, and observability `WORLD-017` — *Normative** (line 13854)
+- `WP-V1-ARCH-001` — owned by *WP-V1-ARCH-001 — Dependency guardrails and marker removal* (line 30177)
+- `WP-V1-ARCH-002` — owned by *WP-V1-ARCH-002 — RHI behavior-preserving decomposition* (line 30184)
+- `WP-V1-ARCH-003` — owned by *WP-V1-ARCH-003 — UI/editor/build behavior-preserving decomposition* (line 30191)
+- `WP-V1-CENSUS-001` — owned by *WP-V1-CENSUS-001 — Crate and API disposition inventory* (line 30170)
+- `WP-V1-CORE-001` — owned by *WP-V1-CORE-001 — Stable semantic kernel* (line 30198)
+- `WP-V1-DAT-001` — owned by *WP-V1-DAT-001 — Catalog/compiler/CAS convergence* (line 30219)
+- `WP-V1-GOV-001` — owned by *WP-V1-GOV-001 — Registry/schema/tool v1* (line 30156)
+- `WP-V1-RESET-001` — owned by *WP-V1-RESET-001 — Baseline freeze* (line 30142)
+- `WP-V1-RESET-002` — owned by *WP-V1-RESET-002 — Canonical suite split* (line 30149)
+- `WP-V1-RESET-003` — owned by *WP-V1-RESET-003 — Atomic cutover* (line 30163)
+- `WP-V1-RUN-001` — owned by *WP-V1-RUN-001 — Lifecycle/task contract* (line 30205)
+- `WP-V1-RUN-002` — owned by *WP-V1-RUN-002 — Presentation snapshot seam* (line 30212)
+
+## Referenced but never declared
+
+Each of these MUST either receive an owning contract or be removed before `PH-AUTH-002` can claim that every canonical identifier is indexable exactly once.
+
+- `RG-TOR-001` — cited in: *Torsant implementation research and evidence — *Open implementation research** (line 19084)
+
+## Retired v0.5 identifiers cited as history
+
+These belong to the frozen v0.5 authority. They appear only as migration history and MUST NOT be treated as live contracts or re-entered into v1 registries.
+
+- `WP-UI-006` — cited in: *Executive decision* (line 28447); *Immediate recommendation* (line 30250)
+
+## Identifiers declared by more than one heading
+
+None. No identifier is declared by two headings.
+
+**Index totals:** 736 declared, 1 undeclared, 0 multiply-declared, 1 retired-v0.5, 117 identifier families.

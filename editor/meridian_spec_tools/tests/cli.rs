@@ -441,3 +441,185 @@ fn generated_governance_projections_are_not_scanned() {
         "genuine v0.5 documents must still be reported: {unmapped}"
     );
 }
+
+/// The repository root, from the crate directory.
+fn repo_root() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// Tests that read or write the real `governance/` projections share mutable state on
+/// disk, and Rust runs tests in parallel by default. Without this lock the tampering test
+/// races the determinism test and both fail intermittently for the wrong reason.
+static PROJECTIONS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn projection_guard() -> std::sync::MutexGuard<'static, ()> {
+    PROJECTIONS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[test]
+fn projections_regenerate_byte_identically() {
+    let _guard = projection_guard();
+    let root = repo_root();
+    let files = [
+        "governance/generated/index.md",
+        "governance/generated/identifiers.json",
+        "governance/generated/requirements.json",
+        "governance/manifest.json",
+    ];
+    let before: Vec<String> = files
+        .iter()
+        .map(|name| std::fs::read_to_string(root.join(name)).expect("projection exists"))
+        .collect();
+    let (ok, output) = run(&root, &["project"]);
+    assert!(ok, "{output}");
+    for (name, original) in files.iter().zip(&before) {
+        let regenerated = std::fs::read_to_string(root.join(name)).expect("projection exists");
+        assert_eq!(&regenerated, original, "{name} is not deterministic");
+    }
+}
+
+#[test]
+fn project_check_passes_against_current_projections() {
+    let _guard = projection_guard();
+    let (ok, output) = run(repo_root(), &["project", "--check"]);
+    assert!(
+        ok,
+        "project --check must pass on committed projections: {output}"
+    );
+    assert!(!output.contains("stale"), "{output}");
+    assert!(!output.contains("missing"), "{output}");
+}
+
+/// The reconciliation must name the offending file, not merely fail.
+#[test]
+fn project_check_names_a_hand_edited_projection() {
+    let _guard = projection_guard();
+    let root = repo_root();
+    let target = root.join("governance/generated/index.md");
+    let original = std::fs::read_to_string(&target).expect("projection exists");
+
+    let mut tampered = original.clone();
+    tampered.push_str("\nhand-edited\n");
+    std::fs::write(&target, &tampered).expect("write tampered projection");
+    let (_, output) = run(&root, &["project", "--check"]);
+    std::fs::write(&target, &original).expect("restore projection");
+
+    assert!(
+        output.contains("governance/generated/index.md"),
+        "reconciliation must name the divergent file: {output}"
+    );
+}
+
+/// The invariant whose absence let a 31-identifier gap hide inside a total that read clean:
+/// the reference generator reported 731 declared while emitting only 700 entries.
+#[test]
+fn every_declared_identifier_is_indexed_exactly_once() {
+    let _guard = projection_guard();
+    let index = std::fs::read_to_string(repo_root().join("governance/generated/index.md"))
+        .expect("index exists");
+    let section = index
+        .split("## Declared identifiers")
+        .nth(1)
+        .and_then(|rest| rest.split("## Referenced but never declared").next())
+        .expect("declared section");
+
+    let mut ids: Vec<&str> = section
+        .lines()
+        .filter_map(|line| line.strip_prefix("- `"))
+        .filter_map(|rest| rest.split('`').next())
+        .collect();
+    let emitted = ids.len();
+    ids.sort_unstable();
+    let before_dedup = ids.len();
+    ids.dedup();
+    assert_eq!(ids.len(), before_dedup, "an identifier is indexed twice");
+
+    let total: usize = index
+        .split("**Index totals:** ")
+        .nth(1)
+        .and_then(|rest| rest.split(' ').next())
+        .and_then(|value| value.parse().ok())
+        .expect("totals line");
+    assert_eq!(
+        emitted, total,
+        "the totals line must equal the number of entries actually emitted"
+    );
+}
+
+/// Defect 4 in the specoment corpus itself: all five letter-suffixed identifiers must
+/// survive as distinct identities rather than collapsing onto their stems.
+#[test]
+fn letter_suffixed_identifiers_survive_in_the_real_index() {
+    let _guard = projection_guard();
+    let index = std::fs::read_to_string(repo_root().join("governance/generated/index.md"))
+        .expect("index exists");
+    for id in [
+        "NETPROJ-006A",
+        "NETPROJ-006B",
+        "NETPROJ-006C",
+        "NETPROJ-006D",
+        "SCM-010A",
+        "NETPROJ-006",
+        "SCM-010",
+    ] {
+        assert!(
+            index.contains(&format!("- `{id}` —")),
+            "{id} must be indexed as its own identity"
+        );
+    }
+}
+
+/// Defect 3 in the corpus: five whole families were counted but never emitted.
+#[test]
+fn range_declared_families_reach_the_index() {
+    let _guard = projection_guard();
+    let index = std::fs::read_to_string(repo_root().join("governance/generated/index.md"))
+        .expect("index exists");
+    for id in [
+        "NORM-MIG-001",
+        "NORM-MIG-012",
+        "AI-POLICY-001",
+        "AI-POLICY-008",
+        "CODEHEALTH-001",
+        "OPEN-004",
+        "FWK-003",
+    ] {
+        assert!(
+            index.contains(&format!("- `{id}` —")),
+            "{id} was counted but never indexed by the reference generator"
+        );
+    }
+}
+
+/// Appendix H.5 mandates four stamp fields on every generated projection.
+#[test]
+fn every_projection_carries_the_four_appendix_h5_fields() {
+    let _guard = projection_guard();
+    let root = repo_root();
+    for name in [
+        "governance/generated/index.md",
+        "governance/generated/identifiers.json",
+        "governance/generated/requirements.json",
+        "governance/manifest.json",
+    ] {
+        let text = std::fs::read_to_string(root.join(name)).expect("projection exists");
+        for field in [
+            "canonical_path",
+            "canonical_sha256",
+            "generator_version",
+            "generated_at_source_checkpoint",
+        ] {
+            assert!(
+                text.contains(field),
+                "{name} is missing the {field} stamp field"
+            );
+        }
+        // The stamp must carry the real digest, not a placeholder.
+        assert!(
+            text.contains("782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a"),
+            "{name} does not stamp the canonical specoment digest"
+        );
+    }
+}

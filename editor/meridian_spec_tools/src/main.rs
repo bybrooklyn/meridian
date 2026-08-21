@@ -8,6 +8,8 @@ use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use walkdir::{DirEntry, WalkDir};
 
+mod specoment;
+
 const DOMAINS: &[&str] = &[
     "CORE", "GOV", "RUN", "RHI", "PEN", "UI", "EDT", "DAT", "PHY", "GAM", "PRJ", "AUD", "ISO",
     "BAS", "VEG", "PRC", "TOR", "DCC", "BLD", "VCS", "SYN", "XR", "NET", "MOD", "AGT", "SEC",
@@ -73,6 +75,7 @@ enum Command {
     ValidateAdrs,
     ListUnmapped,
     Explain,
+    Project { check: bool },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -176,6 +179,9 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
             Some("adrs") => Command::ValidateAdrs,
             _ => return Err(usage()),
         },
+        Some("project") => Command::Project {
+            check: args.iter().any(|value| value == "--check"),
+        },
         Some("list-unmapped") => Command::ListUnmapped,
         Some("explain") => Command::Explain,
         _ => return Err(usage()),
@@ -246,6 +252,11 @@ fn run(config: &Config) -> Result<Vec<Issue>, String> {
             validate_cross_references(&context, &mut issues);
         }
         Command::ValidateAdrs => validate_adrs(&config.root, &context, &mut issues),
+        Command::Project { check } => {
+            for note in specoment::run(&config.root, check)? {
+                println!("{note}");
+            }
+        }
         Command::ListUnmapped => list_unmapped(&context, &mut issues),
         Command::Explain => explain(config, &context, &mut issues),
     }
