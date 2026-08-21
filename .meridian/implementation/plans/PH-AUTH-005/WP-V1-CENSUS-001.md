@@ -51,16 +51,21 @@ Measured at `49bdd74`, each figure with its producing command.
 
   **Both fields are defined in the schema, because the number depends entirely on the
   definition and revision 2 quoted one it had not stated.** Across the four globbed crates:
-  `^pub ` at root = **213**; `pub` item keywords at any indentation = **461**; any `pub` token
-  = 961. Revision 2's 461 came from the any-indentation form, which counts `pub fn` methods
+  `^pub ` at root = **213**; `pub` item keywords at any indentation
+  (`grep -rhE '^\s*pub (fn|struct|enum|trait|type|const|static|union) '`) = **462**; any `pub`
+  token = 961. Revision 2 quoted 461 for the any-indentation form; it is 462, and it was the one figure in
+  this document with no command stamped beside it. The form, which counts `pub fn` methods
   inside `impl` blocks and items inside *private* modules — **neither of which a glob
   `pub use ...::*` re-exports**, so it inflates a façade's count with things the façade does
   not export.
 
-  Definition adopted: a glob re-export forwards **root-namespace public items**, so
-  `reexported_public_items` counts items declared at module root in the globbed crate's public
-  module tree — the `^pub ` form, **213**. Stated in the schema rather than implied by a
-  command. A resolution-based count is the honest long-term answer and is recorded as a
+  Definition adopted: **213**, the `^pub ` form across all files in the globbed crate. Stated in
+  the schema rather than implied by a command, and stated with its residual ambiguity: a glob
+  `pub use meridian_ui_core::*` strictly forwards the **crate-root** namespace, which is
+  `lib.rs` alone = **205**. The extra 8 are module-root items in submodules, reachable as
+  `submod::X` rather than directly. 213 is the broader, more useful figure for a census whose
+  question is "what public API exists"; 205 is the stricter answer to "what does this glob
+  forward". The schema records which it means and why. A resolution-based count is the honest long-term answer and is recorded as a
   limitation, not silently approximated.
 - **Seven files over 240 KB**, matching the `PH-AUTH-006` card's stated 248-540 KB range
   exactly: `ui_runtime/lib.rs` 540 KB down to `rhi/lib.rs` 247 KB.
@@ -161,8 +166,9 @@ relocate the inversion rather than remove it.
    trusted, and a row is a *format* — a magic-plus-version pair is one row, not two. Formats
    with no version constant are included by source: `schemas/benchmark-result.schema.json`, and
    any serde type that reaches disk.
-4. Assign one disposition per crate from the specoment's own vocabulary:
-   `retain` / `refactor` / `replace` / `merge` / `split` / `remove`.
+4. Define the disposition vocabulary as the contract for `WP-V1-CENSUS-002`:
+   `retain` / `refactor` / `replace` / `merge` / `split` / `remove`, verified verbatim in the
+   specoment at lines 28722 and 31389. **This package emits `disposition: null` on every row.**
 5. **All implementation maturity is recorded as `ExistingUnqualified`, and that term is not a
    §0.4 value — which the census must state rather than paper over.**
 
@@ -182,12 +188,9 @@ relocate the inversion rather than remove it.
    nothing is promoted. Recorded as `SD-012`, and whether §0.4 gains an `ExistingUnqualified`
    value or the card is reworded is an owner decision, `OD-012`, adjacent to `OD-009`.
 
-   The disposition vocabulary itself **is** the specoment's own, verified at line 28722 and
-   line 31389: *"classify every existing crate/system retain/refactor/replace/merge/split/
-   remove"*. Assigning one per crate is mechanical where the evidence is mechanical — a
-   200-byte crate with one public item and no dependents is `remove`; a 540 KB file the
-   `PH-AUTH-006` card names for decomposition is `split`. Where it is not mechanical, the
-   census emits `undecided` and escalates rather than guessing.
+   The worked examples that were here — a 205-byte crate with zero dependents being `remove`,
+   a 540 KB file the `PH-AUTH-006` card names being `split` — are `WP-V1-CENSUS-002`'s
+   judgements and have moved there. They remain the basis for its predicted escalation budget.
 6. Generate a dependency graph as checked-in data, with mandatory and optional edges
    distinguished — the distinction a first pass got wrong.
 7. **The test map is keyed at test granularity and targets requirement IDs, not phases.**
@@ -318,15 +321,64 @@ removed; removed is zero here and is now stated.
 
 ## Stop / rollback rule
 
-Stop if a crate is retained solely because it exists; if a test has no behavioural contract or
-next phase; if any implementation maturity is promoted without new v1 evidence; or if the
-census asserts a disposition the specoment's vocabulary does not contain. Rollback is one commit. Files touched: `.meridian/implementation/census.json`,
+Stop if any row carries a non-null `disposition` or `escalation` — this package measures, and a
+non-null value means judgement leaked in; if the format enumeration disagrees with the
+hand-listed known-format set; if any implementation maturity is non-null; if regeneration is
+not byte-identical; or if `project --check` stops passing.
+
+The conditions about retaining a crate solely because it exists, and about a test lacking a
+behavioural contract, have **moved to `WP-V1-CENSUS-002`** — this package retains nothing and
+maps nothing, so they could never fire here. Rollback is one commit. Files touched: `.meridian/implementation/census.json`,
 `governance/schemas/census.schema.json`, and the generator; nothing under
 `governance/generated/` changes, so `project --check` stays green.
 
 ## Independent Review
 
-_Pending._
+- Verdict: accept
+- Reviewer: fresh isolated same-model context. Three rounds: `revise`, `revise`, `accept`.
+- Accepted with two text-level corrections applied before the first commit, and three
+  carry-ins verified in the completion record.
+
+### What the rounds found
+
+**Round 1** — the census was placed in `governance/generated/` and `emit::all()`. That is
+`SD-011`'s class confusion in a new costume: the stamp is specoment-derived, so changing all 37
+crates would read *fresh* while a typo in the specoment reads *stale*; `cargo metadata` emits
+absolute paths, so byte-identity could never pass in CI; and it would contaminate
+`governance/manifest.json`. Established class (c) as `SD-013`.
+
+**Round 2** — the format criterion was blind to bare `const MAGIC`, missing `MERIDN\0\0` and
+`MSAV`: the package container and the save file, **the two serialized outputs whose corruption
+would be least recoverable and precisely the ones `PH-AUTH-006`'s stop condition exists to
+protect.** Also: `undecided` occurs zero times in the specoment, so the plan simultaneously
+required dispositions from a closed vocabulary and stopped if one outside it appeared —
+`SD-012`'s shape a third time.
+
+**Round 3** — two surviving contradictions that would have instructed the wrong build: an
+`undecided` clause seventeen lines above the section withdrawing it, and Approach items
+assigning judgement in a measurement-only package.
+
+### The pattern, named by the reviewer and carried forward
+
+> "The recurring failure across all three was never analysis; it was propagation. Each round
+> fixed the thing it was told about and left the earlier sentence asserting the old behaviour
+> standing."
+
+Adopted as a working rule for `WP-V1-CENSUS-002` and beyond: **after a fix, grep the document
+for the term just retired.** Applied here — the grep found one live `undecided` clause and
+confirmed the rest were historical records.
+
+### Carry-ins, to verify in the completion record
+
+1. **The `disposition` XOR `escalation` invariant is enforced in the schema, not only in
+   prose**, and `escalation` values validate as real `OD-*` ids present in `state.json` rather
+   than free strings. Otherwise "escalation count equals open owner decisions" is decoration
+   and `undecided` returns under another name.
+2. **The hand-listed known-format set is a committed artifact**, not held in a drafting
+   session, with `MSAV` and `MERIDN\0\0` explicit. Written to `KNOWN-FORMATS.md` before this
+   verdict returned.
+3. **`project --check` still prints `ok` and is run.** The Compatibility section and stop rule
+   both assert it stays green; an assertion made twice needs a gate behind it.
 
 ## Completion record
 
