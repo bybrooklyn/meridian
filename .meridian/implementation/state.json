@@ -2,15 +2,14 @@
   "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
   "source_checkpoint": "15f60d1",
   "active_phase": "PH-AUTH-002",
-  "active_work_package": null,
+  "active_work_package": "WP-V1-RESET-002",
   "completed_phases": [
     "PH-AUTH-001"
   ],
   "completed_work_packages": [
     "WP-V1-BASE-001",
     "WP-V1-BASE-002",
-    "WP-V1-RESET-001",
-    "WP-V1-RESET-002"
+    "WP-V1-RESET-001"
   ],
   "blocked": [
     {
@@ -39,7 +38,7 @@
   "research_decisions": [],
   "migrations": [],
   "evidence_index": "evidence/index.json",
-  "program_status": "PH-AUTH-001 CLOSED. WP-V1-RESET-002 COMPLETE on branch v1-authority-reset. PH-AUTH-002 remains OPEN: the 'indexable exactly once' row fails on RG-TOR-001 (SD-006/OD-008) and 'no accepted decision is lost' is Inconclusive pending OD-001/OD-002.",
+  "program_status": "PH-AUTH-001 CLOSED. WP-V1-RESET-002 REOPENED: the completion record was written while two planned projections (phases.json, research-gates.json) and the Appendix G reconciliation were missing. The pre-commit hook blocked further production work, correctly, because the package had been closed. Reopened rather than bypassed.",
   "process_deviations": [
     {
       "id": "DEV-001",
@@ -84,6 +83,15 @@
       "disposition": "closed-phase evidence amended, not reopened",
       "rationale": "PH-AUTH-001's closure row is 'every baseline artifact is hash-addressed'. The frozen SHA ddbacd3, tree hash and Cargo.lock digest were independently correct, so the frozen state was never in doubt; one cross-reference field was mis-addressed. The specoment is not an artifact of the v0.5 baseline - it is v1 staged authority, untracked at freeze time and excluded from the v0.5 validator by WP-V1-BASE-002. A stale cross-reference corrected in place with the correction stated is proportionate to reopening the phase.",
       "disclosure": "Recorded here so this is disclosed by the package rather than discovered later by PH-AUTH-003's stale-evidence check, which is chartered to detect exactly this class."
+    },
+    {
+      "id": "DEV-007",
+      "subject": "WP-V1-RESET-002 completion record",
+      "detail": "The package was recorded complete while two of the six projections its plan required (phases.json, research-gates.json) and the appendix_g reconciliation test were not implemented. IMPL-WP-003 item 1 requires the declared result to work through the real boundary and item 8 forbids a completion claim implying adjacent unimplemented capability.",
+      "how_found": "Re-reading the plan's own deliverable list before starting PH-AUTH-003. No review round caught it: reviews read the plan, and nothing re-checked the completion claim against it.",
+      "disposition": "remediated",
+      "remediation": "Package reopened rather than bypassed when the pre-commit hook blocked the follow-up production change. The missing projections and the reconciliation are implemented, and the completion record now states that it was first written prematurely.",
+      "control_gap": "Nothing verifies a completion record against its plan's deliverable list. Recorded for PH-AUTH-003, whose validator is chartered to detect stale and overstated evidence."
     }
   ],
   "preserved_out_of_process_commit": {

@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use super::index::Index;
+use super::phases::{Divergence, Phase, ResearchGate};
 use super::{scan, CANONICAL_PATH, GENERATOR_VERSION};
 
 /// One generated file, in memory. Written or compared, never both.
@@ -269,10 +270,89 @@ fn requirements_json(index: &Index, stamp: &Stamp) -> String {
     out
 }
 
+fn phases_json(phases: &[Phase], divergences: &[Divergence], stamp: &Stamp) -> String {
+    let mut out = format!("{{\n{},\n", stamp.json_fields());
+    out.push_str(
+        "  \"source\": \"Derived from the prose phase cards, not from the Appendix G JSON fence. Appendix G declares itself subordinate: a serialization defect conflicting with a prose card loses until the registry is regenerated.\",\n  \"appendix_g_divergences\": [\n",
+    );
+    for (position, divergence) in divergences.iter().enumerate() {
+        if position > 0 {
+            out.push_str(",\n");
+        }
+        let _ = write!(
+            out,
+            "    {{ \"phase\": \"{}\", \"field\": \"{}\" }}",
+            divergence.phase, divergence.field
+        );
+    }
+    out.push_str("\n  ],\n  \"phases\": [\n");
+    for (position, phase) in phases.iter().enumerate() {
+        if position > 0 {
+            out.push_str(",\n");
+        }
+        let depends: Vec<String> = phase
+            .depends_on
+            .iter()
+            .map(|id| format!("\"{id}\""))
+            .collect();
+        let _ = write!(
+            out,
+            concat!(
+                "    {{\n",
+                "      \"id\": \"{id}\",\n",
+                "      \"title\": \"{title}\",\n",
+                "      \"line\": {line},\n",
+                "      \"gate\": \"{gate}\",\n",
+                "      \"depends_on\": [{depends}]"
+            ),
+            id = phase.id,
+            title = escape(&phase.title),
+            line = phase.line,
+            gate = escape(&phase.gate),
+            depends = depends.join(", ")
+        );
+        for (key, value) in &phase.fields {
+            let _ = write!(out, ",\n      \"{key}\": \"{}\"", escape(value));
+        }
+        out.push_str("\n    }");
+    }
+    out.push_str("\n  ]\n}\n");
+    out
+}
+
+fn research_gates_json(gates: &[ResearchGate], stamp: &Stamp) -> String {
+    let mut out = format!("{{\n{},\n", stamp.json_fields());
+    out.push_str(
+        "  \"identity\": \"Many research gates carry no identifier, so identity is the heading text plus its line. Gates without a stable identifier are recorded as such rather than assigned one.\",\n  \"gates\": [\n",
+    );
+    for (position, gate) in gates.iter().enumerate() {
+        if position > 0 {
+            out.push_str(",\n");
+        }
+        let ids: Vec<String> = gate
+            .identifiers
+            .iter()
+            .map(|id| format!("\"{id}\""))
+            .collect();
+        let _ = write!(
+            out,
+            "    {{ \"heading\": \"{}\", \"line\": {}, \"label\": \"{}\", \"identifiers\": [{}] }}",
+            escape(&gate.heading),
+            gate.line,
+            escape(&gate.label),
+            ids.join(", ")
+        );
+    }
+    out.push_str("\n  ]\n}\n");
+    out
+}
+
 /// Build every projection from one source text.
-pub fn all(source: &str, index: &Index, stamp: &Stamp) -> Vec<Projection> {
-    let _ = source;
-    vec![
+pub fn all(source: &str, index: &Index, stamp: &Stamp) -> Result<Vec<Projection>, String> {
+    let phases = super::phases::parse(source);
+    let divergences = super::phases::reconcile_with_appendix_g(source, &phases)?;
+    let gates = super::phases::research_gates(source);
+    Ok(vec![
         Projection {
             relative_path: "governance/generated/index.md".to_string(),
             contents: index_markdown(index, stamp),
@@ -285,7 +365,15 @@ pub fn all(source: &str, index: &Index, stamp: &Stamp) -> Vec<Projection> {
             relative_path: "governance/generated/requirements.json".to_string(),
             contents: requirements_json(index, stamp),
         },
-    ]
+        Projection {
+            relative_path: "governance/generated/phases.json".to_string(),
+            contents: phases_json(&phases, &divergences, stamp),
+        },
+        Projection {
+            relative_path: "governance/generated/research-gates.json".to_string(),
+            contents: research_gates_json(&gates, stamp),
+        },
+    ])
 }
 
 /// The manifest, which hashes every other projection.

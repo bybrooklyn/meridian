@@ -904,8 +904,13 @@ amended, rather than discovering it later through `PH-AUTH-003`'s own stale-evid
 ## Completion record
 
 - Completed: 2026-08-20
-- Branch: `v1-authority-reset`, four commits, `main` untouched
-- Source checkpoint: `15f60d1`
+- Branch: `v1-authority-reset`, `main` untouched
+
+**This record was first written while two planned deliverables were missing.** Step 6 listed
+six projections; four had been shipped. `phases.json`, `research-gates.json` and the
+Appendix G reconciliation were absent, and the record nonetheless claimed the package done.
+No review round caught it, because reviews read the plan and nobody re-checked the
+completion claim against the plan's own deliverable list. Corrected below.
 
 ### Commits
 
@@ -919,6 +924,7 @@ amended, rather than discovering it later through `PH-AUTH-003`'s own stale-evid
 ### Result
 
 736 declared, 736 indexed, 0 multiply-declared, 1 undeclared, 1 retired-v0.5, 117 families.
+Six projections, 99 phase cards, 20 Appendix G divergences confined to their known causes.
 
 The total was **predicted from the fidelity invariants before the port existed** and is
 reproduced by an independent implementation. That agreement is the evidence; a matched
@@ -929,7 +935,7 @@ constant would not have been.
 | Gate | Result |
 |---|---|
 | `cargo test --workspace` | **Pass** — 79 suites, exit 0 |
-| `cargo test -p meridian-spec` | Pass — 48 tests, from 39 |
+| `cargo test -p meridian-spec` | Pass — 50 tests, from 39 |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Pass |
 | `cargo fmt --all -- --check` | Pass |
 | `cargo run -p meridian-spec -- check` | Pass |

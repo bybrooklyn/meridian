@@ -452,6 +452,15 @@ fn repo_root() -> std::path::PathBuf {
 /// races the determinism test and both fail intermittently for the wrong reason.
 static PROJECTIONS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+const PROJECTION_FILES: [&str; 6] = [
+    "governance/generated/index.md",
+    "governance/generated/identifiers.json",
+    "governance/generated/requirements.json",
+    "governance/generated/phases.json",
+    "governance/generated/research-gates.json",
+    "governance/manifest.json",
+];
+
 fn projection_guard() -> std::sync::MutexGuard<'static, ()> {
     PROJECTIONS
         .lock()
@@ -462,12 +471,7 @@ fn projection_guard() -> std::sync::MutexGuard<'static, ()> {
 fn projections_regenerate_byte_identically() {
     let _guard = projection_guard();
     let root = repo_root();
-    let files = [
-        "governance/generated/index.md",
-        "governance/generated/identifiers.json",
-        "governance/generated/requirements.json",
-        "governance/manifest.json",
-    ];
+    let files = PROJECTION_FILES;
     let before: Vec<String> = files
         .iter()
         .map(|name| std::fs::read_to_string(root.join(name)).expect("projection exists"))
@@ -624,12 +628,7 @@ fn range_declared_families_reach_the_index() {
 fn every_projection_carries_the_four_appendix_h5_fields() {
     let _guard = projection_guard();
     let root = repo_root();
-    for name in [
-        "governance/generated/index.md",
-        "governance/generated/identifiers.json",
-        "governance/generated/requirements.json",
-        "governance/manifest.json",
-    ] {
+    for name in PROJECTION_FILES {
         let text = std::fs::read_to_string(root.join(name)).expect("projection exists");
         for field in [
             "canonical_path",
@@ -648,4 +647,82 @@ fn every_projection_carries_the_four_appendix_h5_fields() {
             "{name} does not stamp the canonical specoment digest"
         );
     }
+}
+
+/// The phase registry derives from the 99 prose cards, not the Appendix G fence.
+#[test]
+fn phases_resolve_and_form_an_acyclic_graph() {
+    let _guard = projection_guard();
+    let text = std::fs::read_to_string(repo_root().join("governance/generated/phases.json"))
+        .expect("phases projection exists");
+
+    let ids: Vec<&str> = text
+        .match_indices("\"id\": \"")
+        .map(|(at, marker)| {
+            let rest = &text[at + marker.len()..];
+            &rest[..rest.find('"').expect("terminated id")]
+        })
+        .collect();
+    assert_eq!(ids.len(), 99, "87 main plus 12 optional phase cards");
+    assert_eq!(
+        ids.iter().filter(|id| id.starts_with("PH-AI-")).count(),
+        12,
+        "the optional AI programme contributes twelve"
+    );
+
+    // Every declared dependency must name a phase that exists.
+    let known: std::collections::HashSet<&str> = ids.iter().copied().collect();
+    for (at, marker) in text.match_indices("\"depends_on\": [") {
+        let rest = &text[at + marker.len()..];
+        let list = &rest[..rest.find(']').expect("terminated list")];
+        for dependency in list.split(',').map(|d| d.trim().trim_matches('"')) {
+            if dependency.is_empty() {
+                continue;
+            }
+            assert!(
+                known.contains(dependency),
+                "unresolved dependency {dependency}"
+            );
+        }
+    }
+}
+
+/// The reconciliation asserts the divergence **set**, never a count.
+///
+/// A count is a snapshot that goes stale on the next specoment edit. The set encodes the
+/// structural finding: Appendix G was serialised before the Epoch 0 cards were revised, and
+/// the twelve `PH-AI-*` gate strings carry a suffix the prose does not.
+#[test]
+fn appendix_g_divergences_stay_confined_to_their_known_causes() {
+    let _guard = projection_guard();
+    let text = std::fs::read_to_string(repo_root().join("governance/generated/phases.json"))
+        .expect("phases projection exists");
+    let block = text
+        .split("\"appendix_g_divergences\": [")
+        .nth(1)
+        .and_then(|rest| rest.split(']').next())
+        .expect("divergence block");
+
+    let mut seen = 0usize;
+    for (at, marker) in block.match_indices("\"phase\": \"") {
+        let rest = &block[at + marker.len()..];
+        let phase = &rest[..rest.find('"').expect("terminated phase")];
+        let field = {
+            let tail = &rest[rest.find("\"field\": \"").expect("field") + 10..];
+            &tail[..tail.find('"').expect("terminated field")]
+        };
+        seen += 1;
+        let known_cause = (phase.starts_with("PH-AI-") && field == "gate")
+            || matches!(phase, "PH-AUTH-001" | "PH-AUTH-002" | "PH-AUTH-003");
+        assert!(
+            known_cause,
+            "unexplained Appendix G divergence: {phase}.{field} — the fence has drifted \
+             somewhere new, which is a specoment defect to record, not a test to relax"
+        );
+    }
+    assert!(
+        seen > 0,
+        "the reconciliation must actually be exercising; zero divergences means either the \
+         fence was regenerated (record it) or the comparison silently stopped working"
+    );
 }

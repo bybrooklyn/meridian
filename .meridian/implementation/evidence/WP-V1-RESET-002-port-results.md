@@ -194,3 +194,44 @@ defects. `project --check` passed only because it was run before the commit that
 invalidated it, and it could not have failed in any case. The workspace run caught it. This
 is the concrete argument for running proportional gates before closure rather than trusting
 targeted ones, and for the plan's insistence that a check which cannot fail is not evidence.
+
+## Correction — the package was recorded complete while two deliverables were missing
+
+The completion record was written claiming the package done. It was not. The plan's step 6
+listed six projections; four were shipped. `phases.json` and `research-gates.json` were
+never implemented, and neither was `appendix_g_matches_prose_derived_phases` — the
+reconciliation the reviewer specifically identified as the cheapest genuine must-fail-first
+evidence available in this package.
+
+No review round caught this: reviews read the plan, and the completion record asserted a
+result nobody re-checked against it. Found by re-reading the plan's own deliverable list
+before starting the next phase.
+
+Now delivered:
+
+- `governance/generated/phases.json` — 99 phase cards parsed from prose, each with gate,
+  dependencies and the six card fields;
+- `governance/generated/research-gates.json` — research-labelled headings, keyed on heading
+  text plus line because most carry no identifier;
+- `phases_resolve_and_form_an_acyclic_graph` — 87 main plus 12 optional, every `depends_on`
+  resolving;
+- `appendix_g_divergences_stay_confined_to_their_known_causes` — the set assertion.
+
+### The reconciliation found a defect in the reconciliation
+
+The first run reported **24** divergences against the 20 measured during planning, the four
+extra being `title` mismatches on `PH-CREATOR-002`, `PH-CREATOR-003`, `PH-CREATOR-008` and
+`PH-LANG-009`. Printed side by side the titles were identical.
+
+The cause was asymmetric normalisation in the new code: the comparison stripped backticks
+from the Appendix G value but the prose title was only whitespace-collapsed, so
+`` `.mui` lossless syntax `` never equalled `.mui lossless syntax`. Fixed, with a test
+asserting both sides normalise identically.
+
+Corrected result: **20 divergences** — 12 `PH-AI-*` gate strings, and 8 fields spread across
+`PH-AUTH-001`, `PH-AUTH-002` and `PH-AUTH-003` with no counterexample among the other 84
+cards. This is the same figure and the same distribution the planning analysis produced by an
+independent route.
+
+Had the test asserted a count, 24 would have looked like a real finding about the specoment.
+Asserting the set surfaced it immediately as a defect in the comparator.

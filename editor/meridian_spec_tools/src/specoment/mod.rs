@@ -13,6 +13,7 @@
 
 pub mod emit;
 pub mod index;
+pub mod phases;
 pub mod scan;
 pub mod sha256;
 
@@ -58,7 +59,7 @@ pub fn run(root: &Path, check_only: bool) -> Result<Vec<String>, String> {
         source_checkpoint: format!("specoment:{canonical_sha256}"),
     };
 
-    let mut projections = emit::all(&source, &index, &stamp);
+    let mut projections = emit::all(&source, &index, &stamp)?;
     projections.push(emit::manifest(&projections, &stamp));
 
     let mut problems = Vec::new();
