@@ -64,6 +64,44 @@ pub struct EdgeRow {
     pub reverse: bool,
 }
 
+/// Why a reverse edge exists, and what removes it.
+///
+/// `WP-V1-CENSUS-001` promised these and did not ship them; `-002` recorded the gap as a
+/// limitation; the phase card names "identify direct forbidden edges" in scope. A reverse edge
+/// with no reason is a finding nobody can act on.
+const EDGE_REASONS: &[(&str, &str, &str)] = &[
+    (
+        "meridian-ecs",
+        "meridian-renderer",
+        "Mandatory. The ECS wrapper performs render extraction directly, so the simulation layer \
+         depends on the presentation layer. This is the coupling RUNTIME-001 (renderer-free \
+         architecture) exists to forbid, and PH-AUTH-009 (renderer-free runtime and presentation \
+         snapshot boundary) is the phase that removes it: extraction moves behind the snapshot \
+         seam and the edge disappears.",
+    ),
+    (
+        "meridian-rt",
+        "meridian-renderer",
+        "Mandatory. Frame sequencing owns render extraction scheduling. Same cause and same \
+         removal as the ECS edge - PH-AUTH-009's snapshot boundary - and the two are the reason \
+         that phase exists rather than incidental breakage.",
+    ),
+    (
+        "meridian-platform",
+        "meridian-ui-core",
+        "Optional, behind the accessibility feature. The platform adapter projects UI semantics \
+         into native accessibility trees, which requires the UI vocabulary. Removing it means \
+         moving the semantic vocabulary below the platform layer, or inverting the projection. \
+         Not scheduled; the accessibility programme's owner is OD-017.",
+    ),
+    (
+        "meridian-platform",
+        "meridian-ui-semantics",
+        "Optional, behind the accessibility feature. Same cause and same open owner as the \
+         meridian-ui-core edge.",
+    ),
+];
+
 /// The layer order the census judges edges against.
 ///
 /// "Exactly two reverse edges" is not verifiable until an ordering exists, and neither the plan
@@ -1773,6 +1811,7 @@ pub fn render(census: &Census, root: &Path, specoment_sha256: &str) -> String {
     render_examples(&mut out, census, &judged);
     render_evidence_runners(&mut out, census, &judged);
     render_formats(&mut out, census, &judged);
+    render_format_migrations(&mut out, census, &judged);
     render_edges(&mut out, census);
     render_lists(&mut out, census, &judged);
     render_tests(&mut out, census, &judged);
@@ -1942,6 +1981,36 @@ fn render_formats(out: &mut String, census: &Census, judged: &Dispositions) {
     out.push_str("\n  ],\n");
 }
 
+/// Migrations owed by formats that are not `retain`.
+///
+/// Plan step 5, and a phase-card scope item. The section is present and empty by construction:
+/// every one of the 15 formats is dispositioned `retain`, so no migration is owed. An empty
+/// section that states its own condition is the honest form — the alternative, omitting it,
+/// is what let `WP-V1-CENSUS-001` and `-002` each carry the gap forward as a limitation.
+fn render_format_migrations(out: &mut String, census: &Census, judged: &Dispositions) {
+    out.push_str("  \"format_migrations\": [\n");
+    let mut first = true;
+    for f in &census.formats {
+        let j = judged.get("formats", &f.name);
+        if j.disposition.as_deref() == Some("retain") {
+            continue;
+        }
+        if !first {
+            out.push_str(",\n");
+        }
+        first = false;
+        let _ = write!(
+            out,
+            "    {{ \"format\": \"{}\", \"disposition\": {}, \"migration\": null }}",
+            f.name,
+            j.disposition
+                .as_ref()
+                .map_or("null".to_string(), |d| format!("\"{d}\""))
+        );
+    }
+    out.push_str("\n  ],\n");
+}
+
 fn render_edges(out: &mut String, census: &Census) {
     out.push_str("  \"edges\": [\n");
     for (i, e) in census.edges.iter().enumerate() {
@@ -1950,8 +2019,15 @@ fn render_edges(out: &mut String, census: &Census) {
         }
         let _ = write!(
             out,
-            "    {{ \"from\": \"{}\", \"to\": \"{}\", \"optional\": {}, \"reverse\": {} }}",
-            e.from, e.to, e.optional, e.reverse
+            "    {{ \"from\": \"{}\", \"to\": \"{}\", \"optional\": {}, \"reverse\": {}, \"reason\": {} }}",
+            e.from,
+            e.to,
+            e.optional,
+            e.reverse,
+            EDGE_REASONS
+                .iter()
+                .find(|(f, t, _)| *f == e.from && *t == e.to)
+                .map_or("null".to_string(), |(_, _, why)| format!("\"{}\"", escape(why)))
         );
     }
     out.push_str("\n  ],\n");

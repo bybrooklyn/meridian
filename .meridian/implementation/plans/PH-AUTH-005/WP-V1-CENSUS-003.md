@@ -665,6 +665,25 @@ column. That is the point of it.
   literal-asserted constants, trait bounds and error payloads — about a quarter of the 229
   `refactor` rows are consumed by another crate in the workspace.
 
+### Delivered after the review
+
+- **Step 5 landed.** `format_migrations` is present and empty **by construction** — every one of
+  the 15 formats is `retain`, so no migration is owed, and the section states its own condition
+  rather than being omitted. All four reverse edges now carry a **reason** naming the cause and the
+  phase that removes it: `meridian-ecs → meridian-renderer` and `meridian-rt → meridian-renderer`
+  are render extraction reaching across the simulation/presentation boundary, which is precisely
+  what `PH-AUTH-009`'s snapshot seam exists to remove; the two `meridian-platform` edges are the
+  accessibility projection, whose owner is `OD-017`.
+- **Escalated rows now carry a next phase — shape 2.** `PH-AUTH-006` acts on every one of them
+  either way: a crate ruled out of v1 scope is removed there, one ruled in is decomposed there.
+  Leaving them null was shape 4, which is for a phase that genuinely depends on the answer, and
+  none of these do. Rows without a next phase fell from 240 to **15**.
+- **The public-types proxy is corrected.** Exactly **60 of 229** `refactor` rows — 26 %, matching
+  the review's independent count — were consumed by another crate and wrongly labelled. The rule
+  missed inference-bound return types that a test destructures without naming, constants asserted
+  as literals, trait bounds required at every call site, and structurally-matched error payloads.
+  169 items remain genuinely unexercised.
+
 ### Still owed, carried with owners rather than silently
 
 `format_migrations` and forbidden-edge reasons remain absent — plan step 5, and a card scope item.

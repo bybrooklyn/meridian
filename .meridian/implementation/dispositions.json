@@ -22,28 +22,32 @@
       "section": "crates",
       "rationale": "meridian-physics: zero dependents, no binary, 8 tests. Fails retain-evidence (ii). The phase that acts depends on whether it is in v1 scope.",
       "escalation": "OD-014",
-      "key_equals": "meridian-physics"
+      "key_equals": "meridian-physics",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R1-OD-015",
       "section": "crates",
       "rationale": "meridian-shader-tools: zero dependents, no binary, 4 tests. Same failure, different ruling - tools layer, not simulation.",
       "escalation": "OD-015",
-      "key_equals": "meridian-shader-tools"
+      "key_equals": "meridian-shader-tools",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R1-OD-016",
       "section": "crates",
       "rationale": "meridian-ui: passes (ii) with 3 dependents but declares 0 and re-exports 214 with no migration deadline. A facade retained on the eve of decomposition needs a ruling.",
       "escalation": "OD-016",
-      "key_equals": "meridian-ui"
+      "key_equals": "meridian-ui",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R1-OD-017",
       "section": "crates",
       "rationale": "meridian-ui-semantics: passes (ii) but fails (i) - accessibility output has no v1 requirement that describes it.",
       "escalation": "OD-017",
-      "key_equals": "meridian-ui-semantics"
+      "key_equals": "meridian-ui-semantics",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R2-meridian-alluvium",
@@ -113,21 +117,24 @@
       "section": "crates",
       "rationale": "Retained on positive evidence: serves RUNTIME-005, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to RUNTIME-005. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
       "key_equals": "meridian-ecs",
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R2-meridian-editor",
       "section": "crates",
       "rationale": "Retained on positive evidence: serves EDUX-001, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to EDUX-001. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
       "key_equals": "meridian-editor",
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R2-meridian-editor-core",
       "section": "crates",
       "rationale": "Retained on positive evidence: serves EDUX-002, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to EDUX-002. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
       "key_equals": "meridian-editor-core",
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R2-meridian-input",
@@ -143,7 +150,8 @@
       "section": "crates",
       "rationale": "Retained on positive evidence: serves MODELER-001, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to MODELER-001. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
       "key_equals": "meridian-modeler",
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R2-meridian-package",
@@ -159,7 +167,8 @@
       "section": "crates",
       "rationale": "Retained on positive evidence: serves PLATFORM-001, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to PLATFORM-001. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
       "key_equals": "meridian-platform",
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R2-meridian-render-graph",
@@ -202,7 +211,8 @@
       "section": "crates",
       "rationale": "Retained on positive evidence: serves SAVE-001, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to SAVE-001. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
       "key_equals": "meridian-save",
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R2-meridian-spec",
@@ -218,7 +228,8 @@
       "section": "crates",
       "rationale": "Retained on positive evidence: serves AUTHOR-010, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to AUTHOR-010. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
       "key_equals": "meridian-streaming",
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R2-meridian-tasks",
@@ -270,14 +281,16 @@
       "section": "crates",
       "rationale": "Retained on positive evidence: serves UI-002, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to UI-002. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
       "key_equals": "meridian-ui-text",
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R2-meridian-world",
       "section": "crates",
       "rationale": "Retained on positive evidence: serves WORLD-001, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to WORLD-001. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
       "key_equals": "meridian-world",
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R2-meridian-world-tools",
@@ -295,7 +308,8 @@
       "key_contains": [
         "/meridian_physics/"
       ],
-      "escalation": "OD-014"
+      "escalation": "OD-014",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R3-OD-015",
@@ -304,7 +318,8 @@
       "key_contains": [
         "/meridian_shader_tools/"
       ],
-      "escalation": "OD-015"
+      "escalation": "OD-015",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R3-OD-016",
@@ -313,7 +328,8 @@
       "key_contains": [
         "/meridian_ui/"
       ],
-      "escalation": "OD-016"
+      "escalation": "OD-016",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R3-OD-017",
@@ -322,7 +338,8 @@
       "key_contains": [
         "/meridian_ui_semantics/"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R3-v05",
@@ -353,7 +370,8 @@
       "key_contains": [
         "meridian_platform/src/accessibility.rs"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R4-accessibility_native_smoke.rs",
@@ -362,7 +380,8 @@
       "key_contains": [
         "meridian_platform/examples/accessibility_native_smoke.rs"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R4-ui_direct",
@@ -393,7 +412,8 @@
       "key_contains": [
         "meridian_ui_render/src/icons.rs"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R4-accumulated.rs",
@@ -431,7 +451,8 @@
         "screen_reader",
         "a11y"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_core-layout",
@@ -490,7 +511,8 @@
         "preedit",
         "clipboard"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_core-style",
@@ -546,7 +568,8 @@
         "binding",
         "expression"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_editor-accessib|semantic",
@@ -562,7 +585,8 @@
         "screen_reader",
         "a11y"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_editor-layout",
@@ -621,7 +645,8 @@
         "preedit",
         "clipboard"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_editor-style",
@@ -677,7 +702,8 @@
         "binding",
         "expression"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_render-accessib|semantic",
@@ -693,7 +719,8 @@
         "screen_reader",
         "a11y"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_render-layout",
@@ -752,7 +779,8 @@
         "preedit",
         "clipboard"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_render-style",
@@ -808,7 +836,8 @@
         "binding",
         "expression"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_runtime-accessib|semantic",
@@ -824,7 +853,8 @@
         "screen_reader",
         "a11y"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_runtime-layout",
@@ -883,7 +913,8 @@
         "preedit",
         "clipboard"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_runtime-style",
@@ -939,7 +970,8 @@
         "binding",
         "expression"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_text-accessib|semantic",
@@ -955,7 +987,8 @@
         "screen_reader",
         "a11y"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_text-layout",
@@ -1014,7 +1047,8 @@
         "preedit",
         "clipboard"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R5-meridian_ui_text-style",
@@ -1070,7 +1104,8 @@
         "binding",
         "expression"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R6-meridian_benchmark-evidence",
@@ -1105,7 +1140,8 @@
         "reading_order",
         "accessib"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R6-meridian_editor_core-recovery",
@@ -1163,7 +1199,8 @@
         "announce",
         "menu"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R6-meridian_platform-startup",
@@ -1178,7 +1215,8 @@
         "coalesc",
         "durable"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R6-meridian_streaming-concurrency",
@@ -1306,7 +1344,8 @@
         "frame",
         "tick"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R6-meridian_diagnostics-profil",
@@ -1320,7 +1359,8 @@
         "timing",
         "span"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R6-meridian_ecs-schedule",
@@ -1333,7 +1373,8 @@
         "schedule",
         "system"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R6-meridian_editor-alluvium",
@@ -1411,7 +1452,8 @@
         "device_loss",
         "lost"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R6-meridian_rt-headless",
@@ -1424,7 +1466,8 @@
         "headless",
         "profile"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R6-meridian_save-schema",
@@ -1557,7 +1600,8 @@
       "key_contains": [
         "/meridian_ecs/"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R7-meridian-editor",
@@ -1566,7 +1610,8 @@
       "key_contains": [
         "/meridian_editor/"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R7-meridian-editor-core",
@@ -1575,7 +1620,8 @@
       "key_contains": [
         "/meridian_editor_core/"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R7-meridian-input",
@@ -1595,7 +1641,8 @@
       "key_contains": [
         "/meridian_modeler/"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R7-meridian-package",
@@ -1615,7 +1662,8 @@
       "key_contains": [
         "/meridian_platform/"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R7-meridian-render-graph",
@@ -1668,7 +1716,8 @@
       "key_contains": [
         "/meridian_save/"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R7-meridian-spec",
@@ -1688,7 +1737,8 @@
       "key_contains": [
         "/meridian_streaming/"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R7-meridian-tasks",
@@ -1752,7 +1802,8 @@
       "key_contains": [
         "/meridian_ui_text/"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R7-meridian-world",
@@ -1761,7 +1812,8 @@
       "key_contains": [
         "/meridian_world/"
       ],
-      "escalation": "OD-021"
+      "escalation": "OD-021",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R7-meridian-world-tools",
@@ -1781,7 +1833,8 @@
       "key_contains": [
         "meridian-physics::"
       ],
-      "escalation": "OD-014"
+      "escalation": "OD-014",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R8-OD-015",
@@ -1790,7 +1843,8 @@
       "key_contains": [
         "meridian-shader-tools::"
       ],
-      "escalation": "OD-015"
+      "escalation": "OD-015",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R8-OD-016",
@@ -1799,7 +1853,8 @@
       "key_contains": [
         "meridian-ui::"
       ],
-      "escalation": "OD-016"
+      "escalation": "OD-016",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R8-OD-017",
@@ -1808,7 +1863,8 @@
       "key_contains": [
         "meridian-ui-semantics::"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R8-mark",
@@ -1837,7 +1893,8 @@
       "key_contains": [
         "meridian-physics::"
       ],
-      "escalation": "OD-014"
+      "escalation": "OD-014",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-dependencies-OD-015",
@@ -1846,7 +1903,8 @@
       "key_contains": [
         "meridian-shader-tools::"
       ],
-      "escalation": "OD-015"
+      "escalation": "OD-015",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-dependencies-OD-016",
@@ -1855,7 +1913,8 @@
       "key_contains": [
         "meridian-ui::"
       ],
-      "escalation": "OD-016"
+      "escalation": "OD-016",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-dependencies-OD-017",
@@ -1864,7 +1923,8 @@
       "key_contains": [
         "meridian-ui-semantics::"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-dependencies",
@@ -1880,7 +1940,8 @@
       "key_contains": [
         "meridian-physics::"
       ],
-      "escalation": "OD-014"
+      "escalation": "OD-014",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-features-OD-015",
@@ -1889,7 +1950,8 @@
       "key_contains": [
         "meridian-shader-tools::"
       ],
-      "escalation": "OD-015"
+      "escalation": "OD-015",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-features-OD-016",
@@ -1898,7 +1960,8 @@
       "key_contains": [
         "meridian-ui::"
       ],
-      "escalation": "OD-016"
+      "escalation": "OD-016",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-features-OD-017",
@@ -1907,7 +1970,8 @@
       "key_contains": [
         "meridian-ui-semantics::"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-features",
@@ -1923,7 +1987,8 @@
       "key_contains": [
         "meridian-physics::"
       ],
-      "escalation": "OD-014"
+      "escalation": "OD-014",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-examples-OD-015",
@@ -1932,7 +1997,8 @@
       "key_contains": [
         "meridian-shader-tools::"
       ],
-      "escalation": "OD-015"
+      "escalation": "OD-015",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-examples-OD-016",
@@ -1941,7 +2007,8 @@
       "key_contains": [
         "meridian-ui::"
       ],
-      "escalation": "OD-016"
+      "escalation": "OD-016",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-examples-OD-017",
@@ -1950,7 +2017,8 @@
       "key_contains": [
         "meridian-ui-semantics::"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-examples",
@@ -1966,7 +2034,8 @@
       "key_contains": [
         "meridian-physics::"
       ],
-      "escalation": "OD-014"
+      "escalation": "OD-014",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-evidence_runners-OD-015",
@@ -1975,7 +2044,8 @@
       "key_contains": [
         "meridian-shader-tools::"
       ],
-      "escalation": "OD-015"
+      "escalation": "OD-015",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-evidence_runners-OD-016",
@@ -1984,7 +2054,8 @@
       "key_contains": [
         "meridian-ui::"
       ],
-      "escalation": "OD-016"
+      "escalation": "OD-016",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-evidence_runners-OD-017",
@@ -1993,7 +2064,8 @@
       "key_contains": [
         "meridian-ui-semantics::"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-evidence_runners",
@@ -2009,7 +2081,8 @@
       "key_contains": [
         "meridian-physics::"
       ],
-      "escalation": "OD-014"
+      "escalation": "OD-014",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-formats-OD-015",
@@ -2018,7 +2091,8 @@
       "key_contains": [
         "meridian-shader-tools::"
       ],
-      "escalation": "OD-015"
+      "escalation": "OD-015",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-formats-OD-016",
@@ -2027,7 +2101,8 @@
       "key_contains": [
         "meridian-ui::"
       ],
-      "escalation": "OD-016"
+      "escalation": "OD-016",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-formats-OD-017",
@@ -2036,7 +2111,8 @@
       "key_contains": [
         "meridian-ui-semantics::"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-formats",
@@ -2052,7 +2128,8 @@
       "key_contains": [
         "meridian-physics::"
       ],
-      "escalation": "OD-014"
+      "escalation": "OD-014",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-generated_files-OD-015",
@@ -2061,7 +2138,8 @@
       "key_contains": [
         "meridian-shader-tools::"
       ],
-      "escalation": "OD-015"
+      "escalation": "OD-015",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-generated_files-OD-016",
@@ -2070,7 +2148,8 @@
       "key_contains": [
         "meridian-ui::"
       ],
-      "escalation": "OD-016"
+      "escalation": "OD-016",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-generated_files-OD-017",
@@ -2079,7 +2158,8 @@
       "key_contains": [
         "meridian-ui-semantics::"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-generated_files",
@@ -2095,7 +2175,8 @@
       "key_contains": [
         "meridian-physics::"
       ],
-      "escalation": "OD-014"
+      "escalation": "OD-014",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-ci_rows-OD-015",
@@ -2104,7 +2185,8 @@
       "key_contains": [
         "meridian-shader-tools::"
       ],
-      "escalation": "OD-015"
+      "escalation": "OD-015",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-ci_rows-OD-016",
@@ -2113,7 +2195,8 @@
       "key_contains": [
         "meridian-ui::"
       ],
-      "escalation": "OD-016"
+      "escalation": "OD-016",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-ci_rows-OD-017",
@@ -2122,7 +2205,8 @@
       "key_contains": [
         "meridian-ui-semantics::"
       ],
-      "escalation": "OD-017"
+      "escalation": "OD-017",
+      "next_phase": "PH-AUTH-006"
     },
     {
       "id": "R10-ci_rows",
@@ -2130,27 +2214,19 @@
       "rationale": "Live CI surface, retained.",
       "disposition": "retain",
       "next_phase": "PH-AUTH-006"
+    },
+    {
+      "id": "R11",
+      "section": "note",
+      "rationale": "Escalated rows carry next_phase PH-AUTH-006 - shape 2, an escalated row whose next phase is knowable regardless of how the decision resolves. PH-AUTH-006 acts on all of these either way: a crate ruled out of v1 scope is removed there, one ruled in is decomposed there, and a test whose owning requirement is still being identified is still maintained by whoever owns its crate. Leaving next_phase null on these rows was shape 4, which is for a phase that genuinely depends on the answer - and none of these do. Shape 4 remains legal and is now unused."
+    },
+    {
+      "id": "R12",
+      "section": "note",
+      "rationale": "The public-types evidence rule asked whether a test or example NAMES the identifier. That is a string proxy and it mislabelled 60 of 229 items (26%): inference-bound return types are never written (a test destructures FixedStepBatch without naming it), constants are asserted as literals, trait bounds are required on every call site, and error payloads are matched structurally. Items consumed by another crate in the workspace are now retained. The residue is the honest unexercised surface. Reachability analysis is the correct long-term answer and is carried to PH-AUTH-006."
     }
   ],
   "exceptions": [
-    {
-      "section": "public_types",
-      "key": "meridian-alluvium::RECIPE_SCHEMA_VERSION",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-alluvium::parse_stable_id",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-alluvium::OverrideReconciliation",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
     {
       "section": "public_types",
       "key": "meridian-alluvium::GeneratedPlacement",
@@ -2165,31 +2241,7 @@
     },
     {
       "section": "public_types",
-      "key": "meridian-alluvium::EvaluationResult",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-alluvium::DirtyReport",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-alluvium::LicenseAudit",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-assets::SourceAuthority",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-assets::SourceMetadata",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -2202,12 +2254,6 @@
     {
       "section": "public_types",
       "key": "meridian-assets::AssetManifestEntry",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-assets::AssetLoadResult",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -2232,36 +2278,6 @@
     {
       "section": "public_types",
       "key": "meridian-core::ENGINE_NAME",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-core::ENGINE_VERSION",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-core::FixedStepBatch",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-diagnostics::RecoveryAction",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-diagnostics::FrameAssessment",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-diagnostics::FrameSummary",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -2405,43 +2421,7 @@
     },
     {
       "section": "public_types",
-      "key": "meridian-renderer::UiOverlayRenderer",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-renderer::RenderExtractionFrame",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-renderer::RenderExtractionOutput",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-renderer::extract_render_instances",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-renderer::Matrix4",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-platform::PlatformModifiers",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-platform::PlatformEventMetadata",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -2459,12 +2439,6 @@
     },
     {
       "section": "public_types",
-      "key": "meridian-ui-core::MAX_DISPLAY_PRIMITIVES",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-ui-core::MAX_DROP_KINDS",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
@@ -2472,12 +2446,6 @@
     {
       "section": "public_types",
       "key": "meridian-ui-core::MAX_ASSISTIVE_ACTION_BINDINGS",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-ui-core::sanitized_scale_factor",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -2507,43 +2475,13 @@
     },
     {
       "section": "public_types",
-      "key": "meridian-ui-core::UiTransientSurfaceKind",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-ui-core::UiTransientPresentation",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-ui-core::UiAssistiveActionBinding",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
     {
       "section": "public_types",
-      "key": "meridian-ui-core::UiSemantics",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-ui-core::UiColorRole",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-ui-core::UiStyleInheritance",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-ui-core::UiBorder",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -2573,24 +2511,6 @@
     },
     {
       "section": "public_types",
-      "key": "meridian-rhi::GpuCapabilities",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::GpuBuffer",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::GpuRenderPipeline",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-rhi::PipelineStencilCompare",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
@@ -2615,54 +2535,6 @@
     },
     {
       "section": "public_types",
-      "key": "meridian-rhi::GpuTexture",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::GpuRenderTarget",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::GpuEnvironmentMap",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::GpuTextureBindGroup",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::GpuShadowMap",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::PbrLightingResources",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::GpuMaterialTextureBindGroup",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::GpuUniformBindGroup",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-rhi::GpuMaterialParameterBindGroup",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
@@ -2670,30 +2542,6 @@
     {
       "section": "public_types",
       "key": "meridian-rhi::GpuLightingBindGroup",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::GpuMaterialBindings",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::RhiRenderBatch",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::ShadowDepthDraw",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-rhi::OffscreenIndexedCaptureDraw",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -2711,12 +2559,6 @@
     },
     {
       "section": "public_types",
-      "key": "meridian-render-graph::CompiledRenderGraph",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-ui-render::UiIconGeometry",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
@@ -2724,18 +2566,6 @@
     {
       "section": "public_types",
       "key": "meridian-ui-render::BACKDROP_SAMPLE_PADDING_LOGICAL",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-ui-text::UiClipboardRequest",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-ui-text::UiCompletionRequest",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -2831,25 +2661,7 @@
     },
     {
       "section": "public_types",
-      "key": "meridian-modeler::Face",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-modeler::ModelTransform",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-modeler::MeshObject",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-modeler::TopologyMap",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -2868,12 +2680,6 @@
     {
       "section": "public_types",
       "key": "meridian-modeler::ModelRevision",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-modeler::PenumbraPreview",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -2951,12 +2757,6 @@
     },
     {
       "section": "public_types",
-      "key": "meridian-tasks::Task",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-world::DEFAULT_CELL_SIZE_METERS",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
@@ -2976,12 +2776,6 @@
     {
       "section": "public_types",
       "key": "meridian-world::VisibilityCategory",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-world::Residency",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -3012,18 +2806,6 @@
     {
       "section": "public_types",
       "key": "meridian-world::OriginShift",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-asset-tools::FIXTURE_MESH_SCHEMA",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-asset-tools::FIXTURE_MESH_IMPORTER_VERSION",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -3072,18 +2854,6 @@
     {
       "section": "public_types",
       "key": "meridian-asset-tools::CollisionMeshFacet",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-asset-tools::CompiledVisualFacet",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-asset-tools::ImportedFixtureMesh",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -3197,12 +2967,6 @@
     },
     {
       "section": "public_types",
-      "key": "meridian-editor-core::Selection",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-editor-core::CommandPreview",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
@@ -3222,18 +2986,6 @@
     {
       "section": "public_types",
       "key": "meridian-ui-editor::EditorPanel",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-ui-editor::creator_workspace_document",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-ui-editor::WORKSPACE_STATE_VERSION",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
@@ -3431,18 +3183,6 @@
     },
     {
       "section": "public_types",
-      "key": "meridian-spec::accumulated",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-spec::scan",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
       "key": "meridian-spec::sha256",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
@@ -3456,12 +3196,6 @@
     {
       "section": "public_types",
       "key": "meridian-spec::CANONICAL_PATH",
-      "disposition": "refactor",
-      "next_phase": "PH-AUTH-006"
-    },
-    {
-      "section": "public_types",
-      "key": "meridian-spec::Projection",
       "disposition": "refactor",
       "next_phase": "PH-AUTH-006"
     },
