@@ -1,8 +1,8 @@
 {
   "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
   "source_checkpoint": "9119df0",
-  "active_phase": "PH-AUTH-003",
-  "active_work_package": "WP-V1-GOV-001",
+  "active_phase": "PH-AUTH-004",
+  "active_work_package": null,
   "completed_phases": [
     "PH-AUTH-001",
     "PH-AUTH-002",
@@ -15,12 +15,7 @@
     "WP-V1-RESET-002",
     "WP-V1-GOV-001"
   ],
-  "blocked": [
-    {
-      "id": "PH-AUTH-004",
-      "reason": "The coverage matrix has 2 unaccounted units (explain/record, explain/unknown-id). Until they are dispositioned the matrix licenses no deletion of the v0.5 validator."
-    }
-  ],
+  "blocked": [],
   "unsupported": [
     {
       "id": "EV-SMOKE-RHI-CLEARFRAME",
@@ -51,7 +46,7 @@
     }
   ],
   "evidence_index": "evidence/index.json",
-  "program_status": "PH-AUTH-001, PH-AUTH-002 and PH-AUTH-003 CLOSED. Next: PH-AUTH-004 / WP-V1-RESET-003, the atomic cutover. Inventory already gathered at plans/PH-AUTH-004/CUTOVER-INVENTORY.md.",
+  "program_status": "PH-AUTH-001, 002 and 003 CLOSED. Coverage matrix fully accounted (0 unaccounted), so it licenses the v0.5 validator deletion. Next: PH-AUTH-004 / WP-V1-RESET-003.",
   "process_deviations": [
     {
       "id": "DEV-001",
