@@ -2,7 +2,7 @@
   "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
   "source_checkpoint": "9119df0",
   "active_phase": "PH-AUTH-003",
-  "active_work_package": null,
+  "active_work_package": "WP-V1-GOV-001",
   "completed_phases": [
     "PH-AUTH-001",
     "PH-AUTH-002"
@@ -44,7 +44,7 @@
     }
   ],
   "evidence_index": "evidence/index.json",
-  "program_status": "PH-AUTH-001 and PH-AUTH-002 CLOSED. Next: PH-AUTH-003 / WP-V1-GOV-001, the v1 governance schemas and validator. Diagnosis already measured at .meridian/implementation/plans/PH-AUTH-003/DIAGNOSIS-CARRIED-FORWARD.md.",
+  "program_status": "PH-AUTH-001 and PH-AUTH-002 CLOSED. PH-AUTH-003 ACTIVE: WP-V1-GOV-001 accepted after four review rounds (rethink/revise/revise/accept) with two pre-code fixes applied. Implementation started.",
   "process_deviations": [
     {
       "id": "DEV-001",
