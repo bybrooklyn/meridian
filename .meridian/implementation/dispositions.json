@@ -5,6 +5,106 @@
   "deviation": "The accepted plan named dispositions.toml. This is JSON: adding a toml crate would put a new direct third-party dependency in the very dependency census this package is dispositioning, and serde_json is already a direct dependency.",
   "rules": [
     {
+      "id": "R14-meridian_streaming",
+      "section": "tests",
+      "rationale": "AUTHOR-010 names streaming cells among the partitioning drivers. The residency, activation-budget and eviction tests serve it. Escalating them was wrong: AUTHOR-010 is a behavioural contract, not the scope statement I first judged it.",
+      "key_contains": [
+        "/meridian_streaming/"
+      ],
+      "key_matches_any": [
+        "residency",
+        "activation",
+        "budget",
+        "eviction",
+        "bounded_prioritized",
+        "requests_are_bounded"
+      ],
+      "disposition": "retain",
+      "owner": "AUTHOR-010",
+      "next_phase": "PH-AUTH-006"
+    },
+    {
+      "id": "R14-meridian_world",
+      "section": "tests",
+      "rationale": "AUTHOR-010 is automatic stable scene partitioning and names streaming cells explicitly. The cell-membership, radius-query, rebasing and reindex tests serve it; the compiled-cell round-trip and activation tests serve AUTHOR-005.",
+      "key_contains": [
+        "/meridian_world/"
+      ],
+      "key_matches_any": [
+        "cell_membership",
+        "radius",
+        "rebasing",
+        "records_are_indexed"
+      ],
+      "disposition": "retain",
+      "owner": "AUTHOR-010",
+      "next_phase": "PH-AUTH-006"
+    },
+    {
+      "id": "R13-meridian_editor_core-AUTHOR-005",
+      "section": "tests",
+      "rationale": "AUTHOR-005 is artifact and blob identity; the identity-collision test serves it.",
+      "key_contains": [
+        "/meridian_editor_core/"
+      ],
+      "key_matches_any": [
+        "stable_identity"
+      ],
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "AUTHOR-005"
+    },
+    {
+      "id": "R13-meridian_editor_core-AUTHOR-006",
+      "section": "tests",
+      "rationale": "AUTHOR-006 is 'layered reimport and protected authoring work'. reimport_is_typed_and_undoable_without_changing_source_identity serves it directly.",
+      "key_contains": [
+        "/meridian_editor_core/"
+      ],
+      "key_matches_any": [
+        "reimport"
+      ],
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "AUTHOR-006"
+    },
+    {
+      "id": "R13-meridian_modeler-AUTHOR-001",
+      "section": "tests",
+      "rationale": "AUTHOR-001 requires authoritative project data to be readable, versioned and recoverable. The canonical-JSON round-trip, atomic-write, unknown-field and undo/recovery tests serve it; the geometry tests serve MODELER-003.",
+      "key_contains": [
+        "/meridian_modeler/"
+      ],
+      "key_matches_any": [
+        "source_round_trips",
+        "source_writes",
+        "source_rejects",
+        "undo_redo",
+        "recovery"
+      ],
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "AUTHOR-001"
+    },
+    {
+      "id": "R13-meridian_save-SAVE-006",
+      "section": "tests",
+      "rationale": "SAVE-006 is 'rich bounded recovery, quiet normal UX'. The journal-repair, checksum-corruption and atomic-replace tests serve recovery; the schema, delta, version and migration tests serve SAVE-003.",
+      "key_contains": [
+        "/meridian_save/"
+      ],
+      "key_matches_any": [
+        "journal",
+        "envelope",
+        "corruption",
+        "atomically",
+        "recovers"
+      ],
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "SAVE-006"
+    },
+    {
       "id": "R1",
       "section": "crates",
       "rationale": "Four marker crates: 205-210 bytes, one pub const SCAFFOLD_STATUS, zero dependents, zero tests. They fail every part of the retain-evidence test.",
@@ -632,7 +732,7 @@
     {
       "id": "R5-meridian_ui_editor-text",
       "section": "tests",
-      "rationale": "meridian_ui_editor tests whose subject is text. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "ED-AOT-003 is the three-column World workspace with viewport priority. The world browser, inspector and viewport tests serve it.",
       "key_contains": [
         "/meridian_ui_editor/"
       ],
@@ -645,8 +745,9 @@
         "preedit",
         "clipboard"
       ],
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "ED-AOT-003"
     },
     {
       "id": "R5-meridian_ui_editor-style",
@@ -690,7 +791,7 @@
     {
       "id": "R5-meridian_ui_editor-source",
       "section": "tests",
-      "rationale": "meridian_ui_editor tests whose subject is source. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "ED-AOT-003 is the three-column World workspace with viewport priority. The world browser, inspector and viewport tests serve it.",
       "key_contains": [
         "/meridian_ui_editor/"
       ],
@@ -702,8 +803,9 @@
         "binding",
         "expression"
       ],
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "ED-AOT-003"
     },
     {
       "id": "R5-meridian_ui_render-accessib|semantic",
@@ -1034,7 +1136,7 @@
     {
       "id": "R5-meridian_ui_text-text",
       "section": "tests",
-      "rationale": "meridian_ui_text tests whose subject is text. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "UI-008 names 'excellent text rasterization' and 'correct international shaping/fallback' in its own clause list. The font, shaping-cache and grapheme tests serve it directly. They were escalated wholesale with UI-002; that was too coarse.",
       "key_contains": [
         "/meridian_ui_text/"
       ],
@@ -1047,8 +1149,9 @@
         "preedit",
         "clipboard"
       ],
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "UI-008"
     },
     {
       "id": "R5-meridian_ui_text-style",
@@ -1092,7 +1195,7 @@
     {
       "id": "R5-meridian_ui_text-source",
       "section": "tests",
-      "rationale": "meridian_ui_text tests whose subject is source. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "UI-008 names 'excellent text rasterization' and 'correct international shaping/fallback' in its own clause list. The font, shaping-cache and grapheme tests serve it directly. They were escalated wholesale with UI-002; that was too coarse.",
       "key_contains": [
         "/meridian_ui_text/"
       ],
@@ -1104,8 +1207,9 @@
         "binding",
         "expression"
       ],
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "UI-008"
     },
     {
       "id": "R6-meridian_benchmark-evidence",
@@ -1616,12 +1720,13 @@
     {
       "id": "R7-meridian-editor-core",
       "section": "tests",
-      "rationale": "meridian-editor-core default: EDUX-002. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "AUTHOR-001 requires authoritative project data to be readable, versioned and recoverable. The source-schema, transaction and recovery tests serve it.",
       "key_contains": [
         "/meridian_editor_core/"
       ],
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "AUTHOR-001"
     },
     {
       "id": "R7-meridian-input",
@@ -1637,12 +1742,13 @@
     {
       "id": "R7-meridian-modeler",
       "section": "tests",
-      "rationale": "meridian-modeler default: MODELER-001. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "MODELER-003 is 'exact source and game mesh' with bounded-error derivation. The primitive-transform and typed-selection tests serve it; MODELER-001 'Product direction' does not.",
       "key_contains": [
         "/meridian_modeler/"
       ],
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "MODELER-003"
     },
     {
       "id": "R7-meridian-package",
@@ -1712,12 +1818,13 @@
     {
       "id": "R7-meridian-save",
       "section": "tests",
-      "rationale": "meridian-save default: SAVE-001. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "SAVE-003 is 'typed language-neutral persistence schemas... not arbitrary live-object dumping'. The component-delta and envelope-validation tests assert exactly that.",
       "key_contains": [
         "/meridian_save/"
       ],
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "SAVE-003"
     },
     {
       "id": "R7-meridian-spec",
@@ -1733,12 +1840,13 @@
     {
       "id": "R7-meridian-streaming",
       "section": "tests",
-      "rationale": "meridian-streaming default: AUTHOR-010. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "RUNTIME-007 is structured concurrency - scoped tasks that cancel with their owner. The bounded-queue, cancellation and eviction tests serve it.",
       "key_contains": [
         "/meridian_streaming/"
       ],
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "RUNTIME-007"
     },
     {
       "id": "R7-meridian-tasks",
@@ -1798,22 +1906,24 @@
     {
       "id": "R7-meridian-ui-text",
       "section": "tests",
-      "rationale": "meridian-ui-text default: UI-002. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "UI-008 names 'excellent text rasterization' and 'correct international shaping/fallback' in its own clause list. The font, shaping-cache and grapheme tests serve it directly. They were escalated wholesale with UI-002; that was too coarse.",
       "key_contains": [
         "/meridian_ui_text/"
       ],
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "UI-008"
     },
     {
       "id": "R7-meridian-world",
       "section": "tests",
-      "rationale": "meridian-world default: WORLD-001. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "AUTHOR-005 is artifact and blob identity. The compiled-cell round-trip and stable-identity tests serve it.",
       "key_contains": [
         "/meridian_world/"
       ],
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "AUTHOR-005"
     },
     {
       "id": "R7-meridian-world-tools",
