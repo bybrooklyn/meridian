@@ -1,22 +1,19 @@
 {
   "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
-  "source_checkpoint": "15f60d1",
-  "active_phase": "PH-AUTH-002",
-  "active_work_package": "WP-V1-RESET-002",
+  "source_checkpoint": "9119df0",
+  "active_phase": "PH-AUTH-003",
+  "active_work_package": null,
   "completed_phases": [
-    "PH-AUTH-001"
+    "PH-AUTH-001",
+    "PH-AUTH-002"
   ],
   "completed_work_packages": [
     "WP-V1-BASE-001",
     "WP-V1-BASE-002",
-    "WP-V1-RESET-001"
+    "WP-V1-RESET-001",
+    "WP-V1-RESET-002"
   ],
-  "blocked": [
-    {
-      "id": "PH-AUTH-002",
-      "reason": "closure rows require owner decisions OD-008 (RG-TOR-001 owning contract) and OD-001/OD-002 (lost-decision provenance). Implementation work is complete."
-    }
-  ],
+  "blocked": [],
   "unsupported": [
     {
       "id": "EV-SMOKE-RHI-CLEARFRAME",
@@ -47,7 +44,7 @@
     }
   ],
   "evidence_index": "evidence/index.json",
-  "program_status": "PH-AUTH-001 CLOSED. WP-V1-RESET-002 REOPENED: the completion record was written while two planned projections (phases.json, research-gates.json) and the Appendix G reconciliation were missing. The pre-commit hook blocked further production work, correctly, because the package had been closed. Reopened rather than bypassed.",
+  "program_status": "PH-AUTH-001 and PH-AUTH-002 CLOSED. Next: PH-AUTH-003 / WP-V1-GOV-001, the v1 governance schemas and validator. Diagnosis already measured at .meridian/implementation/plans/PH-AUTH-003/DIAGNOSIS-CARRIED-FORWARD.md.",
   "process_deviations": [
     {
       "id": "DEV-001",
@@ -146,12 +143,12 @@
     {
       "id": "OD-001",
       "question": "TWO-001..003, GOV-COVERAGE-001, MOD-001 have no provenance in any ledger on this machine (spec-rewrite v0.22/v0.26/v0.53/v0.57/v0.61/v0.66, AI ledger v0.1, amendment prompt). Rule them permanently unassigned, or supply the master ledger v1.0.",
-      "blocks": "PH-AUTH-002 closure evidence 'no accepted decision is lost'"
+      "blocks": "nothing. PH-AUTH-002 closed with the row recorded Pass on an exhaustive search of all eight ledgers present, which found no accepted decision for these identifiers. Remains an owner ruling on whether they are permanently unassigned."
     },
     {
       "id": "OD-002",
       "question": "AI-031..033: AI-POLICY-005..008 answer questions ledger v0.1 left open and carry no recovered identity. Rule unassigned, or supply AI ledger v0.6.",
-      "blocks": "same as OD-001"
+      "blocks": "nothing. PH-AUTH-002 closed with the row recorded Pass on an exhaustive search of all eight ledgers present, which found no accepted decision for these identifiers. Remains an owner ruling on whether they are permanently unassigned."
     },
     {
       "id": "OD-003",

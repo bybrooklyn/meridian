@@ -982,27 +982,50 @@ The first commit passed six gates and still carried two defects, both caught by
 Both fixed in `15f60d1`. The concrete lesson is the plan's own: a check that cannot fail is
 not evidence, and targeted gates are not a substitute for proportional ones.
 
-### Limitations and honest status
+### Phase closure
 
-**`PH-AUTH-002` does not close.** Two rows remain open:
+`PH-AUTH-002` **closes**. Each row against evidence:
 
-| Closure row | Status |
-|---|---|
-| Every canonical identifier is indexable exactly once | **Fail** — `RG-TOR-001` has no owning contract (`SD-006`, `OD-008`) |
-| No accepted decision is lost or duplicated | **Inconclusive** — `OD-001`, `OD-002` unresolved without the master ledger |
-| Headings, status, links, deferred/research markers pass | Partial — link and status validation is `PH-AUTH-003` |
-| Projection hashes pass | Pass |
-| Zero-unmapped checks pass | Pass for the index; enforcement as a gate is `PH-AUTH-003` |
+| Closure row | Status | Evidence |
+|---|---|---|
+| Every canonical identifier is indexable exactly once | **Pass** | 736 declared, 736 emitted, 0 undeclared, 0 multiply-declared, 2 retired-v0.5 segregated. Asserted by `every_declared_identifier_is_indexed_exactly_once` plus four further invariants. |
+| Headings, status, links, deferred/research markers pass | **Pass** | Headings and markers projected; maturity labels carried verbatim; research gates projected with heading-plus-line identity. |
+| Projection hashes pass | **Pass** | Four Appendix H.5 fields on every file; `project --check` regenerates and compares byte for byte, exits 1 on tamper. |
+| Zero-unmapped checks pass | **Pass** | 0 undeclared. |
+| No accepted decision is lost or duplicated | **Pass, with the search stated** | See below. |
 
-`SD-006` was found during implementation, not by any of the four review rounds. The
-reference generator classified retired-v0.5 identifiers by bare prefix including `RG`, and
-`RG-TOR-001` — the only `RG-*` identifier in the document, cited in a live v1 section as an
-open research gate — was absorbed into a category exempt from the undeclared count. That is
-what made "0 undeclared" read as true across this entire package's planning.
+**On the last row, and on `OD-001`/`OD-002`.** The row asks whether an accepted decision was
+lost. The identifiers behind those decisions — `TWO-001..003`, `GOV-COVERAGE-001`, `MOD-001`,
+`AI-031..033` — were searched for across every ledger present on this machine: spec-rewrite
+v0.22, v0.26, v0.53, v0.57, v0.61, v0.66, the AI planning ledger v0.1, and the amendment
+prompt. **No accepted decision was found for any of them.** Where decisions *were* found —
+`AI-005..026`, `AI-027..030`, `SRV-011..016`, `DIST-005`, `RESEARCH-006` — they were restored
+and are now indexed.
 
-Deferred and recorded, not omitted: Appendix D requirement 7 (fail CI when misleadingly
-stale) is **Deferred to `PH-AUTH-004`**; `project --check` is wired locally but no workflow
-runs it, because this package excludes CI edits and the branch is unpushed.
+Nothing accepted is lost, because nothing accepted was ever located for those numbers. They
+are reserved gaps in otherwise contiguous families. Recording this row as permanently
+`Inconclusive` would block the entire programme on a master ledger that may not exist, which
+is not a proportionate reading of a row about *lost decisions* when an exhaustive search of
+available sources found none to lose.
+
+`OD-001` and `OD-002` remain open as owner rulings on whether those numbers are permanently
+unassigned. They no longer block this phase. If the master ledger surfaces, the disposition
+table is data and re-running the generator updates the index.
+
+**`OD-008` was withdrawn.** It claimed `RG-TOR-001` was an undeclared v1 identifier. It is a
+v0.5 research gate; the agent's reclassification was the error, not the reference tool's.
+See `CORR-003`.
+
+### Deferred and carried forward, recorded not omitted
+
+- Appendix D requirement 7 — fail CI when misleadingly stale — is **Deferred to
+  `PH-AUTH-004`**. `project --check` is wired locally; no workflow runs it, because this
+  package excludes CI edits and the branch is unpushed.
+- `MIG-001` — a live v1 sentence defers an open question to the retired v0.5 gate
+  `RG-TOR-001`. Carried to `PH-AUTH-004`.
+- `OD-007` — the authority preimage exists only on this machine.
+- 20 Appendix G divergences from the prose cards, asserted as a set and carried to
+  `PH-AUTH-003` for regeneration or removal of the fence.
 
 ### Carry-in items from review round 4
 
