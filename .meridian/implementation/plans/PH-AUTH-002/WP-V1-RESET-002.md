@@ -903,4 +903,107 @@ amended, rather than discovering it later through `PH-AUTH-003`'s own stale-evid
 
 ## Completion record
 
-_Pending._
+- Completed: 2026-08-20
+- Branch: `v1-authority-reset`, four commits, `main` untouched
+- Source checkpoint: `15f60d1`
+
+### Commits
+
+| Commit | Content |
+|---|---|
+| `f3be604` | Install the specoment as tracked root authority; narrowed `.meridian/` scope |
+| `4e6bb2e` | Exclude generated projections from v0.5 governance scope |
+| `deeea6b` | `src/specoment/` port and the generated projections |
+| `15f60d1` | Deterministic stamps; `project --check` fails closed |
+
+### Result
+
+736 declared, 736 indexed, 0 multiply-declared, 1 undeclared, 1 retired-v0.5, 117 families.
+
+The total was **predicted from the fidelity invariants before the port existed** and is
+reproduced by an independent implementation. That agreement is the evidence; a matched
+constant would not have been.
+
+### Gates
+
+| Gate | Result |
+|---|---|
+| `cargo test --workspace` | **Pass** — 79 suites, exit 0 |
+| `cargo test -p meridian-spec` | Pass — 48 tests, from 39 |
+| `cargo clippy --workspace --all-targets -- -D warnings` | Pass |
+| `cargo fmt --all -- --check` | Pass |
+| `cargo run -p meridian-spec -- check` | Pass |
+| `cargo run -p meridian-spec -- project --check` | Pass, and fails closed on tamper |
+| `cargo metadata --locked` | Pass |
+| `git diff --check` | Pass |
+
+### Failure and recovery paths induced and observed
+
+- one-line tamper to a projection → exit **1**, `stale-projection`, file named;
+- regeneration twice → byte-identical;
+- generator with no specoment → diagnostic naming the path, no panic;
+- `governance/` exclusion → `spec check` green with the index present, while a genuine
+  `docs/` file carrying a retired reference is still reported.
+
+### Actual versus estimate
+
+| Area | Estimated | Actual |
+|---|---|---|
+| Production | ~820 | **829** |
+| `main.rs` delta | ≤ ~20 | **11** |
+| Tests and fixtures | ~450 | ~480 |
+| Generated | ~4,500 | 7,976 |
+
+The production estimate held to nine lines. The generated figure was low because the index
+carries a reference list per identifier.
+
+**The converse stop trigger fired.** Hand-written infrastructure reached 290 lines against a
+~210 bound. The trade was re-examined under `LEGAL-006` rather than absorbed: SHA-256 holds
+unchanged, since the argument was the five-to-seven-crate graph cost and not line count; the
+scanner holds, but the margin is narrower than the plan claimed — realistically ~90 lines
+with `regex` against 138 without. Disclosed in the evidence rather than buried.
+
+### Two defects found after the first commit
+
+The first commit passed six gates and still carried two defects, both caught by
+`cargo test --workspace`:
+
+- the H.5 stamp recorded repository HEAD, so every projection was stale the moment it was
+  committed and `project --check` could never pass;
+- `project --check` printed staleness and returned success — a fail-open that would have let
+  CI go green on projections misrepresenting the authority.
+
+Both fixed in `15f60d1`. The concrete lesson is the plan's own: a check that cannot fail is
+not evidence, and targeted gates are not a substitute for proportional ones.
+
+### Limitations and honest status
+
+**`PH-AUTH-002` does not close.** Two rows remain open:
+
+| Closure row | Status |
+|---|---|
+| Every canonical identifier is indexable exactly once | **Fail** — `RG-TOR-001` has no owning contract (`SD-006`, `OD-008`) |
+| No accepted decision is lost or duplicated | **Inconclusive** — `OD-001`, `OD-002` unresolved without the master ledger |
+| Headings, status, links, deferred/research markers pass | Partial — link and status validation is `PH-AUTH-003` |
+| Projection hashes pass | Pass |
+| Zero-unmapped checks pass | Pass for the index; enforcement as a gate is `PH-AUTH-003` |
+
+`SD-006` was found during implementation, not by any of the four review rounds. The
+reference generator classified retired-v0.5 identifiers by bare prefix including `RG`, and
+`RG-TOR-001` — the only `RG-*` identifier in the document, cited in a live v1 section as an
+open research gate — was absorbed into a category exempt from the undeclared count. That is
+what made "0 undeclared" read as true across this entire package's planning.
+
+Deferred and recorded, not omitted: Appendix D requirement 7 (fail CI when misleadingly
+stale) is **Deferred to `PH-AUTH-004`**; `project --check` is wired locally but no workflow
+runs it, because this package excludes CI edits and the branch is unpushed.
+
+### Carry-in items from review round 4
+
+| Item | Status |
+|---|---|
+| Backticked-reference guard (invariant 5) | Done — implemented, tested, 0 hits |
+| `OD-007` / `DEV-006` recorded | Done |
+| `WP-V1-*` canonicality stated | Done |
+| LOC row de-constantised | Done — measured here instead |
+| Review header tracks the current round | Done |

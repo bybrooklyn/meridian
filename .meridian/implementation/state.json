@@ -1,17 +1,23 @@
 {
   "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
-  "source_checkpoint": "ddbacd34361c302e72ed2accefd59fe7567b28fe",
+  "source_checkpoint": "15f60d1",
   "active_phase": "PH-AUTH-002",
-  "active_work_package": "WP-V1-RESET-002",
+  "active_work_package": null,
   "completed_phases": [
     "PH-AUTH-001"
   ],
   "completed_work_packages": [
     "WP-V1-BASE-001",
     "WP-V1-BASE-002",
-    "WP-V1-RESET-001"
+    "WP-V1-RESET-001",
+    "WP-V1-RESET-002"
   ],
-  "blocked": [],
+  "blocked": [
+    {
+      "id": "PH-AUTH-002",
+      "reason": "closure rows require owner decisions OD-008 (RG-TOR-001 owning contract) and OD-001/OD-002 (lost-decision provenance). Implementation work is complete."
+    }
+  ],
   "unsupported": [
     {
       "id": "EV-SMOKE-RHI-CLEARFRAME",
@@ -33,7 +39,7 @@
   "research_decisions": [],
   "migrations": [],
   "evidence_index": "evidence/index.json",
-  "program_status": "PH-AUTH-001 CLOSED. PH-AUTH-002 ACTIVE: WP-V1-RESET-002 implemented. Projections generate at 736 declared / 736 indexed / 0 multiply-declared, matching the predicted total through an independent implementation. One canonical identifier (RG-TOR-001) is undeclared, so the phase does not close; recorded as SD-006 / OD-008 rather than hidden.",
+  "program_status": "PH-AUTH-001 CLOSED. WP-V1-RESET-002 COMPLETE on branch v1-authority-reset. PH-AUTH-002 remains OPEN: the 'indexable exactly once' row fails on RG-TOR-001 (SD-006/OD-008) and 'no accepted decision is lost' is Inconclusive pending OD-001/OD-002.",
   "process_deviations": [
     {
       "id": "DEV-001",
