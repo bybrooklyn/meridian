@@ -29,6 +29,9 @@ pub struct CrateRow {
     pub source_lines: usize,
     pub source_bytes: u64,
     pub declared_public_items: usize,
+    /// Tests in this crate's `src/` only. The `tests` section counts every `#[test]` in the
+    /// workspace including `tests/` and `examples/`, so the two totals differ by design —
+    /// stated here so the gap reads as a definition rather than a contradiction.
     pub test_functions: usize,
 }
 
@@ -485,6 +488,12 @@ pub fn measure(root: &Path) -> Census {
 
 /// Crate rows and edges, from `cargo metadata` output supplied by the caller.
 pub fn absorb_metadata(census: &mut Census, root: &Path, metadata: &serde_json::Value) {
+    // Canonicalise once. `--root` defaults to `.`, while `cargo metadata` emits absolute
+    // manifest paths, so a strip against the uncanonicalised root never matched: absolute
+    // paths leaked into the output and every per-crate measurement came back zero because
+    // `strip_prefix` failed on every source file. Both bugs shipped, and no test caught them
+    // because every assertion was about structure rather than about the values being sane.
+    let root = &root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let members: Vec<&serde_json::Value> = metadata
         .get("packages")
         .and_then(serde_json::Value::as_array)
@@ -508,10 +517,10 @@ pub fn absorb_metadata(census: &mut Census, root: &Path, metadata: &serde_json::
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default();
         // Absolute paths would make any comparison machine-dependent.
-        let manifest = manifest
-            .strip_prefix(&format!("{}/", root.display()))
-            .unwrap_or(manifest)
-            .to_string();
+        let manifest = Path::new(manifest).strip_prefix(root).map_or_else(
+            |_| manifest.to_string(),
+            |relative| relative.to_string_lossy().to_string(),
+        );
         let source_dir = root
             .join(manifest.trim_end_matches("Cargo.toml"))
             .join("src");
@@ -601,9 +610,9 @@ impl Census {
                 command: "cargo metadata --locked --no-deps --format-version 1",
             },
             Measured {
-                name: "test_functions",
+                name: "test_functions_total",
                 value: self.tests.len(),
-                command: "grep -rh '#[test]' --include='*.rs' engine editor | wc -l",
+                command: "grep -rh '#[test]' --include='*.rs' engine editor | wc -l  (all targets; per-crate test_functions counts src/ only)",
             },
             Measured {
                 name: "formats",
@@ -896,6 +905,23 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The assertion whose absence let a fully zeroed census ship.
+    ///
+    /// Every prior test checked structure — that rows exist, that fields are null, that the
+    /// vocabulary is closed. None checked that a measurement measured anything. A census in
+    /// which every crate reports 0 bytes, 0 public items and 0 tests satisfied all of them.
+    #[test]
+    fn measurements_are_not_all_zero() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let census = super::measure(&root);
+        assert!(!census.tests.is_empty(), "the test sweep found nothing");
+        assert!(
+            census.formats.len() > 10,
+            "the format table is suspiciously small: {}",
+            census.formats.len()
+        );
     }
 
     #[test]
