@@ -234,19 +234,40 @@ Every other combination is invalid. In particular:
 - `next_phase` null with **both** `phase_pending` and `escalation` null — the state the gate
   exists to forbid
 - `next_phase` set and `phase_pending` set — a row claiming both a phase and a pending decision
+- `escalation` set and `phase_pending` set — not merely redundant: the two may name **different**
+  unresolved records, leaving the row pointing at two decisions with no rule saying which governs
+  its phase, and the Rust check would verify both exist and pass it
 - `phase_pending` naming a **resolved** record, or one that does not exist
 
 Split across two mechanisms, because JSON Schema cannot express the last one:
 
 - **Schema:** exactly-one, the closed disposition vocabulary, the `OD-*` shape, and the
   `next_phase` gate including its value constraint and its shape-4 branch. Drafted verbatim in
-  `$comment` and verified: four legal shapes accepted, five invalid combinations rejected, and
-  all 1,801 rows failing today by design because every row is neither-set during measurement.
+  `$comment` and verified by **exhaustive cross-product over all 16 combinations** of the four
+  judgement fields: exactly 4 accepted, matching the table, and all 1,801 rows failing today by
+  design because every row is neither-set during measurement.
 - **Rust:** every `escalation` and every `phase_pending` names a record that exists **and is
   unresolved** in `state.json`, scoped to `open_owner_decisions` and filtered by status.
 
 Sections carrying no judgement fields — `edges`, `layers` — are exempt by construction and
 declared exempt in the schema rather than silently omitted.
+
+### Why the test is a cross-product
+
+Four fields give sixteen states — fewer than the number of cases anyone would think to write, and
+it does not depend on thinking of the right ones. The phrase "every other combination is invalid"
+costs four words here and sixteen rows in a test, and until those rows exist it is an assertion
+rather than a rule.
+
+Two consecutive blocking findings were combinations this table declared invalid and the schema
+accepted, both found by generating the space rather than enumerating intentions.
+
+**And three consecutive rounds found the same asymmetry: the English was right and the construct
+chosen to express it was one notch weaker.** `required` where non-null was meant. `not both` where
+exactly-one was meant. `anyOf` where `oneOf` was meant. All three erred toward permissiveness,
+which is the direction that passes silently — a gate that is too strict announces itself on the
+first run, and a gate that is too loose announces nothing at all. Each was found only by reading
+what the mechanism actually accepted.
 
 ## The audit
 
@@ -429,8 +450,10 @@ question.
 
 Set both judgement fields; set neither; name `OD-011` (resolved); name `OD-999`; assign outside
 the vocabulary; map a test to `APP-003` (Rejected), `SRV-016` and `SRV-022` (post-1.0,
-the second unlabelled); set `next_phase` null with `phase_pending` null; point `phase_pending`
-at a resolved record; set both `next_phase` and `phase_pending`; delete a crate whose
+the second unlabelled); **validate all 16 combinations of the four judgement fields against the
+activated block and assert exactly the four table shapes are accepted** — this subsumes the
+individual null/both/malformed cases and, unlike a list, does not depend on having thought of
+the right ones; point `phase_pending` at a resolved record; delete a crate whose
 disposition remains; insert a blank line and confirm no orphan; map every test in a crate to one
 id; push a family past the step-1 derived cap; use an id that appears in no audit row. Each must fail naming the row.
 
