@@ -157,10 +157,15 @@ disposition is orphaned.
    `meridian-rhi → meridian-render-graph` is already *classified* (forward under the declared
    ordering); what it lacks is a **reason**, which is what `-001` promised.
 6. **Add `next_phase` to `tests`, `generated_files` and `ci_rows`.**
-7. **Tighten the XOR to exactly-one, and activate the `next_phase` conditional.** Moving it out
-   of the schema's `$comment` and into `$defs/judged` is a deliverable of this step, not a note.
-   An inert rule in a comment with no step that turns it on is a deferred check with no owner., and validate the **on-disk** file, so a hand-edit reports
-   as a schema violation naming the row rather than as generic staleness.
+7. **Activate the whole row-validity block.** The schema's `$comment` carries it drafted and
+   verified; moving it into `$defs/judged` is a **deliverable of this step**, not a note. An
+   inert rule in a comment with no step that turns it on is a deferred check with no owner.
+   The block expresses exactly-one, the `next_phase` gate and shape 4 together — drafting only
+   the newest rule is what left "neither set" accepted after activation.
+8. **Validate the on-disk census, not only generator output**, so a hand-edit reports as a schema
+   violation naming the row rather than as generic staleness. `-002` carry-in 7, and a distinct
+   deliverable — an earlier edit spliced step 7's text into this sentence and reduced it to a
+   trailing clause.
 
 ## Constraint regime — rebuilt
 
@@ -209,19 +214,34 @@ Four judgement fields: `disposition`, `escalation`, `next_phase`, `phase_pending
 | 1 dispositioned | set | null | set | null |
 | 2 escalated | null | set | set | null |
 | 3 dispositioned, phase pending | set | null | **null** | **set** |
+| 4 escalated, phase pending | null | set | **null** | null |
+
+**Shape 4 is admitted rather than excluded**, and the argument for it is the one `OD-013`
+established for shape 3. Shape 2 assumes every escalated row has a knowable next phase, but the
+decision a row escalates on may itself determine which phase acts. `meridian-physics` escalates
+because "is this crate in v1 scope" is open; writing `PH-AUTH-006` presumes the answer is
+"decompose it", which is one of several. Shape 4 needs no `phase_pending`, because `escalation`
+already names the unresolved record — which is why the gate's `then` branch is an `anyOf` over
+both fields rather than over `phase_pending` alone.
 
 Every other combination is invalid. In particular:
 
 - both `disposition` and `escalation` set — the XOR, rejected today
-- neither set — legal during measurement, rejected once step 6 tightens to exactly-one
-- `next_phase` null with `phase_pending` null — the state the gate exists to forbid
+- neither set — legal during measurement, rejected once **step 7** tightens to exactly-one.
+  Note the current schema carries only the "not both" half; **nothing yet requires at least
+  one**, so this is accepted today and would have stayed accepted after activation had only the
+  `next_phase` conditional been drafted
+- `next_phase` null with **both** `phase_pending` and `escalation` null — the state the gate
+  exists to forbid
 - `next_phase` set and `phase_pending` set — a row claiming both a phase and a pending decision
 - `phase_pending` naming a **resolved** record, or one that does not exist
 
 Split across two mechanisms, because JSON Schema cannot express the last one:
 
-- **Schema:** the XOR, the closed disposition vocabulary, the `OD-*` shape, and the
-  `next_phase`/`phase_pending` conditional including its value constraint.
+- **Schema:** exactly-one, the closed disposition vocabulary, the `OD-*` shape, and the
+  `next_phase` gate including its value constraint and its shape-4 branch. Drafted verbatim in
+  `$comment` and verified: four legal shapes accepted, five invalid combinations rejected, and
+  all 1,801 rows failing today by design because every row is neither-set during measurement.
 - **Rust:** every `escalation` and every `phase_pending` names a record that exists **and is
   unresolved** in `state.json`, scoped to `open_owner_decisions` and filtered by status.
 
@@ -296,9 +316,11 @@ The card requires *"every code area has one disposition and next phase."* An esc
 disposition — that is the point of the XOR. The previous draft asserted both halves in
 consecutive sentences and they cannot both be true.
 
-**Resolved explicitly.** Three row shapes exist, and the third was found by the `OD-010`
-ruling rather than by this plan — an external input locating a seam the internal work could not
-see, which is what an external input is for.
+**Resolved explicitly.** Four row shapes exist. The third was found by the `OD-010` ruling
+rather than by this plan — an external input locating a seam the internal work could not see,
+which is what an external input is for. The fourth was found by running the drafted rule set
+against every combination instead of reading it, which is the habit that found the last four
+defects in this area.
 
 1. **Dispositioned** — a disposition and a next phase. The ordinary case.
 2. **Escalated** — a next phase and no disposition, naming an unresolved `OD-*`.
@@ -315,13 +337,23 @@ see, which is what an external input is for.
    recorded reason — the precise state the rule was written to prevent, arriving through its own
    fix. `tests` rows carry no `next_phase` yet and step 6 already opens three sections, so the
    field surface is open.
+4. **Escalated, phase pending** — an escalation, **no** next phase, and no `phase_pending`. The
+   decision the row escalates on may itself determine which phase acts, so the phase is not
+   knowable until it resolves. `meridian-physics` escalates on "is this crate in v1 scope";
+   writing `PH-AUTH-006` would presume the answer is "decompose it", which is one of several.
+   No extra field is needed because `escalation` already names the unresolved record, which is
+   why the gate's `then` branch is an `anyOf` over `escalation` and `phase_pending`.
 
-Shape 3 is stated as a third interpretation of the card, not assumed — on the same footing as
-the other two. Giving those rows `escalation: OD-013` instead would keep the tidier two-shape
+   Shape 4 was accepted by the schema while the table declared it invalid — the schema and the
+   prose disagreed, and the prose was wrong. Shape 2 had quietly assumed every escalated row has
+   a knowable next phase, which is the same assumption `OD-013` disproved for shape 1.
+
+Shapes 3 and 4 are stated as interpretations of the card, not assumed — on the same footing as
+the first two. Giving those rows `escalation: OD-013` instead would keep the tidier two-shape
 model and discard what the ruling actually settled, so it is rejected.
 
-`PH-AUTH-005` therefore closes with a **residual of two named counts** — escalated rows, and
-dispositioned rows whose next phase is pending — recorded separately in `state.json`
+`PH-AUTH-005` therefore closes with a **residual of two named counts** — escalated rows (shapes
+2 and 4), and dispositioned rows whose next phase is pending (shape 3) — recorded separately in `state.json`
 and in the closure record. This is stated as an interpretation of the card, not assumed. The
 alternative reading — that "one disposition" means "one judgement, disposition or escalation" —
 is rejected here because `-001` argued at length that the two are distinct, and re-merging them
@@ -452,7 +484,7 @@ once assignment is complete; if an escalation names a resolved or non-covering `
 new `OD-*` lacks options, `blocks` and a default.
 
 Stop also if the package ships with the `next_phase`/`phase_pending` conditional still inert in
-the schema's `$comment`, or if any row matches none of the three shapes in the table above.
+the schema's `$comment`, or if any row matches none of the four shapes in the table above.
 
 The card's third stop condition — *"implementation maturity is promoted without new v1
 evidence"* — cannot fire here: `implementation_maturity` is null in all 37 crate rows per
