@@ -28,11 +28,10 @@ const RETAINED_COMMANDS: &[&str] = &["governance"];
 /// — and it is where scope shrinks silently and permanently. The set is therefore closed,
 /// and the one category that is a genuine judgement escalates to the owner rather than
 /// being resolvable inside a data file.
-/// Two variants are not constructed by `derive` today, and that is the honest state rather
-/// than dead code to be pruned: no v1 successor rule exists yet, so nothing can legitimately
-/// claim `subsumed-by-root-structure`, and `no-v1-analogue` is an owner escalation this
-/// package must not make on its own. They are the closed vocabulary the matrix accepts, and
-/// pruning them would let a future author invent a reason string instead.
+/// `SubsumedByRootStructure` is not constructed today: nothing has been shown to be made
+/// unrepresentable by the root's structure, and claiming it without that showing would be a
+/// guess. It stays as part of the closed vocabulary so a future author cannot invent a
+/// reason string instead.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DropReason {
@@ -74,10 +73,6 @@ impl Unit {
 }
 
 /// How one deleted-scope unit is accounted for.
-/// `Superseded` is not constructed yet for the same reason: the matrix currently records
-/// zero supersessions because no v1 rule has been proven to catch a v0.5 case. Constructing
-/// it requires a backing fixture, which is the point.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Disposition {
     /// Superseded by a v1 rule, which **must** name the fixture demonstrating it.
@@ -221,37 +216,103 @@ impl Matrix {
     }
 }
 
-/// Derive a disposition from what the v0.5 check reads, rather than hand-judging 66 rows.
+/// Checks that read v0.5 authority under `specs/`, which `PH-AUTH-004` deletes.
+const V05_AUTHORITY_CHECKS: &[&str] = &[
+    "docs",
+    "schemas",
+    "maturity",
+    "evidence",
+    "workloads",
+    "adrs",
+    "registry",
+    "list-unmapped",
+    // `explain` queries `context.records`, loaded from `specs/registry`, and its own
+    // unknown-id message says "not mapped in specs/registry".
+    "explain",
+];
+
+/// v0.5 rules whose concept survives into v1 **and** has a v1 successor, each named with
+/// the fixture that demonstrates the successor catches the case.
 ///
-/// A hand-written judgement per row is what the maturity table was, and it failed review for
-/// the same reason: unfalsifiable claims accumulating in a data file. These are derived and
-/// stated: every one of these checks reads `specs/` or `specs/registry/`, which
-/// `PH-AUTH-004` deletes, so the enforcement retires with the authority it policed. Anything
-/// this function cannot derive is left **unaccounted**, which keeps the matrix red rather
-/// than closing a gap with a guess.
+/// An unbacked supersession is an unverified equivalence claim asserting coverage nothing
+/// checks — which is exactly what deleting the v0.5 validator would then rest on.
+const SUPERSEDED: &[(&str, &str, &str)] = &[
+    (
+        "duplicate-id",
+        "index::multiply_declared",
+        "two_headings_declaring_one_identifier_are_reported",
+    ),
+    (
+        "work-package-cycle",
+        "phases::cycles",
+        "a_cycle_is_reported_with_the_path_that_closes_it",
+    ),
+    (
+        "missing-id",
+        "index::undeclared",
+        "an_identifier_never_in_a_heading_is_undeclared",
+    ),
+    (
+        "unmapped-id",
+        "index::undeclared",
+        "an_identifier_never_in_a_heading_is_undeclared",
+    ),
+    (
+        "orphan-requirement",
+        "index::undeclared",
+        "an_identifier_never_in_a_heading_is_undeclared",
+    ),
+    (
+        "bad-status",
+        "evidence-index.schema.json status enum",
+        "the_schema_rejects_an_index_missing_its_source_digest",
+    ),
+];
+
+/// v0.5 rules whose concept **survives into v1** but which have no v1 successor yet.
+///
+/// These are the reason the matrix is not a rubber stamp. Retiring the v0.5 registry does not
+/// retire the requirement: the specoment still forbids promotion without evidence, still
+/// requires source links to resolve, still has waivers and phases and ADRs. Marking these
+/// `v05-authority-retired` would license a silent capability loss, which is precisely what
+/// this matrix exists to prevent. They escalate to the owner instead.
+const SURVIVING_CONCEPT: &[(&str, &str)] = &[
+    ("bad-fence", "Appendix F's synthesis gate still requires balanced fences"),
+    ("broken-link", "Appendix D still requires projection source links to resolve"),
+    ("expired-waiver", "waivers survive as a governance concept and a v1 schema is shipped, but no v1 rule checks expiry"),
+    ("false-promotion", "section 0.4 still forbids promoting a status without evidence"),
+    ("implemented-without-evidence", "IMPL-WP-003 item 6 still requires fresh evidence to be registered"),
+    ("occluded-visual-evidence", "section 0.4 still defines Occluded and still forbids reading it as visible quality"),
+    ("stale-phase-ref", "v1 has phases, so a stale phase reference remains possible"),
+    ("missing-adr", "section 0.5 still ranks adopted ADRs directly below the specoment"),
+];
+
+/// Derive a disposition for one unit.
+///
+/// The question is **per identifier**, not per check. An earlier pass answered it per check —
+/// "does this check read `specs/`?" — and dropped 64 of 66 units as retired. That was wrong
+/// for fourteen of them: the registry retires, the concept does not.
 pub fn derive(unit: &Unit) -> Option<Disposition> {
-    const V05_AUTHORITY_CHECKS: &[&str] = &[
-        "docs",
-        "schemas",
-        "maturity",
-        "evidence",
-        "workloads",
-        "adrs",
-        "registry",
-        "list-unmapped",
-        // `explain` reads `context.records`, which is loaded from `specs/registry`, and its
-        // own unknown-id message says "not mapped in specs/registry". It retires with the
-        // authority it queries. An earlier pass left these two unaccounted on the theory
-        // that a query command's fate was a design question; reading the function settled
-        // it on the same basis as the other sixty-four.
-        "explain",
-    ];
+    if let Some((_, v1_rule, fixture)) = SUPERSEDED.iter().find(|(id, _, _)| *id == unit.id) {
+        return Some(Disposition::Superseded {
+            v1_rule: (*v1_rule).to_string(),
+            fixture: (*fixture).to_string(),
+        });
+    }
+    if let Some((_, why)) = SURVIVING_CONCEPT.iter().find(|(id, _)| *id == unit.id) {
+        return Some(Disposition::Dropped {
+            reason: DropReason::NoV1Analogue,
+            detail: (*why).to_string(),
+        });
+    }
+
     V05_AUTHORITY_CHECKS
         .contains(&unit.check.as_str())
         .then(|| Disposition::Dropped {
             reason: DropReason::V05AuthorityRetired,
             detail: format!(
-                "`{}` reads v0.5 authority under specs/, which PH-AUTH-004 deletes",
+                "`{}` policed v0.5 authority under specs/, and the concept does not survive \
+                 into v1 authority",
                 unit.check
             ),
         })

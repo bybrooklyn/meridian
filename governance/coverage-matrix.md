@@ -30,73 +30,83 @@ Emitted by commands the cutover does not delete, so no successor is required.
 
 | check | id | disposition | detail |
 |---|---|---|---|
-| `adrs` | `missing-adr` | dropped: `v05-authority-retired` | `adrs` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `docs` | `bad-fence` | dropped: `v05-authority-retired` | `docs` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `docs` | `broken-link` | dropped: `v05-authority-retired` | `docs` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `docs` | `duplicate-id` | dropped: `v05-authority-retired` | `docs` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `docs` | `missing-id` | dropped: `v05-authority-retired` | `docs` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `docs` | `stale-current-version` | dropped: `v05-authority-retired` | `docs` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `docs` | `stale-phase-ref` | dropped: `v05-authority-retired` | `docs` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `evidence` | `implemented-without-evidence` | dropped: `v05-authority-retired` | `evidence` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `evidence` | `nonpassing-evidence` | dropped: `v05-authority-retired` | `evidence` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `evidence` | `occluded-visual-evidence` | dropped: `v05-authority-retired` | `evidence` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `explain` | `record` | dropped: `v05-authority-retired` | `explain` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `explain` | `unknown-id` | dropped: `v05-authority-retired` | `explain` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `list-unmapped` | `incomplete-migration-ledger` | dropped: `v05-authority-retired` | `list-unmapped` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `list-unmapped` | `missing-migration-ledger` | dropped: `v05-authority-retired` | `list-unmapped` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `list-unmapped` | `unmapped-id` | dropped: `v05-authority-retired` | `list-unmapped` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `maturity` | `bad-status` | dropped: `v05-authority-retired` | `maturity` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `maturity` | `duplicate-maturity` | dropped: `v05-authority-retired` | `maturity` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `maturity` | `expired-waiver` | dropped: `v05-authority-retired` | `maturity` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `maturity` | `false-promotion` | dropped: `v05-authority-retired` | `maturity` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `maturity` | `missing-maturity` | dropped: `v05-authority-retired` | `maturity` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `maturity` | `missing-maturity-spec` | dropped: `v05-authority-retired` | `maturity` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `registry` | `duplicate-id` | dropped: `v05-authority-retired` | `registry` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `registry` | `orphan-requirement` | dropped: `v05-authority-retired` | `registry` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `schemas` | `bad-schema` | dropped: `v05-authority-retired` | `schemas` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `schemas` | `bad-schema-json` | dropped: `v05-authority-retired` | `schemas` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `schemas` | `missing-schema` | dropped: `v05-authority-retired` | `schemas` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `schemas` | `registry-schema` | dropped: `v05-authority-retired` | `schemas` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `broken-critical-path` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `false-validation-project-promotion` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `incomplete-marquee-approval-invalidation` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `incomplete-marquee-source-classes` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `incomplete-ui-components` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `incomplete-ui-mockup-corpus` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `incomplete-ui-workspaces` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `inconsistent-ui-mockup` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `invalid-dependency-strategy` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `invalid-marquee-ai-boundary` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `invalid-marquee-approval` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `invalid-marquee-capture` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `invalid-marquee-publishing` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `invalid-package-dependency` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `invalid-ui-mockup-manifest` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `invalid-ui-package-sequence` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `invalid-ui-shell` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `invalid-ui-token` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `invalid-ui-visual-policy` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-delivery-plan-milestone` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-dependency-strategy` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-marquee-policy` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-recipe-provenance-field` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-ui-components` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-ui-design-tokens` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-ui-mockup` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-ui-mockup-manifest` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-ui-package` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-ui-workspaces` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-validation-project` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `missing-workload` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `orphan-work-package` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `premature-marquee-package` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `private-content-field` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `program-implementation-promotion` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `program-milestone-leak` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `stale-phase-ref` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `unexpected-delivery-plan-milestone` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
-| `workloads` | `work-package-cycle` | dropped: `v05-authority-retired` | `workloads` reads v0.5 authority under specs/, which PH-AUTH-004 deletes |
+| `adrs` | `missing-adr` | dropped: `no-v1-analogue` | section 0.5 still ranks adopted ADRs directly below the specoment |
+| `docs` | `bad-fence` | dropped: `no-v1-analogue` | Appendix F's synthesis gate still requires balanced fences |
+| `docs` | `broken-link` | dropped: `no-v1-analogue` | Appendix D still requires projection source links to resolve |
+| `docs` | `duplicate-id` | superseded by `index::multiply_declared` | fixture `two_headings_declaring_one_identifier_are_reported` |
+| `docs` | `missing-id` | superseded by `index::undeclared` | fixture `an_identifier_never_in_a_heading_is_undeclared` |
+| `docs` | `stale-current-version` | dropped: `v05-authority-retired` | `docs` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `docs` | `stale-phase-ref` | dropped: `no-v1-analogue` | v1 has phases, so a stale phase reference remains possible |
+| `evidence` | `implemented-without-evidence` | dropped: `no-v1-analogue` | IMPL-WP-003 item 6 still requires fresh evidence to be registered |
+| `evidence` | `nonpassing-evidence` | dropped: `v05-authority-retired` | `evidence` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `evidence` | `occluded-visual-evidence` | dropped: `no-v1-analogue` | section 0.4 still defines Occluded and still forbids reading it as visible quality |
+| `explain` | `record` | dropped: `v05-authority-retired` | `explain` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `explain` | `unknown-id` | dropped: `v05-authority-retired` | `explain` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `list-unmapped` | `incomplete-migration-ledger` | dropped: `v05-authority-retired` | `list-unmapped` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `list-unmapped` | `missing-migration-ledger` | dropped: `v05-authority-retired` | `list-unmapped` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `list-unmapped` | `unmapped-id` | superseded by `index::undeclared` | fixture `an_identifier_never_in_a_heading_is_undeclared` |
+| `maturity` | `bad-status` | superseded by `evidence-index.schema.json status enum` | fixture `the_schema_rejects_an_index_missing_its_source_digest` |
+| `maturity` | `duplicate-maturity` | dropped: `v05-authority-retired` | `maturity` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `maturity` | `expired-waiver` | dropped: `no-v1-analogue` | waivers survive as a governance concept and a v1 schema is shipped, but no v1 rule checks expiry |
+| `maturity` | `false-promotion` | dropped: `no-v1-analogue` | section 0.4 still forbids promoting a status without evidence |
+| `maturity` | `missing-maturity` | dropped: `v05-authority-retired` | `maturity` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `maturity` | `missing-maturity-spec` | dropped: `v05-authority-retired` | `maturity` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `registry` | `duplicate-id` | superseded by `index::multiply_declared` | fixture `two_headings_declaring_one_identifier_are_reported` |
+| `registry` | `orphan-requirement` | superseded by `index::undeclared` | fixture `an_identifier_never_in_a_heading_is_undeclared` |
+| `schemas` | `bad-schema` | dropped: `v05-authority-retired` | `schemas` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `schemas` | `bad-schema-json` | dropped: `v05-authority-retired` | `schemas` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `schemas` | `missing-schema` | dropped: `v05-authority-retired` | `schemas` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `schemas` | `registry-schema` | dropped: `v05-authority-retired` | `schemas` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `broken-critical-path` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `false-validation-project-promotion` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `incomplete-marquee-approval-invalidation` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `incomplete-marquee-source-classes` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `incomplete-ui-components` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `incomplete-ui-mockup-corpus` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `incomplete-ui-workspaces` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `inconsistent-ui-mockup` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `invalid-dependency-strategy` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `invalid-marquee-ai-boundary` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `invalid-marquee-approval` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `invalid-marquee-capture` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `invalid-marquee-publishing` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `invalid-package-dependency` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `invalid-ui-mockup-manifest` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `invalid-ui-package-sequence` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `invalid-ui-shell` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `invalid-ui-token` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `invalid-ui-visual-policy` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-delivery-plan-milestone` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-dependency-strategy` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-marquee-policy` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-recipe-provenance-field` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-ui-components` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-ui-design-tokens` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-ui-mockup` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-ui-mockup-manifest` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-ui-package` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-ui-workspaces` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-validation-project` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `missing-workload` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `orphan-work-package` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `premature-marquee-package` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `private-content-field` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `program-implementation-promotion` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `program-milestone-leak` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `stale-phase-ref` | dropped: `no-v1-analogue` | v1 has phases, so a stale phase reference remains possible |
+| `workloads` | `unexpected-delivery-plan-milestone` | dropped: `v05-authority-retired` | `workloads` policed v0.5 authority under specs/, and the concept does not survive into v1 authority |
+| `workloads` | `work-package-cycle` | superseded by `phases::cycles` | fixture `a_cycle_is_reported_with_the_path_that_closes_it` |
 
 ## Owner escalations
 
-None.
+`no-v1-analogue` claims enforcement is no longer required. That is a normative judgement, unfalsifiable by construction, and is not settled inside this file.
+
+- `adrs` / `missing-adr` — section 0.5 still ranks adopted ADRs directly below the specoment
+- `docs` / `bad-fence` — Appendix F's synthesis gate still requires balanced fences
+- `docs` / `broken-link` — Appendix D still requires projection source links to resolve
+- `docs` / `stale-phase-ref` — v1 has phases, so a stale phase reference remains possible
+- `evidence` / `implemented-without-evidence` — IMPL-WP-003 item 6 still requires fresh evidence to be registered
+- `evidence` / `occluded-visual-evidence` — section 0.4 still defines Occluded and still forbids reading it as visible quality
+- `maturity` / `expired-waiver` — waivers survive as a governance concept and a v1 schema is shipped, but no v1 rule checks expiry
+- `maturity` / `false-promotion` — section 0.4 still forbids promoting a status without evidence
+- `workloads` / `stale-phase-ref` — v1 has phases, so a stale phase reference remains possible

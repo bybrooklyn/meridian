@@ -1,8 +1,8 @@
 {
   "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
   "source_checkpoint": "9119df0",
-  "active_phase": "PH-AUTH-004",
-  "active_work_package": null,
+  "active_phase": "PH-AUTH-003",
+  "active_work_package": "WP-V1-GOV-001",
   "completed_phases": [
     "PH-AUTH-001",
     "PH-AUTH-002",
@@ -188,6 +188,13 @@
       "question": "Section 0.3 defines six decision maturity labels; headings use 29 distinct suffix phrases, 24 of which are unlisted. Normalise the long tail onto the six, or extend 0.3 to name the compounds.",
       "context": "Adjacent to OD-003. WP-V1-GOV-001 refuses to decide it: mapping 'Normative ambition and core architecture' onto 'Normative' rather than 'Normative direction' is a requirement-strength judgement the root never makes, and 24 hand-written mappings would be a second normative specification, which is PH-AUTH-003's literal stop condition. Note also that 'Deferred program' is defined in 0.3 and used in no heading.",
       "blocks": "nothing now; labels are carried verbatim. Must land before authority freezes at PH-AUTH-004."
+    },
+    {
+      "id": "OD-010",
+      "question": "Ten v0.5 enforcement rules police concepts that survive into v1 but have no v1 successor. Build v1 rules for them, or rule the enforcement no longer required.",
+      "detail": "Marked no-v1-analogue in governance/coverage-matrix.md, which escalates rather than resolving inside a data file. They are: missing-adr (0.5 still ranks adopted ADRs below the specoment), bad-fence (Appendix F's synthesis gate requires balanced fences), broken-link (Appendix D requires projection source links to resolve), stale-phase-ref x2 (v1 has phases so stale refs remain possible), implemented-without-evidence (IMPL-WP-003 item 6), occluded-visual-evidence (0.4 defines Occluded and forbids reading it as visible quality), expired-waiver (waivers survive and a v1 schema is shipped, but nothing checks expiry), false-promotion (0.4 forbids promoting a status without evidence).",
+      "why_this_matters": "An earlier derivation answered the disposition question per CHECK - does this check read specs/? - and dropped 64 of 66 units as v05-authority-retired. That was wrong for fourteen of them: the registry retires, the concept does not. Deleting the v0.5 validator on that basis would have caused exactly the silent enforcement loss the matrix exists to prevent.",
+      "blocks": "PH-AUTH-004 deletion of the v0.5 validator. Seven units now carry fixture-backed supersessions; these ten do not."
     }
   ],
   "review_rounds": [
@@ -324,6 +331,13 @@
       "subject": "SD-006 and the RG prefix",
       "detail": "Removed RG from the retired-v0.5 prefix list on the reasoning that RG-TOR-001 appears in a live v1 section, and reported it as an undeclared identifier blocking PH-AUTH-002's closure row. That was wrong and was escalated to the owner as OD-008 before being checked against the frozen baseline, which holds a complete v0.5 record for the identifier. Reverted; OD-008 withdrawn.",
       "lesson": "The escalation was premature. The check that settled it - grep the frozen v0.5 registry - was available the whole time and took one command."
+    },
+    {
+      "id": "CORR-004",
+      "subject": "coverage matrix disposition derivation",
+      "detail": "derive() answered per check rather than per identifier, dropping 64 of 66 units as v05-authority-retired. Fourteen of those police concepts that survive into v1 - duplicate-id, work-package-cycle, broken-link, expired-waiver, false-promotion among them. The matrix was licensing a silent capability loss, which is the precise failure it exists to prevent.",
+      "found": "by the drafting agent, while preparing the PH-AUTH-004 plan for review",
+      "disposition": "Derivation rewritten per identifier. Seven units now carry Superseded dispositions each naming the fixture that demonstrates the v1 successor catches the case; ten escalate as OD-010."
     }
   ]
 }
