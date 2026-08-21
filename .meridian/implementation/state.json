@@ -93,11 +93,11 @@
     {
       "id": "DEV-007",
       "subject": "WP-V1-RESET-002 completion record",
-      "detail": "The package was recorded complete while two of the six projections its plan required (phases.json, research-gates.json) and the appendix_g reconciliation test were not implemented. IMPL-WP-003 item 1 requires the declared result to work through the real boundary and item 8 forbids a completion claim implying adjacent unimplemented capability.",
-      "how_found": "Re-reading the plan's own deliverable list before starting PH-AUTH-003. No review round caught it: reviews read the plan, and nothing re-checked the completion claim against it.",
+      "detail": "The package was recorded complete while two of its six planned projections and the Appendix G reconciliation were not implemented.",
       "disposition": "remediated",
-      "remediation": "Package reopened rather than bypassed when the pre-commit hook blocked the follow-up production change. The missing projections and the reconciliation are implemented, and the completion record now states that it was first written prematurely.",
-      "control_gap": "Nothing verifies a completion record against its plan's deliverable list. Recorded for PH-AUTH-003, whose validator is chartered to detect stale and overstated evidence."
+      "remediation": "Package reopened rather than bypassed when the pre-commit hook blocked the follow-up change; the missing work was implemented and the completion record now states it was first written prematurely.",
+      "control_gap": "Nothing verifies a completion record against its plan's deliverable list. A validator rule for this was proposed for PH-AUTH-003 and DROPPED on review: it is not mechanically decidable without a structured deliverable list in plan records, which would amend Appendix H.3 and is owner scope. Raising that amendment is the open path.",
+      "open": "the control gap itself remains open"
     }
   ],
   "preserved_out_of_process_commit": {
@@ -180,6 +180,12 @@
       ],
       "ruled_out": "Tracking the preimage as a working-tree path. That reinstates the second full-length document named as authority that PH-AUTH-002 exists to prevent.",
       "blocks": "nothing now; must resolve at PH-AUTH-004, where DEV-003's residual exposure is scheduled to close"
+    },
+    {
+      "id": "OD-009",
+      "question": "Section 0.3 defines six decision maturity labels; headings use 29 distinct suffix phrases, 24 of which are unlisted. Normalise the long tail onto the six, or extend 0.3 to name the compounds.",
+      "context": "Adjacent to OD-003. WP-V1-GOV-001 refuses to decide it: mapping 'Normative ambition and core architecture' onto 'Normative' rather than 'Normative direction' is a requirement-strength judgement the root never makes, and 24 hand-written mappings would be a second normative specification, which is PH-AUTH-003's literal stop condition. Note also that 'Deferred program' is defined in 0.3 and used in no heading.",
+      "blocks": "nothing now; labels are carried verbatim. Must land before authority freezes at PH-AUTH-004."
     }
   ],
   "review_rounds": [
@@ -262,6 +268,32 @@
       "found": "during implementation of the Rust port, not by review",
       "severity": "not blocking for PH-AUTH-002; carried to PH-AUTH-004 as MIG-001",
       "disposition": "Reverted. RG is restored to the retired-v0.5 prefix list. The real finding is narrower and belongs to a different phase: a live v1 section still cites a retired v0.5 gate, which PH-AUTH-004 must resolve under its stop condition that old IDs must not still control implementation status. Recorded as MIG-001."
+    },
+    {
+      "id": "SD-007",
+      "subject": "WP-V1-GOV-001's declared likely files are live v0.5 paths",
+      "detail": "MERIDIAN_SPECOMENT.md:30156 lists schemas/governance/* and specs/registry/* as this package's likely files. Both are live v0.5 paths that PH-AUTH-004 deletes wholesale. Writing v1 content into them would make the cutover non-atomic and make 'which suite is active' unanswerable by path.",
+      "disposition": "v1 schemas go to governance/schemas/. Appendix E says 'likely' files so no waiver is required, but recorded rather than resolved silently, per 0.5 and CLAUDE.md section 1."
+    },
+    {
+      "id": "SD-008",
+      "subject": "four-way status vocabulary conflict",
+      "detail": "Section 0.4 evidence status lists Pass/Fail/NotRun/UnsupportedCapability/UnsupportedPlatform/Occluded/Redacted/Waived/Stale/Inconclusive. Appendix H.4 uses Pass|Fail|NotRun|Unsupported|Inconclusive|Stale, where 'Unsupported' is not a 0.4 value because 0.4 splits it in two. IMPL-AGENT-001 item 10 adds Preview and Deferred, which belong to different axes. Section 0.7 adds a fourth vocabulary with Planned and Unsupported colliding into 0.4. A validator seeing a bare 'Unsupported' or 'Planned' cannot determine its axis.",
+      "disposition": "The v1 enum rule is scoped to axis-tagged fields only. Reconciling the four lists is a specoment amendment and owner scope, not agent scope."
+    },
+    {
+      "id": "SD-009",
+      "subject": "the root's Appendix A is the defective 700-entry index",
+      "detail": "MERIDIAN_SPECOMENT.md Appendix A carries 700 declared entries against the generated index's 736. The 36 absent are exactly SD-001's range members, SD-002's NETPROJ-006A..D and SD-005's SCM-010A, including the entire AI-POLICY family. Appendix A's own preamble asserts a MUST to preserve zero-unmapped traceability which it violates. The defective output that WP-V1-RESET-002 fixed in Rust is still resident in canonical authority.",
+      "found": "independent review of WP-V1-GOV-001 revision 1; the equivalent argument had been made for Appendix G but never for Appendix A",
+      "disposition": "WP-V1-GOV-001 adds an Appendix A reconciliation emitting appendix_a_divergences, symmetrical to the existing Appendix G handling. Regenerating or removing Appendix A is a specoment amendment for PH-AUTH-004."
+    },
+    {
+      "id": "SD-010",
+      "subject": "evidence index does not conform to Appendix H.4 and registers nothing",
+      "detail": ".meridian/implementation/evidence/index.json is {\"schema_version\": 1, \"records\": []}. Appendix H.4 mandates {\"schema\": 1, \"specoment_sha256\": \"...\", \"records\": [...]}. The key is misnamed, the mandatory digest is absent, and records is empty while 15 artefacts sit in the same directory and four work packages are recorded complete. IMPL-WP-003 item 6 requires fresh evidence to be registered.",
+      "severity": "live instance of the phase card's chartered 'stale evidence' failure class",
+      "disposition": "WP-V1-GOV-001 adds the H.4 schema, fixes the shape and registers the existing artefacts."
     }
   ],
   "corrections": [
