@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Meridian work-package protocol gate.
+#
+# IMPL-WP-001 requires a plan record before production code changes, and an
+# accepted independent review before implementation. Nothing enforced either,
+# so both were skipped during baseline repair. This hook makes the rule
+# structural instead of aspirational.
+#
+# Install:  ln -sf ../../.meridian/tools/pre-commit .git/hooks/pre-commit
+#
+# Bypass:   MERIDIAN_WP_OVERRIDE="<reason>" git commit ...
+#           The reason is recorded in state.json as a process deviation.
+#           An empty or missing reason is not a bypass.
+
+set -euo pipefail
+
+STATE=".meridian/implementation/state.json"
+PRODUCTION_PATHS='^(engine|editor|shaders|schemas)/'
+
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+[[ -n "$staged" ]] || exit 0
+
+touched_production="$(printf '%s\n' "$staged" | grep -E "$PRODUCTION_PATHS" || true)"
+[[ -n "$touched_production" ]] || exit 0
+
+fail() {
+  echo "" >&2
+  echo "BLOCKED by the Meridian work-package protocol (IMPL-WP-001)." >&2
+  echo "" >&2
+  echo "  $1" >&2
+  echo "" >&2
+  echo "Production paths staged:" >&2
+  printf '  %s\n' $touched_production >&2
+  echo "" >&2
+  echo "Either complete the protocol, or commit with an explicit reason:" >&2
+  echo "  MERIDIAN_WP_OVERRIDE=\"why this bypass is justified\" git commit ..." >&2
+  echo "" >&2
+  exit 1
+}
+
+if [[ -n "${MERIDIAN_WP_OVERRIDE:-}" ]]; then
+  echo "WARNING: work-package protocol bypassed." >&2
+  echo "  reason: ${MERIDIAN_WP_OVERRIDE}" >&2
+  echo "  Record this as a process deviation in ${STATE}." >&2
+  exit 0
+fi
+
+[[ -f "$STATE" ]] || fail "No ${STATE}. IMPL-STATE-001 bookkeeping must exist before production changes."
+
+read -r PHASE WP < <(python3 - "$STATE" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(d.get("active_phase") or "null", d.get("active_work_package") or "null")
+PY
+)
+
+[[ "$WP" != "null" ]] || fail "state.json declares no active_work_package. No work package is open, so no production change is in scope."
+[[ "$PHASE" != "null" ]] || fail "state.json declares no active_phase."
+
+PLAN=".meridian/implementation/plans/${PHASE}/${WP}.md"
+[[ -f "$PLAN" ]] || fail "No plan record at ${PLAN}. IMPL-WP-001 requires one before production code changes."
+
+if ! grep -qiE '^-?[[:space:]]*\**Verdict:?\**[[:space:]]*:?[[:space:]]*\**accept' "$PLAN"; then
+  fail "Plan ${PLAN} carries no accepted independent review. IMPL-WP-001 requires accept before implementation; without a reviewer the package blocks."
+fi
+
+exit 0

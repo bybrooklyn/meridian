@@ -1,8 +1,8 @@
 # PEN-B08 — Rapid Camera Rotation
 
-[Suite](README.md) · [Penumbra](../../specs/RENDERING_AND_GRAPHICS_SPEC.md)
+[Suite](README.md) · [Penumbra](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated`
+version 1.0 · `DefinitionOnly` · `Uncalibrated`
 
 Purpose: stress visibility churn, Hi-Z/occlusion behavior, streaming prediction,
 input-to-frame latency, motion vectors, exposure, temporal rejection, and

@@ -2,7 +2,8 @@
 
 - Status: Adopted
 - Date: 2026-07-15
-- Spec version: v0.3
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Policy adopted; calibrated corpus planned
 - Owners: validation, benchmark corpus, Project Meridian integration
 - Supersedes: none
@@ -29,14 +30,11 @@ them. Claims that depend on private evidence must say so.
 
 ## Current Evidence
 
-- [Testing, benchmarks, and validation](../../../specs/TESTING_BENCHMARKS_AND_VALIDATION.md)
-- [Project Meridian vertical-slice plan](../../../specs/PROJECT_MERIDIAN_VERTICAL_SLICE_PLAN.md)
-- [Principles and scope](../../../specs/PRINCIPLES_AND_SCOPE.md)
+- [Testing, benchmarks, and validation](../../../MERIDIAN_SPECOMENT.md)
 
-## Intended v0.3 Links
-
-- `specs/TESTING_BENCHMARKS_AND_VALIDATION.md`
-- `specs/PROJECT_MERIDIAN_VERTICAL_SLICE_PLAN.md`
+## Links
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
 - `PLANNING.md`
 
 ## Consequences

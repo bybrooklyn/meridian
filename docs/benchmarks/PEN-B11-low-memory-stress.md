@@ -1,8 +1,8 @@
 # PEN-B11 — Low-Memory Stress
 
-[Suite](README.md) · [Validation](../../specs/TESTING_BENCHMARKS_AND_VALIDATION.md)
+[Suite](README.md) · [Validation](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated`
+version 1.0 · `DefinitionOnly` · `Uncalibrated`
 
 Purpose: apply reproducible memory pressure to unified and discrete-memory
 profiles while traversing representative scenes. Variants isolate texture,

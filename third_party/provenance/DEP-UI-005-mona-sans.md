@@ -6,7 +6,10 @@
 - Retrieved archive: `mona-sans-variable-v2.0.27.zip`, SHA-256 `a95127550b2957ff84cd636d4532b227ddc33d3485082437fa27816ef1d066ec`
 - Selected source: `fonts/variable/MonaSansVF[opsz,wght].ttf`, SHA-256 `84aae10d4427a1947e96b1fd9b26c3109ffa0f50f2faae8ce460ca1e34889ed5`
 - SPDX license: `OFL-1.1`; retained text: `third_party/licenses/mona-sans-OFL-1.1.txt`
-- Source provenance registry: `SRC-UI-005` in `specs/registry/source-provenance.json`
+- Source provenance registry: `SRC-UI-005`. The v0.5 the retired v0.5 source-provenance registry
+  was retired at `PH-AUTH-004`; a v1 provenance registry is not yet built. `LEGAL-005` requires
+  machine-readable provenance for every third-party dependency and the repository has none for
+  its 494 locked packages — recorded as `OD-006`, pre-existing and unmet.
 - Classification: immutable redistributed font asset; no upstream code copied
 - Meridian destination: `engine/meridian_ui_text/assets/fonts/MonaSansVF.ttf`
 - Modifications: file renamed only; font bytes unchanged

@@ -2,7 +2,8 @@
 
 - Status: Adopted
 - Date: 2026-07-15
-- Spec version: v0.3
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Implemented RHI foundation; native backend planned/research
 - Owners: meridian-rhi, platform backend crates
 - Supersedes: none
@@ -26,15 +27,13 @@ No game-facing, source-data, package, scripting, or editor command API exposes
 
 ## Current Evidence
 
-- [Rendering and graphics spec](../../../specs/RENDERING_AND_GRAPHICS_SPEC.md)
-- [Repository and crate architecture](../../../specs/REPOSITORY_AND_CRATE_ARCHITECTURE.md)
+- [Rendering and graphics spec](../../../MERIDIAN_SPECOMENT.md)
 - [Planning ledger](../../../PLANNING.md)
 
-## Intended v0.3 Links
-
-- `specs/RENDERING_AND_GRAPHICS_SPEC.md`
-- `specs/REPOSITORY_AND_CRATE_ARCHITECTURE.md`
-- `specs/TESTING_BENCHMARKS_AND_VALIDATION.md`
+## Links
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
 
 ## Consequences
 

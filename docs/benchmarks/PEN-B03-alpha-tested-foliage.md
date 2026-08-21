@@ -1,8 +1,8 @@
 # PEN-B03 — Flashlight Through Alpha-Tested Foliage
 
-[Suite](README.md) · [Penumbra](../../specs/RENDERING_AND_GRAPHICS_SPEC.md)
+[Suite](README.md) · [Penumbra](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated`
+version 1.0 · `DefinitionOnly` · `Uncalibrated`
 
 Purpose: isolate moving alpha-tested leaves/grass under a controlled flashlight
 and shadow casters. Deterministic sweeps vary layer count, alpha coverage,

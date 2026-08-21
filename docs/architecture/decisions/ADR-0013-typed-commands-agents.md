@@ -2,7 +2,8 @@
 
 - Status: Adopted
 - Date: 2026-07-15
-- Spec version: v0.3
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Command model planned/partial; agents deferred
 - Owners: meridian-commands, editor, CLI, MCP, future agent API
 - Supersedes: none
@@ -26,15 +27,12 @@ Model prose never directly mutates project files.
 
 ## Current Evidence
 
-- [Agent API, MCP, Ollama, and AI spec](../../../specs/AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md)
-- [Editor and Meridian UI spec](../../../specs/EDITOR_AND_MERIDIAN_UI_SPEC.md)
-- [Master specification](../../../specs/MERIDIAN_MASTER_SPEC.md)
+- [Agent API, MCP, Ollama, and AI spec](../../../MERIDIAN_SPECOMENT.md)
 
-## Intended v0.3 Links
-
-- `specs/AGENT_API_MCP_OLLAMA_AND_AI_SPEC.md`
-- `specs/EDITOR_AND_MERIDIAN_UI_SPEC.md`
-- `specs/VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md`
+## Links
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
 
 ## Consequences
 

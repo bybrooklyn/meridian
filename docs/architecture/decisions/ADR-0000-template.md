@@ -2,7 +2,8 @@
 
 - Status: Proposed | Adopted | Superseded
 - Date: YYYY-MM-DD
-- Spec version: v0.5
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Implemented | ImplementedFoundation | StructuralSmoke | Partial | Transitional | Scaffold | Planned | Research | Deferred | Unsupported
 - Owners: owning crates, documents, or workstreams
 - Supersedes: ADR-NNNN or none
@@ -22,8 +23,7 @@ State the chosen architecture and the choices explicitly rejected.
 Link to existing specs, code, tests, traces, captures, or migration records.
 If the decision is planned, say so.
 
-## Intended v0.5 Links
-
+## Links
 List the v0.5 spec, roadmap, validation, migration, or research documents that
 must link to this ADR when those documents are updated.
 

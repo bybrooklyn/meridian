@@ -1,0 +1,18 @@
+test generated_governance_projections_are_not_scanned ... FAILED
+
+failures:
+
+---- generated_governance_projections_are_not_scanned stdout ----
+
+thread 'generated_governance_projections_are_not_scanned' (16733642) panicked at editor/meridian_spec_tools/tests/cli.rs:426:5:
+generated v1 projections must be outside v0.5 scope: error [docs:stale-phase-ref] tests/fixtures/governance_projection/governance/generated/index.md: active document contains a retired phase, v0.2 authority, crate name, or deleted file reference
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    generated_governance_projections_are_not_scanned
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 39 filtered out; finished in 0.40s
+
+error: test failed, to rerun pass `-p meridian-spec --test cli`

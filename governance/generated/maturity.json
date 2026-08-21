@@ -1,0 +1,36 @@
+{
+  "generated": "DO NOT EDIT. Regenerate with: cargo run -p meridian-spec -- project",
+  "canonical_path": "/MERIDIAN_SPECOMENT.md",
+  "canonical_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
+  "generator_version": "specoment-projection/1",
+  "generated_at_source_checkpoint": "specoment:782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
+  "note": "Per-identifier labels are NOT re-emitted here; identifiers.json carries maturity_label. Section 0.3's decision labels are observed rather than declared: the root defines six and headings use more, which is owner decision OD-009. Axis enums are extracted from section 0.4, not transcribed.",
+  "observed_decision_labels": [
+    { "label": "Derived contract; prototype-gated", "identifiers": 5 },
+    { "label": "Derived normative contract", "identifiers": 34 },
+    { "label": "Normative", "identifiers": 423 },
+    { "label": "Normative 1.0 floor", "identifiers": 1 },
+    { "label": "Normative ambition and architecture", "identifiers": 1 },
+    { "label": "Normative ambition and core architecture", "identifiers": 1 },
+    { "label": "Normative ambition and initial architecture", "identifiers": 1 },
+    { "label": "Normative architecture", "identifiers": 1 },
+    { "label": "Normative derived tooling contract", "identifiers": 1 },
+    { "label": "Normative development policy", "identifiers": 1 },
+    { "label": "Normative direction", "identifiers": 44 },
+    { "label": "Normative language contract; implementation research-gated", "identifiers": 1 },
+    { "label": "Normative long-term direction", "identifiers": 2 },
+    { "label": "Normative model; syntax research-gated", "identifiers": 2 },
+    { "label": "Normative product direction", "identifiers": 1 },
+    { "label": "Normative scope boundary", "identifiers": 1 },
+    { "label": "Post-1.0 normative direction; separate product", "identifiers": 1 },
+    { "label": "Post-1.0 planning seed; not a 1.0 requirement", "identifiers": 1 },
+    { "label": "Rejected", "identifiers": 1 },
+    { "label": "Required migration", "identifiers": 2 },
+    { "label": "Research/prototype gate", "identifiers": 2 }
+  ],
+  "axes": [
+    { "axis": "Documentation maturity", "values": ["Draft", "ArchitectureComplete", "ResearchReady", "ImplementationReady", "VerifiedCurrent"] },
+    { "axis": "Implementation maturity", "values": ["Implemented", "ImplementedFoundation", "StructuralSmoke", "Partial", "Transitional", "Scaffold", "Planned", "Research", "Deferred", "Unsupported"] },
+    { "axis": "Evidence status", "values": ["Pass", "Fail", "NotRun", "UnsupportedCapability", "UnsupportedPlatform", "Occluded", "Redacted", "Waived", "Stale", "Inconclusive"] }
+  ]
+}

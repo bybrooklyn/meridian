@@ -7,17 +7,17 @@ making claims or edits.
 
 | Need | Read first |
 | --- | --- |
-| Suite authority and invariants | `specs/MERIDIAN_MASTER_SPEC.md` |
+| Suite authority and invariants | `MERIDIAN_SPECOMENT.md` |
 | Current package and evidence | `PLANNING.md` |
-| Milestone order | `specs/DELIVERY_ROADMAP.md` |
-| Package readiness/completion/concurrency | `specs/IMPLEMENTATION_PLANNING_SPEC.md` |
-| Current implementation maturity | `specs/registry/subsystem-maturity.json` plus code/evidence |
-| Requirements and package mapping | `specs/registry/requirements.json`, `work-packages.json` |
-| Evidence | `specs/registry/evidence.json` and production records |
-| Validation policy | `specs/TESTING_BENCHMARKS_AND_VALIDATION.md` |
+| Milestone order | `MERIDIAN_SPECOMENT.md` Part IV |
+| Package readiness/completion/concurrency | `MERIDIAN_SPECOMENT.md` `IMPL-WP-001` |
+| Current implementation maturity | `governance/generated/`subsystem-maturity.json` plus code/evidence |
+| Requirements and package mapping | `governance/generated/`requirements.json`, `work-packages.json` |
+| Evidence | `governance/generated/`evidence.json` and production records |
+| Validation policy | `MERIDIAN_SPECOMENT.md` |
 | Adopted decisions | `docs/architecture/decisions/README.md` |
-| Conflicts/history | `specs/SPEC_MIGRATION_AND_CONTRADICTIONS.md` |
-| Open research | `specs/RESEARCH_AND_ALGORITHM_DECISIONS.md` |
+| Conflicts/history | `MERIDIAN_SPECOMENT.md` |
+| Open research | `MERIDIAN_SPECOMENT.md` |
 | Private creative authority | `game/docs/README.md` and its owning game document |
 
 ## Named architecture
@@ -44,17 +44,6 @@ beginner-friendly modeler with optional DCC interchange.
 
 | ID | User-visible gate |
 | --- | --- |
-| `MS-00` | coherent governance/specification suite |
-| `MS-01` | observable runtime and source foundations |
-| `MS-02` | Meridian UI core proof |
-| `MS-03` | Creator Editor Alpha |
-| `MS-04` | Penumbra production Forward+ foundation |
-| `MS-05` | representative forest renderer |
-| `MS-06` | bounded Project Meridian prototype |
-| `MS-07` | production-quality opening playable slice |
-| `MS-08` | Engine Alpha and native Metal |
-| `MS-09` | Engine Beta and native Vulkan/D3D12 where gated |
-| `MS-10` | declared 1.0 profile qualification |
 
 Milestones are evidence gates, not dates. `PRG-*` programs are post-1.0 and
 cannot satisfy, block, or promote `MS-*` milestones.
@@ -65,7 +54,7 @@ cannot satisfy, block, or promote `MS-*` milestones.
 - Work package: `WP-<DOMAIN>-NNN`
 - Research gate: `RG-<DOMAIN>-NNN`
 - Evidence: `EV-<DOMAIN>-YYYYMMDD-NNN`
-- Milestone: `MS-00` through `MS-10`
+- Phases: `PH-AUTH-001` onward, defined in `MERIDIAN_SPECOMENT.md` Part IV and projected to `governance/generated/phases.json`.
 - Post-1.0 program: `PRG-<DOMAIN>-NNN`
 - Validation project: `VAL-<DOMAIN>-NNN`
 - Dependency strategy: `DEP-<DOMAIN>-NNN`
@@ -127,7 +116,7 @@ quality. This snapshot will age; verify every claim live.
   typed outcomes separately.
 - The `meridian-editor` Cargo package owns the executable named `meridian`; the
   product/window name remains **Meridian**.
-- MS-01 JSON source, compiled-cell, `.meridian` package, and save encodings are
+- the phase roadmap JSON source, compiled-cell, `.meridian` package, and save encodings are
   provisional versioned foundations. Do not claim final format stability or add
   compression/signing/encryption without the owning package.
 - Generated smoke/evidence files belong under `target/meridian-evidence/` (or a

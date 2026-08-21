@@ -1,0 +1,27 @@
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 1 test
+v1_staging_authority_is_not_scanned --- FAILED
+
+failures:
+
+---- v1_staging_authority_is_not_scanned stdout ----
+
+thread 'v1_staging_authority_is_not_scanned' (14041448) panicked at editor/meridian_spec_tools/tests/cli.rs:95:5:
+root MERIDIAN_SPECOMENT.md must be outside v0.5 scope: error [list-unmapped:unmapped-id] tests/fixtures/v1_staging/.meridian/notes.md: VAL-PORTFOLIO-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] tests/fixtures/v1_staging/MERIDIAN_SPECOMENT.md: PRG-RECON-001 appears in docs but not specs/registry
+error [list-unmapped:unmapped-id] tests/fixtures/v1_staging/docs/legit.md: REQ-999 appears in docs but not specs/registry
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    v1_staging_authority_is_not_scanned
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 38 filtered out; finished in 0.80s
+
+error: test failed, to rerun pass `-p meridian-spec --test cli`

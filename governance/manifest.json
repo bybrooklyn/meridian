@@ -1,0 +1,17 @@
+{
+  "generated": "DO NOT EDIT. Regenerate with: cargo run -p meridian-spec -- project",
+  "canonical_path": "/MERIDIAN_SPECOMENT.md",
+  "canonical_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
+  "generator_version": "specoment-projection/1",
+  "generated_at_source_checkpoint": "specoment:782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
+  "projections": [
+    { "path": "governance/generated/index.md", "sha256": "84f34b9c5cc811ec2616e626d89f7d179ff3c52d0d121a16c28ea8a3e8d83c81" },
+    { "path": "governance/generated/identifiers.json", "sha256": "ad9ba9ee50be85adb15190a336e6e0738fb9c1068b97ae44b83338121b9f36b5" },
+    { "path": "governance/generated/requirements.json", "sha256": "3d9cc92a8e61972aaaaef6ee13306e6e2dceca620abbd30d9cd2c3866be87a51" },
+    { "path": "governance/generated/phases.json", "sha256": "ce07e39d12037ab0e0b0f0bb33d6dee3de0b05b117b27d176f70be3fbaebedde" },
+    { "path": "governance/generated/research-gates.json", "sha256": "ac0a7d1bdd969afdc99f6d6b91de5d9247f8290ca366dfc784e19f1a5ca34115" },
+    { "path": "governance/generated/work-packages.json", "sha256": "70e7e307253732ca60b3ada416262e87a2de247859257c553bb68f6b7e181c21" },
+    { "path": "governance/generated/maturity.json", "sha256": "b5aa5c6abcba06ce8068a1642e348b01c0a85748a1cb74bf2e041f06ae60e11f" },
+    { "path": "governance/coverage-matrix.md", "sha256": "621c3ff222b960d28a3df4fac0cd16cf95110e77cfa3d686d375d6200f673b28" }
+  ]
+}

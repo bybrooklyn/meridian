@@ -1,8 +1,8 @@
 # PEN-B14 — Transparency-Heavy Scene
 
-[Suite](README.md) · [Penumbra](../../specs/RENDERING_AND_GRAPHICS_SPEC.md)
+[Suite](README.md) · [Penumbra](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated`
+version 1.0 · `DefinitionOnly` · `Uncalibrated`
 
 Purpose: stress sorted/blended surfaces, particles, smoke, decals, alpha-tested
 layers, local lights, shadows, depth interactions, and temporal reconstruction.

@@ -2,7 +2,8 @@
 
 - Status: Adopted
 - Date: 2026-07-15
-- Spec version: v0.3
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Planned baseline with implemented renderer foundations
 - Owners: meridian-renderer, meridian-render-graph, meridian-rhi
 - Supersedes: none
@@ -28,16 +29,14 @@ vendor upscalers. These remain research or later-milestone options.
 
 ## Current Evidence
 
-- [Rendering and graphics spec](../../../specs/RENDERING_AND_GRAPHICS_SPEC.md)
-- [Delivery roadmap](../../../specs/DELIVERY_ROADMAP.md)
+- [Rendering and graphics spec](../../../MERIDIAN_SPECOMENT.md)
 - [Planning ledger](../../../PLANNING.md)
-- [Validation spec](../../../specs/TESTING_BENCHMARKS_AND_VALIDATION.md)
+- [Validation spec](../../../MERIDIAN_SPECOMENT.md)
 
-## Intended v0.3 Links
-
-- `specs/RENDERING_AND_GRAPHICS_SPEC.md`
-- `specs/DELIVERY_ROADMAP.md`
-- `specs/PROJECT_MERIDIAN_VERTICAL_SLICE_PLAN.md`
+## Links
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
 
 ## Consequences
 

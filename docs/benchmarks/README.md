@@ -1,10 +1,10 @@
 # Penumbra Benchmark Definitions
 
-version 0.5 · All workloads are `DefinitionOnly` / `Uncalibrated`
+version 1.0 · All workloads are `DefinitionOnly` / `Uncalibrated`
 
 The machine-readable authority is
-[`specs/registry/workloads.json`](../../specs/registry/workloads.json); the
-[validation specification](../../specs/TESTING_BENCHMARKS_AND_VALIDATION.md)
+``governance/generated/``; the
+[validation specification](../../MERIDIAN_SPECOMENT.md)
 owns evidence and report policy. Markdown files explain scenario intent. They
 are not benchmark results.
 

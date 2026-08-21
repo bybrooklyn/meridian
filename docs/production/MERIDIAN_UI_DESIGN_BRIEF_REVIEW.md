@@ -3,7 +3,7 @@
 Version: 2026-07-17
 
 Status: non-normative reviewed production input. The normative contract is
-[Editor and Meridian UI Specification](../../specs/EDITOR_AND_MERIDIAN_UI_SPEC.md).
+[Editor and Meridian UI Specification](../../MERIDIAN_SPECOMENT.md).
 
 Source reviewed: the user-supplied `MERIDIAN_UI_DESIGN_BRIEF.md`. This review
 preserves useful intent while preventing concept-art language, private game

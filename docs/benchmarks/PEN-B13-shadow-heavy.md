@@ -1,8 +1,8 @@
 # PEN-B13 — Shadow-Heavy Scene
 
-[Suite](README.md) · [Penumbra](../../specs/RENDERING_AND_GRAPHICS_SPEC.md)
+[Suite](README.md) · [Penumbra](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated`
+version 1.0 · `DefinitionOnly` · `Uncalibrated`
 
 Purpose: isolate directional cascades and many local shadow casters across
 static/dynamic update, cache/atlas policy, alpha-tested casters, large ranges,
