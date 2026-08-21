@@ -2,7 +2,7 @@
   "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
   "source_checkpoint": "e9a7ff6f7c0f41a34250c197e6c8db3e11eda16e",
   "active_phase": "PH-AUTH-005",
-  "active_work_package": null,
+  "active_work_package": "WP-V1-CENSUS-001",
   "completed_phases": [
     "PH-AUTH-001",
     "PH-AUTH-002",
@@ -342,6 +342,13 @@
       "detail": "The PH-AUTH-005 card directs 'Treat all current code as ExistingUnqualified after reset.' Section 0.4's implementation-maturity enum is Implemented, ImplementedFoundation, StructuralSmoke, Partial, Transitional, Scaffold, Planned, Research, Deferred, Unsupported. ExistingUnqualified is not among them and appears only twice in the document, both inside this phase card and its Appendix G serialization.",
       "found": "by the drafting agent while pre-verifying its own plan figures",
       "disposition": "The census emits card_disposition (verbatim ExistingUnqualified) and implementation_maturity (null, with a note that no 0.4 value has been earned under v1 evidence). Projecting it as a 0.4 value would invent a status, which PH-AUTH-003's stop condition forbids; projecting a 0.4 value instead would assert maturity the card refuses to grant."
+    },
+    {
+      "id": "SD-013",
+      "subject": "artefacts derived from the source tree are a third class",
+      "detail": "SD-011 split artefacts into root projections (class a, policed by byte-identity against the specoment digest) and accumulated state (class b, policed by conformance). A census is neither: derived, so not (b); derived from cargo metadata and the source tree rather than from the specoment, so not (a). Placing it in emit::all() would invert its staleness key, make project --check machine-dependent through absolute manifest paths, contaminate governance/manifest.json, and make Appendix D rules 2 and 6 unsatisfiable since crate names are not specoment stable IDs.",
+      "found": "independent review of WP-V1-CENSUS-001 revision 1",
+      "disposition": "Class (c) established: lives under .meridian/implementation/, schema under governance/schemas/, stamped with a source_tree_checkpoint and policed by regeneration."
     }
   ],
   "corrections": [
