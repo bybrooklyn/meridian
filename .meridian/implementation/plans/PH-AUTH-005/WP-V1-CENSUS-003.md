@@ -21,44 +21,66 @@ dependencies, 7 features, 14 examples, 6 evidence runners, 15 formats, 791 tests
 files, 3 CI rows, **96** edges (84 mandatory, 12 optional) over 8 layers. **1,801
 judgement-bearing rows.** Every judgement field is null. Ten limitations recorded.
 
-## The mappable universe — corrected, and the reason it matters
+## The mappable universe — corrected twice
 
-The previous draft used `requirements.json` (527 ids) and excluded 5 for non-v1 maturity,
-declaring 522 mappable. That was the wrong projection, and the error was not neutral.
+The first draft used `requirements.json` (527 ids) and declared 522 mappable. That was the
+wrong projection. `requirements.json` is the subset of declared identifiers whose heading ends
+in `— *Label*`; `identifiers.json` holds **736**, so 209 declared identifiers are invisible to
+it, of which 96 are product requirements — including `ED-AOT-001..005` and `EDUX-VIS-001..010`,
+which are exactly what `meridian-ui-editor`'s 59 tests assert
+(`creator_workspace_uses_the_locked_shell_and_world_width_priorities`). Under that draft their
+honest owners did not exist, so ~120 editor tests would have become escalations manufactured by
+a projection defect.
 
-`requirements.json` is the subset of declared identifiers whose heading ends in `— *Label*`.
-`identifiers.json` holds **736**. **209 declared identifiers are invisible to
-`requirements.json`**, of which ~98 are product requirements — including every one of
-`ED-AOT-001..005` (*Moderate professional density*, *Persistent top workspace strip*,
-*Three-column World workspace with viewport priority*) and `EDUX-VIS-001..010`. They are
-dropped because their labels sit on a parent heading (`ED-AOT-001..005 — *Normative*`, line
-19468) rather than on each child.
-
-Those are precisely the ids that describe `meridian-ui-editor`'s 59 tests —
-`creator_workspace_uses_the_locked_shell_and_world_width_priorities`,
-`world_tool_panel_headers_use_one_quiet_hairline_divider`. Under the previous draft their
-honest owners did not exist, so ~120 editor-UX tests would have become escalations produced by
-a projection defect rather than by a real open question.
-
-**The universe is therefore derived from `identifiers.json`:**
+The second draft fixed the universe but **kept the exclusion keyed to the id's own label**, in a
+universe that no longer requires ids to have one. That leaked six post-1.0 ids straight back in:
 
 ```text
-cargo run -q -p meridian-spec -- project   # regenerates both projections
-python3 - <<'EOF'
-import json,re
-ids={x['id'] for x in json.load(open('governance/generated/identifiers.json'))['identifiers']}
-req={r['id']:r for r in json.load(open('governance/generated/requirements.json'))['requirements']}
-proc={i for i in ids if re.match(r'^(PH|WP|SD|OD|EV|IMPL-WP)-',i)}
-nonv1={i for i,r in req.items() if r['maturity_label'] in (
-  'Rejected','Post-1.0 planning seed; not a 1.0 requirement',
-  'Post-1.0 normative direction; separate product','Research/prototype gate')}
-print(len(ids-proc-nonv1))   # 617
-EOF
+### Deferred first-party self-hosted game-server orchestrator `SRV-016..022`
+    — *Post-1.0 normative direction; separate product*        (line 28108)
+#### Game-server-specific control plane `SRV-017`              (line 28114, no label)
+#### AGPL service boundary `SRV-022`                           (line 28173, no label)
 ```
 
-**736 declared − 114 process − 5 non-v1 = 617 mappable**, of which 521 are labelled and **96
-are declared but unlabelled**. The 96 are recorded as a census limitation and are legal owners;
-the label gap is `OD-009`'s subject, not this package's to fix.
+`SRV-016` is in `requirements.json` and was excluded; `SRV-017..022` are not, and passed as
+legal v1 owners. The draft's own evidence clause — "the 5 non-v1 ids are rejected" — would have
+gone green while a deferred, separately-licensed orchestrator stood as a mappable requirement.
+That is the excluded-hard-case pattern recurring **inside the correction written to eliminate
+it**, one level deeper, which is this lineage's documented failure mode.
+
+**One rule, applied in both directions: a heading that declares a range and carries a label
+gives that label to every member.** It excludes `SRV-017..022` and simultaneously recovers
+`ED-AOT-001..005` as `Normative`.
+
+```text
+cargo run -q -p meridian-spec -- project
+# range-inheritance derivation over identifiers.json + the specoment's range headings:
+#   736 declared − 114 process − 11 non-v1  =  611 mappable
+#   of which 526 labelled, 85 declared-but-unlabelled
+```
+
+The process filter `^(PH|WP|SD|OD|EV|IMPL-WP)-` removes **this programme's own phase,
+work-package and decision identifiers** — things no code implements. Contracts code does
+implement stay in, which is why `IMPL-STATE-001`, `IMPL-SCM-001` and `AGENT-SEM-*` are mappable
+while `IMPL-WP-*` is not. `IMPL-WP-001` is cited in Ownership as protocol authority, never as an
+owner id. Stated because the cut otherwise reads as arbitrary.
+
+### The 85 unlabelled ids are a separate owner decision
+
+The previous draft deferred these to `OD-009`. That was wrong on its own terms: `OD-009` asks
+whether to *normalise 24 unlisted label suffixes onto the six defined in §0.3* — a question
+about labels that exist. These 85 have **no label at all**, so `OD-009`'s question does not
+reach them, and the draft's own stop rule forbids naming a non-covering record.
+
+Measured, after range inheritance resolves the recoverable class to zero:
+
+| Class | Count | Cause |
+|---|---|---|
+| range parent that is itself unlabelled | 35 | `AI-POLICY` 8, `NORM-MIG` 12, `EDUX-VIS` 10, `DIST` 5 |
+| no range parent at all | 50 | `AI` 26, `SRV` 5, `TWO` 5, `MOD` 4, … |
+
+A new record carries this, with those two classes as its closed options. They are legal owners
+meanwhile, and that is recorded as a census limitation.
 
 ## Where the assignments live
 
@@ -131,29 +153,55 @@ cap was unsatisfiable as well as gameable.
 
 Replaced by:
 
-- **Per-family cap.** No requirement *family* (`UI`, `ED-AOT`, `SPEC`, …) owns more than 25 % of
-  mapped tests. Spreading within a family does not evade it; genuine clustering is not punished.
+- **Per-family cap, derived in step 1 — not pre-set.** A family cap is the right shape: spreading
+  within a family does not evade it, and genuine clustering is not punished. But any number
+  chosen before the mapping repeats the failure this plan diagnoses two sections earlier. A
+  worked check shows why 25 % would have been wrong: the six `meridian-ui-*` crates hold **256**
+  tests and `meridian-renderer/src/ui_direct*.rs` adds **51** more that plausibly serve `UI-008`,
+  giving ~307 against a 25 % ceiling of 197.75. The `UI` family breaches it before a single
+  judgement is made. The cap is therefore set from the measured `meridian-spec` and
+  `meridian-ui-editor` mappings and recorded as measured.
 - **No crate with ≥ 5 tests maps entirely to one id.** Retained — it does honest work.
+- **The distinct-id count is recorded, not gated.** With ~30 named rules covering ~1,650 rows
+  the map may carry as few as ~30–60 distinct ids, below the floor this plan withdrew.
+  Withdrawing it was right and id-coverage is the better control, but the measured count goes
+  in the completion record so "the map got coarser" is visible without re-deriving it.
 - **Every distinct id used appears in the audit sample at least once**, with its heading text
   quoted beside one test's assertion. This is the control that kills round-robin: a script
   producing 66 ids must then defend 66 id-to-assertion pairs in prose.
 
 ## The audit
 
-Seeded from `source_tree_checkpoint`, with the seed recorded, so the draw is reproducible and a
-sample chosen after the fact is not passed off as a sample. **Stratified, ~60 rows**: all 37
-crate rows (the highest-leverage section, and previously audited by nothing), one row per
-`(file, module)` group of ≥ 10 tests, one row per distinct requirement id used, one row per
-non-test section, plus a random remainder.
+Two instruments, stated separately because merging them made the previous draft's "~60 rows"
+arithmetically impossible — 37 crate rows + 23 groups of ≥ 10 tests + 8 non-test sections is
+**68 before** the per-id stratum, and the per-id stratum is the largest.
+
+**(a) Id coverage — a completeness obligation, not a sample.** Every distinct requirement id
+used appears with its heading text quoted beside one test's assertion. Its size is unknown
+until step 1 and is reported as measured. This is the control that kills round-robin: a script
+producing *n* ids must then defend *n* id-to-assertion pairs in prose.
+
+**(b) Sampled audit — 37 crate rows + 23 group rows + 8 non-test section rows + a seeded random
+remainder, ≈ 75–80.** Seeded from `source_tree_checkpoint` with the seed recorded, so the draw
+is reproducible and a sample chosen after the mapping is not passed off as a sample.
 
 Arithmetic, stated rather than assumed: at *n* = 30 of *N* = 791 with 100 wrong, P(catch ≥ 1) =
 98.4 %. So 30 detects a gross error — but a **clean** 30-row audit certifies only that fewer
 than ~74 rows (9.4 %) are wrong at 95 %, a blind spot larger than any plausible escalation
 budget. 60 stratified rows across all sections is the smallest honest instrument.
 
-**The sample goes to the independent reviewer, not into a self-certified record.** Four rounds
-on `-002` established that self-review does not catch category errors: `meridian-spec`'s seven
-phantom re-exports came from the doc comment on the function doing the counting.
+**Routing, with a mechanism rather than an intention.** `IMPL-WP-001` mandates review *before*
+implementation and defines no post-implementation step, so "goes to the reviewer" would in
+practice mean self-certification. The contract's own re-entry clause is the hook: *"If
+implementation materially exceeds it because the diagnosis or architecture changed, revise the
+plan and repeat independent review before continuing."*
+
+**Trigger, named explicitly:** the step-1 measured budget being exceeded, or **any audit row
+failing**, re-opens independent review under `IMPL-WP-001`, and the reviewer — not the author —
+accepts the written reason. The round is recorded in `state.json` `review_rounds`. Without this
+the budget is advisory and the audit is self-graded. Four rounds on `-002` established that
+self-review does not catch category errors: `meridian-spec`'s seven phantom re-exports came
+from the doc comment on the function doing the counting.
 
 ## Owner decisions
 
@@ -170,8 +218,9 @@ wearing an id.
 
 Planned: one each for `meridian-physics`, `meridian-shader-tools` and `meridian-ui` (three
 different rulings with different evidence, not one); one for the 3 macro-generated public types;
-one per affected requirement family for tests whose behaviour no v1 requirement describes; and
-**one for the layer ordering itself**.
+one per affected requirement family for tests whose behaviour no v1 requirement describes;
+**one for the 85 unlabelled declared identifiers**, with the two measured classes as its options;
+and **one for the layer ordering itself**.
 
 That last is owed and the previous draft omitted it. Every `reverse` verdict is judged against
 `census.json`'s `layers` array, which `-001` emitted as the census's own judgement while stating
@@ -220,8 +269,11 @@ question.
   ten sections; both-set, neither-set, out-of-vocabulary and unresolved-`OD-*` failures each
   rejected naming row and section.
 - The **on-disk** census is schema-validated, not only generator output.
-- Every retained test's owner is in the 617-id mappable universe; the 5 non-v1 ids are rejected;
-  `ED-AOT-003` is accepted, proving the 96 unlabelled ids are reachable.
+- Every retained test's owner is in the **611**-id mappable universe. `APP-003` (Rejected),
+  `SRV-016` **and `SRV-022`** are rejected — the second proves range inheritance excludes
+  unlabelled members of a labelled non-v1 range, which the previous draft admitted as owners.
+  `ED-AOT-003` is accepted, proving inheritance recovers labelled range members.
+  `EDUX-VIS-001` is accepted as one of the 85, proving unlabelled ids stay reachable.
 - The four marker crates are `remove`; `meridian-physics`, `meridian-shader-tools`,
   `meridian-ui` and the layer ordering carry escalations.
 - Per-family cap, per-crate single-id rule, and every-id-in-audit all assert and fail the build.
@@ -233,7 +285,7 @@ question.
 ## Failure injection and recovery
 
 Set both judgement fields; set neither; name `OD-011` (resolved); name `OD-999`; assign outside
-the vocabulary; map a test to `APP-003` (Rejected) and `SRV-016` (post-1.0); delete a crate whose
+the vocabulary; map a test to `APP-003` (Rejected), `SRV-016` and `SRV-022` (post-1.0, the second unlabelled); delete a crate whose
 disposition remains; insert a blank line and confirm no orphan; map every test in a crate to one
 id; push a family past 25 %; use an id that appears in no audit row. Each must fail naming the row.
 
