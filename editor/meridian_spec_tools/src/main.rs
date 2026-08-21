@@ -202,6 +202,12 @@ fn check_v1(config: &Config, issues: &mut Vec<Issue>) -> Result<(), String> {
             match census_json(&config.root, &digest) {
                 Ok(rendered) => {
                     let target = config.root.join(".meridian/implementation/census.json");
+                    // Shape, against the checked-in schema. WP-V1-CENSUS-001 promised this
+                    // and shipped without it, leaving the XOR invariant asserted only in
+                    // prose — which is how a wholly zeroed census passed every gate.
+                    for problem in specoment::census::schema_problems(&config.root, &rendered) {
+                        push(issues, "census-schema", "governance", &target, &problem);
+                    }
                     match fs::read_to_string(&target) {
                         Ok(existing) if existing == rendered => {}
                         Ok(_) => push(

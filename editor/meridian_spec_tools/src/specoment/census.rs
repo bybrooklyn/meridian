@@ -29,6 +29,13 @@ pub struct CrateRow {
     pub source_lines: usize,
     pub source_bytes: u64,
     pub declared_public_items: usize,
+    /// Items this crate re-exports rather than declares.
+    ///
+    /// `WP-V1-CENSUS-001` argued for this field explicitly — "a document whose declared test is
+    /// 'every public API has one owner and disposition' cannot report 0 for a crate exporting
+    /// hundreds" — and then shipped without it, so `meridian-ui` reported 5 while forwarding
+    /// roughly 213. Counted as the items reachable through this crate's glob re-exports.
+    pub reexported_public_items: usize,
     /// Tests in this crate's `src/` only. The `tests` section counts every `#[test]` in the
     /// workspace including `tests/` and `examples/`, so the two totals differ by design —
     /// stated here so the gap reads as a definition rather than a contradiction.
@@ -41,7 +48,11 @@ pub struct FormatRow {
     pub name: String,
     pub magic: Option<String>,
     pub version_constant: Option<String>,
-    pub owner: String,
+    /// The crate that owns this format. Named `owning_crate`, not `owner`: the card requires
+    /// "one disposition **and next phase**", and tests additionally need a requirement id, so
+    /// a single `owner` field would have meant three different things across three sections
+    /// and writing a phase id here would have overwritten `meridian-package`.
+    pub owning_crate: String,
 }
 
 /// A dependency edge. `reverse` is derived from the declared layer order, never asserted.
@@ -132,10 +143,66 @@ fn layer_of(crate_name: &str) -> Option<usize> {
         .position(|(_, members)| members.contains(&crate_name))
 }
 
+/// One public item, as a row rather than a per-crate scalar.
+///
+/// The card's declared test is that every **public API** has one owner and disposition. That is
+/// unsatisfiable against a scalar, which is why `WP-V1-CENSUS-001` could report 920 public
+/// items and still leave every one of them unaddressable.
+#[derive(Debug, Clone)]
+pub struct PublicTypeRow {
+    pub krate: String,
+    pub item: String,
+    pub kind: String,
+    pub file: String,
+    pub line: usize,
+}
+
+/// One third-party dependency. `licence` is deliberately null: `OD-006` records that
+/// `LEGAL-005` provenance is unmet for exactly these, and this package inventories them
+/// without pretending to resolve it.
+#[derive(Debug, Clone)]
+pub struct DependencyRow {
+    pub name: String,
+    pub direct: bool,
+}
+
+/// One cargo feature definition.
+#[derive(Debug, Clone)]
+pub struct FeatureRow {
+    pub krate: String,
+    pub feature: String,
+    pub enables: Vec<String>,
+}
+
+/// One example target.
+#[derive(Debug, Clone)]
+pub struct ExampleRow {
+    pub krate: String,
+    pub name: String,
+}
+
+/// One evidence runner: a CI invocation that writes to an `--evidence` path.
+#[derive(Debug, Clone)]
+pub struct EvidenceRunnerRow {
+    pub krate: String,
+    /// The source target, or the workflow line for a CI step with no matching target.
+    pub target: String,
+    /// Where CI writes this runner's evidence, or `None` when nothing invokes it.
+    pub evidence_path: Option<String>,
+    pub wired_in_ci: bool,
+    /// Whether a failure gates the build — from `continue-on-error`, not from the step name.
+    pub promoting: bool,
+}
+
 /// The measured census.
 #[derive(Debug, Default)]
 pub struct Census {
     pub crates: Vec<CrateRow>,
+    pub public_types: Vec<PublicTypeRow>,
+    pub dependencies: Vec<DependencyRow>,
+    pub features: Vec<FeatureRow>,
+    pub examples: Vec<ExampleRow>,
+    pub evidence_runners: Vec<EvidenceRunnerRow>,
     pub formats: Vec<FormatRow>,
     pub edges: Vec<EdgeRow>,
     pub tests: Vec<TestRow>,
@@ -148,10 +215,20 @@ pub struct Census {
 pub struct TestRow {
     pub file: String,
     pub line: usize,
+    /// The `mod` path containing this test, or `<root>`. Promised by `WP-V1-CENSUS-001` and
+    /// absent from its output, which silently reduced "module granularity" to file
+    /// granularity — and one file holds 122 tests.
+    pub module: String,
     pub function: String,
 }
 
-/// Count `pub` items declared at module root.
+/// Count `pub` items **declared** at module root.
+///
+/// Shares [`public_item`]'s predicate so the scalar and the row count cannot disagree. The
+/// naive `^pub ` count is 20 higher because it counts `pub use` re-export statements as
+/// declarations — which is how `meridian-ui` came to report "5 declared" for a facade that
+/// declares nothing at all and forwards 213 items. A re-export is counted in
+/// `reexported_public_items`, where it belongs.
 ///
 /// `^pub ` across all files, which is 213 for the four crates `meridian-ui` globs. The
 /// alternative — `pub` item keywords at any indentation, 462 — counts `pub fn` methods inside
@@ -164,30 +241,283 @@ pub struct TestRow {
 /// "what does this glob forward". A resolution-based count is the honest long-term answer and
 /// is recorded as a limitation, not silently approximated.
 fn declared_public_items(text: &str) -> usize {
-    text.lines().filter(|line| line.starts_with("pub ")).count()
+    text.lines()
+        .filter(|line| public_item(line).is_some())
+        .count()
+}
+
+/// Count items named in `pub use path::{A, B, C};` that come from **another** crate.
+///
+/// Two corrections live here, both found by review rather than by the tests.
+///
+/// The input must be stripped of comments and string literals first. Counting raw text made
+/// this function count its own documentation: `meridian-spec` declares no `pub use` at all and
+/// reported 7 re-exports, every one of them from the doc comments in this file — the same
+/// self-measurement class as a `#[test]` grep that reads a source file's own prose.
+///
+/// And a re-export of the crate's **own** submodule surfaces an item the crate already
+/// declares. `meridian-renderer`'s `pub use camera::{Camera, ...}` re-surfaces items already
+/// counted in its declared 93, so summing them double-counts. This field exists for exactly
+/// one purpose, argued at length in `WP-V1-CENSUS-001`: a facade that declares nothing and
+/// exposes hundreds. Only cross-crate re-exports serve that purpose, so `local_modules` — the
+/// crate's own module names — are excluded.
+fn named_reexport_count(text: &str, local_modules: &[String]) -> usize {
+    let code = strip_literals(text);
+    let mut total = 0;
+    let mut rest = code.as_str();
+    while let Some(at) = rest.find("pub use ") {
+        rest = &rest[at + 8..];
+        let Some(end) = rest.find(';') else { break };
+        let statement = &rest[..end];
+        // Exact segment match. `trim_start_matches` strips every leading repetition and would
+        // mangle a segment that merely begins with those letters (`selfish`, `crateful`).
+        let mut segments = statement.split("::");
+        let mut first = segments.next().unwrap_or_default().trim();
+        if first == "crate" || first == "self" || first == "super" {
+            first = segments.next().unwrap_or_default().trim();
+        }
+        let intra_crate = local_modules.iter().any(|m| m == first);
+        if !intra_crate {
+            if let (Some(open), Some(close)) = (statement.find('{'), statement.rfind('}')) {
+                if close > open {
+                    total += statement[open + 1..close]
+                        .split(',')
+                        .filter(|part| !part.trim().is_empty())
+                        .count();
+                }
+            }
+        }
+        rest = &rest[end..];
+    }
+    total
+}
+
+/// Classify one module-root `pub` line into (kind, item name).
+///
+/// Deliberately the same `^pub ` criterion as [`declared_public_items`], so the row count and
+/// the scalar cannot disagree — a mismatch between two counts of the same thing was how the
+/// format sweep hid a bug in `WP-V1-CENSUS-001`.
+fn public_item(line: &str) -> Option<(String, String)> {
+    let rest = line.strip_prefix("pub ")?;
+    let rest = rest.strip_prefix("async ").unwrap_or(rest);
+    let rest = rest.strip_prefix("unsafe ").unwrap_or(rest);
+    let (kind, tail) = rest.split_once(' ')?;
+    if !matches!(
+        kind,
+        "fn" | "struct" | "enum" | "trait" | "type" | "const" | "static" | "mod" | "union"
+    ) {
+        return None;
+    }
+    let item = tail
+        .split(['(', '<', ':', ' ', ';', '{'])
+        .next()?
+        .trim()
+        .to_string();
+    if item.is_empty() {
+        None
+    } else {
+        Some((kind.to_string(), item))
+    }
+}
+
+/// `pub use some_crate::*;` — the statement that makes a façade's declared count a lie.
+fn glob_reexport(line: &str) -> Option<String> {
+    let rest = line.trim().strip_prefix("pub use ")?;
+    let target = rest.strip_suffix("::*;")?;
+    Some(target.replace('_', "-"))
+}
+
+/// Blank every literal and comment in a file, preserving line structure exactly.
+///
+/// Whole-file rather than per-line, because Rust literals span lines: a raw string
+/// `r#"{{ ... }}"#` holding JSON braces defeats any per-line stripper, which resets its state
+/// at each newline and then counts the fixture's braces as code.
+///
+/// Line-for-line correspondence is a hard requirement — the caller indexes this output by
+/// source line number — so every newline is emitted unconditionally and the state machine
+/// never advances past one. An earlier draft skipped two characters at each escape, which
+/// could step over a newline: it lost four lines out of 1,784, shifted the output by four, and
+/// attributed `mod tests {`'s brace to the `#[cfg(test)]` above it.
+fn strip_literals(text: &str) -> String {
+    #[derive(Clone, Copy, PartialEq)]
+    enum State {
+        Code,
+        LineComment,
+        BlockComment(usize),
+        Str,
+        Char,
+        Raw(usize),
+    }
+
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut state = State::Code;
+    let mut escaped = false;
+    let mut i = 0;
+
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '\n' {
+            out.push('\n');
+            if state == State::LineComment {
+                state = State::Code;
+            }
+            escaped = false;
+            i += 1;
+            continue;
+        }
+        match state {
+            State::LineComment => {}
+            State::BlockComment(depth) => {
+                if c == '*' && chars.get(i + 1) == Some(&'/') {
+                    state = if depth == 1 {
+                        State::Code
+                    } else {
+                        State::BlockComment(depth - 1)
+                    };
+                    i += 1;
+                } else if c == '/' && chars.get(i + 1) == Some(&'*') {
+                    state = State::BlockComment(depth + 1);
+                    i += 1;
+                }
+            }
+            State::Str | State::Char => {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if (state == State::Str && c == '"') || (state == State::Char && c == '\'') {
+                    state = State::Code;
+                }
+            }
+            State::Raw(hashes) => {
+                if c == '"' {
+                    let closed = (0..hashes).all(|k| chars.get(i + 1 + k) == Some(&'#'));
+                    if closed {
+                        i += hashes;
+                        state = State::Code;
+                    }
+                }
+            }
+            State::Code => {
+                if c == '/' && chars.get(i + 1) == Some(&'/') {
+                    state = State::LineComment;
+                } else if c == '/' && chars.get(i + 1) == Some(&'*') {
+                    state = State::BlockComment(1);
+                    i += 1;
+                } else if c == '"' {
+                    state = State::Str;
+                } else if c == '\'' && is_char_literal(&chars, i) {
+                    state = State::Char;
+                } else if let Some(hashes) = raw_string_at(&chars, i) {
+                    // Skip `r`/`br` and its hashes; the opening quote lands us in Raw.
+                    let lead = usize::from(c == 'b');
+                    i += lead + 1 + hashes;
+                    state = State::Raw(hashes);
+                } else {
+                    out.push(c);
+                }
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Strip comments but keep string literals, for searches whose target lives inside a string.
+fn strip_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with("//") {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// A char literal closes within a few characters; a lifetime (`&'a T`) never does.
+fn is_char_literal(chars: &[char], i: usize) -> bool {
+    if chars.get(i + 1) == Some(&'\\') {
+        return (2..=5).any(|k| chars.get(i + k) == Some(&'\''));
+    }
+    chars.get(i + 2) == Some(&'\'')
+}
+
+/// `r"`, `r#"`, `br"`, `br##"` … returns the hash count if this position opens a raw string.
+fn raw_string_at(chars: &[char], i: usize) -> Option<usize> {
+    let start = match chars.get(i) {
+        Some('r') => i,
+        Some('b') if chars.get(i + 1) == Some(&'r') => i + 1,
+        _ => return None,
+    };
+    let mut h = start + 1;
+    while chars.get(h) == Some(&'#') {
+        h += 1;
+    }
+    if chars.get(h) == Some(&'"') {
+        Some(h - start - 1)
+    } else {
+        None
+    }
 }
 
 fn test_rows(relative: &str, text: &str) -> Vec<TestRow> {
     let lines: Vec<&str> = text.lines().collect();
+    let stripped = strip_literals(text);
+    let code_lines: Vec<&str> = stripped.lines().collect();
     let mut rows = Vec::new();
+    // Track `mod` nesting by brace depth so each test carries the module path the predecessor
+    // promised. Depth is counted on the raw text, which is why `module_path` is a stack rather
+    // than a single name: nested `mod tests { mod inner { ... } }` occurs in this workspace.
+    let mut stack: Vec<(String, isize)> = Vec::new();
+    let mut depth = 0isize;
     for (offset, line) in lines.iter().enumerate() {
-        if line.trim() != "#[test]" {
-            continue;
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed
+            .strip_prefix("mod ")
+            .or_else(|| trimmed.strip_prefix("pub mod "))
+        {
+            if let Some(name) = rest.split(['{', ';', ' ']).next() {
+                if trimmed.ends_with('{') {
+                    stack.push((name.to_string(), depth));
+                }
+            }
         }
-        // The function name sits on the next non-attribute line.
-        let name = lines[offset + 1..]
-            .iter()
-            .find(|candidate| candidate.trim().contains("fn "))
-            .and_then(|candidate| candidate.split("fn ").nth(1))
-            .and_then(|rest| rest.split('(').next())
-            .unwrap_or("unknown")
-            .trim()
-            .to_string();
-        rows.push(TestRow {
-            file: relative.to_string(),
-            line: offset + 1,
-            function: name,
-        });
+        if trimmed == "#[test]" {
+            if let Some(name) = lines[offset + 1..].iter().find_map(|l| {
+                let t = l.trim();
+                t.strip_prefix("fn ")
+                    .or_else(|| t.strip_prefix("async fn "))
+                    .and_then(|r| r.split(['(', '<']).next())
+            }) {
+                rows.push(TestRow {
+                    file: relative.to_string(),
+                    line: offset + 1,
+                    module: if stack.is_empty() {
+                        "<root>".to_string()
+                    } else {
+                        stack
+                            .iter()
+                            .map(|(n, _)| n.as_str())
+                            .collect::<Vec<_>>()
+                            .join("::")
+                    },
+                    function: name.to_string(),
+                });
+            }
+        }
+        // Count braces on code only. On raw text, `assert!(json.ends_with("}}"))` and a
+        // multi-line `r#"{{...}}"#` JSON fixture both corrupt the depth and pop `mod tests`
+        // early. CENSUS-003 keys its test map on this field.
+        let code = code_lines.get(offset).copied().unwrap_or("");
+        let opens = isize::try_from(code.matches('{').count()).unwrap_or(0);
+        let closes = isize::try_from(code.matches('}').count()).unwrap_or(0);
+        depth += opens - closes;
+        while stack.last().is_some_and(|(_, d)| depth <= *d) {
+            stack.pop();
+        }
     }
     rows
 }
@@ -424,6 +754,119 @@ pub fn format_reconciliation(root: &Path) -> Vec<String> {
 }
 
 /// Measure the repository.
+/// Enumerate evidence runners from source, then mark which CI wires up and how.
+///
+/// `promoting` is derived from `continue-on-error`, which is what actually decides whether a
+/// failure gates the build. An earlier draft keyed off the literal string "non-promoting" in
+/// the step name: correct only because the label and the flag happen to coincide today, and
+/// silently wrong the moment someone edits a step title.
+fn evidence_runners(root: &Path) -> Vec<EvidenceRunnerRow> {
+    let mut rows: Vec<EvidenceRunnerRow> = Vec::new();
+    for relative in input_files(root) {
+        if !is_rust(&relative) {
+            continue;
+        }
+        // A runner is a runnable target: an example, or a binary. A library that parses the
+        // flag is the implementation, not the runner, and a comment mentioning the flag — this
+        // file mentions it twice — is neither.
+        let runnable = relative.contains("/examples/")
+            || relative.ends_with("/src/main.rs")
+            || relative.contains("/src/bin/");
+        if !runnable {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(root.join(&relative)) else {
+            continue;
+        };
+        let mentions = strip_comments(&text).contains("--evidence");
+        if !mentions {
+            continue;
+        }
+        let krate = relative
+            .split('/')
+            .nth(1)
+            .unwrap_or("unknown")
+            .replace('_', "-");
+        rows.push(EvidenceRunnerRow {
+            krate,
+            target: relative.clone(),
+            evidence_path: None,
+            wired_in_ci: false,
+            promoting: false,
+        });
+    }
+
+    for workflow in ["ci.yml", "discord-ci.yml"] {
+        let Ok(text) = fs::read_to_string(root.join(".github/workflows").join(workflow)) else {
+            continue;
+        };
+        let lines: Vec<&str> = text.lines().collect();
+        for (offset, line) in lines.iter().enumerate() {
+            let Some(at) = line.find("--evidence ") else {
+                continue;
+            };
+            let Some(path) = line[at + 11..].split_whitespace().next() else {
+                continue;
+            };
+            let step_start = lines[..=offset]
+                .iter()
+                .rposition(|l| {
+                    let t = l.trim_start();
+                    t.starts_with("- name:") || t.starts_with("- run:")
+                })
+                .unwrap_or(0);
+            let step_end = lines
+                .iter()
+                .enumerate()
+                .skip(offset + 1)
+                .find(|(_, l)| {
+                    let t = l.trim_start();
+                    t.starts_with("- name:") || t.starts_with("- run:")
+                })
+                .map_or(lines.len(), |(i, _)| i);
+            let promoting = !lines[step_start..step_end]
+                .iter()
+                .any(|l| l.contains("continue-on-error: true"));
+            let example = lines[step_start..step_end]
+                .iter()
+                .find_map(|l| {
+                    l.find("--example ")
+                        .map(|i| l[i + 10..].split_whitespace().next())
+                })
+                .flatten();
+            let target = rows
+                .iter()
+                .find(|r| example.is_some_and(|e| r.target.contains(e)))
+                .map(|r| r.target.clone());
+            if let Some(target) = target {
+                if let Some(row) = rows.iter_mut().find(|r| r.target == target) {
+                    row.evidence_path = Some(path.to_string());
+                    row.wired_in_ci = true;
+                    row.promoting = promoting;
+                    continue;
+                }
+            }
+            let krate = lines[step_start..step_end]
+                .iter()
+                .find_map(|l| {
+                    l.find(" -p ")
+                        .and_then(|i| l[i + 4..].split_whitespace().next())
+                })
+                .unwrap_or("unknown")
+                .to_string();
+            rows.push(EvidenceRunnerRow {
+                krate,
+                target: format!("{workflow}:{}", offset + 1),
+                evidence_path: Some(path.to_string()),
+                wired_in_ci: true,
+                promoting,
+            });
+        }
+    }
+    rows.sort_by(|a, b| (&a.krate, &a.target).cmp(&(&b.krate, &b.target)));
+    rows
+}
+
 pub fn measure(root: &Path) -> Census {
     let mut census = Census::default();
 
@@ -442,7 +885,7 @@ pub fn measure(root: &Path) -> Census {
             name: (*name).to_string(),
             magic: magic.map(str::to_string),
             version_constant: version.map(str::to_string),
-            owner: (*owner).to_string(),
+            owning_crate: (*owner).to_string(),
         });
     }
 
@@ -459,6 +902,12 @@ pub fn measure(root: &Path) -> Census {
             .generated_files
             .push("governance/manifest.json".to_string());
     }
+
+    // Evidence runners: every target that accepts `--evidence`, unioned with the CI steps
+    // that invoke one. Enumerating only CI call sites missed three runners that exist in the
+    // repository but are not wired into a workflow — precisely what a requalification census
+    // must surface, since an unwired runner has no owner and no disposition otherwise.
+    census.evidence_runners = evidence_runners(root);
 
     for workflow in ["ci.yml", "discord-ci.yml"] {
         let path = root.join(".github/workflows").join(workflow);
@@ -487,6 +936,230 @@ pub fn measure(root: &Path) -> Census {
 }
 
 /// Crate rows and edges, from `cargo metadata` output supplied by the caller.
+/// Dependencies, features and examples, all read straight off one package's manifest.
+///
+/// Split out of [`absorb_metadata`] purely for length; it carries no logic of its own beyond
+/// deduplicating third-party dependencies by name.
+fn absorb_manifest_sections(
+    census: &mut Census,
+    package: &serde_json::Value,
+    name: &str,
+    workspace: &[String],
+) {
+    let empty = Vec::new();
+    // Dependencies, features and examples all come straight off the manifest.
+    for dep in package
+        .get("dependencies")
+        .and_then(serde_json::Value::as_array)
+        .unwrap_or(&empty)
+    {
+        if let Some(dep_name) = dep.get("name").and_then(serde_json::Value::as_str) {
+            if !workspace.iter().any(|n| n == dep_name)
+                && !census.dependencies.iter().any(|d| d.name == dep_name)
+            {
+                census.dependencies.push(DependencyRow {
+                    name: dep_name.to_string(),
+                    direct: true,
+                });
+            }
+        }
+    }
+    if let Some(features) = package
+        .get("features")
+        .and_then(serde_json::Value::as_object)
+    {
+        for (feature, enables) in features {
+            census.features.push(FeatureRow {
+                krate: name.to_string(),
+                feature: feature.clone(),
+                enables: enables
+                    .as_array()
+                    .map(|list| {
+                        list.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            });
+        }
+    }
+    for target in package
+        .get("targets")
+        .and_then(serde_json::Value::as_array)
+        .unwrap_or(&empty)
+    {
+        let is_example = target
+            .get("kind")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|k| k.iter().any(|v| v.as_str() == Some("example")));
+        if is_example {
+            if let Some(example) = target.get("name").and_then(serde_json::Value::as_str) {
+                census.examples.push(ExampleRow {
+                    krate: name.to_string(),
+                    name: example.to_string(),
+                });
+            }
+        }
+    }
+}
+
+/// What one crate's `src/` tree yields. Split out of [`absorb_metadata`] for length.
+struct SourceScan {
+    lines: usize,
+    bytes: u64,
+    public: usize,
+    /// Declarations in `lib.rs` alone. A glob forwards the crate-root namespace, so this — not
+    /// the whole-tree count — is what a facade re-exporting this crate actually gains.
+    root_public: usize,
+    files: Vec<String>,
+    globs: Vec<String>,
+    /// Items named individually in `pub use path::{A, B}`. A glob-only count misses these
+    /// entirely: `meridian-ui` names 12 from `meridian_ui_text` and they were counted neither
+    /// as declared nor re-exported.
+    named_reexports: usize,
+}
+
+/// Walk one crate's sources, accumulating the scalars and pushing its public-item rows.
+///
+/// Pushes into `census.public_types` as it goes so the rows and the scalar come from a single
+/// pass over the same text — two passes could disagree, and a disagreement between two counts
+/// of the same thing is what hid a bug in the predecessor's format sweep.
+fn scan_crate_sources(
+    census: &mut Census,
+    root: &Path,
+    source_dir: &Path,
+    name: &str,
+) -> SourceScan {
+    let (mut lines, mut bytes, mut public) = (0usize, 0u64, 0usize);
+    let (mut root_public, mut named_reexports) = (0usize, 0usize);
+    let mut files = Vec::new();
+    let mut globs: Vec<String> = Vec::new();
+    collect(source_dir, root, &mut files);
+    for relative in &files {
+        if !is_rust(relative) {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(root.join(relative)) else {
+            continue;
+        };
+        lines += text.lines().count();
+        bytes += text.len() as u64;
+        public += declared_public_items(&text);
+        if relative.ends_with("/src/lib.rs") {
+            root_public += declared_public_items(&text);
+        }
+
+        for (offset, line) in text.lines().enumerate() {
+            if let Some((kind, item)) = public_item(line) {
+                census.public_types.push(PublicTypeRow {
+                    krate: name.to_string(),
+                    item,
+                    kind,
+                    file: relative.clone(),
+                    line: offset + 1,
+                });
+            }
+            if let Some(target) = glob_reexport(line) {
+                globs.push(target);
+            }
+        }
+    }
+    // Module names of this crate, so a re-export of its own submodule is not counted as
+    // exposing something it does not declare.
+    let mut local_modules: Vec<String> = files
+        .iter()
+        .filter_map(|f| {
+            let stem = f.rsplit('/').next()?.strip_suffix(".rs")?;
+            if stem == "lib" || stem == "main" || stem == "mod" {
+                f.rsplit('/').nth(1).map(str::to_string)
+            } else {
+                Some(stem.to_string())
+            }
+        })
+        .collect();
+    // File stems alone miss a module declared inline (`mod foo { ... }` with no `foo.rs`), and
+    // a `pub use foo::{A, B}` of one would then be counted as cross-crate. No crate in the
+    // workspace does this today, so this closes a latent gap rather than fixing a live error.
+    for relative in &files {
+        if !is_rust(relative) {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(root.join(relative)) else {
+            continue;
+        };
+        for line in strip_literals(&text).lines() {
+            let trimmed = line.trim();
+            let Some(rest) = trimmed
+                .strip_prefix("mod ")
+                .or_else(|| trimmed.strip_prefix("pub mod "))
+                .or_else(|| trimmed.strip_prefix("pub(crate) mod "))
+                .or_else(|| trimmed.strip_prefix("pub(super) mod "))
+            else {
+                continue;
+            };
+            if let Some(name) = rest.split(['{', ';', ' ']).next() {
+                if !name.is_empty() {
+                    local_modules.push(name.to_string());
+                }
+            }
+        }
+    }
+    local_modules.sort();
+    local_modules.dedup();
+    for relative in &files {
+        if !is_rust(relative) {
+            continue;
+        }
+        if let Ok(text) = fs::read_to_string(root.join(relative)) {
+            named_reexports += named_reexport_count(&text, &local_modules);
+        }
+    }
+
+    SourceScan {
+        lines,
+        bytes,
+        public,
+        root_public,
+        files,
+        globs,
+        named_reexports,
+    }
+}
+
+/// Resolve re-exports once every crate's crate-root declaration count exists.
+///
+/// A glob forwards the **crate-root** namespace, so the sum is over `lib.rs` declarations
+/// alone, not the whole `src/` tree. An earlier draft summed whole-tree counts while its own
+/// doc comment said crate-root, producing 210 where the glob actually forwards 202 — the same
+/// 213-vs-205 ambiguity `WP-V1-CENSUS-001` wrote three paragraphs about and then did not
+/// resolve. Named re-exports (`pub use path::{A, B}`) are added on top, because a glob-only
+/// count misses them entirely.
+///
+/// This cannot run inside the loop that produces the counts, which is why it is a second pass.
+fn resolve_glob_reexports(
+    census: &mut Census,
+    glob_targets: &[(String, Vec<String>, usize)],
+    root_declared: &[(String, usize)],
+) {
+    // the crate-root namespace of each crate it globs, so its re-exported count is the sum of
+    // those crates' declared counts.
+    let declared: Vec<(String, usize)> = root_declared.to_vec();
+    for (krate, globs, named) in glob_targets {
+        let total: usize = globs
+            .iter()
+            .filter_map(|target| {
+                declared
+                    .iter()
+                    .find(|(n, _)| n == target)
+                    .map(|(_, count)| *count)
+            })
+            .sum();
+        if let Some(row) = census.crates.iter_mut().find(|c| &c.name == krate) {
+            row.reexported_public_items = total + named;
+        }
+    }
+}
+
 pub fn absorb_metadata(census: &mut Census, root: &Path, metadata: &serde_json::Value) {
     // Canonicalise once. `--root` defaults to `.`, while `cargo metadata` emits absolute
     // manifest paths, so a strip against the uncanonicalised root never matched: absolute
@@ -508,10 +1181,14 @@ pub fn absorb_metadata(census: &mut Census, root: &Path, metadata: &serde_json::
         })
         .collect();
 
+    let mut glob_targets: Vec<(String, Vec<String>, usize)> = Vec::new();
+    let mut root_declared: Vec<(String, usize)> = Vec::new();
+
     for package in &members {
         let Some(name) = package.get("name").and_then(serde_json::Value::as_str) else {
             continue;
         };
+        absorb_manifest_sections(census, package, name, &names);
         let manifest = package
             .get("manifest_path")
             .and_then(serde_json::Value::as_str)
@@ -525,19 +1202,11 @@ pub fn absorb_metadata(census: &mut Census, root: &Path, metadata: &serde_json::
             .join(manifest.trim_end_matches("Cargo.toml"))
             .join("src");
 
-        let (mut lines, mut bytes, mut public) = (0usize, 0u64, 0usize);
-        let mut files = Vec::new();
-        collect(&source_dir, root, &mut files);
-        for relative in &files {
-            if !is_rust(relative) {
-                continue;
-            }
-            if let Ok(text) = fs::read_to_string(root.join(relative)) {
-                lines += text.lines().count();
-                bytes += text.len() as u64;
-                public += declared_public_items(&text);
-            }
-        }
+        let scan = scan_crate_sources(census, root, &source_dir, name);
+        let (lines, bytes, public) = (scan.lines, scan.bytes, scan.public);
+        let (files, globs) = (scan.files.clone(), scan.globs.clone());
+        glob_targets.push((name.to_string(), globs, scan.named_reexports));
+        root_declared.push((name.to_string(), scan.root_public));
         let tests = census
             .tests
             .iter()
@@ -556,6 +1225,9 @@ pub fn absorb_metadata(census: &mut Census, root: &Path, metadata: &serde_json::
             source_lines: lines,
             source_bytes: bytes,
             declared_public_items: public,
+            // Filled in below: resolving a glob needs every crate's declared count, so it
+            // cannot be computed inside the loop that produces those counts.
+            reexported_public_items: 0,
             test_functions: tests,
         });
 
@@ -591,6 +1263,8 @@ pub fn absorb_metadata(census: &mut Census, root: &Path, metadata: &serde_json::
     census
         .edges
         .sort_by(|a, b| (&a.from, &a.to).cmp(&(&b.from, &b.to)));
+
+    resolve_glob_reexports(census, &glob_targets, &root_declared);
 }
 
 /// A named metric with the command that produced it, so a figure never stands unstamped.
@@ -612,7 +1286,8 @@ impl Census {
             Measured {
                 name: "test_functions_total",
                 value: self.tests.len(),
-                command: "grep -rh '#[test]' --include='*.rs' engine editor | wc -l  (all targets; per-crate test_functions counts src/ only)",
+                command:
+                    "grep -rhE '^[[:space:]]*#\\[test\\]$' --include='*.rs' engine editor | wc -l",
             },
             Measured {
                 name: "formats",
@@ -644,6 +1319,84 @@ fn escape(value: &str) -> String {
 ///
 /// Every row carries `disposition: null` and `escalation: null`. This package measures;
 /// `WP-V1-CENSUS-002` assigns. A non-null value here means judgement leaked in.
+/// Validate a rendered census against the checked-in schema, and check that every
+/// `escalation` names an `OD-*` that actually exists in `state.json`.
+///
+/// The schema constrains shape; only this function can constrain existence, and without it
+/// `escalation` is a free string wearing an `OD-*` costume — which would make "escalation
+/// count equals open owner decisions" decoration rather than a control.
+pub fn schema_problems(root: &Path, rendered: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(rendered) else {
+        return vec!["census is not valid JSON".to_string()];
+    };
+    let schema_path = root.join("governance/schemas/census.schema.json");
+    let Ok(schema_text) = fs::read_to_string(&schema_path) else {
+        return vec!["governance/schemas/census.schema.json is missing".to_string()];
+    };
+    let Ok(schema) = serde_json::from_str::<serde_json::Value>(&schema_text) else {
+        return vec!["census schema is not valid JSON".to_string()];
+    };
+    match jsonschema::validator_for(&schema) {
+        Ok(validator) => {
+            for error in validator.iter_errors(&value) {
+                problems.push(format!("schema: {error}"));
+            }
+        }
+        Err(error) => problems.push(format!("census schema does not compile: {error}")),
+    }
+
+    let known: Vec<String> = fs::read_to_string(root.join(".meridian/implementation/state.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .map(|state| {
+            let mut ids = Vec::new();
+            collect_od_ids(&state, &mut ids);
+            ids
+        })
+        .unwrap_or_default();
+    for (section, rows) in value.as_object().into_iter().flatten() {
+        let Some(rows) = rows.as_array() else {
+            continue;
+        };
+        for row in rows {
+            let Some(id) = row.get("escalation").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            if !known.iter().any(|k| k == id) {
+                problems.push(format!(
+                    "{section}: escalation {id} names no OD-* record in state.json"
+                ));
+            }
+        }
+    }
+    problems
+}
+
+fn collect_od_ids(value: &serde_json::Value, out: &mut Vec<String>) {
+    match value {
+        serde_json::Value::String(text) => {
+            if text.len() == 6 && text.starts_with("OD-") {
+                out.push(text.clone());
+            }
+        }
+        serde_json::Value::Array(items) => items.iter().for_each(|v| collect_od_ids(v, out)),
+        serde_json::Value::Object(map) => {
+            for (key, v) in map {
+                if key == "id" {
+                    if let Some(text) = v.as_str() {
+                        if text.starts_with("OD-") {
+                            out.push(text.to_string());
+                        }
+                    }
+                }
+                collect_od_ids(v, out);
+            }
+        }
+        _ => {}
+    }
+}
+
 pub fn render(census: &Census, root: &Path, specoment_sha256: &str) -> String {
     let mut out = String::new();
     out.push_str("{\n");
@@ -664,7 +1417,14 @@ pub fn render(census: &Census, root: &Path, specoment_sha256: &str) -> String {
     let _ = writeln!(out, "  \"specoment_sha256\": \"{specoment_sha256}\",");
     let _ = writeln!(
         out,
-        "  \"assignment\": \"disposition and escalation are null throughout: WP-V1-CENSUS-001 measures, WP-V1-CENSUS-002 assigns. A row is valid iff exactly one of them is non-null, which is why undecided was withdrawn - it occurs zero times in the specoment.\","
+        "  \"assignment\": \"disposition, next_phase, owner and escalation are null in every row: WP-V1-CENSUS-001 and -002 measure, WP-V1-CENSUS-003 assigns. Until it does, the enforced rule is that no row has BOTH a disposition and an escalation; a row with neither is the expected measurement-phase state and is not yet an error. CENSUS-003 tightens this to exactly-one. The edges and layers sections carry no judgement fields at all and are exempt by construction, stated here because CENSUS-001 claimed every row and was wrong for 104 of them.\","
+    );
+
+    // Limitations, recorded in the artefact itself. The recurring failure in this package's
+    // lineage is a limitation documented where the next reader will not look.
+    let _ = writeln!(
+        out,
+        "  \"limitations\": [\n    \"dependencies lists the 18 declared direct third-party crates, not the 494 packages Cargo.lock resolves; OD-006's LEGAL-005 question covers all 494 and is not answered here\",\n    \"public_types uses a column-0 `pub <kind>` predicate: 3 known macro-generated public types (including UiNodeId) have no row, and named re-exports are counted in reexported_public_items rather than as declarations\",\n    \"reexported_public_items counts CROSS-CRATE re-exports only: crate-root declarations of globbed crates plus items named in pub use path::{{A, B}} from another crate. The whole-tree reading is rejected because a glob forwards only the crate root, and intra-crate re-exports are excluded because they re-surface items the crate already declares - see the entry naming meridian-renderer, meridian-platform and meridian-ui-render\",\n    \"ci_rows counts workflow jobs, not matrix expansions: the rust job runs a 3-OS matrix and is one row\",\n    \"format_migrations and forbidden-edge reasons are not yet present; carried to WP-V1-CENSUS-003\",\n    \"tests and generated_files and ci_rows carry no next_phase field; carried to WP-V1-CENSUS-003\",\n    \"collect_od_ids harvests any 6-character OD- string and any id key beginning OD-, unscoped to open_owner_decisions and unfiltered by status; it gates nothing today because every escalation is null\",\n    \"test_rows drops a #[test] whose fn line it cannot parse, where earlier code emitted function: unknown; nothing is dropped today, but a future drop would be silent\",\n    \"intra-crate re-exports excluded by the rule above, with the counts they would otherwise have contributed: meridian-renderer 84, meridian-platform 3, meridian-ui-render 3. Local module names are derived from file stems plus inline mod declarations\",\n    \"the schema validates the census the generator produces, not the file on disk; a hand-edit is caught as stale-census by byte comparison, not as a schema violation\"\n  ],"
     );
 
     out.push_str("  \"measurements\": [\n");
@@ -697,6 +1457,11 @@ pub fn render(census: &Census, root: &Path, specoment_sha256: &str) -> String {
     out.push_str("\n  ],\n");
 
     render_crates(&mut out, census);
+    render_public_types(&mut out, census);
+    render_dependencies(&mut out, census);
+    render_features(&mut out, census);
+    render_examples(&mut out, census);
+    render_evidence_runners(&mut out, census);
     render_formats(&mut out, census);
     render_edges(&mut out, census);
     render_lists(&mut out, census);
@@ -720,10 +1485,12 @@ fn render_crates(out: &mut String, census: &Census) {
                 "      \"source_lines\": {lines},\n",
                 "      \"source_bytes\": {bytes},\n",
                 "      \"declared_public_items\": {pub_},\n",
+                "      \"reexported_public_items\": {reexp},\n",
                 "      \"test_functions\": {tests},\n",
                 "      \"implementation_maturity\": null,\n",
                 "      \"card_disposition\": \"ExistingUnqualified\",\n",
                 "      \"disposition\": null,\n",
+                "      \"next_phase\": null,\n",
                 "      \"escalation\": null\n",
                 "    }}"
             ),
@@ -733,7 +1500,102 @@ fn render_crates(out: &mut String, census: &Census) {
             lines = c.source_lines,
             bytes = c.source_bytes,
             pub_ = c.declared_public_items,
+            reexp = c.reexported_public_items,
             tests = c.test_functions
+        );
+    }
+    out.push_str("\n  ],\n");
+}
+
+fn render_public_types(out: &mut String, census: &Census) {
+    out.push_str("  \"public_types\": [\n");
+    for (i, t) in census.public_types.iter().enumerate() {
+        if i > 0 {
+            out.push_str(",\n");
+        }
+        let _ = write!(
+            out,
+            "    {{ \"crate\": \"{}\", \"item\": \"{}\", \"kind\": \"{}\", \"file\": \"{}\", \"line\": {}, \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
+            t.krate,
+            escape(&t.item),
+            t.kind,
+            escape(&t.file),
+            t.line
+        );
+    }
+    out.push_str("\n  ],\n");
+}
+
+fn render_dependencies(out: &mut String, census: &Census) {
+    out.push_str("  \"dependencies\": [\n");
+    for (i, d) in census.dependencies.iter().enumerate() {
+        if i > 0 {
+            out.push_str(",\n");
+        }
+        let _ = write!(
+            out,
+            "    {{ \"name\": \"{}\", \"direct\": {}, \"licence\": null, \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
+            escape(&d.name),
+            d.direct
+        );
+    }
+    out.push_str("\n  ],\n");
+}
+
+fn render_features(out: &mut String, census: &Census) {
+    out.push_str("  \"features\": [\n");
+    for (i, f) in census.features.iter().enumerate() {
+        if i > 0 {
+            out.push_str(",\n");
+        }
+        let enables: Vec<String> = f
+            .enables
+            .iter()
+            .map(|e| format!("\"{}\"", escape(e)))
+            .collect();
+        let _ = write!(
+            out,
+            "    {{ \"crate\": \"{}\", \"feature\": \"{}\", \"enables\": [{}], \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
+            f.krate,
+            escape(&f.feature),
+            enables.join(", ")
+        );
+    }
+    out.push_str("\n  ],\n");
+}
+
+fn render_examples(out: &mut String, census: &Census) {
+    out.push_str("  \"examples\": [\n");
+    for (i, e) in census.examples.iter().enumerate() {
+        if i > 0 {
+            out.push_str(",\n");
+        }
+        let _ = write!(
+            out,
+            "    {{ \"crate\": \"{}\", \"name\": \"{}\", \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
+            e.krate,
+            escape(&e.name)
+        );
+    }
+    out.push_str("\n  ],\n");
+}
+
+fn render_evidence_runners(out: &mut String, census: &Census) {
+    out.push_str("  \"evidence_runners\": [\n");
+    for (i, r) in census.evidence_runners.iter().enumerate() {
+        if i > 0 {
+            out.push_str(",\n");
+        }
+        let _ = write!(
+            out,
+            "    {{ \"crate\": \"{}\", \"target\": \"{}\", \"evidence_path\": {}, \"wired_in_ci\": {}, \"promoting\": {}, \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
+            escape(&r.krate),
+            escape(&r.target),
+            r.evidence_path
+                .as_ref()
+                .map_or("null".to_string(), |p| format!("\"{}\"", escape(p))),
+            r.wired_in_ci,
+            r.promoting
         );
     }
     out.push_str("\n  ],\n");
@@ -755,8 +1617,8 @@ fn render_formats(out: &mut String, census: &Census) {
             .map_or("null".into(), |v| format!("\"{v}\""));
         let _ = write!(
             out,
-            "    {{ \"name\": \"{}\", \"magic\": {magic}, \"version_constant\": {version}, \"owner\": \"{}\", \"disposition\": null, \"escalation\": null }}",
-            f.name, f.owner
+            "    {{ \"name\": \"{}\", \"magic\": {magic}, \"version_constant\": {version}, \"owning_crate\": \"{}\", \"disposition\": null, \"next_phase\": null, \"escalation\": null }}",
+            f.name, f.owning_crate
         );
     }
     out.push_str("\n  ],\n");
@@ -805,9 +1667,10 @@ fn render_tests(out: &mut String, census: &Census) {
         }
         let _ = write!(
             out,
-            "    {{ \"file\": \"{}\", \"line\": {}, \"function\": \"{}\", \"owner\": null, \"escalation\": null }}",
+            "    {{ \"file\": \"{}\", \"line\": {}, \"module\": \"{}\", \"function\": \"{}\", \"disposition\": null, \"owner\": null, \"escalation\": null }}",
             escape(&t.file),
             t.line,
+            escape(&t.module),
             t.function
         );
     }
@@ -907,6 +1770,348 @@ mod tests {
         }
     }
 
+    /// Compose the same way `census_json` does. `measure` alone leaves every
+    /// metadata-derived section empty, so a test calling it would assert against a census the
+    /// product never produces.
+    fn full_census(root: &std::path::Path) -> super::Census {
+        let output = std::process::Command::new("cargo")
+            .args(["metadata", "--locked", "--no-deps", "--format-version", "1"])
+            .current_dir(root)
+            .output()
+            .expect("cargo metadata runs");
+        let metadata: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("metadata is json");
+        let mut census = super::measure(root);
+        super::absorb_metadata(&mut census, root, &metadata);
+        census
+    }
+
+    /// The card names ten inventory axes. `WP-V1-CENSUS-001` delivered five and the phase was
+    /// nearly closed on it. This enumerates them from the card's own wording.
+    #[test]
+    fn every_card_axis_has_a_section() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let census = full_census(&root);
+        let rendered = super::render(&census, &root, "x");
+        let value: serde_json::Value = serde_json::from_str(&rendered).expect("valid json");
+        // "Inventory every crate, public type, source format, backend dependency, feature,
+        // example, test, evidence runner, generated file, and CI row."
+        for axis in [
+            "crates",
+            "public_types",
+            "formats",
+            "dependencies",
+            "features",
+            "examples",
+            "tests",
+            "evidence_runners",
+            "generated_files",
+            "ci_rows",
+        ] {
+            let rows = value.get(axis).and_then(serde_json::Value::as_array);
+            assert!(
+                rows.is_some_and(|r| !r.is_empty()),
+                "card axis {axis} has no populated section"
+            );
+        }
+    }
+
+    /// The evidence-runner section was rebuilt from scratch, so its shape is pinned rather
+    /// than merely floored: five example targets exist, two are wired into CI, and exactly one
+    /// invocation gates the build.
+    #[test]
+    fn evidence_runner_shape_is_pinned() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let census = full_census(&root);
+        let examples = census
+            .evidence_runners
+            .iter()
+            .filter(|r| r.target.contains("/examples/"))
+            .count();
+        assert_eq!(examples, 5, "example runners changed");
+        assert_eq!(
+            census
+                .evidence_runners
+                .iter()
+                .filter(|r| r.wired_in_ci)
+                .count(),
+            3,
+            "CI wiring changed"
+        );
+        assert_eq!(
+            census
+                .evidence_runners
+                .iter()
+                .filter(|r| r.promoting)
+                .count(),
+            1,
+            "the set of build-gating evidence runners changed"
+        );
+    }
+
+    /// Floors on every axis, so a collapse fails rather than passing "not all zero".
+    ///
+    /// `no_section_is_uniformly_zero` only ever examined the `crates` section, and every other
+    /// new assertion was shape-or-nonzero: a regression dropping 800 of the 901 public types
+    /// passed all of them. These are floors, not equalities, so adding a crate or a test does
+    /// not break the build; a collapse does.
+    #[test]
+    fn every_axis_meets_its_floor() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let census = full_census(&root);
+        for (axis, actual, floor) in [
+            ("crates", census.crates.len(), 37),
+            ("public_types", census.public_types.len(), 880),
+            ("dependencies", census.dependencies.len(), 18),
+            ("features", census.features.len(), 7),
+            ("examples", census.examples.len(), 14),
+            ("evidence_runners", census.evidence_runners.len(), 6),
+            ("formats", census.formats.len(), 15),
+            ("tests", census.tests.len(), 770),
+            ("generated_files", census.generated_files.len(), 9),
+            ("ci_rows", census.ci_rows.len(), 3),
+            ("edges", census.edges.len(), 90),
+        ] {
+            assert!(
+                actual >= floor,
+                "{axis} collapsed to {actual}, below its floor of {floor}"
+            );
+        }
+    }
+
+    /// Scalar sanity for the `crates` section specifically. Section *lengths* across all
+    /// eleven sections are covered by `every_axis_meets_its_floor`; this name says `crate_`
+    /// because its body only ever examined `crates`, and the previous name overclaimed.
+    #[test]
+    fn crate_scalars_are_not_uniformly_zero() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let census = full_census(&root);
+        assert!(census.crates.iter().any(|c| c.source_bytes > 0));
+        assert!(census.crates.iter().any(|c| c.declared_public_items > 0));
+        assert!(census.crates.iter().any(|c| c.test_functions > 0));
+        assert!(census.crates.iter().any(|c| c.reexported_public_items > 0));
+        for row in &census.crates {
+            let prefix = if row.location == "engine" {
+                "engine/"
+            } else {
+                "editor/"
+            };
+            assert!(
+                row.manifest.starts_with(prefix),
+                "{} claims location {} but its manifest is {}",
+                row.name,
+                row.location,
+                row.manifest
+            );
+            assert!(
+                !row.manifest.starts_with('/'),
+                "{} carries an absolute path",
+                row.name
+            );
+        }
+    }
+
+    /// The scalar and the rows count the same thing, so they must agree by construction.
+    #[test]
+    fn public_item_scalar_matches_row_count() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let census = full_census(&root);
+        let scalar: usize = census.crates.iter().map(|c| c.declared_public_items).sum();
+        assert_eq!(
+            scalar,
+            census.public_types.len(),
+            "declared_public_items and the public_types rows disagree"
+        );
+    }
+
+    /// A crate with no `pub use` at module root cannot re-export anything.
+    ///
+    /// This fails on the unfixed code: `meridian-spec` has zero column-0 `pub use` lines and
+    /// reported 7, counted out of this file's own doc comments. The fix without the guard
+    /// would leave the next regression exactly as invisible as this one was.
+    #[test]
+    fn a_crate_without_pub_use_reexports_nothing() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let census = full_census(&root);
+        for row in &census.crates {
+            let dir = root
+                .join(row.manifest.trim_end_matches("Cargo.toml"))
+                .join("src");
+            let mut files = Vec::new();
+            super::collect(&dir, &root, &mut files);
+            let has = files.iter().any(|f| {
+                std::fs::read_to_string(root.join(f))
+                    .is_ok_and(|t| t.lines().any(|l| l.starts_with("pub use ")))
+            });
+            assert!(
+                has || row.reexported_public_items == 0,
+                "{} has no module-root `pub use` but reports {} re-exports",
+                row.name,
+                row.reexported_public_items
+            );
+        }
+    }
+
+    /// Only cross-crate re-exports count: a crate re-surfacing its own submodule is exposing
+    /// something it already declares, and summing both double-counts it.
+    #[test]
+    fn intra_crate_reexports_are_not_counted() {
+        let locals = vec!["camera".to_string()];
+        assert_eq!(
+            super::named_reexport_count("pub use camera::{Camera, CameraError};", &locals),
+            0
+        );
+        assert_eq!(
+            super::named_reexport_count("pub use bevy_ecs::prelude::{A, B};", &locals),
+            2
+        );
+        // Documentation is not public API.
+        assert_eq!(
+            super::named_reexport_count("/// like `pub use path::{A, B, C};`\nfn f() {}", &locals),
+            0
+        );
+    }
+
+    /// `pub use` is a re-export, not a declaration. Counting it as one is how a facade that
+    /// declares nothing reported five declared items.
+    #[test]
+    fn reexports_are_not_declarations() {
+        assert!(super::public_item("pub use meridian_ui_runtime::*;").is_none());
+        assert!(super::public_item("pub struct Frame {").is_some());
+        assert_eq!(
+            super::glob_reexport("pub use meridian_ui_runtime::*;").as_deref(),
+            Some("meridian-ui-runtime")
+        );
+    }
+
+    /// Non-empty is too weak: `<root>` is non-empty and was what a mis-parsed file produced.
+    /// A `src/` file that opens `mod tests {` must attribute every test below that line.
+    #[test]
+    fn tests_inside_a_test_module_are_not_attributed_to_root() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let census = full_census(&root);
+        for file in census
+            .tests
+            .iter()
+            .map(|t| t.file.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            if !file.contains("/src/") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(root.join(&file)) else {
+                continue;
+            };
+            let Some(at) = text
+                .lines()
+                .position(|l| l.trim().ends_with("mod tests {"))
+                .map(|p| p + 1)
+            else {
+                continue;
+            };
+            for row in census.tests.iter().filter(|t| t.file == file) {
+                assert!(
+                    !(row.line > at && row.module == "<root>"),
+                    "{}:{} {} sits below `mod tests {{` but is attributed to <root>",
+                    file,
+                    row.line,
+                    row.function
+                );
+            }
+        }
+    }
+
+    /// Literals and comments must not be counted as code, which is how the depth went wrong.
+    #[test]
+    fn strip_literals_preserves_lines_and_blanks_literals() {
+        let text = "fn a() {\n    let s = r#\"{{\"x\":1}}\"#;\n    // }\n}\n";
+        let stripped = super::strip_literals(text);
+        assert_eq!(text.lines().count(), stripped.lines().count());
+        assert_eq!(
+            stripped.matches('{').count(),
+            1,
+            "raw-string and comment braces leaked into the code count"
+        );
+        assert_eq!(stripped.matches('}').count(), 1);
+    }
+
+    /// Every test row must carry a module, or `CENSUS-003`'s "module granularity" is file
+    /// granularity wearing a different word.
+    #[test]
+    fn every_test_row_has_a_module() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let census = full_census(&root);
+        for row in &census.tests {
+            assert!(
+                !row.module.is_empty(),
+                "{}:{} has no module",
+                row.file,
+                row.line
+            );
+        }
+    }
+
+    /// Failure injection for the schema, across every judgement-bearing section.
+    ///
+    /// Both-set, out-of-vocabulary and a non-existent `OD-*` are rejected. Neither-set is NOT
+    /// rejected and is enumerated here to make that deliberate: it is the measurement-phase
+    /// state of all ~2,000 rows, and `WP-V1-CENSUS-003` tightens the rule when it assigns.
+    ///
+    /// The loop runs over every section rather than `crates` alone: the first draft injected
+    /// only into `crates` and so did not notice that the schema left `generated_files` and
+    /// `ci_rows` entirely unconstrained.
+    #[test]
+    fn schema_rejects_invalid_judgement() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let sections = [
+            "crates",
+            "public_types",
+            "dependencies",
+            "features",
+            "examples",
+            "evidence_runners",
+            "formats",
+            "tests",
+            "generated_files",
+            "ci_rows",
+        ];
+        let template = r#"{"schema":1,"source_tree_checkpoint":"x","specoment_sha256":"x","measurements":[],"layers":[],"crates":[],"public_types":[],"dependencies":[],"features":[],"examples":[],"evidence_runners":[],"formats":[],"edges":[],"tests":[],"generated_files":[],"ci_rows":[]}"#;
+        for (label, row) in [
+            (
+                "both set",
+                r#"{"disposition":"retain","escalation":"OD-001"}"#,
+            ),
+            ("neither set", r#"{"disposition":null,"escalation":null}"#),
+            (
+                "outside vocabulary",
+                r#"{"disposition":"undecided","escalation":null}"#,
+            ),
+            (
+                "nonexistent OD",
+                r#"{"disposition":null,"escalation":"OD-999"}"#,
+            ),
+        ] {
+            for section in sections {
+                let rendered = template.replace(
+                    &format!("\"{section}\":[]"),
+                    &format!("\"{section}\":[{row}]"),
+                );
+                let problems = super::schema_problems(&root, &rendered);
+                if label == "neither set" {
+                    assert!(
+                        problems.is_empty(),
+                        "{section}: neither-set must stay legal while measuring"
+                    );
+                    continue;
+                }
+                assert!(
+                    !problems.is_empty(),
+                    "{section}: schema accepted a row that is {label}"
+                );
+            }
+        }
+    }
+
     /// The assertion whose absence let a fully zeroed census ship.
     ///
     /// Every prior test checked structure — that rows exist, that fields are null, that the
@@ -926,10 +2131,36 @@ mod tests {
 
     #[test]
     fn every_workspace_crate_has_a_layer() {
-        for (_, members) in super::LAYERS {
-            for member in *members {
-                assert!(layer_of(member).is_some(), "{member} has no layer");
-            }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let census = full_census(&root);
+        // Iterating LAYERS' own members and asserting they have a layer is true by
+        // construction. The question is whether the table covers the workspace, and it does
+        // not: four marker crates are in no layer, so any edge touching one would be reported
+        // forward regardless of direction. They have no edges today; the assertion below is
+        // what makes that a checked fact rather than a lucky one.
+        let unlayered: Vec<&str> = census
+            .crates
+            .iter()
+            .filter(|c| super::layer_of(&c.name).is_none())
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(
+            unlayered,
+            vec![
+                "meridian-audio",
+                "meridian-basalt",
+                "meridian-isobar",
+                "meridian-vegetation"
+            ],
+            "the set of unlayered crates changed; LAYERS must cover any crate that has edges"
+        );
+        for edge in &census.edges {
+            assert!(
+                !unlayered.contains(&edge.from.as_str()) && !unlayered.contains(&edge.to.as_str()),
+                "edge {} -> {} touches an unlayered crate, so its direction is unverifiable",
+                edge.from,
+                edge.to
+            );
         }
     }
 }

@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meridian.invalid/schemas/census.schema.json",
+  "title": "Repository census",
+  "description": "Class (c) artefact: derived from the source tree, not a specoment projection and not accumulated state. See SD-013. This schema is WP-V1-CENSUS-001 carry-in 1, which that package did not deliver.",
+  "type": "object",
+  "required": [
+    "schema",
+    "source_tree_checkpoint",
+    "specoment_sha256",
+    "measurements",
+    "layers",
+    "crates",
+    "public_types",
+    "dependencies",
+    "features",
+    "examples",
+    "evidence_runners",
+    "formats",
+    "edges",
+    "tests",
+    "generated_files",
+    "ci_rows"
+  ],
+  "$defs": {
+    "disposition": {
+      "description": "The closed vocabulary, verbatim from the specoment. 'undecided' is deliberately absent: it occurs zero times in the specoment, and admitting it would readmit the state the XOR rule exists to prevent.",
+      "enum": [
+        "retain",
+        "refactor",
+        "replace",
+        "merge",
+        "split",
+        "remove"
+      ]
+    },
+    "escalation": {
+      "description": "An OD-* id present in state.json. Existence is checked in Rust; this constrains only the shape.",
+      "type": "string",
+      "pattern": "^OD-[0-9]{3}$"
+    },
+    "judged": {
+      "description": "A row that carries judgement. disposition and escalation are never both non-null: that is the XOR, and its absence would readmit 'undecided' under another name. Both-null is permitted only while WP-V1-CENSUS-001/-002 measure; WP-V1-CENSUS-003 tightens this to exactly-one when it assigns, and until it does this schema does NOT reject a row with no judgement at all. Applied to every section that carries these fields \u2014 all ten. The first draft of this schema omitted generated_files and ci_rows, which reproduced inside the artefact the very error it was written to fix: CENSUS-001 claimed 'every row' and was wrong for 104.",
+      "type": "object",
+      "required": [
+        "disposition",
+        "escalation"
+      ],
+      "properties": {
+        "disposition": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/disposition"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "escalation": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/escalation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_phase": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "not": {
+        "description": "Both set at once.",
+        "allOf": [
+          {
+            "properties": {
+              "disposition": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            },
+            "required": [
+              "disposition"
+            ]
+          },
+          {
+            "properties": {
+              "escalation": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            },
+            "required": [
+              "escalation"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "crates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/judged"
+      }
+    },
+    "public_types": {
+      "type": "array",
+      "description": "Items matched by a column-0 `pub <kind>` predicate under each crate's src/. Known exclusions, stated here rather than only in a Rust doc comment: macro-generated public types (3 known, including UiNodeId) have no row; named re-exports `pub use path::{A, B}` are counted neither as declared nor re-exported; `pub(crate)` is correctly excluded. Carried to WP-V1-CENSUS-003 \u2014 see census.json limitations.",
+      "items": {
+        "$ref": "#/$defs/judged"
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "description": "Declared direct third-party dependencies only (18). The lockfile resolves 494 packages; the transitive remainder is NOT inventoried here and OD-006's LEGAL-005 provenance question covers all 494, not these 18. Recorded as a limitation, not a claim.",
+      "items": {
+        "$ref": "#/$defs/judged"
+      }
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/judged"
+      }
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/judged"
+      }
+    },
+    "evidence_runners": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/judged"
+      }
+    },
+    "formats": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/judged"
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/judged"
+      }
+    },
+    "edges": {
+      "description": "Exempt by construction: an edge is a measured fact about the graph, not a thing with a disposition. CENSUS-001 asserted 'every row' carries the invariant and was wrong for these 96 plus the 8 layers; the exemption is declared here rather than left silent.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "optional",
+          "reverse"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "disposition"
+              ]
+            },
+            {
+              "required": [
+                "escalation"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "layers": {
+      "description": "Exempt by construction, as edges.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "layer",
+          "members"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "disposition"
+              ]
+            },
+            {
+              "required": [
+                "escalation"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "generated_files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/judged"
+      }
+    },
+    "ci_rows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/judged"
+      }
+    }
+  }
+}
