@@ -1,89 +1,102 @@
-# WP-V1-CENSUS-002 — Census dispositions and test ownership
+# WP-V1-CENSUS-002 — Complete the census measurement
 
 ## Ownership
 
 - Owning phase: `PH-AUTH-005`
-- Depends on: `WP-V1-CENSUS-001` — complete at `6b1f569`, measurement frozen
+- Requirement ids: `SPEC-001`, `IMPL-WP-003`, `PH-AUTH-005` implementation scope (specoment
+  line 30174), Appendix D, §0.4
+- Depends on: `WP-V1-CENSUS-001`, landed `6b1f569` + repair `440bf3e`
+- Successor: `WP-V1-CENSUS-003` assigns dispositions and ownership
+- Declaration status: **not a specoment-declared id.** The specoment declares
+  `WP-V1-CENSUS-001` only (lines 28629, 30170). The 001/002/003 split is a plan-level
+  decomposition recorded in `state.json`, not new authority. Flagged rather than left implicit.
 - Branch: `main`
-- Primary semantic seam: **what each measured thing should become.**
+- Primary semantic seam: **the phase card's ten inventory axes, all of them.**
 
 ## User-visible / operational result
 
-Every crate, format, generated file and CI row carries a disposition from the specoment's
-closed vocabulary, or an escalation naming an `OD-*` record. Every test function carries an
-owner or an escalation. `PH-AUTH-005` closes on this plus `CENSUS-001`.
+The census covers every axis `PH-AUTH-005` names, so the phase becomes closeable on evidence
+rather than on five-tenths of its own scope. Still measurement only: every `disposition`,
+`escalation`, `owner` and `next_phase` is null when this package lands.
 
 ## Current source diagnosis
 
-`.meridian/implementation/census.json` at `6b1f569`: 37 crates, 778 tests, 15 formats,
-96 edges, 8 layers, 9 generated files, 3 CI rows. Every `disposition`, `escalation` and `owner`
-is null. Measurement is frozen and this package does not re-measure.
+`.meridian/implementation/census.json` at `440bf3e` measures crates (37), source formats (15),
+tests (779), generated files (9), CI rows (3), plus 96 edges over 8 layers. Measurements are
+real and byte-identity is proven across roots.
+
+Five of the card's ten axes have no section at all: **public type, backend dependency, feature,
+example, evidence runner.** The card's declared test — "every workspace member, **public API**,
+source format and test has one owner and disposition" — is unsatisfiable against a census where
+920 public items exist only as a per-crate scalar with no rows.
+
+Two fields `WP-V1-CENSUS-001`'s accepted plan promised are absent: `reexported_public_items`
+(argued for explicitly, then not shipped — `meridian-ui` reports 5 while re-exporting ~213) and
+test `module` (rows carry `file`/`line`/`function`, so "module granularity" silently means file
+granularity, and one file holds 122 tests).
+
+`owner` means three different things across sections: owning crate on formats, and is intended
+to mean next phase on crates and requirement id on tests. Populating it would overwrite
+`meridian-package`.
 
 ## Approach
 
-1. **`disposition` XOR `escalation`, enforced in the schema.** A row is valid iff exactly one is
-   non-null. This is the mechanism whose failure silently readmits `undecided` under another
-   name, so it is a schema constraint that fails closed, not a prose rule.
-2. **`escalation` values validate as real `OD-*` ids present in `state.json`.** Free strings
-   would make "escalation count equals open owner decisions" decoration.
-3. Assign the mechanically determined dispositions:
-   - four marker crates, 205-210 bytes, one `pub const SCAFFOLD_STATUS`, **zero dependents** →
-     `remove`, owner `PH-AUTH-006` (`WP-V1-ARCH-001` names marker-crate removal);
-   - the seven files over 240 KB the `PH-AUTH-006` card names by size → `split`, owner
-     `PH-AUTH-006`;
-   - `meridian-ui`, a façade re-exporting 213 root items while declaring none → `retain`;
-   - everything else with no evidence for change → `retain`, owner `PH-AUTH-006`.
-4. Map test functions to requirement ids **validated against `requirements.json`**, at module
-   granularity. A module whose subject has no v1 requirement escalates rather than defaulting.
-5. Record `format_migrations`: every format not `retain` names its migration.
-
-## Escalation budget
-
-Reporting a count is not a control; a number with no threshold is decoration. Predicted:
-
-| Section | Rows | Predicted escalations |
-|---|---|---|
-| crates | 37 | 0 — every crate is mechanically determined |
-| formats | 15 | 0 — all at version 1, none migrating yet |
-| generated files, CI rows | 12 | 0 |
-| tests | 778 | ≤ 120, concentrated in modules whose subject is a post-1.0 program |
-
-**Overshoot is a stop condition.** More than ~150 test escalations means the mapping work was
-skipped rather than done, and the package stops rather than shipping a census that passes every
-assertion while containing no information.
+1. **Add the five missing sections.** Public types (rows, not a scalar, with the
+   declared/re-exported distinction the predecessor promised); backend dependencies (18
+   workspace third-party, 494 locked, each with licence field left null for `OD-006`);
+   features (7 across 4 crates); examples (14 targets); evidence runners.
+2. **Deliver the two promised fields.** `reexported_public_items` on crate rows; `module` on
+   test rows, so `CENSUS-003` can honestly claim module granularity.
+3. **Disambiguate `owner` before it is populated.** Rename the format field to `owning_crate`.
+   Add `next_phase` as a field distinct from `owner` — the card requires "one disposition **and
+   next phase**", which is two fields, not one.
+4. **Add `disposition` to test rows.** The card says each *retained* test gets an owner, which
+   presupposes tests can be dropped. Without it, tests of code slated for `remove` get owners.
+5. **Write `governance/schemas/census.schema.json`** — `WP-V1-CENSUS-001` carry-in 1, unmet.
+   It enforces `disposition` XOR `escalation` on the sections that carry them, and constrains
+   `disposition` to the closed vocabulary. Sections without judgement fields (`edges`,
+   `layers`) are declared exempt in the schema rather than silently omitted, because
+   `CENSUS-001`'s "every row" claim was false for 104 rows.
+6. **Assert non-uniformity.** No measured scalar may be uniformly zero across all rows of a
+   section, and every `location` must match its manifest prefix. This is the assertion class
+   whose absence let a fully zeroed census pass every test in the predecessor.
 
 ## Explicit exclusions
 
-- No re-measurement. `CENSUS-001`'s output is the frozen base.
-- No decomposition, no crate removal — those are `PH-AUTH-006` acting on these dispositions.
+- **No dispositions, no owners, no escalations.** That is `WP-V1-CENSUS-003`. A non-null
+  judgement field in this package's output means judgement leaked in, exactly as in `001`.
+- No decomposition or crate removal — `PH-AUTH-006`.
 - No specoment edits.
 
 ## Compatibility / migration / authority effects
 
-None to runtime. The census stays class (c), outside `emit::all()`, policed by regeneration.
+None to runtime. Class (c) throughout, outside `emit::all()`, policed by byte-identical
+regeneration. Renaming `owner` → `owning_crate` changes only an uncommitted-consumer field.
 
 ## Accessibility / security / privacy / provenance / disabled-cost effects
 
-No runtime surface. Provenance improves: crate and test disposition stops being implicit and
-becomes a stamped record with an escalation path to named owner decisions.
+Provenance improves materially: the dependency section is the first machine-readable list of
+the 494 locked packages whose licence provenance `OD-006` flags as unmet under `LEGAL-005`. It
+records the inventory and leaves licence null; it does not resolve `OD-006`.
 
 ## Tests and evidence
 
-- Every row has exactly one of `disposition` / `escalation` non-null; both-set and neither-set
-  are rejected.
-- Every `disposition` is drawn from `retain|refactor|replace|merge|split|remove` — the closed
-  vocabulary verified verbatim in the specoment at lines 28722 and 31389.
-- Every `escalation` names an `OD-*` id present in `state.json`.
-- Every test row resolves to an id present in `requirements.json`, or escalates.
-- Escalation counts are reported and compared against the budget above.
-- The four marker crates are `remove`; the seven oversized files are `split`.
-- Regeneration is byte-identical; `check` reports stale after a source mutation.
+- All ten card axes have a section; a test enumerates the axes from the card text and fails if
+  one has no section.
+- `reexported_public_items` is non-zero for `meridian-ui`, and `declared` + `reexported`
+  reproduce the hand-checked 213.
+- Every test row's `module` is non-empty and consistent with its `file`.
+- Schema validates the census; both-set, neither-set, out-of-vocabulary and non-existent `OD-*`
+  are each rejected naming the row.
+- No section has a uniformly-zero measured scalar; every `location` matches its manifest.
+- Byte-identity holds from a second root (re-proven, since new sections are new path surface).
+- `check`, `project --check`, `cargo test --workspace`, clippy, fmt all green.
 
 ## Failure injection and recovery
 
-Set both fields on a row; set neither; name an `OD-*` that does not exist; assign a disposition
-outside the vocabulary; map a test to a requirement id absent from `requirements.json`. Each
-must fail naming the row.
+Zero a section's measurements wholesale; set both judgement fields on a row; set neither; name
+a non-existent `OD-*`; corrupt a `location`; regenerate from a different absolute root. Each
+must fail naming the row and the section.
 
 ## Research candidates and selection metrics
 
@@ -93,16 +106,16 @@ None.
 
 | Area | Added | Removed |
 |---|---|---|
-| Assignment logic and validation | ~350 | ~10 |
-| Tests | ~180 | 0 |
-| Regenerated `census.json` | ~0 net, ~2,000 changed lines | 0 |
+| Five new sections + two fields | ~420 | ~20 |
+| `census.schema.json` + validation | ~180 | 0 |
+| Tests | ~220 | 0 |
+| Regenerated `census.json` | ~+1,900 lines | 0 |
 
 ## Stop / rollback rule
 
-Stop if a crate is retained solely because it exists; if a test is mapped to a requirement that
-does not describe it; if escalations exceed the budget; if any row carries both or neither of
-`disposition` and `escalation`; or if an escalation names a non-existent `OD-*`. Rollback is one
-commit.
+Stop if any judgement field is non-null; if an axis is declared covered by a section that
+measures nothing; if byte-identity fails from a second root; if a uniformly-zero scalar ships;
+or if the schema passes a census that violates XOR. Rollback is one commit.
 
 ## Independent Review
 

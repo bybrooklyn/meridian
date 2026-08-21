@@ -382,4 +382,50 @@ confirmed the rest were historical records.
 
 ## Completion record
 
-_Pending._
+Landed across `6b1f569` (measurement) and `440bf3e` (repair). **Shipped incomplete against its
+own accepted plan**, recorded here rather than discovered later.
+
+### Carry-ins
+
+1. **Not met.** `governance/schemas/census.schema.json` does not exist. The XOR invariant and
+   the `OD-*` existence check live in prose and in Rust assertions, not in a schema. The
+   accepted plan budgeted ~120 LOC for it. Carried to `WP-V1-CENSUS-002` as a blocking item.
+2. **Met.** `KNOWN-FORMATS.md` is committed with `MSAV` and `MERIDN\0\0` explicit, and the
+   reconciliation is a live rule in `check`.
+3. **Met.** `project --check` returns 0 and runs in `.github/workflows/ci.yml:15`.
+
+### Defects found after acceptance
+
+**The measurement was entirely zero.** All 37 crate rows shipped `source_lines`,
+`source_bytes`, `declared_public_items` and `test_functions` at 0, `location` wrongly `editor`
+for all 37, and absolute machine-local paths in every `manifest`. Cause: `--root` defaults to
+`.` while `cargo metadata` emits absolute paths, so the strip never matched and
+`strip_prefix` then failed on every source file. Fixed at `440bf3e` by canonicalising the root.
+
+No test caught it because every assertion was structural — rows exist, fields are null, the
+vocabulary is closed — and none asserted that a measurement measured anything. Added
+`measurements_are_not_all_zero`.
+
+The absolute paths were the more serious half: `check` regenerates and compares byte-for-byte
+and runs on `ubuntu-latest`, so the gate would have failed on every machine but this one — the
+exact failure `SD-013` was created to avoid, reintroduced inside the artifact it protects.
+Byte-identity is now **proven across roots**: regenerating from a copied checkout at
+`…/rootproof/deeper/nested/meridian` reproduces the file byte-for-byte.
+
+### Promised and not delivered
+
+- `reexported_public_items` as a field distinct from `declared_public_items`. The plan argued
+  at length that reporting `0` for a façade exporting hundreds is dishonest, then shipped no
+  such field. `meridian-ui` reports 5.
+- Test rows keyed by `module`. Rows carry `file`, `line`, `function` only, so any
+  "module-granularity" mapping degrades to file granularity.
+
+Both carried to `WP-V1-CENSUS-002`.
+
+### Coverage against the phase card
+
+The card names ten inventory axes. This package delivered five — crate, source format, test,
+generated file, CI row. Missing: **public type, backend dependency, feature, example, evidence
+runner.** `PH-AUTH-005` cannot close on five of ten, which is why `WP-V1-CENSUS-002` was
+rewritten from judgement to measurement-completion and the judgement work moved to
+`WP-V1-CENSUS-003`.
