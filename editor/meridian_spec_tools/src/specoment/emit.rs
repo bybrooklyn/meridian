@@ -174,8 +174,24 @@ fn index_markdown(index: &Index, stamp: &Stamp) -> String {
     out
 }
 
-fn identifiers_json(index: &Index, stamp: &Stamp) -> String {
-    let mut out = format!("{{\n{},\n  \"identifiers\": [\n", stamp.json_fields());
+fn identifiers_json(index: &Index, source: &str, stamp: &Stamp) -> String {
+    let divergences = super::index::reconcile_appendix_a(source, index);
+    let mut out = format!("{{\n{},\n", stamp.json_fields());
+    out.push_str(
+        "  \"appendix_a_note\": \"The root's own Appendix A is a pasted traceability index whose preamble asserts a MUST to preserve zero-unmapped traceability. These are the identifiers where it disagrees with the index derived from the body. Detection only: editing canonical prose is an owner amendment, recorded as SD-009.\",\n  \"appendix_a_divergences\": [\n",
+    );
+    for (position, divergence) in divergences.iter().enumerate() {
+        if position > 0 {
+            out.push_str(",\n");
+        }
+        let (kind, id) = match divergence {
+            super::index::AppendixADivergence::AbsentFromRoot(id) => ("absent-from-root", id),
+            super::index::AppendixADivergence::DifferentOwner(id) => ("different-owner", id),
+            super::index::AppendixADivergence::StaleInRoot(id) => ("stale-in-root", id),
+        };
+        let _ = write!(out, "    {{ \"id\": \"{id}\", \"kind\": \"{kind}\" }}");
+    }
+    out.push_str("\n  ],\n  \"identifiers\": [\n");
     let mut first = true;
     for (id, declaration) in &index.declared {
         if !first {
@@ -347,6 +363,106 @@ fn research_gates_json(gates: &[ResearchGate], stamp: &Stamp) -> String {
     out
 }
 
+/// The near-term work-package registry: the 12 `WP-V1-*` declarations the root makes under
+/// `# Near-term work-package decomposition`.
+fn work_packages_json(index: &Index, stamp: &Stamp) -> String {
+    let mut out = format!("{{\n{},\n  \"work_packages\": [\n", stamp.json_fields());
+    let mut first = true;
+    for (id, declaration) in &index.declared {
+        if !id.starts_with("WP-V1-") {
+            continue;
+        }
+        if !first {
+            out.push_str(",\n");
+        }
+        first = false;
+        let _ = write!(
+            out,
+            "    {{ \"id\": \"{id}\", \"heading\": \"{}\", \"line\": {} }}",
+            escape(&declaration.heading),
+            declaration.line
+        );
+    }
+    out.push_str("\n  ]\n}\n");
+    out
+}
+
+/// The maturity vocabulary, **extracted** from sections 0.3 and 0.4 rather than transcribed.
+///
+/// Per-identifier labels are not re-emitted: `identifiers.json` already carries
+/// `maturity_label`, and a second copy would be duplicated truth against `AGENT-SEM-004`.
+/// Transcribing the enums by hand would make this file the de facto authority for the
+/// validator, and `SD-008` records that section 0.4, Appendix H.4 and `IMPL-AGENT-001`
+/// disagree three ways on the evidence vocabulary. Extraction keeps the root authoritative;
+/// the conflict is emitted as data with no winner picked.
+fn maturity_json(source: &str, index: &Index, stamp: &Stamp) -> String {
+    let mut labels: BTreeMap<&str, usize> = BTreeMap::new();
+    for declaration in index.declared.values() {
+        if let Some(label) = &declaration.maturity_label {
+            *labels.entry(label.as_str()).or_default() += 1;
+        }
+    }
+
+    let mut axes: Vec<(String, Vec<String>)> = Vec::new();
+    for line in source.lines() {
+        let Some(rest) = line.strip_prefix(char::is_numeric) else {
+            continue;
+        };
+        let Some(rest) = rest.strip_prefix(". **") else {
+            continue;
+        };
+        let Some((name, values)) = rest.split_once(":** ") else {
+            continue;
+        };
+        if !name.ends_with("maturity") && !name.ends_with("status") {
+            continue;
+        }
+        let values: Vec<String> = values
+            .trim_end_matches('.')
+            .split(", ")
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .collect();
+        if values.len() > 2 {
+            axes.push((name.trim_end_matches("**").to_string(), values));
+        }
+    }
+
+    let mut out = format!("{{\n{},\n", stamp.json_fields());
+    out.push_str(
+        "  \"note\": \"Per-identifier labels are NOT re-emitted here; identifiers.json carries maturity_label. Section 0.3's decision labels are observed rather than declared: the root defines six and headings use more, which is owner decision OD-009. Axis enums are extracted from section 0.4, not transcribed.\",\n",
+    );
+    out.push_str("  \"observed_decision_labels\": [\n");
+    for (position, (label, count)) in labels.iter().enumerate() {
+        if position > 0 {
+            out.push_str(",\n");
+        }
+        let _ = write!(
+            out,
+            "    {{ \"label\": \"{}\", \"identifiers\": {count} }}",
+            escape(label)
+        );
+    }
+    out.push_str("\n  ],\n  \"axes\": [\n");
+    for (position, (name, values)) in axes.iter().enumerate() {
+        if position > 0 {
+            out.push_str(",\n");
+        }
+        let rendered: Vec<String> = values
+            .iter()
+            .map(|v| format!("\"{}\"", escape(v)))
+            .collect();
+        let _ = write!(
+            out,
+            "    {{ \"axis\": \"{}\", \"values\": [{}] }}",
+            escape(name),
+            rendered.join(", ")
+        );
+    }
+    out.push_str("\n  ]\n}\n");
+    out
+}
+
 /// Build every projection from one source text.
 pub fn all(source: &str, index: &Index, stamp: &Stamp) -> Result<Vec<Projection>, String> {
     let phases = super::phases::parse(source);
@@ -359,7 +475,7 @@ pub fn all(source: &str, index: &Index, stamp: &Stamp) -> Result<Vec<Projection>
         },
         Projection {
             relative_path: "governance/generated/identifiers.json".to_string(),
-            contents: identifiers_json(index, stamp),
+            contents: identifiers_json(index, source, stamp),
         },
         Projection {
             relative_path: "governance/generated/requirements.json".to_string(),
@@ -372,6 +488,14 @@ pub fn all(source: &str, index: &Index, stamp: &Stamp) -> Result<Vec<Projection>
         Projection {
             relative_path: "governance/generated/research-gates.json".to_string(),
             contents: research_gates_json(&gates, stamp),
+        },
+        Projection {
+            relative_path: "governance/generated/work-packages.json".to_string(),
+            contents: work_packages_json(index, stamp),
+        },
+        Projection {
+            relative_path: "governance/generated/maturity.json".to_string(),
+            contents: maturity_json(source, index, stamp),
         },
     ])
 }

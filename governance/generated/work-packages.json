@@ -1,0 +1,21 @@
+{
+  "generated": "DO NOT EDIT. Regenerate with: cargo run -p meridian-spec -- project",
+  "canonical_path": "/MERIDIAN_SPECOMENT.md",
+  "canonical_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
+  "generator_version": "specoment-projection/1",
+  "generated_at_source_checkpoint": "specoment:782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
+  "work_packages": [
+    { "id": "WP-V1-ARCH-001", "heading": "WP-V1-ARCH-001 — Dependency guardrails and marker removal", "line": 30177 },
+    { "id": "WP-V1-ARCH-002", "heading": "WP-V1-ARCH-002 — RHI behavior-preserving decomposition", "line": 30184 },
+    { "id": "WP-V1-ARCH-003", "heading": "WP-V1-ARCH-003 — UI/editor/build behavior-preserving decomposition", "line": 30191 },
+    { "id": "WP-V1-CENSUS-001", "heading": "WP-V1-CENSUS-001 — Crate and API disposition inventory", "line": 30170 },
+    { "id": "WP-V1-CORE-001", "heading": "WP-V1-CORE-001 — Stable semantic kernel", "line": 30198 },
+    { "id": "WP-V1-DAT-001", "heading": "WP-V1-DAT-001 — Catalog/compiler/CAS convergence", "line": 30219 },
+    { "id": "WP-V1-GOV-001", "heading": "WP-V1-GOV-001 — Registry/schema/tool v1", "line": 30156 },
+    { "id": "WP-V1-RESET-001", "heading": "WP-V1-RESET-001 — Baseline freeze", "line": 30142 },
+    { "id": "WP-V1-RESET-002", "heading": "WP-V1-RESET-002 — Canonical suite split", "line": 30149 },
+    { "id": "WP-V1-RESET-003", "heading": "WP-V1-RESET-003 — Atomic cutover", "line": 30163 },
+    { "id": "WP-V1-RUN-001", "heading": "WP-V1-RUN-001 — Lifecycle/task contract", "line": 30205 },
+    { "id": "WP-V1-RUN-002", "heading": "WP-V1-RUN-002 — Presentation snapshot seam", "line": 30212 }
+  ]
+}

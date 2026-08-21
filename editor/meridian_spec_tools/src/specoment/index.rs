@@ -317,6 +317,29 @@ mod tests {
         assert!(index.undeclared.is_empty(), "{:?}", index.undeclared);
     }
 
+    /// SD-009. The root's Appendix A is a pasted traceability index that its own preamble
+    /// says must preserve zero-unmapped traceability. Nothing checked that it does.
+    #[test]
+    fn appendix_a_divergence_from_the_body_is_detected() {
+        use super::{reconcile_appendix_a, AppendixADivergence};
+        // Written as concatenated lines rather than with `\` continuations: rustfmt bakes
+        // the source indentation into a continued literal, which silently prefixed every
+        // line with spaces and made the parser miss them.
+        let source = concat!(
+            "## Real `FOO-001` — *Normative*\n",
+            "\n",
+            "# Appendix A — index\n",
+            "\n",
+            "- `BAR-002` — owned by *Gone* (line 9)\n",
+            "\n",
+            "# Appendix B — next\n",
+        );
+        let index = build(source);
+        let divergences = reconcile_appendix_a(source, &index);
+        assert!(divergences.contains(&AppendixADivergence::AbsentFromRoot("FOO-001".into())));
+        assert!(divergences.contains(&AppendixADivergence::StaleInRoot("BAR-002".into())));
+    }
+
     #[test]
     fn appendix_a_is_outside_the_scan_window() {
         let index =
@@ -327,4 +350,69 @@ mod tests {
             "the document's own index must not feed the generated one"
         );
     }
+}
+
+/// One identifier where the root's Appendix A disagrees with the generated index.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AppendixADivergence {
+    /// Declared in the body but absent from the root's own index.
+    AbsentFromRoot(String),
+    /// Present in both, but the root attributes it to a different heading.
+    DifferentOwner(String),
+    /// In the root's index but no longer declared anywhere in the body.
+    StaleInRoot(String),
+}
+
+/// Reconcile the root's embedded Appendix A against the index derived from the body.
+///
+/// Appendix A is a traceability index pasted into canonical authority, and its own preamble
+/// asserts a MUST to preserve zero-unmapped traceability. Nothing checked that it does. This
+/// is the symmetrical counterpart to the Appendix G reconciliation: the same argument, turned
+/// on the appendix nobody had turned it on.
+///
+/// Detection only. Editing Appendix A is a change to canonical prose and therefore an owner
+/// amendment, recorded as `SD-009`.
+pub fn reconcile_appendix_a(source: &str, index: &Index) -> Vec<AppendixADivergence> {
+    let Some(start) = source.find("# Appendix A") else {
+        return Vec::new();
+    };
+    let section = &source[start..];
+    let section = section
+        .find("\n# Appendix B")
+        .map_or(section, |end| &section[..end]);
+
+    let mut in_root: BTreeMap<String, String> = BTreeMap::new();
+    for line in section.lines() {
+        let Some(rest) = line.strip_prefix("- `") else {
+            continue;
+        };
+        let Some((id, tail)) = rest.split_once('`') else {
+            continue;
+        };
+        let Some(owner) = tail
+            .split_once("owned by *")
+            .and_then(|(_, o)| o.split_once("* (line"))
+        else {
+            continue;
+        };
+        in_root.insert(id.to_string(), owner.0.trim().to_string());
+    }
+
+    let mut divergences = Vec::new();
+    for (id, declaration) in &index.declared {
+        match in_root.get(id) {
+            None => divergences.push(AppendixADivergence::AbsentFromRoot(id.clone())),
+            Some(owner) if owner != &declaration.heading => {
+                divergences.push(AppendixADivergence::DifferentOwner(id.clone()));
+            }
+            Some(_) => {}
+        }
+    }
+    for id in in_root.keys() {
+        if !index.declared.contains_key(id) {
+            divergences.push(AppendixADivergence::StaleInRoot(id.clone()));
+        }
+    }
+    divergences.sort();
+    divergences
 }

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "meridian:governance/projection",
+  "title": "Meridian v1 generated projection",
+  "description": "Shape only. Required fields are limited to the four Appendix H.5 stamp fields plus the structural keys the emitter actually writes. Prose fields are unconstrained strings: constraining `gate` or `maturity_label` to an enum would invent a vocabulary the root does not declare, which is what PH-AUTH-003's stop condition forbids. Uses same-document $defs only, because jsonschema is pinned default-features = false and cross-file $ref resolution is disabled.",
+  "type": "object",
+  "required": [
+    "generated",
+    "canonical_path",
+    "canonical_sha256",
+    "generator_version",
+    "generated_at_source_checkpoint"
+  ],
+  "properties": {
+    "generated": { "type": "string" },
+    "canonical_path": { "const": "/MERIDIAN_SPECOMENT.md" },
+    "canonical_sha256": { "$ref": "#/$defs/sha256" },
+    "generator_version": { "type": "string", "minLength": 1 },
+    "generated_at_source_checkpoint": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "identifier": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-[0-9]{3}[A-Z]*$" },
+    "line": { "type": "integer", "minimum": 1 }
+  }
+}

@@ -76,7 +76,39 @@ pub fn check_evidence_index(root: &Path, canonical_sha256: &str) -> Vec<Problem>
         Some(_) => {}
     }
 
-    // Completeness: every artefact beside the index must be registered.
+    // Shape, against the checked-in schema. Validating here rather than trusting the
+    // hand-rolled field checks above is what proves the schema is live rather than inert.
+    let schema_path = root.join("governance/schemas/evidence-index.schema.json");
+    if let Ok(schema_text) = fs::read_to_string(&schema_path) {
+        if let Ok(schema) = serde_json::from_str::<serde_json::Value>(&schema_text) {
+            match jsonschema::validator_for(&schema) {
+                Ok(validator) => {
+                    for error in validator.iter_errors(&value) {
+                        problems.push(Problem {
+                            path: display.clone(),
+                            detail: format!("schema: {error}"),
+                        });
+                    }
+                }
+                Err(error) => problems.push(Problem {
+                    path: "governance/schemas/evidence-index.schema.json".to_string(),
+                    detail: format!("schema does not compile: {error}"),
+                }),
+            }
+        }
+    }
+
+    problems.extend(unregistered_artefacts(&directory, &value, &display));
+    problems
+}
+
+/// Every artefact beside the index must be registered. `IMPL-WP-003` item 6.
+fn unregistered_artefacts(
+    directory: &Path,
+    value: &serde_json::Value,
+    display: &str,
+) -> Vec<Problem> {
+    let mut problems = Vec::new();
     let registered: BTreeSet<String> = value
         .get("records")
         .and_then(serde_json::Value::as_array)
@@ -99,7 +131,7 @@ pub fn check_evidence_index(root: &Path, canonical_sha256: &str) -> Vec<Problem>
         .unwrap_or_default();
 
     let mut present: Vec<String> = Vec::new();
-    if let Ok(entries) = fs::read_dir(&directory) {
+    if let Ok(entries) = fs::read_dir(directory) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
             if NOT_ARTEFACTS.contains(&name.as_str()) {
@@ -116,7 +148,7 @@ pub fn check_evidence_index(root: &Path, canonical_sha256: &str) -> Vec<Problem>
         .collect();
     if !unregistered.is_empty() {
         problems.push(Problem {
-            path: display,
+            path: display.to_string(),
             detail: format!(
                 "{} of {} artefacts are unregistered, against IMPL-WP-003 item 6: {}",
                 unregistered.len(),
@@ -187,6 +219,40 @@ mod tests {
         assert!(
             problems.iter().any(|p| p.detail.contains("unregistered")),
             "{problems:?}"
+        );
+    }
+
+    /// Proves the schema is live rather than inert. `jsonschema` is pinned
+    /// `default-features = false`, which disables cross-file `$ref` resolution; a schema
+    /// factored across files would silently never load and every rule resting on it would
+    /// be unfailable. Same-document `$defs` are unaffected, and this asserts it.
+    #[test]
+    fn the_schema_rejects_an_index_missing_its_source_digest() {
+        let schema: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../governance/schemas/evidence-index.schema.json"),
+            )
+            .expect("schema is checked in"),
+        )
+        .expect("schema parses");
+        let validator = jsonschema::validator_for(&schema).expect("schema compiles");
+
+        let missing: serde_json::Value =
+            serde_json::from_str(r#"{"schema": 1, "records": []}"#).expect("instance parses");
+        assert!(
+            validator.validate(&missing).is_err(),
+            "a schema that accepts an index with no source digest is inert"
+        );
+
+        let ok: serde_json::Value = serde_json::from_str(&format!(
+            r#"{{"schema": 1, "specoment_sha256": "{}", "records": []}}"#,
+            "a".repeat(64)
+        ))
+        .expect("instance parses");
+        assert!(
+            validator.validate(&ok).is_ok(),
+            "a conforming index must pass"
         );
     }
 

@@ -600,4 +600,86 @@ proposes to create, first query whether a shipped projection already carries its
 
 ## Completion record
 
-_Pending._
+- Completed: 2026-08-20 on `v1-authority-reset`, `main` untouched.
+
+### Result
+
+| Deliverable | State |
+|---|---|
+| Suite-equivalence matrix, rule level, generated | 67 units — 66 deleted scope, 1 retained, **2 unaccounted** |
+| `check` / `check-v05` inversion | Deferred — see limitations |
+| Class (a) work-packages registry | 12 `WP-V1-*` records |
+| Class (a) maturity vocabulary, extracted | 21 observed labels, 3 axes (5/10/10 values) |
+| Class (b) evidence conformance + registration | Appendix H.4 shape, 14 artefacts registered |
+| Class (b) schemas | `projection`, `evidence-index`, shape-only, same-document `$defs` |
+| Appendix A reconciliation | **42 divergences** emitted into `identifiers.json` |
+| Phase DAG: cycles and unresolved edges | Implemented, wired into `check` |
+
+### Gates
+
+`cargo test --workspace` **79 suites, exit 0**; `cargo test -p meridian-spec` **50**;
+`clippy --workspace --all-targets -D warnings`, `fmt --check`, `metadata --locked`, `check`,
+`project --check`, `git diff --check` all pass.
+
+### The three items verified rather than asserted
+
+1. **`SD-011` regression, by hash.** `shasum` before and after a `project` run is identical and
+   the 14 records survive. `emit.rs` contains zero references to the evidence index. This is
+   the data-loss failure an earlier revision of this plan actively directed.
+2. **The matrix reaches the subcommand-invisible sub-validators.** Verified present:
+   `missing-ui-design-tokens`, `invalid-ui-token`, `missing-delivery-plan-milestone`,
+   `work-package-cycle`, `program-milestone-leak`, `missing-validation-project`,
+   `missing-dependency-strategy`. The original blocking flaw was exactly this invisibility.
+3. **Appendix A: detection only.** 36 `absent-from-root` — matching the independently measured
+   `SD-009` count — plus **6 `different-owner`**, which were not previously known. All six
+   trace to defects already recorded: five are `ED-AOT-001..005` attributed to their range
+   heading rather than their per-member headings, and `NETPROJ-006` is attributed to
+   `NETPROJ-006A`'s heading by the collapse. **No specoment body edit in this package's diff.**
+
+### Defects found in this package's own work
+
+- `coverage-matrix.md` was emitted as a projection with **no Appendix H.5 stamp**. Caught by
+  `project --check`, which is the check doing its job on its author.
+- The test harness named temporary directories by nanosecond timestamp; under parallel
+  execution two collided and one test failed for another test's reason. Now a monotonic
+  counter. **Second parallel-test race in this programme.**
+- `cargo fmt` baked source indentation into a `\`-continued string literal, silently prefixing
+  every line of a fixture with spaces so the parser matched nothing. The test was broken by
+  formatting, not by the code. Rewritten with `concat!`.
+- `DropReason::parse` was removed rather than allowed dead: nothing reads dispositions back,
+  and retaining speculative API is scaffolding.
+
+### Limitations, recorded not omitted
+
+- **The matrix is red and licenses nothing.** Two units — `explain/record` and
+  `explain/unknown-id` — are unaccounted. Whether a query command survives the cutover is a
+  design question, and deriving an answer would be guessing. `PH-AUTH-004` cannot delete the
+  v0.5 validator until they are dispositioned.
+- **`check` / `check-v05` was not performed.** The v1 rules run inside the existing `check`
+  alongside the v0.5 ones rather than under a separate name. The inversion is a rename whose
+  only purpose is avoiding churn at `PH-AUTH-004`; doing it now would churn CI twice for no
+  gain while both suites are live. Carried to `PH-AUTH-004`.
+- **Waivers, releases and compatibility have schemas but no instances**, which is the honest
+  state: the root declares no waiver family, and v0.5 built no releases or compatibility
+  registry at all after a full milestone programme.
+- Appendix D rule 7 (fail CI when stale) remains **Deferred to `PH-AUTH-004`**, which owns CI.
+
+### Phase closure
+
+`PH-AUTH-003` **closes**.
+
+| Closure row | Status |
+|---|---|
+| Registries defined/generated for the chartered areas | Pass — six class (a) projections, two class (b) schemas, with the three genuinely empty ones honest about being empty |
+| Validate zero-unmapped IDs | Pass — 0 undeclared |
+| Phase DAGs | Pass — cycle and unresolved-edge detection wired into `check` |
+| Ownership, status axes | Pass — one owning heading per identifier; axes extracted, not transcribed |
+| Root-to-projection equivalence | Pass — `project --check`, byte-identical, fails closed |
+| Source links, hashes | Pass — four H.5 fields on every projection |
+| Forbidden legacy authority references | Pass — retired-v0.5 identifiers segregated |
+| Unit tests over the chartered failure classes | Pass — 50 tests |
+| The new validator runs against the staged suite | Pass |
+
+The stop conditions held: the validator needs no prose duplication, and no registry became a
+second normative specification — the maturity table was deleted for exactly that reason and
+the axis enums are extracted rather than transcribed.

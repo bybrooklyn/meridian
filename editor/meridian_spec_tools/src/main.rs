@@ -258,6 +258,30 @@ fn run(config: &Config) -> Result<Vec<Issue>, String> {
             // evidence index honest between now and PH-AUTH-004's CI enforcement.
             if let Ok(source) = fs::read_to_string(config.root.join("MERIDIAN_SPECOMENT.md")) {
                 let digest = specoment::sha256::hex(source.as_bytes());
+                // A phase graph with a cycle cannot be executed in any order, and an edge to
+                // a phase that does not exist cannot be satisfied. Both are hard defects.
+                let phases = specoment::phases::parse(&source);
+                for edge in specoment::phases::unresolved_edges(&phases) {
+                    push(
+                        &mut issues,
+                        "unresolved-phase-dependency",
+                        "governance",
+                        Path::new("MERIDIAN_SPECOMENT.md"),
+                        format!(
+                            "{} depends on {}, which no phase card declares",
+                            edge.from, edge.to
+                        ),
+                    );
+                }
+                for cycle in specoment::phases::cycles(&phases) {
+                    push(
+                        &mut issues,
+                        "phase-cycle",
+                        "governance",
+                        Path::new("MERIDIAN_SPECOMENT.md"),
+                        format!("phase dependency cycle: {}", cycle.join(" -> ")),
+                    );
+                }
                 for problem in specoment::accumulated::check_evidence_index(&config.root, &digest) {
                     push(
                         &mut issues,

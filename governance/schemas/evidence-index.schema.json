@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "meridian:governance/evidence-index",
+  "title": "Meridian evidence index",
+  "description": "Appendix H.4. Class (b) accumulated state: sourced from test runs rather than from the root, and therefore never emitted by the projection generator. Emitting it would overwrite accumulated records on the next generator run, which is SD-011.",
+  "type": "object",
+  "required": ["schema", "specoment_sha256", "records"],
+  "properties": {
+    "schema": { "const": 1 },
+    "specoment_sha256": { "$ref": "#/$defs/sha256" },
+    "records": { "type": "array", "items": { "$ref": "#/$defs/record" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "record": {
+      "type": "object",
+      "required": ["id", "class", "status", "artifacts"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "phase": { "type": "string" },
+        "work_package": { "type": "string" },
+        "source_checkpoint": { "type": "string" },
+        "class": {
+          "description": "Appendix H.4's declared classes.",
+          "enum": ["test", "benchmark", "capture", "recovery", "accessibility", "security", "platform", "release"]
+        },
+        "status": {
+          "description": "Appendix H.4's evidence vocabulary. SD-008 records that section 0.4, Appendix H.4 and IMPL-AGENT-001 disagree three ways on this enum; this schema follows H.4 because H.4 governs this file, and picking a winner across the three is an owner amendment.",
+          "enum": ["Pass", "Fail", "NotRun", "Unsupported", "Inconclusive", "Stale"]
+        },
+        "artifacts": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

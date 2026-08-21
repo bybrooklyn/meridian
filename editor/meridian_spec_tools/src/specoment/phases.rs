@@ -300,6 +300,37 @@ mod tests {
     }
 
     #[test]
+    fn a_cycle_is_reported_with_the_path_that_closes_it() {
+        use super::cycles;
+        let source = concat!(
+            "## PH-A-001 — first\n\n**Depends on:** `PH-A-002`\n\n",
+            "## PH-A-002 — second\n\n**Depends on:** `PH-A-001`\n",
+        );
+        let found = cycles(&parse(source));
+        assert!(!found.is_empty(), "a two-phase cycle must be reported");
+        assert!(found[0].len() >= 3, "the path must close: {found:?}");
+    }
+
+    #[test]
+    fn an_acyclic_graph_reports_no_cycles() {
+        use super::cycles;
+        let source = concat!(
+            "## PH-A-001 — first\n\n**Depends on:** None\n\n",
+            "## PH-A-002 — second\n\n**Depends on:** `PH-A-001`\n",
+        );
+        assert!(cycles(&parse(source)).is_empty());
+    }
+
+    #[test]
+    fn an_edge_to_a_nonexistent_phase_is_reported() {
+        use super::unresolved_edges;
+        let source = "## PH-A-001 — first\n\n**Depends on:** `PH-GONE-999`\n";
+        let broken = unresolved_edges(&parse(source));
+        assert_eq!(broken.len(), 1);
+        assert_eq!(broken[0].to, "PH-GONE-999");
+    }
+
+    #[test]
     fn research_labelled_headings_are_collected() {
         let gates = research_gates(
             "### Rust-authored shaders — *Research gate*\n### Settled `FOO-001` — *Normative*\n",
@@ -311,4 +342,91 @@ mod tests {
             "many gates carry no identifier"
         );
     }
+}
+
+/// A dependency edge naming a phase that does not exist.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UnresolvedEdge {
+    pub from: String,
+    pub to: String,
+}
+
+/// Unresolved `depends_on` edges.
+pub fn unresolved_edges(phases: &[Phase]) -> Vec<UnresolvedEdge> {
+    let known: std::collections::BTreeSet<&str> = phases.iter().map(|p| p.id.as_str()).collect();
+    let mut broken = Vec::new();
+    for phase in phases {
+        for dependency in &phase.depends_on {
+            if !known.contains(dependency.as_str()) {
+                broken.push(UnresolvedEdge {
+                    from: phase.id.clone(),
+                    to: dependency.clone(),
+                });
+            }
+        }
+    }
+    broken.sort();
+    broken
+}
+
+/// Cycles in the phase graph, each reported as the path that closes it.
+///
+/// A phase graph with a cycle cannot be executed in any order, so this is a hard defect
+/// rather than a warning. Three-colour depth-first search: a grey node reached again is a
+/// back edge.
+pub fn cycles(phases: &[Phase]) -> Vec<Vec<String>> {
+    use std::collections::BTreeMap;
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mark {
+        White,
+        Grey,
+        Black,
+    }
+
+    fn visit<'a>(
+        node: &'a str,
+        edges: &BTreeMap<&'a str, Vec<&'a str>>,
+        mark: &mut BTreeMap<&'a str, Mark>,
+        stack: &mut Vec<&'a str>,
+        found: &mut Vec<Vec<String>>,
+    ) {
+        mark.insert(node, Mark::Grey);
+        stack.push(node);
+        for next in edges.get(node).into_iter().flatten() {
+            match mark.get(next) {
+                Some(Mark::Grey) => {
+                    let at = stack.iter().position(|n| n == next).unwrap_or(0);
+                    let mut path: Vec<String> =
+                        stack[at..].iter().map(|s| (*s).to_string()).collect();
+                    path.push((*next).to_string());
+                    found.push(path);
+                }
+                Some(Mark::White) => visit(next, edges, mark, stack, found),
+                _ => {}
+            }
+        }
+        stack.pop();
+        mark.insert(node, Mark::Black);
+    }
+
+    let edges: BTreeMap<&str, Vec<&str>> = phases
+        .iter()
+        .map(|p| {
+            (
+                p.id.as_str(),
+                p.depends_on.iter().map(String::as_str).collect(),
+            )
+        })
+        .collect();
+    let mut mark: BTreeMap<&str, Mark> = edges.keys().map(|id| (*id, Mark::White)).collect();
+    let mut found = Vec::new();
+
+    let ids: Vec<&str> = edges.keys().copied().collect();
+    for id in ids {
+        if mark.get(id) == Some(&Mark::White) {
+            visit(id, &edges, &mut mark, &mut Vec::new(), &mut found);
+        }
+    }
+    found
 }
