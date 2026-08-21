@@ -1,7 +1,10 @@
 # WP-V1-GOV-001 — v1 governance schemas and validator
 
-Revision 2. Revision 1 received `rethink`: it substituted a deliverable the phase did not
-charter, and re-implemented working code. See Independent Review.
+Revision 3. Revision 1 received `rethink`; revision 2 received `revise`. See Independent Review.
+
+**Every figure below is stamped with the command that produced it, at `14d3feb`.** Two figures
+in revision 2 were wrong because they originated in the reviewer's own findings and were
+adopted verbatim on the strength of their source. A reviewer's number is not evidence either.
 
 ## Ownership
 
@@ -24,9 +27,11 @@ command.
 
 ## Current source diagnosis
 
-Measured at `14d3feb`. `DIAGNOSIS-CARRIED-FORWARD.md` in this directory carries two stale
-figures (2,188 lines and 39 tests / 417 lines) and is annotated accordingly; this section
-supersedes it.
+Measured at `14d3feb`. **`DIAGNOSIS-CARRIED-FORWARD.md` in this directory is superseded by this section.** It carries
+four figures that are now wrong: 2,188 `main.rs` lines (2,212), 39 tests in a 417-line suite
+(50 in 728), "~40-entry `VALID_STATUSES`" (46), and "122 identifier families", which is not the
+output of any defensible rule and is withdrawn. Rather than leave a partially-corrected input
+in the plan directory, that file is marked superseded in full.
 
 - `main.rs` is **2,212** lines, hard-coding a 37-entry `DOMAINS` list and a 46-entry
   `VALID_STATUSES` list, both v0.5 vocabulary.
@@ -46,8 +51,8 @@ supersedes it.
   `Deferred program` is defined in §0.3 and used in **no** heading.
 - `.meridian/implementation/evidence/index.json` is `{"schema_version": 1, "records": []}`.
   Appendix H.4 mandates `{"schema": 1, "specoment_sha256": "...", "records": [...]}`. The key
-  is misnamed, the mandatory digest is absent, and `records` is empty while **15 artefacts sit
-  in that directory** and four work packages are recorded complete. This violates
+  is misnamed, the mandatory digest is absent, and `records` is empty while **14 artefacts sit
+  in that directory** (15 files, one of which is `index.json`, the registry itself) and four work packages are recorded complete. This violates
   `IMPL-WP-003` item 6 and is the phase card's own "stale evidence" failure class, live in the
   repository now.
 - **The root's Appendix A is the defective output this programme already fixed.** It carries
@@ -64,20 +69,46 @@ supersedes it.
 
 ## Approach
 
-### 1. Suite equivalence is the primary artefact
+### 1. Suite equivalence is the primary artefact, at rule level
 
 The root's Tests line for this package names "suite equivalence", and the phase card's closure
 evidence ends "The new validator runs against the staged suite." That is the precondition
 letting `PH-AUTH-004` delete the v0.5 validator without losing enforcement.
 
-Deliver `governance/coverage-matrix.md`, generated, mapping each v0.5 check —
-`check`, `validate docs`, `validate schemas`, `validate maturity`, `validate evidence`,
-`validate workloads`, `validate adrs` — to its v1 successor rule **or** to an explicitly
-recorded intentional drop with a reason. That matrix is what licenses the deletion at 004.
+**Rule level, not command level.** `Command::Check` calls **15** sub-validators, and **8 of
+them have no subcommand at all** — they are reachable only through `check`:
+`validate_delivery_plan`, `validate_work_package_graph`, `validate_program_boundaries`,
+`validate_marquee_policy`, `validate_ui_contracts`, `validate_validation_projects`,
+`validate_dependency_strategy`, `validate_cross_references`. A seven-row command-level matrix
+collapses all fifteen into one row and renders those eight invisible, so deleting the v0.5
+validator on that evidence would silently drop eight enforcement units — precisely the failure
+the matrix exists to prevent.
 
-Revision 1 substituted *root-to-projection* equivalence, which is a different thing and is
-**already shipped**: `project --check` regenerates, compares byte-for-byte and names
-divergences. It is cited here, not rebuilt.
+The real enforcement surface, measured:
+
+```text
+sed -n '/Command::Check => {/,/^        }/p' src/main.rs | grep -oE '[a-z_]+\(' | sort -u
+  -> 15 sub-validators
+
+regex over push/push_with_severity call sites in src/main.rs
+  -> 65 distinct issue ids, 67 distinct (check, id) pairs
+```
+
+Revision 2's reviewer measured 64 and 66. This plan uses **65 and 67** and states the command,
+because two figures adopted from that reviewer in revision 2 proved wrong. The exact count is
+not load-bearing; the matrix is generated from the extracted set, so whatever the set contains
+is what must be mapped.
+
+Deliver `governance/coverage-matrix.md`, **generated** by extracting the issue-id set from the
+v0.5 validator and requiring each id to carry either a `v1_rule` or a `dropped_because`. Being
+generated from the code it is a derived artefact, not restated prose, so the stop condition on
+prose duplication is not tripped — hand-writing 65 rows of English would trip it.
+
+This is also the **only rule in the package that is red on day one**: all 65 ids currently map
+to nothing. Every other rule needs a synthetic fixture to fail.
+
+Root-to-projection equivalence — a different thing, which revision 1 wrongly substituted for
+this — is **already shipped** as `project --check` and is cited, not rebuilt.
 
 ### 2. `check` becomes the v1 validator; `check-v05` is the mixed-window name
 
@@ -91,16 +122,35 @@ surviving command needs no rename, so no v1 name ever carries a migration-era su
 | requirements | shipped at `PH-AUTH-002` |
 | phases | shipped at `PH-AUTH-002` |
 | research gates | shipped at `PH-AUTH-002` |
-| near-term work packages | **new** — the root declares 12 `WP-V1-*` identifiers at lines 30144-30175 |
+| near-term work packages | **new** — 12 `WP-V1-*` declarations under `# Near-term work-package decomposition` (line 30138), spanning lines 30142-30219.<br>`grep -c '^## WP-V1-' MERIDIAN_SPECOMENT.md` → 12 |
 | dependencies | **new** — 98 of 99 phase cards carry `depends_on` |
 | maturity | **new** — verbatim labels plus the §0.3/§0.4/§0.7 axis content |
 | evidence | **new** — Appendix H.4 shape, with the 15 existing artefacts registered |
-| waivers | **empty typed registry** with schema and stamp |
-| releases | **empty typed registry** with schema and stamp |
-| compatibility | **empty typed registry** with schema and stamp |
+| waivers | schema, plus a **generated** registry that currently emits zero rows |
+| releases | schema, plus a **generated** registry that currently emits zero rows |
+| compatibility | schema, plus a **generated** registry that currently emits zero rows |
 
-An empty typed registry is the honest deliverable for the last three. Omitting them makes
-`PH-AUTH-004` inherit undeclared scope.
+**Referents declared, because an undeclared referent cannot have a rule that fails.**
+
+- **waivers** — records of granted scoped expiring waivers. `grep` for a `WVR-*`/`WAIVER-*`
+  identifier family in the root returns nothing, so the root declares no waiver today.
+- **releases** — records of **shipped immutable releases**, in §0.5 item 5's sense. This is
+  *not* the 15 `RELEASE-001..010` and `RELEASE-SUP-001..005` identifiers, which are
+  requirements *about* the release system and are already among the 527 records in
+  `requirements.json`. Revision 2 said "empty" without stating which referent it meant; under
+  the other reading the registry would have duplicated `requirements.json`.
+- **compatibility** — records of declared compatibility windows. No `COMPAT-*` family exists
+  in the root.
+
+**They are generated, not hand-placed.** Everything under `governance/generated/` carries
+`DO NOT EDIT. Regenerate with: cargo run -p meridian-spec -- project`, and `project --check`
+enforces byte-identity by regenerating. A hand-created empty file there regenerates to nothing,
+so `project --check` could not police it and its own header would instruct the reader to do
+something that does not work. Emitting them from a root query that presently returns zero rows
+makes them derived like every sibling, policed by the same check, and self-populating the
+moment the root declares a waiver. That is what distinguishes a load-bearing empty registry
+from `IMPL-WP-003`'s "empty crate": a schema constrains future writes, a stamp ties it to the
+canonical digest, and a rule fails when it drifts.
 
 ### 4. Rules
 
@@ -116,7 +166,8 @@ and such a test has never been red.
 - evidence index conforms to Appendix H.4 and every artefact present is registered;
 - projection stamps carry the four H.5 fields and the current canonical digest;
 - Appendix A reconciliation, symmetrical to the existing Appendix G handling, emitting
-  `appendix_a_divergences` into `identifiers.json`;
+  `appendix_a_divergences` into `identifiers.json`. **This package delivers detection only.**
+  The corresponding edit to canonical prose is an owner amendment — see `SD-009` below;
 - no v1 content cites a retired v0.5 identifier as live authority.
 
 ### 5. No maturity normalisation table
@@ -159,9 +210,15 @@ schema is provably live rather than inert.
 `schemas/governance/*` and `specs/registry/*`. Both are live v0.5 paths that `PH-AUTH-004`
 deletes wholesale; writing v1 content into them would make the cutover non-atomic and would
 make "which suite is active" unanswerable by path. v1 schemas therefore go to
-`governance/schemas/`. Appendix E says *likely* files, so no waiver is needed — but §0.5 and
-`CLAUDE.md` §1 forbid resolving a conflict silently, so this is recorded as `SD-007` rather
-than exercised quietly.
+`governance/schemas/`. The root's own wording is "**Likely** files", and the enclosing section
+`# Near-term work-package decomposition` (line 30138) hedges at line 30140: *"Only the
+adoption/foundation frontier is decomposed to file-level work now."* So no waiver is needed —
+but §0.5 and `CLAUDE.md` §1 forbid resolving a conflict silently, so this is recorded as
+`SD-007` rather than exercised quietly.
+
+Revision 2 attributed the "likely files" wording to **Appendix E**. That was wrong: Appendix E
+begins at line 31393 and is *Source and provenance basis*. A divergence record whose authority
+citation is fabricated is the exact defect class this programme keeps catching; corrected here.
 
 `check-v05` and `check` run side by side through the mixed window. The coverage matrix is what
 licenses removing the former.
@@ -175,7 +232,11 @@ records while fifteen artefacts exist.
 **Appendix D obligations.** Rule 7 (fail CI when misleadingly stale) is **Deferred to
 `PH-AUTH-004`**, which owns CI; between now and then nothing enforces staleness in CI, and
 that is stated rather than left silent. Rule 8 (distinguish user documentation from governance
-authority) is satisfied by path: `governance/` is governance, `docs/` is documentation.
+authority) holds across every artefact this package writes, which needs saying because two of
+them are not obvious: `governance/coverage-matrix.md` is Markdown but is **generated
+governance**, not documentation, and `.meridian/implementation/evidence/` is derived
+bookkeeping under `IMPL-STATE-001`, which that contract states must not become a second
+specification. `docs/` remains the documentation tree and this package does not write to it.
 
 ## Tests and evidence
 
@@ -204,17 +265,26 @@ absorb it. Recorded as `OD-009`, and it must land before authority freezes at `P
 
 ## LOC estimate
 
-| Area | Added | Removed |
-|---|---|---|
-| Production — rules, registries, coverage matrix | ~500 | ~0 |
-| Production — `main.rs` command rename and dispatch | ~15 | ~10 |
-| Tests and fixtures, incl. synthetic violating specoments | ~500 | ~0 |
-| Schemas, hand-written | ~350 | 0 |
-| Generated registries | ~1,500 | 0 |
+Revision 2 stated ~500 production while roughly doubling the deliverable set — seven new
+registries, an Appendix A reconciliation, evidence-index conformance and a coverage-matrix
+generator — and justified the reduction by removing two rules that were re-implementations.
+That arithmetic was not honest: the removal is worth roughly 100 lines, and the additions are
+worth far more. Restated with the basis shown so it can be audited rather than believed.
 
-Lower than revision 1's ~600 production because rules 6 and 7 were re-implementations of
-shipped code. The genuinely new logic is the DAG check, the axis-tagged enum check, the
-evidence-index conformance check and the Appendix A reconciliation.
+| Area | Added | Removed | Basis |
+|---|---|---|---|
+| Registries in `emit.rs` | ~460 | 0 | `wc -l emit.rs` = 398 for 5 projections + manifest ≈ **66 per output** × 7 new |
+| Appendix A reconciliation | ~250 | 0 | its structural analogue `phases.rs` is 314 lines; Appendix A is larger (700 entries across A.1/A.2/A.2b/A.3) but reuses `index.rs` |
+| Coverage-matrix generator, DAG cycle check, axis-tagged enum check, evidence-index conformance | ~250 | 0 | four rules, no existing analogue |
+| `main.rs` command rename and dispatch | ~15 | ~10 | |
+| **Production total** | **~975** | ~10 | |
+| Tests and fixtures, incl. synthetic violating specoments | ~500 | 0 | |
+| Schemas, hand-written | ~350 | 0 | 10 registries, shape-only |
+
+**~975 production, not ~500.** If that is too large for one package the honest response is to
+split the Appendix A reconciliation into its own package, not to shrink the number — a scope
+signal pointing the wrong way is worse than none, and revision 2's stop rule would have fired
+immediately and pointlessly.
 
 ## Stop / rollback rule
 
@@ -267,9 +337,61 @@ delivered none of its chartered purpose.
 - `main.rs` 2,188 → 2,212, corrected before the review returned.
 - `DIAGNOSIS-CARRIED-FORWARD.md` carries stale 2,188 / 39-test / 417-line figures.
 
-### Disposition
+### Disposition — revision 1
 
-All fifteen findings adopted. Returned for re-review.
+All fifteen findings adopted; restructured around suite equivalence.
+
+---
+
+## Independent Review — revision 2
+
+- Verdict: **revise**. Structure accepted; one blocking design flaw plus a dishonest estimate,
+  a fabricated citation, and four wrong numbers.
+
+### Blocking finding, verified independently
+
+**The command-level matrix was far too coarse.** `Command::Check` calls **15** sub-validators,
+of which **8 have no subcommand** and are reachable only through `check`. A seven-row matrix
+collapses them into one row, so deleting the v0.5 validator on that evidence would silently
+drop eight enforcement units. Measured enforcement surface: **65 distinct issue ids across 67
+`(check, id)` pairs**. The matrix is now rule-level and generated from the extracted id set.
+
+The reviewer's own measurement was 64 and 66. This plan states 65 and 67 with the producing
+command, for the reason in the process note below.
+
+### Findings accepted
+
+| # | Finding | Disposition |
+|---|---|---|
+| 2 | Under-scoped: ~500 production while doubling the deliverable set | Restated **~975** with the `emit.rs` 398/6 ≈ 66-per-output basis shown |
+| 3 | The three empty registries were scaffolding as specified — undefined referent, and a hand-placed file in a generated tree that `project --check` cannot police | Referents declared; registries **emitted** from queries returning zero rows |
+| 4 | Deferring `SD-009` into `PH-AUTH-004` breaks the cutover's atomicity and is harder after the freeze | Re-dispositioned to an owner amendment landing **before** the freeze, tracked with `OD-009` |
+| 5 | Appendix D rule 8 justification did not cover the artefacts actually written | Coverage matrix and `.meridian/` both addressed |
+| 6 | Diagnosis annotation incomplete | File marked superseded in full, all four figures named |
+
+### Factual errors corrected, and where they came from
+
+| Error | Truth | Origin |
+|---|---|---|
+| "15 artefacts" in `SD-010` | **14** — 15 files, one being `index.json` itself | Mine, revising the reviewer's correct 14 upward |
+| `WP-V1-*` at "lines 30144-30175" | **30142-30219**, section `# Near-term work-package decomposition` at 30138 | **Reviewer's revision-1 finding**, adopted verbatim |
+| "Appendix E says likely files" | Appendix E is at 31393, *Source and provenance basis*. The wording is at 30140 | Mine |
+| "releases — empty" | True only for shipped-release records; the 15 `RELEASE-*` identifiers are requirements already among 527 in `requirements.json` | **Reviewer's revision-1 assertion**, adopted verbatim |
+
+Note the shape of the first: counting the container among its contents. That is the same error
+as revision 1's "six projections", which counted the manifest. Twice in one package.
+
+### Process note, adopted
+
+Two of the four errors originated in the reviewer's own findings and were adopted because they
+came from a reviewer. **The independent-review loop does not make a reviewer's numbers true.**
+Every figure in this revision is re-derived from the repository at `14d3feb` and stamped with
+the command that produced it — including the three the reviewer asked to be stamped: the issue
+ids, the artefact count, and the per-projection basis for the estimate.
+
+### Disposition — revision 2
+
+All six findings and all four factual corrections adopted. Returned for re-review.
 
 ## Completion record
 
