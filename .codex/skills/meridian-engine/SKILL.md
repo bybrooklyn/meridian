@@ -24,10 +24,10 @@ implementation, evidence, or private game content.
 1. Read `AGENTS.md` at the repository root and any narrower `AGENTS.md`.
 2. Run `scripts/project-status.sh`; add `--remote` when GitHub/CI state matters.
 3. Read the current versions of:
-   - `specs/MERIDIAN_MASTER_SPEC.md`;
+   - `MERIDIAN_SPECOMENT.md`;
    - `PLANNING.md`;
-   - `specs/DELIVERY_ROADMAP.md`;
-   - `specs/IMPLEMENTATION_PLANNING_SPEC.md`;
+   - `MERIDIAN_SPECOMENT.md` Part IV;
+   - `MERIDIAN_SPECOMENT.md` `IMPL-WP-001`;
    - the owning subsystem specification and applicable ADR/registry records.
 4. Inspect the current diff before editing. Preserve unrelated user changes.
 5. Prefer `rg` and `rg --files` for repository discovery.
@@ -45,7 +45,7 @@ Use this conflict order:
 2. migration and contradiction register;
 3. delivery roadmap;
 4. implementation-planning spec;
-5. typed registries under `specs/registry/`;
+5. typed registries under `governance/generated/`;
 6. root `PLANNING.md` for active bounded work and current evidence;
 7. private game documents for creative decisions only;
 8. history/migration records;

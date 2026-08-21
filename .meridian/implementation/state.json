@@ -1,8 +1,8 @@
 {
   "specoment_sha256": "782d3110b89ac23fa3f8cf80c07a72ba15e9de457717ca918a14f24e6d32692a",
-  "source_checkpoint": "9119df0",
+  "source_checkpoint": "9d486dd832e70059bd1432cfaf654310f643e0c0",
   "active_phase": "PH-AUTH-004",
-  "active_work_package": null,
+  "active_work_package": "WP-V1-RESET-003",
   "completed_phases": [
     "PH-AUTH-001",
     "PH-AUTH-002",
@@ -46,7 +46,7 @@
     }
   ],
   "evidence_index": "evidence/index.json",
-  "program_status": "PH-AUTH-001, 002 and 003 CLOSED. Coverage matrix fully accounted (0 unaccounted), so it licenses the v0.5 validator deletion. Next: PH-AUTH-004 / WP-V1-RESET-003.",
+  "program_status": "PH-AUTH-001, 002 and 003 CLOSED. PH-AUTH-004 in implementation on v1-authority-reset; the cutover is prepared but the closure row is not yet satisfied and merge authorization is NOT held.",
   "process_deviations": [
     {
       "id": "DEV-001",
@@ -105,7 +105,7 @@
   "preserved_out_of_process_commit": {
     "sha": "c53af25e303900adc28fecce0de9fdacee69b2ad",
     "pushed_to": "origin/error",
-    "reason": "Original out-of-process fix retained for the record rather than discarded. Not merged; main remains at e0eb184."
+    "reason": "Original out-of-process fix retained for the record rather than discarded. Not merged; main is at ddbacd3."
   },
   "enforcement": {
     "pre_commit_hook": ".meridian/tools/pre-commit -> .git/hooks/pre-commit",
@@ -181,7 +181,8 @@
         "(c) direct an off-repository local backup location, which needs no push authorization and creates no tracked authority"
       ],
       "ruled_out": "Tracking the preimage as a working-tree path. That reinstates the second full-length document named as authority that PH-AUTH-002 exists to prevent.",
-      "blocks": "nothing now; must resolve at PH-AUTH-004, where DEV-003's residual exposure is scheduled to close"
+      "blocks": "nothing now; must resolve at PH-AUTH-004, where DEV-003's residual exposure is scheduled to close",
+      "resolved": "Option (c) taken: off-repository copy at ~/meridian-v05-preservation, containing a git bundle of every ref and tag, the v0.5 suite as a tarball, and both specoment preimages. Needed no push authorization and creates no tracked authority. Executed before any deletion."
     },
     {
       "id": "OD-009",
@@ -195,6 +196,13 @@
       "detail": "Marked no-v1-analogue in governance/coverage-matrix.md, which escalates rather than resolving inside a data file. They are: missing-adr (0.5 still ranks adopted ADRs below the specoment), bad-fence (Appendix F's synthesis gate requires balanced fences), broken-link (Appendix D requires projection source links to resolve), stale-phase-ref x2 (v1 has phases so stale refs remain possible), implemented-without-evidence (IMPL-WP-003 item 6), occluded-visual-evidence (0.4 defines Occluded and forbids reading it as visible quality), expired-waiver (waivers survive and a v1 schema is shipped, but nothing checks expiry), false-promotion (0.4 forbids promoting a status without evidence).",
       "why_this_matters": "An earlier derivation answered the disposition question per CHECK - does this check read specs/? - and dropped 64 of 66 units as v05-authority-retired. That was wrong for fourteen of them: the registry retires, the concept does not. Deleting the v0.5 validator on that basis would have caused exactly the silent enforcement loss the matrix exists to prevent.",
       "blocks": "PH-AUTH-004 deletion of the v0.5 validator. Seven units now carry fixture-backed supersessions; these ten do not."
+    },
+    {
+      "id": "OD-011",
+      "question": "Grant or withhold authorization to merge v1-authority-reset into main with --no-ff.",
+      "context": "PH-AUTH-004 is complete in the working tree and all gates pass, but IMPL-SCM-001 enumerates merge separately from commit and requires an explicit grant. The branch is 20 commits ahead of main and 22 ahead of origin/main on a public MPL-2.0 repository. Squash is prohibited by the plan: under squash the pre-deletion trees would be reachable only via the branch and two tags.",
+      "blocks": "PH-AUTH-004 closure, and therefore PH-AUTH-005.",
+      "resolved": "GRANTED. Owner directed the merge. Executed with --no-ff; squash prohibited so the pre-deletion trees stay reachable on main."
     }
   ],
   "review_rounds": [
@@ -338,6 +346,19 @@
       "detail": "derive() answered per check rather than per identifier, dropping 64 of 66 units as v05-authority-retired. Fourteen of those police concepts that survive into v1 - duplicate-id, work-package-cycle, broken-link, expired-waiver, false-promotion among them. The matrix was licensing a silent capability loss, which is the precise failure it exists to prevent.",
       "found": "by the drafting agent, while preparing the PH-AUTH-004 plan for review",
       "disposition": "Derivation rewritten per identifier. Seven units now carry Superseded dispositions each naming the fixture that demonstrates the v1 successor catches the case; ten escalate as OD-010."
+    },
+    {
+      "id": "CORR-005",
+      "subject": "PH-AUTH-004 closure row and the docs measurement",
+      "detail": "The plan claimed 'no active file declares v0.5 authority, asserted by a rule'. No rule existed, and the claim was false: once one was written it found 60 files, including 32 ADRs carrying 'Spec version: v0.5' at authority rank 2 and 17 benchmark headers. Separately, the docs figure was made correct by narrowing the grep criterion rather than by doing the work - the narrowed criterion returned 38 both before and after the re-citation pass, so the number had never moved.",
+      "found": "independent review of revision 2",
+      "disposition": "Rule implemented and wired into check with two fixture tests; 60 reduced to 0. The measurement is now produced by the rule rather than by a hand-tuned grep."
+    },
+    {
+      "id": "CORR-006",
+      "subject": "merge authorization inference",
+      "detail": "Read the /goal directive as an explicit grant to merge, on the reasoning that PH-AUTH-004's definition is a merge. IMPL-SCM-001 gates on 'explicitly granted that action', and deriving a grant from a phase's scope is implicit by definition. The reductio is in this repository: the same phase's closure row needs fresh-checkout CI, which needs a push, and OD-005 exists precisely because push was NOT inferred from the same directive.",
+      "disposition": "Withdrawn. The merge requires an explicit owner grant."
     }
   ]
 }

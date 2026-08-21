@@ -2,7 +2,8 @@
 
 - Status: Adopted
 - Date: 2026-07-15
-- Spec version: v0.3
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Isobar/Basalt scaffold; Torsant planned
 - Owners: future Isobar, Basalt, and Torsant workstreams
 - Supersedes: none
@@ -37,21 +38,15 @@ runtime cost, dependency edges, or package chunks until a phase activates them.
 
 ## Current Evidence
 
-- [Delivery roadmap](../../../specs/DELIVERY_ROADMAP.md)
-- [Isobar weather and atmosphere spec](../../../specs/ISOBAR_WEATHER_AND_ATMOSPHERE_SPEC.md)
-- [Basalt terrain and large-world geometry spec](../../../specs/BASALT_TERRAIN_AND_LARGE_WORLD_GEOMETRY_SPEC.md)
-- [Torsant fire, fluids, and thermal simulation spec](../../../specs/TORSANT_FIRE_FLUIDS_AND_THERMAL_SIMULATION_SPEC.md)
-- [Procedural authoring spec](../../../specs/PROCEDURAL_AUTHORING_SPEC.md)
-- [Repository and crate architecture](../../../specs/REPOSITORY_AND_CRATE_ARCHITECTURE.md)
+- [Delivery roadmap](../../../MERIDIAN_SPECOMENT.md)
 - [Isobar scaffold](../../../engine/meridian_isobar/src/lib.rs)
 - [Basalt scaffold](../../../engine/meridian_basalt/src/lib.rs)
 
-## Intended v0.3 Links
-
-- `specs/ISOBAR_WEATHER_AND_ATMOSPHERE_SPEC.md`
-- `specs/BASALT_TERRAIN_AND_LARGE_WORLD_GEOMETRY_SPEC.md`
-- `specs/TORSANT_FIRE_FLUIDS_AND_THERMAL_SIMULATION_SPEC.md`
-- `specs/DELIVERY_ROADMAP.md`
+## Links
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
 
 ## Consequences
 

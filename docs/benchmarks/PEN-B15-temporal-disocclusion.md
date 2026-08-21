@@ -1,8 +1,8 @@
 # PEN-B15 — Temporal Disocclusion
 
-[Suite](README.md) · [Penumbra](../../specs/RENDERING_AND_GRAPHICS_SPEC.md)
+[Suite](README.md) · [Penumbra](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated`
+version 1.0 · `DefinitionOnly` · `Uncalibrated`
 
 Purpose: produce controlled reveal/occlusion, thin foliage, fast motion, camera
 cuts, exposure changes, origin rebases, dynamic-resolution changes, transparency,

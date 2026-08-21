@@ -2,7 +2,8 @@
 
 - Status: Adopted
 - Date: 2026-07-18
-- Spec version: v0.5
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Planned
 - Owners: ANI, Cairn, gameplay, navigation, data, editor, networking, agents
 - Supersedes: none
@@ -46,15 +47,14 @@ motion matching, facial solver, or performance-capture pipeline. This ADR and
 the Artus specification are architecture only; they do not promote ANI
 implementation maturity or activate a package.
 
-## Intended v0.5 Links
-
-- `specs/ANIMATION_CINEMATICS_AND_FACIAL_SYSTEMS_SPEC.md`
-- `specs/CAIRN_PHYSICS_SPEC.md`
-- `specs/NAVIGATION_AND_AI_INFRASTRUCTURE_SPEC.md`
-- `specs/DELIVERY_ROADMAP.md`
-- `specs/RESEARCH_AND_ALGORITHM_DECISIONS.md`
-- `specs/TESTING_BENCHMARKS_AND_VALIDATION.md`
-- `specs/registry/research-gates.json`
+## Links
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `governance/generated/`
 
 ## Consequences
 

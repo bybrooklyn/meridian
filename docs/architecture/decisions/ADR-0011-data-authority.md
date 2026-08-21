@@ -2,7 +2,8 @@
 
 - Status: Adopted
 - Date: 2026-07-15
-- Spec version: v0.3
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Partial data foundations
 - Owners: meridian-assets, meridian-world, meridian-save, future meridian-package
 - Supersedes: none
@@ -29,15 +30,13 @@ diagnostics and leave source untouched.
 
 ## Current Evidence
 
-- [Asset, world, save, and package formats](../../../specs/ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md)
-- [Master specification](../../../specs/MERIDIAN_MASTER_SPEC.md)
+- [Asset, world, save, and package formats](../../../MERIDIAN_SPECOMENT.md)
 - [Planning ledger](../../../PLANNING.md)
 
-## Intended v0.3 Links
-
-- `specs/ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md`
-- `specs/VERSION_CONTROL_COLLABORATION_AND_SYNC_SPEC.md`
-- `specs/API_AND_FILE_FORMAT_EXAMPLES.md`
+## Links
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
 
 ## Consequences
 

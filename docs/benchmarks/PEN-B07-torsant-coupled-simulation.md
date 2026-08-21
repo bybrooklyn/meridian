@@ -1,8 +1,8 @@
 # PEN-B07 — Torsant Fire, Fluids, Heat, and Smoke
 
-[Suite](README.md) · [Torsant](../../specs/TORSANT_FIRE_FLUIDS_AND_THERMAL_SIMULATION_SPEC.md)
+[Suite](README.md) · [Torsant](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated`
+version 1.0 · `DefinitionOnly` · `Uncalibrated`
 
 Purpose: compare optional authored/simple/research fire, smoke, heat, and fluid
 fields plus Isobar/Basalt coupling and Penumbra visualization. Each specialized

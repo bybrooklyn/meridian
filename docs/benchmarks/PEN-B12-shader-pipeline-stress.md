@@ -1,8 +1,8 @@
 # PEN-B12 — Shader and Pipeline Compilation Stress
 
-[Suite](README.md) · [Penumbra](../../specs/RENDERING_AND_GRAPHICS_SPEC.md)
+[Suite](README.md) · [Penumbra](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated`
+version 1.0 · `DefinitionOnly` · `Uncalibrated`
 
 Purpose: stress `MaterialIr`/`ShaderIr` lowering, reflection/binding generation,
 specialization, cache identity, backend output, pipeline creation, warmup, and

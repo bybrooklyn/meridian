@@ -2,7 +2,8 @@
 
 - Status: Adopted
 - Date: 2026-07-17
-- Spec version: v0.5
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Partial
 - Owners: UI, renderer, RHI, accessibility
 - Supersedes: none
@@ -65,7 +66,7 @@ reached the RHI `Presented` outcome and captured bounded non-uniform RGBA8 sRGB
 surface pixels; that proves submission, presentation, and readback plumbing,
 not golden pixel correctness or review quality.
 
-The machine-validated [renderer-path evaluation registry](../../../specs/registry/renderer-path-evaluations.json)
+The machine-validated `renderer-path evaluation registry`
 records both the selected direct path and the CPU bridge's explicitly
 non-production fallback role. It is authoritative for the architecture
 selection boundary; evidence records remain authoritative for qualification.
@@ -81,12 +82,11 @@ renderer completion. It still needs qualified Linux/Windows/macOS evidence,
 calibrated latency/memory/cache evidence, real screen-reader evidence, and a
 human verdict on presented native review artifacts.
 
-## Intended v0.5 Links
-
-- `specs/EDITOR_AND_MERIDIAN_UI_SPEC.md`
-- `specs/RESEARCH_AND_ALGORITHM_DECISIONS.md`
-- `specs/TESTING_BENCHMARKS_AND_VALIDATION.md`
-- `specs/registry/research-gates.json`
+## Links
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `governance/generated/`
 - `PLANNING.md`
 
 ## Consequences

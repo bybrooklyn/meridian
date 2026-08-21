@@ -73,6 +73,7 @@ enum Command {
     ValidateEvidence,
     ValidateWorkloads,
     ValidateAdrs,
+    CheckV05Legacy,
     ListUnmapped,
     Explain,
     Project { check: bool },
@@ -143,6 +144,104 @@ fn main() {
     }
 }
 
+/// The v1 validator: the canonical specoment and its generated projections.
+///
+/// The v0.5 sub-validators remain reachable as `check-v05` until the follow-up package removes
+/// them once `OD-010` is ruled. They no longer run by default because `PH-AUTH-004` deleted the
+/// authority they policed; nine of their rules police concepts that survive into v1 with no
+/// successor yet, and leaving the code in place keeps that ruling from being made by deletion.
+fn check_v1(config: &Config, issues: &mut Vec<Issue>) -> Result<(), String> {
+    let source_path = config.root.join("MERIDIAN_SPECOMENT.md");
+    match fs::read_to_string(&source_path) {
+        Ok(source) => {
+            let digest = specoment::sha256::hex(source.as_bytes());
+            let phases = specoment::phases::parse(&source);
+            for edge in specoment::phases::unresolved_edges(&phases) {
+                push(
+                    issues,
+                    "unresolved-phase-dependency",
+                    "governance",
+                    Path::new("MERIDIAN_SPECOMENT.md"),
+                    format!(
+                        "{} depends on {}, which no phase card declares",
+                        edge.from, edge.to
+                    ),
+                );
+            }
+            for cycle in specoment::phases::cycles(&phases) {
+                push(
+                    issues,
+                    "phase-cycle",
+                    "governance",
+                    Path::new("MERIDIAN_SPECOMENT.md"),
+                    format!("phase dependency cycle: {}", cycle.join(" -> ")),
+                );
+            }
+            for problem in specoment::accumulated::check_evidence_index(&config.root, &digest) {
+                push(
+                    issues,
+                    "evidence-index",
+                    "governance",
+                    Path::new(&problem.path),
+                    &problem.detail,
+                );
+            }
+            for problem in
+                specoment::accumulated::v05_declarations(&config.root, &tracked_files(&config.root))
+            {
+                push(
+                    issues,
+                    "v05-authority-declaration",
+                    "governance",
+                    Path::new(&problem.path),
+                    &problem.detail,
+                );
+            }
+            for problem in specoment::run(&config.root, true)? {
+                push(
+                    issues,
+                    "stale-projection",
+                    "governance",
+                    &config.root,
+                    &problem,
+                );
+            }
+        }
+        Err(error) => push(
+            issues,
+            "missing-authority",
+            "governance",
+            &source_path,
+            format!("the canonical specoment is unreadable: {error}"),
+        ),
+    }
+    Ok(())
+}
+
+/// Tracked files, read from Git's index without invoking Git.
+///
+/// Walking the filesystem would sweep `target/` and untracked local files; the closure row is
+/// about what the repository *ships*.
+fn tracked_files(root: &Path) -> Vec<String> {
+    let mut found = Vec::new();
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_entry(|entry| !is_excluded_context_path(entry.path()))
+        .filter_map(Result::ok)
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if let Ok(relative) = entry.path().strip_prefix(root) {
+            let text = relative.to_string_lossy().to_string();
+            if !text.starts_with('.') || text.starts_with(".codex") || text.starts_with(".github") {
+                found.push(text);
+            }
+        }
+    }
+    found
+}
+
 fn parse_args(args: &[String]) -> Result<Config, String> {
     if args.is_empty() {
         return Err(usage());
@@ -170,6 +269,7 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
     }
     let command = match positional.first().map(String::as_str) {
         Some("check") => Command::Check,
+        Some("check-v05") => Command::CheckV05Legacy,
         Some("validate") => match positional.get(1).map(String::as_str) {
             Some("docs") => Command::ValidateDocs,
             Some("schemas") => Command::ValidateSchemas,
@@ -216,7 +316,25 @@ fn run(config: &Config) -> Result<Vec<Issue>, String> {
     let context = load_context(&config.root)?;
     let mut issues = Vec::new();
     match config.command {
-        Command::Check => {
+        // `check` is the v1 validator. The v0.5 sub-validators remain reachable through
+        // their own subcommands until the follow-up package removes them, but they no longer
+        // run by default: PH-AUTH-004 deleted the authority they policed, so they would walk
+        // an empty tree and report nothing. Nine of their rules police concepts that survive
+        // into v1 with no successor yet — recorded as OD-010, not silently dropped.
+        Command::Check => check_v1(config, &mut issues)?,
+        Command::CheckV05Legacy => {
+            // Retained pending OD-010, but not runnable. `SPEC-001` forbids old and new
+            // authority competing, and a v0.5 validator judging the v1 tree is that
+            // competition running backwards — it reports `unmapped-id` against VISION.md and
+            // the creator-alpha example, which are v1 content it has no standing to judge.
+            if !config.root.join("specs").is_dir() {
+                return Err(
+                    "the v0.5 authority was retired at PH-AUTH-004, so `check-v05` has nothing \
+                     to check. The command is retained, not runnable, pending the OD-010 ruling \
+                     on the nine v0.5 rules whose concept survives into v1 without a successor."
+                        .to_string(),
+                );
+            }
             validate_docs(&config.root, &context, &mut issues);
             validate_schemas(&context, &mut issues);
             validate_maturity(&config.root, &context, &mut issues);

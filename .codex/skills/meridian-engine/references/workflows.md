@@ -23,7 +23,7 @@ and relevant implementation/tests. Do not start from memory or an old plan.
 
 1. Name the active `WP-*`, user-visible result, dependencies, requirements,
    explicit non-goals, and stop/rollback rule.
-2. Confirm Definition of Ready in `IMPLEMENTATION_PLANNING_SPEC.md` and typed
+2. Confirm Definition of Ready in `MERIDIAN_SPECOMENT.md` `IMPL-WP-001` and typed
    status in the registries.
 3. Inspect current code, tests, and dirty changes. Identify the smallest owning
    crates/files and preserve unrelated work.
@@ -35,7 +35,7 @@ and relevant implementation/tests. Do not start from memory or an old plan.
 7. Run proportional gates below.
 8. Record fresh evidence with honest unsupported, occluded, or inconclusive
    rows. Update package/milestone status only when all required evidence exists.
-9. Use the mandatory package sign-off template in `PLANNING.md`.
+9. Use the work-package plan template in Appendix H.3 of `MERIDIAN_SPECOMENT.md`.
 
 ## Specification amendment loop
 
@@ -48,7 +48,7 @@ For a normative change, update all affected surfaces:
 5. research gate/risk/waiver/provenance records where applicable;
 6. migration and contradiction disposition;
 7. validation fixtures, API examples, and cross-links;
-8. root/spec AGENTS, README, and PLANNING when their authority changes;
+8. root `AGENTS.md`, `README.md` and `PLANNING.md` when their authority changes;
 9. private game docs only for creative/production boundary changes.
 
 Do not version-bump historical ADR text merely because the current suite bumps.

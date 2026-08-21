@@ -1,8 +1,8 @@
 # PEN-B16 — VR-Oriented Stereo
 
-[Suite](README.md) · [XR](../../specs/VR_XR_AND_INTERACTION_SPEC.md)
+[Suite](README.md) · [XR](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated` · `DeferredUntilXR`
+version 1.0 · `DefinitionOnly` · `Uncalibrated` · `DeferredUntilXR`
 
 Purpose: validate stereo consistency, multiview/foveation capability, predicted
 display timing, late pose, frame pacing, memory duplication/sharing, UI and

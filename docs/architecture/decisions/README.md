@@ -1,6 +1,8 @@
 # Architecture Decision Records
 
-Version: v0.5 canonical ADR set.
+Canonical authority: [`MERIDIAN_SPECOMENT.md`](../../../MERIDIAN_SPECOMENT.md).
+These ADRs are retained and re-cited under PH-AUTH-004; section 0.5 ranks adopted
+ADRs directly below the specoment only where they cite the version they refine.
 
 This directory is the canonical home for Meridian architecture decision records.
 The former non-canonical ADR directory has been removed; its migration is
@@ -8,7 +10,7 @@ recorded in the v0.3 migration register.
 
 ## Status Vocabulary
 
-Use the status vocabulary from the master specification:
+Use the status vocabulary from the canonical specoment:
 
 - Implemented: verified in the current repository.
 - ImplementedFoundation: verified for a narrow foundation, not the full feature.

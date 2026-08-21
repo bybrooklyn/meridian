@@ -5,19 +5,19 @@ Meridian is an experimental general-purpose game and interactive-application eng
 ## Start here
 
 - [North-star vision (aspirational, not current status)](VISION.md)
-- [Meridian v0.5 master specification](specs/MERIDIAN_MASTER_SPEC.md)
-- [Evidence milestone and workstream roadmap](specs/DELIVERY_ROADMAP.md)
-- [Implementation planning and package gates](specs/IMPLEMENTATION_PLANNING_SPEC.md)
+- [Meridian v0.5 master specification](MERIDIAN_SPECOMENT.md)
+- [Evidence milestone and workstream roadmap](MERIDIAN_SPECOMENT.md)
+- [Implementation planning and package gates](MERIDIAN_SPECOMENT.md)
 - [Current bounded work and implementation truth](PLANNING.md)
-- [Penumbra rendering architecture](specs/RENDERING_AND_GRAPHICS_SPEC.md)
-- [The Alluvium Engine architecture](specs/PROCEDURAL_AUTHORING_SPEC.md)
-- [Native modeling and DCC boundary](specs/NATIVE_MODELING_AND_DCC_SPEC.md)
-- [Rust-first gameplay and optional Luau](specs/GAMEPLAY_NARRATIVE_AND_SCRIPTING_SPEC.md)
-- [First-class 2D](specs/TWO_DIMENSIONAL_ENGINE_SPEC.md)
-- [Wavefront audio](specs/AUDIO_MUSIC_AND_ACOUSTICS_SPEC.md) and [Collective online services](specs/COLLECTIVE_ONLINE_SERVICES_SPEC.md)
-- [Marquee promotional media and local export](specs/MARQUEE_PROMOTIONAL_MEDIA_AND_EXPORT_SPEC.md)
-- [Competitive performance and quality leadership](specs/COMPETITIVE_PERFORMANCE_AND_QUALITY_SPEC.md)
-- [Testing, benchmarks, and evidence policy](specs/TESTING_BENCHMARKS_AND_VALIDATION.md)
+- [Penumbra rendering architecture](MERIDIAN_SPECOMENT.md)
+- [The Alluvium Engine architecture](MERIDIAN_SPECOMENT.md)
+- [Native modeling and DCC boundary](MERIDIAN_SPECOMENT.md)
+- [Rust-first gameplay and optional Luau](MERIDIAN_SPECOMENT.md)
+- [First-class 2D](MERIDIAN_SPECOMENT.md)
+- [Wavefront audio](MERIDIAN_SPECOMENT.md) and [Collective online services](MERIDIAN_SPECOMENT.md)
+- [Marquee promotional media and local export](MERIDIAN_SPECOMENT.md)
+- [Competitive performance and quality leadership](MERIDIAN_SPECOMENT.md)
+- [Testing, benchmarks, and evidence policy](MERIDIAN_SPECOMENT.md)
 - [Canonical architecture decisions](docs/architecture/decisions/README.md)
 
 Project Meridian is the first proving game. Its full creative suite and future game code live in the separate private `bybrooklyn/project-meridian` repository. This engine repository contains only sanitized engine-facing prototype/slice requirements and generated benchmark contracts; `game/` is ignored and excluded from the Cargo workspace.
@@ -27,7 +27,7 @@ Project Meridian is the first proving game. Its full creative suite and future g
 ~~~text
 engine/       reusable runtime and subsystem crates
 editor/       editor products and developer tools
-specs/        normative v0.5 architecture and delivery contracts
+governance/   generated projections of the canonical specoment
 schemas/      versioned data and governance schemas
 docs/         ADRs, benchmarks, migrations, and engineering records
 third_party/  provenance policy and future reviewed donor manifests
@@ -83,7 +83,7 @@ cargo run -p meridian-build --bin meridian-build -- --cargo-test-no-run --worksp
 
 Meridian is licensed under the Mozilla Public License 2.0. See [LICENSE-MPL-2.0](LICENSE-MPL-2.0). Project Meridian content is separate and proprietary.
 
-Contributions require [DCO](DCO.md) sign-off — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Contribution acceptance is paused pending CLA legal review — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## AI notice
 

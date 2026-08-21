@@ -5,6 +5,6 @@ Architecture decisions belong in the canonical
 explicit: the separate private game may depend on public engine APIs, while
 engine crates must not depend on game crates.
 
-version 0.5 uses ADRs for adopted architectural choices and the subsystem specs
+version 1.0 uses ADRs for adopted architectural choices and the subsystem specs
 for normative contracts. Architecture notes cannot promote implementation
-maturity; evidence records under `specs/registry/` do that.
+maturity; evidence records under `governance/generated/` do that.

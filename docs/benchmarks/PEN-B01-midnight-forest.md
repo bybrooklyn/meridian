@@ -1,8 +1,8 @@
 # PEN-B01 — Midnight Forest
 
-[Suite](README.md) · [Validation](../../specs/TESTING_BENCHMARKS_AND_VALIDATION.md) · [Prototype](../../specs/PROJECT_MERIDIAN_PROTOTYPE_PLAN.md)
+[Suite](README.md) · [Validation](../../MERIDIAN_SPECOMENT.md) · [Prototype](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · Status `DefinitionOnly` · Calibration `Uncalibrated`
+version 1.0 · Status `DefinitionOnly` · Calibration `Uncalibrated`
 
 ## Purpose
 
@@ -28,7 +28,7 @@ must isolate one dimension at a time.
 ## Required evidence
 
 Use the complete Penumbra report contract in
-[`workloads.json`](../../specs/registry/workloads.json), including CPU/GPU/frame
+``workloads.json``, including CPU/GPU/frame
 distributions and lows, stalls, memory, churn, overdraw, shadow/volumetric cost,
 temporal stability, captures/artifacts, missing features, and raw evidence.
 

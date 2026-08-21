@@ -1,35 +1,37 @@
 # Contributing to Meridian
 
-## Developer Certificate of Origin
+## Contribution acceptance is paused
 
-Every contribution to this repository must be signed off under the
-[Developer Certificate of Origin (DCO)](DCO.md). Signing off certifies that
-you wrote the contribution, or otherwise have the right to submit it under
-this project's license ([`LICENSE-MPL-2.0`](LICENSE-MPL-2.0)).
+Meridian is transitioning from a Developer Certificate of Origin to a Contributor License
+Agreement, as required by `LEGAL-003` in [`MERIDIAN_SPECOMENT.md`](MERIDIAN_SPECOMENT.md). The
+CLA has been drafted but **has not completed legal review and is not in force**.
 
-Add a `Signed-off-by` line to every commit message:
+`LEGAL-MIG-001` requires that external contributions are not accepted under contradictory terms
+during the transition. Retaining the old DCO alongside an accepted CLA policy would be exactly
+that contradiction, so the DCO has been retired rather than kept.
 
+**Until the CLA completes legal review, external contributions cannot be accepted.** Concretely:
+
+- **Pull requests will not be merged.** You are welcome to open them; they will be reviewed on
+  their technical merits and held.
+- **Issues, discussions and security reports remain open and welcome.** Nothing here restricts
+  reporting a bug or a vulnerability.
+- The repository remains MPL-2.0. Forking and use under that licence are unaffected.
+
+This is a licensing-process constraint, not a judgement about any contribution.
+
+## What to read
+
+[`MERIDIAN_SPECOMENT.md`](MERIDIAN_SPECOMENT.md) is the single canonical authority.
+[`AGENTS.md`](AGENTS.md) is the entry point for automated contributors.
+[`PLANNING.md`](PLANNING.md) reports current implementation state and is generated.
+
+## Gates
+
+```text
+cargo run -p meridian-spec -- check
+cargo run -p meridian-spec -- project --check
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
 ```
-Signed-off-by: Your Name <your.email@example.com>
-```
-
-Git adds this automatically with the `-s` flag:
-
-```
-git commit -s -m "Your commit message"
-```
-
-The name and email must match a real identity that can be credited for the
-contribution — no anonymous or pseudonymous sign-offs. Pull requests with
-unsigned commits will be asked to amend before merge.
-
-## Where to start
-
-Read [`specs/MERIDIAN_MASTER_SPEC.md`](specs/MERIDIAN_MASTER_SPEC.md) and
-[`PLANNING.md`](PLANNING.md) first — they own current architecture and
-implementation truth respectively. `specs/IMPLEMENTATION_PLANNING_SPEC.md`
-explains how a `WP-*` work package moves from `Planned` to active; the
-[`specs/registry/`](specs/registry/) directory holds the machine-checked
-identifiers a change must stay consistent with. Run
-`cargo run -p meridian-spec -- check` before submitting any change under
-`specs/`.

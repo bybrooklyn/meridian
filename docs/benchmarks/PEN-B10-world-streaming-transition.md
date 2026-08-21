@@ -1,8 +1,8 @@
 # PEN-B10 — Large World-Streaming Transition
 
-[Suite](README.md) · [Data formats](../../specs/ASSET_WORLD_SAVE_AND_PACKAGE_FORMATS.md)
+[Suite](README.md) · [Data formats](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated`
+version 1.0 · `DefinitionOnly` · `Uncalibrated`
 
 Purpose: isolate a deterministic multi-cell/room indoor-outdoor transition with
 asset, geometry, material, light, audio, collision, and gameplay facets. Cold,

@@ -1,25 +1,10 @@
+// Two Marquee fixture tests and their helper were removed at PH-AUTH-004: they validated
+// against `schemas/governance/marquee-validation-fixture.schema.json`, which the cutover
+// deleted with the rest of the v0.5 schema tree. Marquee is a deferred post-1.0 program;
+// when it returns it brings its own v1 schema. Recorded rather than silently dropped,
+// because deleted enforcement is exactly what this phase's coverage matrix exists to expose.
 use std::path::Path;
 use std::process::Command;
-
-fn marquee_fixture_is_valid(name: &str) -> bool {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let schema: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(
-            root.join("../../schemas/governance/marquee-validation-fixture.schema.json"),
-        )
-        .expect("read Marquee fixture schema"),
-    )
-    .expect("parse Marquee fixture schema");
-    let instance: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(root.join("tests/fixtures/marquee_cases").join(name))
-            .expect("read Marquee fixture"),
-    )
-    .expect("parse Marquee fixture");
-    jsonschema::validator_for(&schema)
-        .expect("compile Marquee fixture schema")
-        .validate(&instance)
-        .is_ok()
-}
 
 fn run(root: impl AsRef<Path>, args: &[&str]) -> (bool, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_meridian-spec"))
@@ -295,7 +280,17 @@ fn occluded_visual_evidence_is_rejected() {
 
 #[test]
 fn check_command_and_github_output_are_supported() {
+    // `check` is the v1 validator after PH-AUTH-004, so a tree with no specoment has no
+    // authority and correctly fails. The v0.5 behaviour is reachable as `check-v05` until
+    // the follow-up package removes it, once OD-010 is ruled.
     let (ok, output) = run("tests/fixtures/clean", &["check"]);
+    assert!(
+        !ok,
+        "v1 check must fail where no canonical authority exists: {output}"
+    );
+    assert!(output.contains("missing-authority"), "{output}");
+
+    let (ok, output) = run("tests/fixtures/clean", &["check-v05"]);
     assert!(ok, "{output}");
     assert!(output.contains("ok"), "{output}");
 
@@ -319,26 +314,6 @@ fn list_unmapped_and_explain_use_registry_ids() {
     );
     assert!(!ok, "{output}");
     assert!(output.contains("unknown-id"), "{output}");
-}
-
-#[test]
-fn valid_marquee_public_fixture_is_accepted() {
-    assert!(marquee_fixture_is_valid("valid.json"));
-}
-
-#[test]
-fn invalid_marquee_policy_and_evidence_fixtures_are_rejected() {
-    for name in [
-        "invalid_ai_capture_publish.json",
-        "invalid_approval_stale.json",
-        "invalid_source_private.json",
-        "invalid_draft_mapping.json",
-    ] {
-        assert!(
-            !marquee_fixture_is_valid(name),
-            "{name} unexpectedly passed"
-        );
-    }
 }
 
 #[test]

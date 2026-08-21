@@ -2,7 +2,8 @@
 
 - Status: Adopted
 - Date: 2026-07-15
-- Spec version: v0.4
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: ImplementedFoundation; `WP-PRC-001` passed its CI evidence gate
 - Owners: future `meridian-alluvium`, editor/build, data, and procedural workstreams
 - Amends: ADR-0008, ADR-0009, ADR-0011, ADR-0014
@@ -43,8 +44,7 @@ Project Meridian supplies the first private proving requirements. Engine documen
 
 ## Current Evidence
 
-- [Alluvium specification](../../../specs/PROCEDURAL_AUTHORING_SPEC.md)
-- [Delivery roadmap](../../../specs/DELIVERY_ROADMAP.md)
+- [Alluvium specification](../../../MERIDIAN_SPECOMENT.md)
 - [v0.4 migration ledger](../../migrations/V0_4_ALLUVIUM_AMENDMENT.md)
 - [Source data authority](ADR-0011-data-authority.md)
 - [Repository split](ADR-0003-repository-split.md)

@@ -2,9 +2,10 @@
 
 - Status: Adopted
 - Date: 2026-07-15
-- Spec version: v0.3
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Implemented documentation roadmap; execution remains milestone-gated
-- Owners: specs/DELIVERY_ROADMAP.md, specs/IMPLEMENTATION_PLANNING_SPEC.md, PLANNING.md
+- Owners: MERIDIAN_SPECOMENT.md, MERIDIAN_SPECOMENT.md, PLANNING.md
 - Supersedes: none
 - Superseded by: none
 
@@ -32,17 +33,15 @@ of Ready and Definition of Done govern package activation and closure.
 
 ## Current Evidence
 
-- [Delivery roadmap](../../../specs/DELIVERY_ROADMAP.md)
-- [Implementation-planning specification](../../../specs/IMPLEMENTATION_PLANNING_SPEC.md)
+- [Delivery roadmap](../../../MERIDIAN_SPECOMENT.md)
 - [Planning ledger](../../../PLANNING.md)
-- [Opening slice plan](../../../specs/PROJECT_MERIDIAN_VERTICAL_SLICE_PLAN.md)
+- [Opening slice plan](../../../MERIDIAN_SPECOMENT.md)
 
-## Intended v0.3 Links
-
-- `specs/DELIVERY_ROADMAP.md`
-- `specs/IMPLEMENTATION_PLANNING_SPEC.md`
-- `specs/registry/delivery-plan.json`
-- `specs/PROJECT_MERIDIAN_VERTICAL_SLICE_PLAN.md`
+## Links
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `governance/generated/`
+- `MERIDIAN_SPECOMENT.md`
 - `PLANNING.md`
 
 ## Consequences

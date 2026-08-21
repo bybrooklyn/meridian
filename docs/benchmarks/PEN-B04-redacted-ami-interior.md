@@ -2,7 +2,7 @@
 
 [Suite](README.md) · [Redaction decision](../architecture/decisions/ADR-0016-redacted-private-benchmark-policy.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated` · Private payload prohibited
+version 1.0 · `DefinitionOnly` · `Uncalibrated` · Private payload prohibited
 
 Purpose: measure connected generated interiors with many local shadowed lights,
 mixed warm/cold practical temperatures, deterministic partial light failures,

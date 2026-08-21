@@ -2,7 +2,8 @@
 
 - Status: Adopted
 - Date: 2026-07-15
-- Spec version: v0.3
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Implemented documentation governance; enforcement remains partial
 - Owners: specs, PLANNING.md, docs/architecture/decisions
 - Supersedes: none
@@ -18,7 +19,7 @@ planned systems can be mistaken for shipped behavior.
 
 ADRs live under `docs/architecture/decisions/` and record large architecture
 choices. The legacy `docs/architecture/decisions/` path is not canonical. Status terms come from
-the master specification and must separate `Implemented`, `ImplementedFoundation`,
+the canonical specoment and must separate `Implemented`, `ImplementedFoundation`,
 Partial, Transitional, Planned, Research, Deferred, and Unsupported claims.
 
 The authority order is:
@@ -26,7 +27,7 @@ The authority order is:
 1. the v0.3 owning subsystem specification and adopted ADR;
 2. the migration and contradiction register;
 3. the delivery roadmap;
-4. machine-readable metadata under `specs/registry/`;
+4. machine-readable metadata under `governance/generated/`;
 5. PLANNING.md for current evidence and active scope;
 6. the private Project Meridian creative suite for creative decisions only;
 7. migration ledgers for historical rationale;
@@ -34,17 +35,15 @@ The authority order is:
 
 ## Current Evidence
 
-- [Master specification](../../../specs/MERIDIAN_MASTER_SPEC.md)
-- [Delivery roadmap](../../../specs/DELIVERY_ROADMAP.md)
+- [Master specification](../../../MERIDIAN_SPECOMENT.md)
 - [Planning ledger](../../../PLANNING.md)
-- [Migration register](../../../specs/SPEC_MIGRATION_AND_CONTRADICTIONS.md)
+- [Migration register](../../../MERIDIAN_SPECOMENT.md)
 - [v0.1 migration ledger](../../migrations/V0_1_DOCUMENT_MIGRATION.md)
 
-## Intended v0.3 Links
-
-- `specs/MERIDIAN_MASTER_SPEC.md`
-- `specs/SPEC_MIGRATION_AND_CONTRADICTIONS.md`
-- `specs/DELIVERY_ROADMAP.md`
+## Links
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
 - `PLANNING.md`
 
 ## Consequences

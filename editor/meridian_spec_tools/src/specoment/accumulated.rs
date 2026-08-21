@@ -165,6 +165,81 @@ fn unregistered_artefacts(
     problems
 }
 
+/// Paths where citing v0.5 is legitimate rather than an active declaration.
+///
+/// A migration record naming what it migrated away from is history, not authority — the v0.5
+/// validator exempted the same path for the same reason. The preservation ledger and the
+/// implementation bookkeeping are likewise records *about* the retirement.
+const V05_CITATION_EXEMPT: &[&str] = &[
+    "docs/migrations/",
+    ".meridian/",
+    "governance/",
+    "MERIDIAN_SPECOMENT.md",
+    "editor/meridian_spec_tools/tests/fixtures/",
+    // The retained v0.5 validator's own source. Its comments necessarily name the authority
+    // it policed, and this rule's pattern table necessarily contains the patterns it matches.
+    // Code describing a retired rule is not a file declaring that authority — but that is only
+    // defensible because `check-v05` refuses to run once `specs/` is gone, so the retained code
+    // cannot judge v1 content. SPEC-001 forbids the two authorities competing; retention
+    // without that gate would be exactly the competition, running backwards.
+    "editor/meridian_spec_tools/src/",
+];
+
+/// Patterns that declare v0.5 authority as live, rather than citing it as history.
+const V05_DECLARATIONS: &[(&str, &str)] = &[
+    (
+        "Spec version: v0.",
+        "an ADR header declaring the version it refines",
+    ),
+    ("version 0.5", "a document header declaring v0.5 authority"),
+    (
+        "specs/registry",
+        "a path under the retired v0.5 registry tree",
+    ),
+    (
+        "specs/MERIDIAN_",
+        "a path under the retired v0.5 specification tree",
+    ),
+    (
+        "IMPLEMENTATION_PLANNING_SPEC.md",
+        "a retired v0.5 specification",
+    ),
+    ("DELIVERY_ROADMAP.md", "a retired v0.5 specification"),
+];
+
+/// Files that still declare v0.5 authority after the cutover.
+///
+/// `PH-AUTH-004`'s headline closure row is "No active file declares v0.5 authority." An
+/// earlier pass asserted that row with no rule behind it, and it was false: fifteen ADRs
+/// still carried `Spec version: v0.5` at authority rank 2, seventeen benchmark headers still
+/// declared v0.5, and a `sed` pass over links had moved the count not at all. The row is
+/// only as good as the check that enforces it.
+pub fn v05_declarations(root: &Path, tracked: &[String]) -> Vec<Problem> {
+    let mut problems = Vec::new();
+    for relative in tracked {
+        if V05_CITATION_EXEMPT
+            .iter()
+            .any(|exempt| relative.starts_with(exempt))
+        {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(root.join(relative)) else {
+            continue;
+        };
+        for (pattern, why) in V05_DECLARATIONS {
+            if let Some(at) = text.find(pattern) {
+                let line = text[..at].lines().count();
+                problems.push(Problem {
+                    path: relative.clone(),
+                    detail: format!("line {line}: {why} (`{pattern}`)"),
+                });
+                break;
+            }
+        }
+    }
+    problems
+}
+
 #[cfg(test)]
 mod tests {
     use super::check_evidence_index;
@@ -253,6 +328,39 @@ mod tests {
         assert!(
             validator.validate(&ok).is_ok(),
             "a conforming index must pass"
+        );
+    }
+
+    /// `PH-AUTH-004`'s headline closure row. An earlier pass asserted it with no rule behind
+    /// it and it was false: fifteen ADRs still carried `Spec version: v0.5` at authority
+    /// rank 2, and a link-rewriting pass had moved the count not at all.
+    #[test]
+    fn a_file_declaring_v05_authority_is_reported() {
+        let dir = tempdir::Dir::new();
+        std::fs::create_dir_all(dir.path().join("docs/architecture")).expect("fixture");
+        std::fs::write(
+            dir.path().join("docs/architecture/adr.md"),
+            "# ADR\n- Spec version: v0.5\n",
+        )
+        .expect("write");
+        let problems = super::v05_declarations(dir.path(), &["docs/architecture/adr.md".into()]);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].detail.contains("Spec version"), "{problems:?}");
+    }
+
+    /// A migration record naming what it migrated away from is history, not authority. The
+    /// v0.5 validator exempted the same path for the same reason.
+    #[test]
+    fn a_migration_record_citing_v05_is_not_a_declaration() {
+        let dir = tempdir::Dir::new();
+        std::fs::create_dir_all(dir.path().join("docs/migrations")).expect("fixture");
+        std::fs::write(
+            dir.path().join("docs/migrations/ledger.md"),
+            "Retired the version 0.5 suite and specs/registry at PH-AUTH-004.\n",
+        )
+        .expect("write");
+        assert!(
+            super::v05_declarations(dir.path(), &["docs/migrations/ledger.md".into()]).is_empty()
         );
     }
 

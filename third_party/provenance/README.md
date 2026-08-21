@@ -1,6 +1,6 @@
 # Renderer donor provenance policy
 
-version 0.5 · Policy and registered dependency/source-asset records
+version 1.0 · Policy and registered dependency/source-asset records
 
 Meridian may study or adapt externally licensed renderer ideas or source only
 through an explicit provenance record. This directory intentionally contains no
@@ -9,7 +9,7 @@ invented donor entries.
 Immutable UI fonts and icon sources use the same hash, license, notice,
 modification, owner, test, and exit-strategy controls. Their machine-validated
 source records live in
-[`specs/registry/source-provenance.json`](../../specs/registry/source-provenance.json);
+[the retired v0.5 source-provenance registry](../../the retired v0.5 source-provenance registry);
 the Markdown files here are human review notes for those records, not a
 separate source of truth.
 
@@ -31,3 +31,4 @@ Code or immutable assets cannot enter a runtime crate before provenance and
 license review pass.
 Private or confidential material cannot be sanitized into eligibility. Missing
 provenance is not waivable and cannot support implementation maturity.
+- **Control status: unmet.** The v0.5 source-provenance registry was retired at `PH-AUTH-004` and no v1 registry exists. `LEGAL-005` requires machine-readable provenance for every third-party dependency; the repository has none for its 494 locked packages. Recorded as `OD-006`, pre-existing and unmet — this is a broken control, not a repaired link.

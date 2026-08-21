@@ -89,8 +89,8 @@ Mapped rows: 14. Unmapped rows: 0.
 
 | Retired authority | Disposition | v0.3 authority |
 |---|---|---|
-| `specs/IMPLEMENTATION_PHASES.md` | Superseded | `specs/DELIVERY_ROADMAP.md` |
-| `specs/WEATHER_ENVIRONMENT_AND_SIMULATION_SPEC.md` | Split | Isobar, Basalt, and Torsant specifications |
+| `MERIDIAN_SPECOMENT.md` | Superseded | `MERIDIAN_SPECOMENT.md` |
+| `MERIDIAN_SPECOMENT.md` | Split | Isobar, Basalt, and Torsant specifications |
 | `docs/adr/` | Superseded | `docs/architecture/decisions/` |
 | B01/B02 short benchmark IDs | Superseded | `PEN-B01` and `PEN-B02` |
 | engine weather scaffold | Superseded | `meridian-isobar` scaffold |

@@ -2,7 +2,8 @@
 
 - Status: Adopted
 - Date: 2026-07-18
-- Spec version: v0.5
+- Refines: `MERIDIAN_SPECOMENT.md` sha256 `782d3110b89ac23f…`
+- Retired v0.5 lineage: this ADR was adopted under v0.5 authority, which was retired at `PH-AUTH-004`. Section 0.5 ranks adopted ADRs directly below the specoment only where they cite the version they refine, so the citation above is what keeps this record in the authority order.
 - Implementation status: Planned
 - Owners: BLD, SEC, EDT, platform, shader, and IDE workstreams
 - Supersedes: none
@@ -45,16 +46,15 @@ input and does not install, verify, repair, roll back, pin, or clean up managed
 components. This ADR and its linked specification are planned architecture and
 do not promote BLD implementation maturity.
 
-## Intended v0.5 Links
-
-- `specs/CARGO_IDE_BUILD_AND_TEAM_WORKFLOWS.md`
-- `specs/SECURITY_SIGNING_UPDATES_AND_SUPPLY_CHAIN.md`
-- `specs/DELIVERY_ROADMAP.md`
-- `specs/IMPLEMENTATION_PLANNING_SPEC.md`
-- `specs/TESTING_BENCHMARKS_AND_VALIDATION.md`
-- `specs/SPEC_MIGRATION_AND_CONTRADICTIONS.md`
-- `specs/registry/requirements.json`
-- `specs/registry/work-packages.json`
+## Links
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `MERIDIAN_SPECOMENT.md`
+- `governance/generated/`
+- `governance/generated/`
 
 ## Consequences
 

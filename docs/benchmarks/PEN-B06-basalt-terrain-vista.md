@@ -1,8 +1,8 @@
 # PEN-B06 — Large Basalt Terrain Vista
 
-[Suite](README.md) · [Basalt](../../specs/BASALT_TERRAIN_AND_LARGE_WORLD_GEOMETRY_SPEC.md)
+[Suite](README.md) · [Basalt](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated`
+version 1.0 · `DefinitionOnly` · `Uncalibrated`
 
 Purpose: measure large-world precision, origin rebasing, conventional terrain
 LOD/geometry candidates, residency, distant shadows, atmosphere, streaming,

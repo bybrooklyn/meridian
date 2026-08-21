@@ -5,7 +5,7 @@ Date: 2026-07-17
 This ledger maps every decision introduced by the Meridian UI 1.0 interview,
 the supplied design brief, and ADR-0028. It is a migration/history artifact;
 the normative owner is
-[EDITOR_AND_MERIDIAN_UI_SPEC.md](../../specs/EDITOR_AND_MERIDIAN_UI_SPEC.md).
+[EDITOR_AND_MERIDIAN_UI_SPEC.md](../../MERIDIAN_SPECOMENT.md).
 
 | Source subject | Disposition | Canonical destination |
 |---|---|---|

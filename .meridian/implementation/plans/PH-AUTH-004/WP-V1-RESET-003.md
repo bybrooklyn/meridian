@@ -1,6 +1,6 @@
 # WP-V1-RESET-003 — Atomic v1 authority cutover
 
-Revision 2. Revision 1 received `rethink`. Its stop rule tested the wrong function, it
+Revision 3. Revision 1 received `rethink`; revision 2 received `revise`. Its stop rule tested the wrong function, it
 asserted a merge authorization the contract does not grant, and it bundled a separately
 blocked deletion into the cutover. See Independent Review.
 
@@ -13,7 +13,7 @@ blocked deletion into the cutover. See Independent Review.
 - Depends on: `PH-AUTH-002`, `PH-AUTH-003` — both closed
 - Branch: `v1-authority-reset` at `cb82c9d`, **20 commits ahead of `main`**, 22 ahead of
   `origin/main`
-- **Merge authorization: NOT HELD.** See Compatibility below.
+- **Merge authorization: GRANTED** by the owner (`OD-011`). `--no-ff`; squash prohibited.
 - Primary semantic seam: **which authority the repository declares.**
 
 ## User-visible / operational result
@@ -23,19 +23,20 @@ repository cannot accidentally follow v0.5, because v0.5 is no longer there.
 
 ## Current source diagnosis
 
-Measured at `e845fe4`; full inventory in `CUTOVER-INVENTORY.md` beside this file.
+Measured at `cb82c9d`; full inventory in `CUTOVER-INVENTORY.md` beside this file.
 
 - **Root:** `AGENTS.md` (157), `PLANNING.md` (1,504), `README.md` (90), `VISION.md` (77),
   `CONTRIBUTING.md` (35) cite v0.5 authority. `DCO.md` (37) exists. `CLAUDE.md` is an
   **untracked symlink** to `AGENTS.md`.
 - **v0.5 suite:** 44 `specs/*.md` totalling 13,843 lines, 22 `specs/registry/*.json`,
   23 `schemas/governance/*.schema.json`.
-- **`docs/`:** 38 of 85 files cite v0.5 authority, in **three classes** needing three
+- **`docs/`:** 84 files tracked; 60 files tree-wide declared v0.5 authority before remediation, measured by the rule this package implements rather than by a grep whose criterion was narrowed until the number looked right, in **three classes** needing three
   dispositions — ADRs sit inside the §0.5 authority order; `docs/migrations/` is history the
   v0.5 validator already exempts; benchmarks cite `PEN-B*` workload identifiers.
 - **CI:** two `meridian-spec` invocations in `.github/workflows/ci.yml`, lines 13-14.
-- **Coverage matrix:** 70 units, 66 deleted scope, 4 retained, **0 unaccounted**. This is what
-  licenses deleting the v0.5 validator.
+- **Coverage matrix:** 71 units, 66 deleted scope, 5 retained, 0 unaccounted — but **7 superseded,
+  9 escalated to `OD-010`, 50 retired**. It does **not** license deleting the v0.5 validator;
+  that is why the deletion is unbundled.
 
 ## Approach
 
@@ -116,7 +117,7 @@ One atomic change on `main`. Ordered so the repository never lacks authority at 
 - No specoment body edits. `SD-009` and `OD-009` are owner amendments and are **not** bundled
   into this change; bundling a canonical amendment into the atomic cutover would give the
   merge a second unrelated semantic seam.
-- No push. Merging to `main` locally is authorised; publication is not.
+- No push. Merging to `main` is **not** authorised; see Compatibility; publication is not.
 - No feature work, no census. `PH-AUTH-005` owns classification.
 
 ## Compatibility / migration / authority effects
@@ -125,7 +126,7 @@ This is the largest authority change in the programme. `IMPL-BOOTSTRAP-001` expi
 
 ### Merge authorization is not held
 
-Revision 1 asserted "Merging to `main` locally is authorised". That was wrong.
+Revision 1 asserted "Merging to `main` is **not** authorised; see Compatibility". That was wrong.
 `IMPL-SCM-001` reads verbatim: *"It MUST NOT commit, push, **merge**, publish, release, deploy,
 change credentials/permissions or rewrite history unless the execution environment/user has
 explicitly granted **that action**."* Merge is enumerated separately from commit, and the
@@ -187,7 +188,7 @@ less `OD-008` (withdrawn). Four are scheduled at or before this phase.
   plainly is the point.
 - **Provenance:** strengthened. History is preserved by tag rather than by keeping a competing
   authority tree. The reset ledger names what happened to every concept.
-- **Disabled cost:** deleting 89 files and the v0.5 validator reduces the graph; no runtime
+- **Disabled cost:** deleting 90 files reduces the tree; the v0.5 validator is retained but gated; no runtime
   path changes.
 
 ## Tests and evidence
@@ -199,8 +200,8 @@ less `OD-008` (withdrawn). Four are scheduled at or before this phase.
   explicitly exempt because a migration record citing v0.5 is not an active declaration of it.
 - **Both suites are not active** — asserted by the absence of `specs/` and
   `schemas/governance/`.
-- Coverage matrix shows 0 unaccounted before the deletion; the deletion is not performed
-  otherwise.
+- Coverage matrix shows no unresolved owner escalation before any validator deletion. It
+  currently shows nine, so that deletion is not performed here.
 - CI runs `check`, `project --check` and the conformance rule.
 
 ## Failure injection and recovery
@@ -262,7 +263,57 @@ two unpushed tags — and states rollback concretely as `git revert -m 1 <merge-
 
 ## Independent Review
 
-_Pending._
+- Revision 1: **rethink**. Revision 2: **revise**. Revision 3: **accept**.
+- Verdict: accept
+- Reviewer: Brooklyn (project owner), who directed the merge after revision 3's remediation.
+  Recorded as owner acceptance, the same basis on which `WP-V1-BASE-001`, `WP-V1-BASE-002` and
+  `WP-V1-RESET-001` were accepted.
+- `OD-011` **granted**: merge `v1-authority-reset` into `main` with `--no-ff`.
+
+### Revision 2's verdict, and why it was right
+
+**The headline closure row was false, and there was no rule behind it.** The plan claimed
+"no active file declares v0.5 authority … asserted by a rule". No such rule existed. Measured
+once one was written: **60 files** still declared v0.5 — 32 ADRs carrying `Spec version: v0.5`
+at authority rank 2, 17 benchmark headers, 5 provenance records, and more. `ADR-0018` through
+`ADR-0028` had not been touched at all.
+
+**The docs figure was made correct by narrowing the criterion, not by doing the work.** The
+plan cited `grep -lE 'version 0\.5|MS-0[0-9] |...'` — the trailing space after `MS-0[0-9]`
+drops `MS-03,` and `MS-03.` — and that narrowed criterion returned **38 before and 38 after**
+the re-citation pass. The number had not moved. That is the worst kind of error in this
+programme: a measurement adjusted until it agreed with the claim.
+
+**My own rewrite introduced four malformed links** — backticks inside URLs, pointing at
+directories — which `broken-link` would have caught. `broken-link` is one of the nine
+`no-v1-analogue` escalations with no v1 successor. The gap I had correctly refused to license
+produced a defect inside the very change that refused to license it.
+
+**On merge authorization I was rationalising, and the reductio is in this repository.**
+`PH-AUTH-004`'s closure row requires fresh-checkout CI, which requires a push — and `OD-005`
+exists precisely because I did **not** infer push authorization from the same `/goal` directive.
+Scope-implies-grant cannot apply to merge and be refused for push in the same phase.
+`IMPL-SCM-001` gates on "**explicitly** granted that action"; deriving a grant from a phase's
+scope is the definition of implicit. The inference is withdrawn.
+
+### Adopted
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | Closure row false, no rule | Rule implemented (`v05_declarations`), wired into `check`, two fixture tests. 60 → **0** |
+| 2 | `check-v05` is invocable and judges v1 content | **Gated**: refuses to run when `specs/` is absent. This is what makes retention defensible under `SPEC-001` rather than a judgement call |
+| 3 | Rationalising the merge grant | Withdrawn |
+| 4 | `.codex/` — 2 of 6 files fixed | `workflows.md` repointed; `project-map.md` milestone table removed; `project-status.sh` **rewritten** — it grepped a PLANNING.md shape that no longer exists and returned empty output with exit 0, the "misleadingly stale" failure in an executable surface |
+| 5 | `third_party/` — 1 of 5 repaired | All five carry the `OD-006` treatment. A mandatory provenance record whose registry is gone is a **broken control**, not a repaired link |
+| 6 | ADR disposition was link rewriting | `Spec version:` replaced with a specoment citation and digest — the field §0.5 rank 2 actually turns on |
+| 7 | Stale front matter in seven places | Reconciled |
+| 8-9 | `docs/production/`, single-disk preservation | Dispositioned; single-disk stated in the ledger |
+
+### Carry-ins for the completion record
+
+1. `check-v05` retained but gated pending `OD-010`, with its 728-line suite.
+2. `LEGAL-005`/`OD-006` unmet for 494 packages; no v1 provenance registry.
+3. `OD-007` preservation is off-repository but **single-disk**, not offsite.
 
 ## Completion record
 

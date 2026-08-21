@@ -1,8 +1,8 @@
 # PEN-B05 — Heavy Isobar Storm
 
-[Suite](README.md) · [Isobar](../../specs/ISOBAR_WEATHER_AND_ATMOSPHERE_SPEC.md)
+[Suite](README.md) · [Isobar](../../MERIDIAN_SPECOMENT.md)
 
-version 0.5 · `DefinitionOnly` · `Uncalibrated`
+version 1.0 · `DefinitionOnly` · `Uncalibrated`
 
 Purpose: isolate wind-field updates/queries, heavy rain hooks, fog/visibility,
 volumetric layers, wetness interfaces, vegetation/audio coupling, lighting,
