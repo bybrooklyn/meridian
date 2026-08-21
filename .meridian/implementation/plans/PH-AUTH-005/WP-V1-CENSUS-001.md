@@ -20,7 +20,11 @@ milestones.
 Measured at `49bdd74`, each figure with its producing command.
 
 - **37 workspace members** (`cargo metadata --no-deps`), across `engine/` and `editor/`.
-- **716 test functions** (`grep -rc '#\[test\]' engine editor`).
+- **772 test functions** (`grep -rh '#\[test\]' --include='*.rs' engine editor | wc -l`).
+  An earlier figure of 716 was wrong: the summing command was piped through `tail -30`, so it
+  totalled only the last thirty files. Both counting methods now agree at 772. This is the
+  third time in this programme a figure has been wrong because a pipeline silently truncated
+  its own input, which is why every figure here names its command.
 - **96 internal dependency edges**: 84 mandatory, 12 optional, 0 dev-only.
 - **18 workspace third-party dependencies**; 494 locked packages.
 - **Four marker crates** at ~205 bytes and one public item each: `meridian-audio`,
@@ -47,9 +51,31 @@ relocate the inversion rather than remove it.
    source size, test count, disposition, next phase.
 2. Assign one disposition per crate from the specoment's own vocabulary:
    `retain` / `refactor` / `replace` / `merge` / `split` / `remove`.
-3. **All implementation maturity is `ExistingUnqualified`.** The phase card is explicit:
-   *"Treat all current code as ExistingUnqualified after reset … do not call foundations
-   stable merely because old milestones passed."* No crate inherits a v0.5 status.
+3. **All implementation maturity is recorded as `ExistingUnqualified`, and that term is not a
+   §0.4 value — which the census must state rather than paper over.**
+
+   The `PH-AUTH-005` card says *"Treat all current code as ExistingUnqualified after reset."*
+   §0.4's implementation-maturity enum is `Implemented, ImplementedFoundation,
+   StructuralSmoke, Partial, Transitional, Scaffold, Planned, Research, Deferred,
+   Unsupported`. **`ExistingUnqualified` is not among them**; it appears in the specoment only
+   twice, both times inside this phase card and its Appendix G serialization.
+
+   Projecting it as if it were a §0.4 value would invent a status, which is precisely
+   `PH-AUTH-003`'s stop condition. Projecting a §0.4 value instead would assert a maturity the
+   card explicitly refuses to grant.
+
+   Resolution: the census emits **two distinct fields**. `card_disposition` carries the
+   card's verbatim `ExistingUnqualified`. `implementation_maturity` is emitted as **`null`**,
+   with a note that no §0.4 value has been earned under v1 evidence. Nothing is invented and
+   nothing is promoted. Recorded as `SD-012`, and whether §0.4 gains an `ExistingUnqualified`
+   value or the card is reworded is an owner decision, `OD-012`, adjacent to `OD-009`.
+
+   The disposition vocabulary itself **is** the specoment's own, verified at line 28722 and
+   line 31389: *"classify every existing crate/system retain/refactor/replace/merge/split/
+   remove"*. Assigning one per crate is mechanical where the evidence is mechanical — a
+   200-byte crate with one public item and no dependents is `remove`; a 540 KB file the
+   `PH-AUTH-006` card names for decomposition is `split`. Where it is not mechanical, the
+   census emits `undecided` and escalates rather than guessing.
 4. Generate a dependency graph as checked-in data, with mandatory and optional edges
    distinguished — the distinction a first pass got wrong.
 5. Map retained tests to a next phase, so no test is retained merely because it exists.

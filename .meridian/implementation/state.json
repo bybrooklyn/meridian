@@ -213,6 +213,12 @@
       "context": "PH-AUTH-004 is complete in the working tree and all gates pass, but IMPL-SCM-001 enumerates merge separately from commit and requires an explicit grant. The branch is 20 commits ahead of main and 22 ahead of origin/main on a public MPL-2.0 repository. Squash is prohibited by the plan: under squash the pre-deletion trees would be reachable only via the branch and two tags.",
       "blocks": "PH-AUTH-004 closure, and therefore PH-AUTH-005.",
       "resolved": "GRANTED. Owner directed the merge. Executed with --no-ff; squash prohibited so the pre-deletion trees stay reachable on main."
+    },
+    {
+      "id": "OD-012",
+      "question": "Add ExistingUnqualified to section 0.4's implementation-maturity enum, or reword the PH-AUTH-005 card to use an existing value.",
+      "context": "Adjacent to OD-009. The census does not decide it: it emits the card's term verbatim in a separate field and leaves the 0.4 axis null.",
+      "blocks": "nothing; the census is honest either way."
     }
   ],
   "review_rounds": [
@@ -329,6 +335,13 @@
       "found": "independent review of WP-V1-GOV-001 revision 3",
       "severity": "would have destroyed data on the next generator run",
       "disposition": "Registry table split by class. Class (a) projections are emitted and policed by project --check byte-identity; class (b) accumulated state gets a schema plus a conformance and completeness rule and is kept outside emit::all(). Releases and compatibility ship as schema only, with no instance until one exists."
+    },
+    {
+      "id": "SD-012",
+      "subject": "ExistingUnqualified is not a section 0.4 value",
+      "detail": "The PH-AUTH-005 card directs 'Treat all current code as ExistingUnqualified after reset.' Section 0.4's implementation-maturity enum is Implemented, ImplementedFoundation, StructuralSmoke, Partial, Transitional, Scaffold, Planned, Research, Deferred, Unsupported. ExistingUnqualified is not among them and appears only twice in the document, both inside this phase card and its Appendix G serialization.",
+      "found": "by the drafting agent while pre-verifying its own plan figures",
+      "disposition": "The census emits card_disposition (verbatim ExistingUnqualified) and implementation_maturity (null, with a note that no 0.4 value has been earned under v1 evidence). Projecting it as a 0.4 value would invent a status, which PH-AUTH-003's stop condition forbids; projecting a 0.4 value instead would assert maturity the card refuses to grant."
     }
   ],
   "corrections": [
@@ -369,6 +382,12 @@
       "subject": "merge authorization inference",
       "detail": "Read the /goal directive as an explicit grant to merge, on the reasoning that PH-AUTH-004's definition is a merge. IMPL-SCM-001 gates on 'explicitly granted that action', and deriving a grant from a phase's scope is implicit by definition. The reductio is in this repository: the same phase's closure row needs fresh-checkout CI, which needs a push, and OD-005 exists precisely because push was NOT inferred from the same directive.",
       "disposition": "Withdrawn. The merge requires an explicit owner grant."
+    },
+    {
+      "id": "CORR-007",
+      "subject": "test function count",
+      "detail": "Reported 716 test functions. The summing pipeline was piped through 'tail -30', so it totalled only the last thirty files. Two independent counting methods now agree at 772. Third instance in this programme of a figure being wrong because a pipeline silently truncated its own input.",
+      "disposition": "Corrected to 772; every figure in the census plan now names the command that produced it."
     }
   ]
 }
