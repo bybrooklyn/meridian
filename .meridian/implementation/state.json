@@ -210,25 +210,27 @@
       "blocks": "PH-AUTH-004 deletion of the v0.5 validator. Seven units now carry fixture-backed supersessions; these ten do not.",
       "resolved": {
         "date": "2026-08-21",
-        "ruling": "Option A: build v1 successors for all ten rules. The enforcement is required.",
+        "ruling": "Option A: build v1 successors for the nine no-v1-analogue units. The enforcement is required.",
         "ruled_by": "owner",
         "rationale": "The v0.5 registry retired; the concepts did not. All ten police behaviour v1 still requires, so the enforcement is rebuilt against v1 structures rather than dropped.",
         "consequences": [
-          "The 22 census test rows policing these rules take disposition retain, not remove.",
-          "Their next_phase is the package that builds the v1 successors, not PH-AUTH-006.",
-          "The v0.5 validator code stays until its v1 successors exist; PH-AUTH-004 cleanup of it remains deferred and is now deferred by a ruling rather than by an open question.",
-          "A new work package is owed: ten v1 rules plus fixtures."
+          "8 test rows reference these rules by slug and take retain, not remove. Command: scan #[test] spans in editor/meridian_spec_tools/tests/cli.rs for the eight rule slugs. CORRECTION: the first draft of this ruling said 22, an unstamped figure produced by a loose regex (waiver|adr|alluvium|delivery_plan) that matched unrelated tests. It was 2.75x the measured count and entered accumulated state without a producing command.",
+          "Their next_phase cannot be set yet: no open phase owns validator work. PH-AUTH-003 is the conceptual home and is closed; PH-AUTH-006 is structural decomposition and 007-010 are runtime. Recorded as OD-013 rather than writing a closed or nonexistent phase id.",
+          "The v0.5 validator code stays until the successors exist. PH-AUTH-004 deletion of it is deferred by ruling rather than by an open question.",
+          "A work package for the nine units is owed, once OD-013 names its owning phase."
         ],
         "rules": [
           "missing-adr",
           "bad-fence",
           "broken-link",
-          "stale-phase-ref (x2)",
+          "stale-phase-ref (docs)",
+          "stale-phase-ref (workloads)",
           "implemented-without-evidence",
           "occluded-visual-evidence",
           "expired-waiver",
           "false-promotion"
-        ]
+        ],
+        "scope_correction": "The question and the first draft of this ruling said ten. governance/coverage-matrix.md carries nine rows marked no-v1-analogue (lines 40,41,42,46,47,49,57,58,103), covering eight distinct rules: stale-phase-ref appears twice, under docs and workloads. Chartering ten against a nine-row matrix would either invent a tenth or close one short, which is the inverse of the silent enforcement loss this decision exists to prevent."
       }
     },
     {
@@ -243,6 +245,18 @@
       "question": "Add ExistingUnqualified to section 0.4's implementation-maturity enum, or reword the PH-AUTH-005 card to use an existing value.",
       "context": "Adjacent to OD-009. The census does not decide it: it emits the card's term verbatim in a separate field and leaves the 0.4 axis null.",
       "blocks": "nothing; the census is honest either way."
+    },
+    {
+      "id": "OD-013",
+      "question": "Which phase owns the package that builds v1 successors for the nine no-v1-analogue enforcement units ruled required by OD-010?",
+      "detail": "No open phase owns validator work. PH-AUTH-003 (Build the v1 governance schemas and validator) is the conceptual home and is in completed_phases. PH-AUTH-006 is behavior-preserving structural decomposition; PH-AUTH-007 through 010 are runtime. next_phase is a phase field, so a work-package id is not a legal value for it.",
+      "options": [
+        "Reopen PH-AUTH-003 with a stated re-entry reason",
+        "Declare a new phase between PH-AUTH-005 and PH-AUTH-006 (specoment amendment)",
+        "Assign to PH-AUTH-006 and widen its card to cover governance enforcement"
+      ],
+      "blocks": "WP-V1-CENSUS-003 cannot set next_phase on the 8 retained rows. They carry retain with next_phase null, counted in the named residual PH-AUTH-005 closes with.",
+      "default": "None. Leaving it unanswered keeps 8 rows in the residual."
     }
   ],
   "review_rounds": [
@@ -280,6 +294,102 @@
       "conditions": "five carry-in items; two required and verified in the completion record: the backticked-reference guard (invariant 5) and the OD-007/DEV-006 governance records",
       "reviewer_verified": "annotated tag -> orphan commit 0882050a, parents=[], on no branch, three blobs hashing to disk, absent from git fsck --unreachable",
       "agent_correction_to_reviewer": "Reviewer stated the proposed guard 'passes today with zero hits'. As first formulated it produced 31 hits from range-then-member families. Refined with range precedence it is 0 hits; the refinement is now part of the stated declaration rule."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-001",
+      "round": 1,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-001",
+      "round": 2,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-001",
+      "round": 3,
+      "verdict": "accept",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-002",
+      "round": 1,
+      "verdict": "rethink",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-002",
+      "round": 2,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-002",
+      "round": 3,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-002",
+      "round": 4,
+      "verdict": "accept",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 1,
+      "verdict": "rethink",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 2,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 3,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 4,
+      "verdict": "revise",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
+    },
+    {
+      "work_package": "WP-V1-CENSUS-003",
+      "round": 5,
+      "verdict": "pending",
+      "reviewer": "fresh isolated same-model context (Opus 5)",
+      "date": "2026-08-21",
+      "note": "backfilled; rounds previously recorded only in plan prose. review_rounds is the ledger the CENSUS-003 audit-routing trigger depends on, so it must be the record."
     }
   ],
   "specoment_defects_found": [

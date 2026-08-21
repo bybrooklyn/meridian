@@ -82,6 +82,25 @@ Measured, after range inheritance resolves the recoverable class to zero:
 A new record carries this, with those two classes as its closed options. They are legal owners
 meanwhile, and that is recorded as a census limitation.
 
+## Input: the `OD-010` ruling
+
+The owner ruled **option A** — build v1 successors for the nine `no-v1-analogue` enforcement
+units. That changes this package's inputs in three ways, stated here because a reviewer reading
+the plan alone would otherwise not know.
+
+- **8 test rows** take `retain`, not `remove`. Measured by scanning `#[test]` spans in
+  `editor/meridian_spec_tools/tests/cli.rs` for the eight rule slugs. The ruling's first draft
+  said 22 — an unstamped figure from a loose regex matching unrelated `waiver`/`adr`/`alluvium`
+  tests, 2.75× the real count. Corrected in `state.json` as a noted correction rather than
+  silently.
+- **Their `next_phase` stays null**, pending `OD-013`. No open phase owns validator work:
+  `PH-AUTH-003` is the conceptual home and is closed, `PH-AUTH-006` is structural decomposition,
+  `007`–`010` are runtime. Writing a work-package id into a phase field would be `SD-012`'s shape
+  a fourth time. These 8 rows are counted in the named residual this phase closes with.
+- **The escalation bucket shrinks.** "Tests whose behaviour no v1 requirement describes" reserved
+  a record for the v0.5-validator tests as its largest candidate population. Eight of them now
+  have a disposition, so that record covers less than planned.
+
 ## Where the assignments live
 
 1,801 judgements cannot live in Rust at ~0.4 lines each, and byte-identical regeneration means
@@ -208,7 +227,7 @@ from the doc comment on the function doing the counting.
 
 ## Owner decisions
 
-**9 open records, not 11.** `OD-007` and `OD-011` carry `resolved`. The existence check must be
+**8 open records, not 11.** `OD-007`, `OD-010` and `OD-011` carry `resolved`. The existence check must be
 scoped to unresolved entries in `open_owner_decisions` — `collect_od_ids` currently harvests any
 6-character `OD-` string anywhere in `state.json` (census limitation 7), so an escalation naming
 the resolved `OD-011` would pass a check this package calls machine-checkable.
@@ -288,7 +307,8 @@ question.
 ## Failure injection and recovery
 
 Set both judgement fields; set neither; name `OD-011` (resolved); name `OD-999`; assign outside
-the vocabulary; map a test to `APP-003` (Rejected), `SRV-016` and `SRV-022` (post-1.0, the second unlabelled); delete a crate whose
+the vocabulary; map a test to `APP-003` (Rejected), `SRV-016` and `SRV-022` (post-1.0,
+the second unlabelled); delete a crate whose
 disposition remains; insert a blank line and confirm no orphan; map every test in a crate to one
 id; push a family past the step-1 derived cap; use an id that appears in no audit row. Each must fail naming the row.
 
@@ -306,6 +326,24 @@ None.
 | Schema tightening, on-disk validation, `OD-*` status scoping | ~150 | ~30 |
 | Tests | ~360 | 0 |
 | Regenerated `census.json` | ~+2,400 changed lines | 0 |
+
+## The sweep rule, generalised
+
+This lineage has hit one failure class five times in five disguises: the fix lands, an earlier
+sentence stays. Two passes exist and both have now been shown insufficient on their own.
+
+- `-001` adopted **grep for the term just retired**. It catches retired words. It cannot catch a
+  numeral that is spelled the same and has quietly become wrong.
+- `-002` adopted **re-derive every figure from source before writing prose**. It catches stale
+  measurements. It passed while four sites were stale, because those numbers were correct
+  against source and contradicted a rule the same document had withdrawn.
+- `-003` adopted **grep for the number a withdrawn rule contained**. It caught those four. It
+  could not catch "9 open records", because nothing in the document was retracted — a fact in
+  the accompanying `state.json` edit changed underneath a sentence that was true when written.
+
+**The rule is therefore keyed to the commit, not the document: for every fact a commit changes,
+grep the plan for the ids and counts that change touches.** Here that is one grep for `OD-010`
+and one for `open records`; both would have fired.
 
 ## Stop / rollback rule
 
