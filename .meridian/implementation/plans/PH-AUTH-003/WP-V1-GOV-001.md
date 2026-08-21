@@ -606,7 +606,7 @@ proposes to create, first query whether a shipped projection already carries its
 
 | Deliverable | State |
 |---|---|
-| Suite-equivalence matrix, rule level, generated | 67 units — 66 deleted scope, 1 retained, **2 unaccounted** |
+| Suite-equivalence matrix, rule level, generated | **70 units — 66 deleted scope, 4 retained, 0 unaccounted** |
 | `check` / `check-v05` inversion | Deferred — see limitations |
 | Class (a) work-packages registry | 12 `WP-V1-*` records |
 | Class (a) maturity vocabulary, extracted | 21 observed labels, 3 axes (5/10/10 values) |
@@ -651,10 +651,16 @@ proposes to create, first query whether a shipped projection already carries its
 
 ### Limitations, recorded not omitted
 
-- **The matrix is red and licenses nothing.** Two units — `explain/record` and
-  `explain/unknown-id` — are unaccounted. Whether a query command survives the cutover is a
-  design question, and deriving an answer would be guessing. `PH-AUTH-004` cannot delete the
-  v0.5 validator until they are dispositioned.
+- **The matrix is fully accounted and does license the cutover.** An earlier pass left
+  `explain/record` and `explain/unknown-id` unaccounted, on the theory that a query command's
+  fate was a design question. Reading `explain` settled it on the same basis as the other
+  sixty-four: it queries `context.records`, loaded from `specs/registry`, and its own
+  `unknown-id` message reads *"not mapped in specs/registry"*. It retires with the authority
+  it queries. The caution was misplaced and the answer was one function away.
+
+  The four retained units are the v1 rules this package added — `stale-projection`,
+  `evidence-index`, `phase-cycle`, `unresolved-phase-dependency` — all emitted under
+  `governance`, which the cutover does not delete.
 - **`check` / `check-v05` was not performed.** The v1 rules run inside the existing `check`
   alongside the v0.5 ones rather than under a separate name. The inversion is a rename whose
   only purpose is avoiding churn at `PH-AUTH-004`; doing it now would churn CI twice for no

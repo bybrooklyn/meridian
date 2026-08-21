@@ -239,6 +239,12 @@ pub fn derive(unit: &Unit) -> Option<Disposition> {
         "adrs",
         "registry",
         "list-unmapped",
+        // `explain` reads `context.records`, which is loaded from `specs/registry`, and its
+        // own unknown-id message says "not mapped in specs/registry". It retires with the
+        // authority it queries. An earlier pass left these two unaccounted on the theory
+        // that a query command's fate was a design question; reading the function settled
+        // it on the same basis as the other sixty-four.
+        "explain",
     ];
     V05_AUTHORITY_CHECKS
         .contains(&unit.check.as_str())
