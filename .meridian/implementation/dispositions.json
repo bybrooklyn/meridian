@@ -231,10 +231,11 @@
     {
       "id": "R2-meridian-editor-core",
       "section": "crates",
-      "rationale": "Retained on positive evidence: serves EDUX-002, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to EDUX-002. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "Retained on evidence: serves AUTHOR-001, has a dependent or is an entry point, and has its own retained tests mapped to AUTHOR-001. Its first named id was a scope statement and it escalated; the per-test re-derivation found the contract its tests actually serve.",
       "key_equals": "meridian-editor-core",
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "AUTHOR-001"
     },
     {
       "id": "R2-meridian-input",
@@ -248,10 +249,11 @@
     {
       "id": "R2-meridian-modeler",
       "section": "crates",
-      "rationale": "Retained on positive evidence: serves MODELER-001, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to MODELER-001. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "Retained on evidence: serves MODELER-003, has a dependent or is an entry point, and has its own retained tests mapped to MODELER-003. Its first named id was a scope statement and it escalated; the per-test re-derivation found the contract its tests actually serve.",
       "key_equals": "meridian-modeler",
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "MODELER-003"
     },
     {
       "id": "R2-meridian-package",
@@ -309,10 +311,11 @@
     {
       "id": "R2-meridian-save",
       "section": "crates",
-      "rationale": "Retained on positive evidence: serves SAVE-001, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to SAVE-001. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "Retained on evidence: serves SAVE-003, has a dependent or is an entry point, and has its own retained tests mapped to SAVE-003. Its first named id was a scope statement and it escalated; the per-test re-derivation found the contract its tests actually serve.",
       "key_equals": "meridian-save",
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "SAVE-003"
     },
     {
       "id": "R2-meridian-spec",
@@ -326,10 +329,11 @@
     {
       "id": "R2-meridian-streaming",
       "section": "crates",
-      "rationale": "Retained on positive evidence: serves AUTHOR-010, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to AUTHOR-010. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "Retained on evidence: serves AUTHOR-010, has a dependent or is an entry point, and has its own retained tests mapped to AUTHOR-010. Its first named id was a scope statement and it escalated; the per-test re-derivation found the contract its tests actually serve.",
       "key_equals": "meridian-streaming",
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "AUTHOR-010"
     },
     {
       "id": "R2-meridian-tasks",
@@ -379,18 +383,20 @@
     {
       "id": "R2-meridian-ui-text",
       "section": "crates",
-      "rationale": "Retained on positive evidence: serves UI-002, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to UI-002. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "Retained on evidence: serves UI-008, has a dependent or is an entry point, and has its own retained tests mapped to UI-008. Its first named id was a scope statement and it escalated; the per-test re-derivation found the contract its tests actually serve.",
       "key_equals": "meridian-ui-text",
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "UI-008"
     },
     {
       "id": "R2-meridian-world",
       "section": "crates",
-      "rationale": "Retained on positive evidence: serves WORLD-001, has a dependent or is a binary entry point, and has at least one of its own retained tests mapped to WORLD-001. ESCALATED at review: this id is a product-scope statement, not a behavioural contract, so no unit test can honestly serve it. OD-021.",
+      "rationale": "Retained on evidence: serves AUTHOR-005, has a dependent or is an entry point, and has its own retained tests mapped to AUTHOR-005. Its first named id was a scope statement and it escalated; the per-test re-derivation found the contract its tests actually serve.",
       "key_equals": "meridian-world",
-      "escalation": "OD-021",
-      "next_phase": "PH-AUTH-006"
+      "next_phase": "PH-AUTH-006",
+      "disposition": "retain",
+      "owner": "AUTHOR-005"
     },
     {
       "id": "R2-meridian-world-tools",

@@ -188,7 +188,7 @@
       "test_functions": 17,
       "implementation_maturity": null,
       "card_disposition": "ExistingUnqualified",
-      "disposition": null, "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": "OD-021"
+      "disposition": "retain", "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": null
     },
     {
       "name": "meridian-input",
@@ -227,7 +227,7 @@
       "test_functions": 10,
       "implementation_maturity": null,
       "card_disposition": "ExistingUnqualified",
-      "disposition": null, "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": "OD-021"
+      "disposition": "retain", "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": null
     },
     {
       "name": "meridian-package",
@@ -331,7 +331,7 @@
       "test_functions": 9,
       "implementation_maturity": null,
       "card_disposition": "ExistingUnqualified",
-      "disposition": null, "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": "OD-021"
+      "disposition": "retain", "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": null
     },
     {
       "name": "meridian-shader-tools",
@@ -370,7 +370,7 @@
       "test_functions": 8,
       "implementation_maturity": null,
       "card_disposition": "ExistingUnqualified",
-      "disposition": null, "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": "OD-021"
+      "disposition": "retain", "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": null
     },
     {
       "name": "meridian-tasks",
@@ -474,7 +474,7 @@
       "test_functions": 14,
       "implementation_maturity": null,
       "card_disposition": "ExistingUnqualified",
-      "disposition": null, "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": "OD-021"
+      "disposition": "retain", "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": null
     },
     {
       "name": "meridian-vegetation",
@@ -500,7 +500,7 @@
       "test_functions": 6,
       "implementation_maturity": null,
       "card_disposition": "ExistingUnqualified",
-      "disposition": null, "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": "OD-021"
+      "disposition": "retain", "next_phase": "PH-AUTH-006", "phase_pending": null, "escalation": null
     },
     {
       "name": "meridian-world-tools",
