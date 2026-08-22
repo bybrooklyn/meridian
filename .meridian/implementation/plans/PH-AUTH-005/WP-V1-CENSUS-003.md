@@ -608,6 +608,12 @@ re-entry clause triggers if a budget is exceeded or an audit row fails. That tri
 
 ## Completion record
 
+**Closed under `OD-022` option 1, ruled by the owner.** Clause 4 is amended to admit a counted,
+attributed residual: a code area satisfies it by carrying either a disposition and a next phase,
+or an escalation naming an unresolved owner decision and a next phase. Narrow by design — a row
+with neither remains invalid and the XOR is unchanged. The 167 escalated rows do not have
+dispositions, and this record does not claim they do.
+
 **The first closure was withdrawn.** Independent review rejected it, and the review was right on
 every count I could verify from source. This record replaces the one that claimed closure.
 
